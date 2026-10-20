@@ -97,7 +97,7 @@ def evaluated():
     groups = {}
     for i, c in enumerate(co):
         if not model[i]:
-            groups.setdefault(find(i), []).append(c)
+            groups.setdefault(find(i), []).append((i, c))
     spheres = []
     for inst in dg.object_instances:
         if inst.is_instance and inst.parent and inst.parent.original == sup and hasattr(inst.object.data, "vertices"):
@@ -105,7 +105,18 @@ def evaluated():
             vs = [m @ v.co for v in inst.object.data.vertices]
             c = [sum(v[a] for v in vs) / len(vs) for a in range(3)]
             spheres.append({"center": [round(x, 4) for x in c], "radius": round(max((max(v.z for v in vs) - min(v.z for v in vs)) / 2, 0), 4)})
-    return list(groups.values()), spheres
+    return [[c for _, c in sorted(g)] for g in groups.values()], spheres
+
+
+def rings_of(vs, size):
+    """Curve to Tube writes one profile ring of `size` vertices per curve point, in order."""
+    rings = []
+    for start in range(0, len(vs) - len(vs) % size, size):
+        ring = vs[start:start + size]
+        c = [sum(v[a] for v in ring) / size for a in range(3)]
+        r = max(math.dist(v, c) for v in ring)
+        rings.append([round(c[0], 4), round(c[1], 4), round(c[2], 4), round(r, 4)])
+    return rings
 
 
 def describe_piece(vs):
@@ -121,6 +132,7 @@ def describe_piece(vs):
         "foot_radius": round(max(math.hypot(v[0] - bc[0], v[1] - bc[1]) for v in bottom), 4),
         "top_center": [round(c, 4) for c in tc],
         "top_radius": round(max(math.hypot(v[0] - tc[0], v[1] - tc[1]) for v in top), 4),
+        "rings": rings_of(vs, sp.resolution) if len(vs) % sp.resolution == 0 else None,
     }
 
 

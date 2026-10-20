@@ -80,23 +80,28 @@ export function buildSupportMesh(
   const columns: Column[] = [];
   const footprints: Point2[] = [];
   const anchors: { id: string; position: Vector }[] = [];
+  const ray = options.model ? new DownRaycaster(options.model) : undefined;
 
   for (const contact of contacts) {
-    const normal = normalize(contact.normal);
-    const tip = subtract(contact.position, scale(normal, settings.touchDepth));
-    if (tip[1] <= raftTop) continue;
-    // Contact Depth sinks the tip; the neck still ends Connection Length from the contact (Blender).
-    const reach = add(contact.position, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength));
-    const neckBottom: Vector = [reach[0], Math.max(reach[1], footTop + MIN_LENGTH), reach[2]];
-
+    const column = contactColumn(contact, settings, ray, tipOnly);
+    if (!column) continue;
     builder.begin('tip', contact.id);
-    builder.sphere(tip, settings.touchDiameter / 2, segments);
+    builder.sphere(column.tip, settings.touchDiameter / 2, segments);
     builder.end();
+    if (column.landing) {
+      builder.begin('tip', contact.id);
+      builder.sphere(column.landing, settings.touchDiameter / 2, segments);
+      builder.end();
+    }
+    const neckEnd = column.curve.findIndex((node, index) => index > 0 && node.radius === pillarRadius);
     builder.begin('neck', contact.id);
-    builder.frustum(neckBottom, tip, pillarRadius, settings.neckDiameter / 2, segments);
+    builder.tube(column.curve.slice(0, neckEnd + 1), segments);
     builder.end();
     if (tipOnly) continue;
-    anchors.push({ id: contact.id, position: neckBottom });
+    builder.begin('pillar', contact.id);
+    builder.tube(column.curve.slice(neckEnd), segments);
+    builder.end();
+    if (!column.landing) anchors.push({ id: contact.id, position: column.curve[column.curve.length - 1]!.point });
   }
 
   if (!tipOnly) {
@@ -106,7 +111,8 @@ export function buildSupportMesh(
     const trunkRadius = new Map<string, number>();
     for (const record of records) {
       if (record.kind === 'junction') {
-        const radius = pillarRadius * (1 + (settings.treeSectionIncrement / 100) * (record.contactIds.length - 1));
+        // SLASG_Tree2: diameter grows with the merged leaf area, not linearly.
+        const radius = pillarRadius * Math.sqrt(1 + (record.contactIds.length - 1) * (settings.treeSectionIncrement / 100));
         trunkRadius.set(record.id, radius);
         builder.begin('tree-trunk');
         builder.sphere(record.position, radius, segments);
@@ -119,7 +125,7 @@ export function buildSupportMesh(
         const radius = record.kind === 'trunk' ? trunkRadius.get(record.junctionId)! : pillarRadius;
         const [x, , z] = record.from;
         builder.begin(record.kind === 'trunk' ? 'tree-trunk' : 'pillar', record.kind === 'pillar' ? record.contactId : undefined);
-        if (record.from[1] - footTop > MIN_LENGTH) builder.frustum(record.from, [x, footTop, z], radius, radius, segments);
+        if (Math.abs(record.from[1] - footTop) > MIN_LENGTH) builder.frustum(record.from, [x, footTop, z], radius, radius, segments);
         builder.end();
         builder.begin('foot', record.kind === 'pillar' ? record.contactId : undefined);
         builder.frustum([x, 0, z], [x, footTop, z], Math.max(settings.baseDiameter / 2, radius * 1.5), radius, segments);
@@ -160,6 +166,147 @@ export function contactAtTriangle(mesh: GeneratedSupportMesh, triangle: number):
     else return component.contactId;
   }
   return undefined;
+}
+
+interface ContactColumn {
+  tip: Vector;
+  /** Filleted tube curve from the tip down to the transition bottom or the landing point. */
+  curve: CurveNode[];
+  /** Where the column lands on the model, when it does. */
+  landing?: Vector;
+}
+
+/**
+ * SLASG_Line for one contact: neck from the sunk tip to b = contact + d x Connection Length,
+ * a Middle Ø-long vertical transition, and the landing decision from a ray cast down from b.
+ */
+function contactColumn(contact: SupportContact, settings: Readonly<LiveSupportSettings>, ray: DownRaycaster | undefined, tipOnly: boolean): ContactColumn | undefined {
+  const raftTop = settings.raftEnabled ? settings.raftFloorThickness : 0;
+  const pillarRadius = settings.pillarDiameter / 2;
+  const neckRadius = settings.neckDiameter / 2;
+  const normal = normalize(contact.normal);
+  const tip = subtract(contact.position, scale(normal, settings.touchDepth));
+  if (tip[1] <= raftTop) return undefined;
+  const reach = add(contact.position, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength));
+  const bend: Vector = reach;
+  const chain: CurveNode[] = [{ point: tip, radius: neckRadius }, { point: bend, radius: pillarRadius }];
+  const hit = tipOnly ? undefined : ray?.cast(bend, ray.height);
+  if (hit) {
+    if (bend[1] - hit.point[1] > 2 * settings.neckLength) {
+      // Inverted neck up to a touch sphere on the model below.
+      const up = upDirection(hit.normal, settings.maxNeckAngle);
+      chain.push({ point: add(hit.point, scale(up, settings.neckLength - settings.touchDepth)), radius: pillarRadius });
+    }
+    chain.push({ point: hit.point, radius: neckRadius });
+  } else {
+    // No clamping: like Blender, a short column folds back up to Bottom Thickness.
+    chain.push({ point: [bend[0], bend[1] - settings.pillarDiameter, bend[2]], radius: pillarRadius });
+  }
+  return { tip, curve: filletPolyline(chain, settings.pillarDiameter / 2, 3), ...(hit ? { landing: hit.point } : {}) };
+}
+
+/** Full column curve for a plate-landing contact, ending with the foot (for parity tests). */
+export function columnChain(contact: SupportContact, settings: Readonly<LiveSupportSettings>, model?: TriangleMesh): CurveNode[] {
+  const column = contactColumn(contact, settings, model ? new DownRaycaster(model) : undefined, false);
+  if (!column) return [];
+  if (column.landing) return column.curve;
+  const [x, , z] = column.curve[column.curve.length - 1]!.point;
+  return [...column.curve, { point: [x, settings.baseHeight, z], radius: settings.pillarDiameter / 2 }, { point: [x, 0, z], radius: settings.baseDiameter / 2 }];
+}
+
+/** Up-facing counterpart of `neckDirection`, used for inverted necks landing on the model. */
+function upDirection(normal: Vector, maxAngle: number): Vector {
+  const flipped = neckDirection([-normal[0], -normal[1], -normal[2]], maxAngle);
+  return [-flipped[0], -flipped[1], -flipped[2]];
+}
+
+export interface CurveNode {
+  point: Vector;
+  radius: number;
+}
+
+/**
+ * Blender `Fillet Curve` in Poly mode: each interior corner becomes `count + 1` points on an
+ * arc of `radius` tangent to both segments (limited to half of the shorter segment). Fillet
+ * points keep the corner's radius, as Blender copies the corner attribute.
+ */
+export function filletPolyline(nodes: readonly CurveNode[], radius: number, count: number): CurveNode[] {
+  const out: CurveNode[] = [nodes[0]!];
+  for (let index = 1; index < nodes.length - 1; index += 1) {
+    const [previous, corner, next] = [nodes[index - 1]!, nodes[index]!, nodes[index + 1]!];
+    const incoming = subtract(corner.point, previous.point);
+    const outgoing = subtract(next.point, corner.point);
+    const lengthIn = Math.hypot(...incoming);
+    const lengthOut = Math.hypot(...outgoing);
+    const u = normalize(incoming);
+    const v = normalize(outgoing);
+    const angle = Math.acos(Math.max(-1, Math.min(1, dot(u, v))));
+    if (lengthIn < MIN_LENGTH || lengthOut < MIN_LENGTH || angle < 1e-6) {
+      out.push(corner);
+      continue;
+    }
+    const tangent = Math.min(radius * Math.tan(angle / 2), lengthIn / 2, lengthOut / 2);
+    const arcRadius = tangent / Math.tan(angle / 2);
+    const w = normalize(subtract(v, scale(u, dot(u, v))));
+    const start = subtract(corner.point, scale(u, tangent));
+    const centre = add(start, scale(w, arcRadius));
+    for (let step = 0; step <= count; step += 1) {
+      const phi = (step / count) * angle;
+      out.push({ point: add(centre, add(scale(w, -arcRadius * Math.cos(phi)), scale(u, arcRadius * Math.sin(phi)))), radius: corner.radius });
+    }
+  }
+  out.push(nodes[nodes.length - 1]!);
+  return out;
+}
+
+/** Vertical ray casts against a mesh, bucketed by XZ cell. */
+class DownRaycaster {
+  readonly height: number;
+  private cells = new Map<string, number[]>();
+  private cell: number;
+
+  constructor(private mesh: TriangleMesh) {
+    const bounds = meshBounds(mesh);
+    this.height = bounds.max[1] - bounds.min[1];
+    this.cell = Math.max(0.5, Math.max(bounds.max[0] - bounds.min[0], bounds.max[2] - bounds.min[2]) / 64);
+    for (let face = 0; face < mesh.indices.length / 3; face += 1) {
+      const xs = [0, 1, 2].map((k) => mesh.positions[mesh.indices[face * 3 + k]! * 3]!);
+      const zs = [0, 1, 2].map((k) => mesh.positions[mesh.indices[face * 3 + k]! * 3 + 2]!);
+      for (let ix = Math.floor(Math.min(...xs) / this.cell); ix <= Math.floor(Math.max(...xs) / this.cell); ix += 1) {
+        for (let iz = Math.floor(Math.min(...zs) / this.cell); iz <= Math.floor(Math.max(...zs) / this.cell); iz += 1) {
+          const key = `${ix}|${iz}`;
+          const list = this.cells.get(key);
+          if (list) list.push(face); else this.cells.set(key, [face]);
+        }
+      }
+    }
+  }
+
+  /** Nearest surface straight below `from` within `length`, with its upward face normal. */
+  cast(from: Vector, length: number): { point: Vector; normal: Vector } | undefined {
+    const faces = this.cells.get(`${Math.floor(from[0] / this.cell)}|${Math.floor(from[2] / this.cell)}`) ?? [];
+    let best: { point: Vector; normal: Vector } | undefined;
+    for (const face of faces) {
+      const [a, b, c] = [0, 1, 2].map((k) => {
+        const i = this.mesh.indices[face * 3 + k]! * 3;
+        return [this.mesh.positions[i]!, this.mesh.positions[i + 1]!, this.mesh.positions[i + 2]!] as Vector;
+      }) as [Vector, Vector, Vector];
+      const det = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2]);
+      if (Math.abs(det) < 1e-12) continue;
+      const l1 = ((b[2] - c[2]) * (from[0] - c[0]) + (c[0] - b[0]) * (from[2] - c[2])) / det;
+      const l2 = ((c[2] - a[2]) * (from[0] - c[0]) + (a[0] - c[0]) * (from[2] - c[2])) / det;
+      const l3 = 1 - l1 - l2;
+      if (l1 < -1e-9 || l2 < -1e-9 || l3 < -1e-9) continue;
+      const y = l1 * a[1] + l2 * b[1] + l3 * c[1];
+      if (y >= from[1] - 1e-6 || from[1] - y > length) continue;
+      if (!best || y > best.point[1]) {
+        let normal = normalize(cross(subtract(b, a), subtract(c, a)));
+        if (normal[1] < 0) normal = [-normal[0], -normal[1], -normal[2]];
+        best = { point: [from[0], y, from[2]], normal };
+      }
+    }
+    return best;
+  }
 }
 
 /** The neck follows the surface normal but tilts at most `maxAngle` degrees from straight down. */
@@ -494,6 +641,26 @@ class MeshBuilder {
       return add(center, add(scale(u, Math.cos(angle) * radius), scale(v, Math.sin(angle) * radius)));
     });
     this.loft([ring(from, fromRadius), ring(to, toRadius)], true);
+  }
+
+  /** Closed tube through a polyline with per-node radius (Blender Curve to Tube, flat caps). */
+  tube(nodes: readonly CurveNode[], segments: number): void {
+    const path = nodes.filter((node, index) => index === 0 || Math.hypot(...subtract(node.point, nodes[index - 1]!.point)) > MIN_LENGTH);
+    if (path.length < 2) return;
+    let normal = basis(normalize(subtract(path[1]!.point, path[0]!.point)))[0];
+    const rings = path.map((node, index) => {
+      const back = index > 0 ? normalize(subtract(node.point, path[index - 1]!.point)) : undefined;
+      const ahead = index < path.length - 1 ? normalize(subtract(path[index + 1]!.point, node.point)) : undefined;
+      const tangent = normalize(back && ahead ? add(back, ahead) : (back ?? ahead)!);
+      // Parallel transport keeps the profile from twisting along the curve.
+      normal = normalize(subtract(normal, scale(tangent, dot(normal, tangent))));
+      const binormal = cross(tangent, normal);
+      return Array.from({ length: segments }, (_, step) => {
+        const angle = (step / segments) * Math.PI * 2;
+        return add(node.point, add(scale(normal, Math.cos(angle) * node.radius), scale(binormal, Math.sin(angle) * node.radius)));
+      });
+    });
+    this.loft(rings, true);
   }
 
   sphere(center: Vector, radius: number, segments: number): void {

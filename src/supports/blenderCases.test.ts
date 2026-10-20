@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import reference from '../../tools/blender-parity/reference.json';
 import type { TriangleMesh } from '../analysis/types';
-import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from './mesh';
+import { buildSupportMesh, columnChain, type GeneratedSupportMesh, type SupportContact } from './mesh';
 import { defaultSupportSettings, type LiveSupportSettings } from './settings';
 
 /**
@@ -11,7 +11,7 @@ import { defaultSupportSettings, type LiveSupportSettings } from './settings';
  * Blender works Z-up; the web is Y-up: web (x, y, z) = Blender (x, z, -y).
  */
 type Vec3 = [number, number, number];
-interface BlenderColumn { z: [number, number]; foot_center: [number, number]; foot_radius: number; top_center: [number, number]; top_radius: number }
+interface BlenderColumn { z: [number, number]; foot_center: [number, number]; foot_radius: number; top_center: [number, number]; top_radius: number; rings: [number, number, number, number][] | null }
 interface BlenderCase {
   settings: Record<string, number | boolean | string>;
   contacts: Vec3[];
@@ -122,6 +122,32 @@ describe.each(Object.entries(CASES))('Blender case %s', (name, blender) => {
     });
     // On this model 11 to 14 of the 17 supports follow the plain rule in every case.
     expect(ruled).toBeGreaterThanOrEqual(11);
+  });
+
+  it('reproduces the column curve ring by ring (fillet, transition, foot)', () => {
+    let compared = 0;
+    blender.contacts.forEach((contact, index) => {
+      const column = columnFor(blender, contact);
+      if (!column.rings) return;
+      // Isolate the chain shape from the direction source: use Blender's own neck direction,
+      // recovered from the foot offset (neck bottom = contact + d x Connection Length).
+      const dx = column.foot_center[0] - contact[0];
+      const dy = column.foot_center[1] - contact[1];
+      const length = settings.neckLength;
+      const direction: Vec3 = [dx / length, dy / length, -Math.sqrt(Math.max(0, length ** 2 - dx * dx - dy * dy)) / length];
+      const input: SupportContact = { id: `c${index}`, position: toWeb(contact), normal: toWeb(direction) };
+      const dedupe = <T extends readonly number[]>(list: T[]) => list.filter((item, i) => i === 0 || Math.hypot(item[0]! - list[i - 1]![0]!, item[1]! - list[i - 1]![1]!, item[2]! - list[i - 1]![2]!) > 1e-3);
+      const expected = dedupe(column.rings.map(([x, y, z, r]) => [...toWeb([x, y, z]), r] as number[]));
+      const actual = dedupe(columnChain(input, { ...settings, maxNeckAngle: 89 }, spike(settings.liftHeight)).map((node) => [...node.point, node.radius]));
+      expect(actual.length).toBe(expected.length);
+      actual.forEach((node, i) => {
+        const ring = expected[i]!;
+        expect(Math.hypot(node[0]! - ring[0]!, node[1]! - ring[1]!, node[2]! - ring[2]!)).toBeLessThan(0.01);
+        expect(Math.abs(node[3]! - ring[3]!)).toBeLessThan(0.01);
+      });
+      compared += 1;
+    });
+    expect(compared).toBe(blender.contacts.length);
   });
 
   it('matches the neck top radius (Upper Ø) of the vertical apex column', () => {
