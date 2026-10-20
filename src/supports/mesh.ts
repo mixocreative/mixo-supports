@@ -3,7 +3,8 @@ import { layoutBfont } from './bfont';
 import type { LiveSupportSettings } from './settings';
 import { cornerBisectors, raftOutline } from './raft';
 import { buildRoofCage } from './roof';
-import { buildTreeTopology } from './tree';
+import { autoTreeLayout, type AutoTree } from './autotree';
+import { RemeshTarget } from './remesh';
 
 type Vector = [number, number, number];
 export type Point2 = [number, number];
@@ -11,9 +12,17 @@ export type Point2 = [number, number];
 /** A support contact in build-plate space: Y is up and the plate is y = 0 (mm). */
 export interface SupportContact {
   id: string;
+  /** False for manual contacts, which never merge into Auto Tree branches. */
+  tree?: boolean;
   position: Vector;
   /** Model surface normal at the contact, pointing out of the model. */
   normal: Vector;
+  /**
+   * SLASG point class. With a model, `face` and `edge` contacts take their neck normal from
+   * the voxel remesh (nearest face / nearest edge) and `vertical` ones point straight down;
+   * without a class the given normal is used as is.
+   */
+  kind?: 'face' | 'edge' | 'vertical';
 }
 
 export type SupportPart =
@@ -45,6 +54,8 @@ export interface SupportMeshOptions {
   labelText?: string;
   /** Precomputed raft outline for `model` (it only depends on the model, Expand and voxels). */
   raftOutline?: { raw: Vector[]; polygon: Point2[] };
+  /** Cached remesh of `model` for Middle Ø (see `lineTarget`); built on demand otherwise. */
+  remesh?: RemeshTarget;
 }
 
 export interface Column {
@@ -84,11 +95,17 @@ export function buildSupportMesh(
   const columns: Column[] = [];
   const footprints: Point2[] = [];
   const anchors: { id: string; position: Vector }[] = [];
-  const ray = options.model ? new DownRaycaster(options.model) : undefined;
+  const ray = options.model ? lineTarget(options.model, settings, options.remesh) : undefined;
+  if (ray) contacts = contacts.map((contact) => ({ ...contact, normal: ray.normal(contact) }));
 
-  for (const contact of contacts) {
+  const trees = settings.scatterAutoTree && !tipOnly ? autoTreeLayout(contacts, options.model, settings) : [];
+  const treeOf = new Map<number, number>();
+  trees.forEach((tree, t) => tree.members.forEach((member) => treeOf.set(member, t)));
+
+  contacts.forEach((contact, index) => {
+    if (treeOf.has(index)) return;
     const column = contactColumn(contact, settings, ray, tipOnly);
-    if (!column) continue;
+    if (!column) return;
     builder.begin('tip', contact.id);
     builder.sphere(column.tip, settings.touchDiameter / 2, segments);
     builder.end();
@@ -97,51 +114,134 @@ export function buildSupportMesh(
       builder.sphere(column.landing, settings.touchDiameter / 2, segments);
       builder.end();
     }
-    const neckEnd = column.curve.findIndex((node, index) => index > 0 && node.radius === pillarRadius);
+    const neckEnd = column.curve.findIndex((node, i) => i > 0 && node.radius === pillarRadius);
     builder.begin('neck', contact.id);
     builder.tube(column.curve.slice(0, neckEnd + 1), segments);
     builder.end();
-    if (tipOnly) continue;
+    if (tipOnly) return;
     builder.begin('pillar', contact.id);
     builder.tube(column.curve.slice(neckEnd), segments);
     builder.end();
     if (!column.landing) anchors.push({ id: contact.id, position: column.curve[column.curve.length - 1]!.point });
-  }
+  });
 
   if (!tipOnly) {
-    const records = settings.scatterAutoTree
-      ? buildTreeTopology(anchors, { mergeDistance: settings.scatterMergeDistance, branchDescent: settings.scatterBranchDescent, floor: footTop + settings.pillarDiameter })
-      : anchors.map((anchor) => ({ kind: 'pillar' as const, contactId: anchor.id, from: anchor.position, to: [anchor.position[0], 0, anchor.position[2]] as Vector }));
-    const trunkRadius = new Map<string, number>();
-    for (const record of records) {
-      if (record.kind === 'junction') {
-        // SLASG_Tree2: diameter grows with the merged leaf area, not linearly.
-        const radius = pillarRadius * Math.sqrt(1 + (record.contactIds.length - 1) * (settings.treeSectionIncrement / 100));
-        trunkRadius.set(record.id, radius);
-        builder.begin('tree-trunk');
-        builder.sphere(record.position, radius, segments);
-        builder.end();
-      } else if (record.kind === 'branch') {
-        builder.begin('tree-branch', record.contactId);
-        builder.frustum(record.from, record.to, pillarRadius, pillarRadius, segments);
-        builder.end();
-      } else {
-        const radius = record.kind === 'trunk' ? trunkRadius.get(record.junctionId)! : pillarRadius;
-        const [x, , z] = record.from;
-        builder.begin(record.kind === 'trunk' ? 'tree-trunk' : 'pillar', record.kind === 'pillar' ? record.contactId : undefined);
-        if (Math.abs(record.from[1] - footTop) > MIN_LENGTH) builder.frustum(record.from, [x, footTop, z], radius, radius, segments);
-        builder.end();
-        builder.begin('foot', record.kind === 'pillar' ? record.contactId : undefined);
-        builder.frustum([x, 0, z], [x, footTop, z], Math.max(settings.baseDiameter / 2, radius * 1.5), radius, segments);
-        builder.end();
-        columns.push({ x, z, bottom: footTop, top: record.from[1] });
-        footprints.push([x, z]);
-      }
+    for (const anchor of anchors) {
+      const [x, y, z] = anchor.position;
+      builder.begin('pillar', anchor.id);
+      if (Math.abs(y - footTop) > MIN_LENGTH) builder.frustum(anchor.position, [x, footTop, z], pillarRadius, pillarRadius, segments);
+      builder.end();
+      builder.begin('foot', anchor.id);
+      builder.frustum([x, 0, z], [x, footTop, z], settings.baseDiameter / 2, pillarRadius, segments);
+      builder.end();
+      columns.push({ x, z, bottom: footTop, top: y });
+      footprints.push([x, z]);
     }
+    for (const tree of trees) addTree(builder, tree, contacts, settings, ray, segments, columns, footprints);
     if (settings.trussEnabled) addBraces(builder, columns, settings, segments);
     addStructures(builder, footprints, settings, options, segments, raftTop);
   }
   return builder.finish();
+}
+
+/**
+ * One Auto Tree as SLASG_Line + SLASG_Tree2 + SLASG_Realizer build it: each leaf keeps its tip
+ * and neck (Upper Ø -> Middle Ø), then a branch to the junction. The junction lands on the
+ * model when a ray cast down from it (+ Middle Ø) hits (Upper Ø and a touch sphere there, an
+ * inverted neck beyond 2 x Connection Length), otherwise a trunk of Middle Ø x sqrt(1 +
+ * (leaves - 1) x Increment/100) drops to the plate with a foot widened by the same amount.
+ * Curves split at junctions of more than two branches, which get a sphere of 0.55 x diameter;
+ * a two-branch junction stays one filleted curve.
+ */
+function addTree(
+  builder: MeshBuilder,
+  tree: AutoTree,
+  contacts: readonly SupportContact[],
+  settings: Readonly<LiveSupportSettings>,
+  ray: LineTarget | undefined,
+  segments: number,
+  columns: Column[],
+  footprints: Point2[],
+): void {
+  const geometry = treeGeometry(tree, contacts, settings, ray);
+  for (const sphere of geometry.spheres) {
+    builder.begin(sphere.part, sphere.id);
+    builder.sphere(sphere.centre, sphere.radius, segments);
+    builder.end();
+  }
+  for (const curve of geometry.curves) {
+    builder.begin(curve.part, curve.id);
+    builder.tube(curve.nodes, segments);
+    builder.end();
+  }
+  if (geometry.trunk) {
+    columns.push(geometry.trunk);
+    footprints.push([geometry.trunk.x, geometry.trunk.z]);
+  }
+}
+
+export interface TreeGeometry {
+  curves: { part: 'tree-branch' | 'tree-trunk'; id?: string; nodes: CurveNode[] }[];
+  spheres: { part: 'tip' | 'tree-trunk'; id?: string; centre: Vector; radius: number }[];
+  trunk?: Column;
+}
+
+/** Filleted curves and spheres of one Auto Tree (see addTree). */
+export function treeGeometry(tree: AutoTree, contacts: readonly SupportContact[], settings: Readonly<LiveSupportSettings>, ray: LineTarget | undefined): TreeGeometry {
+  const out: TreeGeometry = { curves: [], spheres: [] };
+  const pillarRadius = settings.pillarDiameter / 2;
+  const neckRadius = settings.neckDiameter / 2;
+  const branches = tree.members.map((member) => {
+    const contact = contacts[member]!;
+    const normal = normalize(contact.normal);
+    const tip = subtract(contact.position, scale(normal, settings.touchDepth));
+    const neckEnd = add(contact.position, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength));
+    out.spheres.push({ part: 'tip', id: contact.id, centre: tip, radius: settings.touchDiameter / 2 });
+    return { id: contact.id, nodes: [{ point: tip, radius: neckRadius }, { point: neckEnd, radius: pillarRadius }] as CurveNode[] };
+  });
+
+  const junction = tree.junction;
+  const source: Vector = [junction[0], junction[1] + settings.pillarDiameter, junction[2]];
+  const hit = ray?.cast(source, ray.height);
+  const treeRadius = pillarRadius * Math.sqrt(1 + (tree.members.length - 1) * (settings.treeSectionIncrement / 100));
+  let end: CurveNode[];
+  let junctionRadius: number;
+  let trunk: CurveNode[] | undefined;
+  if (hit) {
+    junctionRadius = neckRadius;
+    end = source[1] - hit.point[1] > 2 * settings.neckLength
+      ? [{ point: add(hit.point, scale(upDirection(hit.normal, settings.maxNeckAngle), settings.neckLength - settings.touchDepth)), radius: treeRadius }, { point: hit.point, radius: neckRadius }]
+      : [{ point: hit.point, radius: neckRadius }];
+    out.spheres.push({ part: 'tip', centre: hit.point, radius: settings.touchDiameter / 2 });
+  } else {
+    junctionRadius = treeRadius;
+    end = [{ point: junction, radius: treeRadius }];
+    const [x, , z] = junction;
+    trunk = [{ point: junction, radius: treeRadius }, { point: [x, settings.baseHeight, z], radius: treeRadius }, { point: [x, 0, z], radius: settings.baseDiameter / 2 + (treeRadius - pillarRadius) }];
+    out.trunk = { x, z, bottom: settings.baseHeight, top: junction[1] };
+  }
+  const centre = end[end.length - 1]!.point;
+  const degree = branches.length + (trunk ? 1 : 0);
+  const fillet = settings.pillarDiameter / 2;
+  if (degree === 2 && !trunk) {
+    const [a, b] = branches as [typeof branches[number], typeof branches[number]];
+    const through = [...a.nodes, ...end.slice(0, -1), { point: centre, radius: junctionRadius }, ...[...b.nodes].reverse()];
+    out.curves.push({ part: 'tree-branch', id: a.id, nodes: filletPolyline(through, fillet, 3) });
+    return out;
+  }
+  for (const branch of branches) {
+    out.curves.push({ part: 'tree-branch', id: branch.id, nodes: filletPolyline([...branch.nodes, ...end.slice(0, -1), { point: centre, radius: junctionRadius }], fillet, 3) });
+  }
+  if (trunk) out.curves.push({ part: 'tree-trunk', nodes: filletPolyline(trunk, fillet, 3) });
+  if (degree > 2) out.spheres.push({ part: 'tree-trunk', centre, radius: 0.55 * 2 * junctionRadius });
+  return out;
+}
+
+/** Auto Tree layout and geometry for a set of contacts on a model (parity tests). */
+export function autoTrees(contacts: readonly SupportContact[], settings: Readonly<LiveSupportSettings>, model: TriangleMesh): { tree: AutoTree; geometry: TreeGeometry }[] {
+  const ray = lineTarget(model, settings);
+  const sampled = contacts.map((contact) => ({ ...contact, normal: ray.normal(contact) }));
+  return autoTreeLayout(sampled, model, settings).map((tree) => ({ tree, geometry: treeGeometry(tree, sampled, settings, ray) }));
 }
 
 /** Bounding box of a mesh's vertices. */
@@ -184,7 +284,7 @@ interface ContactColumn {
  * SLASG_Line for one contact: neck from the sunk tip to b = contact + d x Connection Length,
  * a Middle Ø-long vertical transition, and the landing decision from a ray cast down from b.
  */
-function contactColumn(contact: SupportContact, settings: Readonly<LiveSupportSettings>, ray: DownRaycaster | undefined, tipOnly: boolean): ContactColumn | undefined {
+function contactColumn(contact: SupportContact, settings: Readonly<LiveSupportSettings>, ray: LineTarget | undefined, tipOnly: boolean): ContactColumn | undefined {
   const raftTop = settings.raftEnabled ? settings.raftFloorThickness : 0;
   const pillarRadius = settings.pillarDiameter / 2;
   const neckRadius = settings.neckDiameter / 2;
@@ -211,11 +311,41 @@ function contactColumn(contact: SupportContact, settings: Readonly<LiveSupportSe
 
 /** Full column curve for a plate-landing contact, ending with the foot (for parity tests). */
 export function columnChain(contact: SupportContact, settings: Readonly<LiveSupportSettings>, model?: TriangleMesh): CurveNode[] {
-  const column = contactColumn(contact, settings, model ? new DownRaycaster(model) : undefined, false);
+  const ray = model ? lineTarget(model, settings) : undefined;
+  const column = contactColumn(ray ? { ...contact, normal: ray.normal(contact) } : contact, settings, ray, false);
   if (!column) return [];
   if (column.landing) return column.curve;
   const [x, , z] = column.curve[column.curve.length - 1]!.point;
   return [...column.curve, { point: [x, settings.baseHeight, z], radius: settings.pillarDiameter / 2 }, { point: [x, 0, z], radius: settings.baseDiameter / 2 }];
+}
+
+/**
+ * The target SLASG_Line samples neck normals from and casts landing rays against: the model
+ * remeshed at voxel max(diagonal / 2000, Middle Ø), or the exact model in Low Poly Mode
+ * ("Exact Shape"). Landing rays find the exact surface first and scan the remesh only from
+ * two voxels above it, as the remesh stays within a voxel of the model.
+ */
+class LineTarget {
+  readonly height: number;
+  constructor(private readonly exact: DownRaycaster, private readonly remesh: RemeshTarget | undefined) {
+    this.height = exact.height;
+  }
+
+  cast(from: Vector, length: number): { point: Vector; normal: Vector } | undefined {
+    const hint = this.exact.cast(from, length);
+    if (!this.remesh || !hint) return hint;
+    return this.remesh.castDown(from, length, hint.point[1] + 2 * this.remesh.voxel);
+  }
+
+  normal(contact: SupportContact): Vector {
+    if (contact.kind === 'vertical') return [0, -1, 0];
+    if (!contact.kind || !this.remesh) return contact.normal;
+    return this.remesh.normalAt(contact.position, contact.kind) ?? contact.normal;
+  }
+}
+
+function lineTarget(model: TriangleMesh, settings: Readonly<LiveSupportSettings>, remesh?: RemeshTarget): LineTarget {
+  return new LineTarget(new DownRaycaster(model), settings.lowPolyMode ? undefined : remesh ?? new RemeshTarget(model, settings.pillarDiameter));
 }
 
 /** Up-facing counterpart of `neckDirection`, used for inverted necks landing on the model. */
@@ -235,28 +365,36 @@ export interface CurveNode {
  * points keep the corner's radius, as Blender copies the corner attribute.
  */
 export function filletPolyline(nodes: readonly CurveNode[], radius: number, count: number): CurveNode[] {
+  // Turn angle per point (0 at the ends and where a side has no length).
+  const angles = nodes.map((node, index) => {
+    if (index === 0 || index === nodes.length - 1) return 0;
+    const incoming = subtract(node.point, nodes[index - 1]!.point);
+    const outgoing = subtract(nodes[index + 1]!.point, node.point);
+    if (Math.hypot(...incoming) < MIN_LENGTH || Math.hypot(...outgoing) < MIN_LENGTH) return 0;
+    return Math.acos(Math.max(-1, Math.min(1, dot(normalize(incoming), normalize(outgoing)))));
+  });
+  const displacement = angles.map((angle) => radius * Math.tan(angle / 2));
   const out: CurveNode[] = [nodes[0]!];
   for (let index = 1; index < nodes.length - 1; index += 1) {
     const [previous, corner, next] = [nodes[index - 1]!, nodes[index]!, nodes[index + 1]!];
-    const incoming = subtract(corner.point, previous.point);
-    const outgoing = subtract(next.point, corner.point);
-    const lengthIn = Math.hypot(...incoming);
-    const lengthOut = Math.hypot(...outgoing);
-    const u = normalize(incoming);
-    const v = normalize(outgoing);
-    const angle = Math.acos(Math.max(-1, Math.min(1, dot(u, v))));
-    if (lengthIn < MIN_LENGTH || lengthOut < MIN_LENGTH || angle < 1e-6) {
+    const angle = angles[index]!;
+    if (angle < 1e-6) {
       out.push(corner);
       continue;
     }
-    const tangent = Math.min(radius * Math.tan(angle / 2), lengthIn / 2, lengthOut / 2);
-    const arcRadius = tangent / Math.tan(angle / 2);
+    // Limit Radius: each side is shared between the two corners in proportion to their
+    // displacements, so an end point leaves its whole side to the corner.
+    const share = (length: number, other: number) => Math.min(1, Math.max(0, length / (other + displacement[index]!)));
+    const u = normalize(subtract(corner.point, previous.point));
+    const v = normalize(subtract(next.point, corner.point));
+    const limited = radius * Math.min(share(Math.hypot(...subtract(corner.point, previous.point)), displacement[index - 1]!), share(Math.hypot(...subtract(next.point, corner.point)), displacement[index + 1]!));
+    const tangent = limited * Math.tan(angle / 2);
     const w = normalize(subtract(v, scale(u, dot(u, v))));
     const start = subtract(corner.point, scale(u, tangent));
-    const centre = add(start, scale(w, arcRadius));
+    const centre = add(start, scale(w, limited));
     for (let step = 0; step <= count; step += 1) {
       const phi = (step / count) * angle;
-      out.push({ point: add(centre, add(scale(w, -arcRadius * Math.cos(phi)), scale(u, arcRadius * Math.sin(phi)))), radius: corner.radius });
+      out.push({ point: add(centre, add(scale(w, -limited * Math.cos(phi)), scale(u, limited * Math.sin(phi)))), radius: corner.radius });
     }
   }
   out.push(nodes[nodes.length - 1]!);

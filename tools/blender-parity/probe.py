@@ -43,6 +43,8 @@ CASES = {
     "truss_custom": {"truss_enabled": True, "truss_angle": math.radians(30), "truss_spacing": 1.0,
                      "truss_min_height": 4.0, "truss_top_spacing": 0.5, "truss_distance_limit": 3.0, "truss_diameter": 0.5},
     "truss_heavy": {"preset": "HEAVY", "truss_enabled": True},
+    "tree_default": {"scatter_auto_tree": True},
+    "tree_wide": {"scatter_auto_tree": True, "scatter_merge_distance": 4.0, "scatter_branch_descent": 3.0, "tree_section_increment": 50.0},
     "roof_default": {"roof_mode": "ROOF"},
     "roof_open": {"roof_mode": "ROOF", "storey_enclose_ceiling": False, "brace_concentric": 2, "roof_gap": 7.0},
     "cage_default": {"roof_mode": "CAGE"},
@@ -153,6 +155,23 @@ def contact_classes():
         sup.update_tag()
 
 
+def contact_graph():
+    """Scatter + ManualPoints output as a graph: tree junctions keep their branch edges."""
+    later = [m for m in sup.modifiers if m.name in ("mixo_gen", "mixo_label", "mixo_model")]
+    shown = [(m, m.show_viewport) for m in later]
+    for m in later:
+        m.show_viewport = False
+    try:
+        dg = bpy.context.evaluated_depsgraph_get()
+        dg.update()
+        me = sup.evaluated_get(dg).to_mesh()
+        return {"vertices": [[round(c, 4) for c in v.co] for v in me.vertices], "edges": [list(e.vertices) for e in me.edges]}
+    finally:
+        for m, state in shown:
+            m.show_viewport = state
+        sup.update_tag()
+
+
 def describe_piece(vs):
     zs = [v[2] for v in vs]
     zmin, zmax = min(zs), max(zs)
@@ -192,6 +211,7 @@ for name, overrides in CASES.items():
     pieces, spheres = evaluated()
     contacts = [[round(c, 4) for c in p] for p in slasg_assets.contact_points(sup)]
     classes = contact_classes()
+    graph = contact_graph() if sp.scatter_auto_tree else None
     flat = [p for p in pieces if max(v[2] for v in p) <= max(sp.raft_wall_height, sp.raft_floor_thickness) + 0.01 and min(v[2] for v in p) < 0.01]
     raft = max(flat, key=len) if sp.raft_enabled and flat else None
     brace_size = 2 * sp.resolution
@@ -222,7 +242,10 @@ for name, overrides in CASES.items():
                  "label_size", "label_height", "label_margin", "label_offset_x", "label_offset_y", "roof_mode", "roof_gap",
                  "cage_side_gap", "cage_top_gap", "cage_pitch", "cage_ring_diameter"])
                 if not isinstance(v, str) or k in ("preset", "label_text", "roof_mode")}
-    results[name] = {"settings": settings, "contacts": contacts, "classes": classes, "spheres": spheres, "columns": columns, "braces": braces, "label": label, "roof": roof_pieces,
+    results[name] = {"settings": settings, "contacts": contacts, "classes": classes, "spheres": spheres, "columns": columns, "braces": braces, "label": label, "roof": roof_pieces, "graph": graph,
+                     "tree_pieces": [{"n": len(p), "rings": rings_of(p, sp.resolution) if len(p) % sp.resolution == 0 else None,
+                                      "min": [round(min(v[a] for v in p), 4) for a in range(3)], "max": [round(max(v[a] for v in p), 4) for a in range(3)]}
+                                     for p in pieces if p is not raft] if sp.scatter_auto_tree else None,
                      "raft": describe_raft(raft) if raft else None}
     print("CASE", name, len(contacts), "contacts", len(columns), "columns")
 

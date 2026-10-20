@@ -43,10 +43,11 @@ How Resin UV builds live supports. This was read node by node from the Geometry 
   |---|---|
   | face (no tag) | normal of the nearest face of the remesh |
   | Vertex | true normal of the nearest vertex |
-  | Edge | true normal of the nearest edge |
+  | Edge | normal of the nearest edge: the mean of its two vertex normals (each the corner-angle-weighted sum of its face normals) |
   | Vertical | (0, 0, −1) |
 
-  Because of the remesh, normals blend within about one voxel of edges and apexes. That is why the edge contacts next to the apex tilt less than 45° and why their directions change with Middle Ø.
+  Because of the remesh, normals blend within about one voxel of edges and apexes. That is why the edge contacts next to the apex tilt less than 45° and why their directions change with Middle Ø. It also explains what earlier looked like "pillar repulsion": the small sideways turns of crowded rim necks are vertex-normal blending, not a separate step.
+- **Remesh details** (checked vertex for vertex with `tools/blender-parity/remesh_dump.py`). The grid nodes sit at multiples of the voxel (single precision). A node exactly on the surface counts as inside. Each sign-changing cell has one vertex at the mean of its edge crossings, and each sign-changing grid edge has one quad of the four surrounding cell vertices. Where the surface passes through nodes, OpenVDB keeps coincident duplicate vertices and zero-area quads.
 - **Clamp.** If angle(n, down) > Max Neck Angle, d = down rotated toward n by exactly Max Neck Angle; otherwise d = n.
 - **Snap.** Auto Snap moves p to the nearest feature point; when it is off, p stays as is.
 - **Tip.** t = p − d · Contact Depth. An IcoSphere instance sits at t (subdivision 2, radius Contact Ø/2, Diameter attribute 0).
@@ -63,7 +64,7 @@ How Resin UV builds live supports. This was read node by node from the Geometry 
 ## 3. Tubes: SLASG_Realizer
 
 - Edges with Diameter > 0 become poly curves.
-- `Fillet Curve` runs in Poly mode with radius = Middle Ø / 2, count 3, and Limit Radius on.
+- `Fillet Curve` runs in Poly mode with radius = Middle Ø / 2, count 3, and Limit Radius on. Limit Radius gives each segment to its two corners in proportion to their displacements r·tan(turn/2), and the curve ends take none: a corner next to an end can use the whole segment, not just half.
 - Essentials `Curve to Tube` then builds the tube:
   - round profile with Resolution sides
   - radius = Diameter / 2 per point
@@ -123,7 +124,7 @@ Points → SLASG_Line → SLASG_Truss2 (when Bracing is on) → SLASG_Realizer, 
 | Rule | Status |
 |---|---|
 | Column curve (tip, neck along clamped normal, Middle Ø transition, bend fillet, pillar, foot, no clamping) | exact: every ring of every column in every case within 0.01 mm |
-| Landing on the model (ray cast from b, inverted neck above 2 × Neck Length) | implemented (exact model as target) |
+| Landing on the model (ray cast from b, inverted neck above 2 × Neck Length) | exact: cast against the emulated remesh (Blender's 5.4188 below the apex reproduced) |
 | Tree diameter, sqrt area rule | implemented |
 | Bracing (pairing, validation, zigzag levels, trim) | exact: brace for brace |
 | Raft perimeter (voxel contour at Expand + 0.1, 3 × res resample, OpenVDB start vertex, clockwise) | within 0.008 mm at 64 voxels, 0.06 mm at 16 (OpenVDB renormalisation) |
@@ -133,6 +134,8 @@ Points → SLASG_Line → SLASG_Truss2 (when Bracing is on) → SLASG_Realizer, 
 | Island minima, incl. remesh plateau grid | emulated: leaf-block centres exact, totals within ~15% |
 | Erase-radius suppression | implemented |
 | Label (Bfont glyphs, Size / 0.686, pad frustum, anchor) | sizes exact; position within 0.4 mm |
-| Neck normals blended by the SDF remesh near edges | not emulated: exact face normals; affects necks within about one voxel of an edge |
-| Roof / Cage (Ceiling plates, StraightSkeleton, bands, cage rings) | not yet ported: old approximation |
-| Auto Tree topology (scatter branch) | not yet ported: approximation |
+| Remesh (Mesh to SDF Grid, Grid to Mesh) | emulated locally around queried points: vertex for vertex with Blender at adaptivity 0, including quad vertex order (`remesh.test.ts`) |
+| Neck normals: face (nearest quad), edge (mean vertex normal), vertical | exact on the adaptivity-0 remesh. Not emulated: adaptivity 0.1 region merging, which changes a few necks next to merged flat regions by up to 0.6 mm (1 face contact near the apex edge, and the negative-side rim contacts where the top face lies on a voxel plane) |
+| Roof / Cage (Ceiling plates, brace bands, cage rings) | ported: columns, cross bars, slab, plates and rings match per case (`blenderRoof.test.ts`) |
+| Auto Tree (eligibility, clustering, descent, snap, branches, junction landing, trunk) | junctions within 0.01 mm; branch curves within 0.005 mm except the remesh-adaptivity contacts (`blenderTree.test.ts`) |
+| Safe Distance for tree eligibility | not ported (stored only) |

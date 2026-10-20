@@ -11,9 +11,9 @@ Reference: Resin UV `SLA Supports` panel in `S:/ai/mixo3dtool/mixo3d` (`properti
 | Contact / neck / pillar / foot settings | Contact Ø, Contact Depth, Upper Ø, Connection Length/Angle, Middle Ø, Bottom Ø/Thickness | `mesh.ts` tip sphere, neck frustum clamped to `maxNeckAngle`, transition cone, pillar, foot | `mesh.test.ts` (plate at y=0, neck angle, foot on raft floor) |
 | Bracing | Braces, Ø, angle, Z spacing, start height, top spacing, distance limit | `mesh.ts` `addBraces` (nearest-neighbour zigzag) | `mesh.test.ts` brace on/off and height gating |
 | Raft | Raft on/off, expand width, floor thickness, wall height/thickness/angle | `mesh.ts`: floor at Expand Width from the foot centres; rim Wall Thickness wide, leaning **outward going up** by Wall Height x tan(Wall Angle); feet stand on the plate inside the floor | Measured in Blender 5.2: `blenderParity.test.ts` (rim edge 13.06 at the bottom and 13.92 at the top vs web 12.90 and 13.77) |
-| Roof / Cage | Off/Roof/Cage, mode defaults seeded on first use, columns, cross bars, roof braces, rings | `setRoofMode` + `addStructures` | `settings.test.ts`, `mesh.test.ts`; browser: roof and cage rendered |
-| Letter label | Pad centred on the raft's front-right vertex, frustum from the plate to Wall Height flaring at Wall Angle, letters on top | `font.ts` 5x7 glyph runs + `addLabel` | `mesh.test.ts`; side-by-side render against a Blender STL export |
-| Tree supports | Auto Tree, merge distance, branch descent, section increment | `tree.ts` topology + trunk radius growth in `mesh.ts` | `tree.test.ts`, `mesh.test.ts`; browser: tree rendered |
+| Roof / Cage | Off/Roof/Cage, mode defaults seeded on first use, columns, cross bars, roof braces, rings | `setRoofMode` + `roof.ts` `buildRoofCage` (SLASG Ceiling and Column) | `blenderRoof.test.ts` against Blender per case, `settings.test.ts`, `mesh.test.ts` |
+| Letter label | Pad centred on the raft's front-right vertex, frustum from the plate to Wall Height flaring at Wall Angle, letters on top | Blender Bfont glyphs (`bfont.json`) + `addLabel` | `blenderCases.test.ts` label cases, `mesh.test.ts` |
+| Tree supports | Auto Tree, merge distance, branch descent, section increment | `autotree.ts` (SLASG scatter branch + ManualPoints snap) and `treeGeometry` in `mesh.ts` (SLASG_Line/Tree2/Realizer) | `blenderTree.test.ts` against Blender, `mesh.test.ts` |
 | Auto placement | Stock scatter field plus edge anchors inset 0.3 mm at 2 mm spacing; priority minima > edges > surface | Deterministic Poisson-disk interior (minimum gap 1.2 x spacing) after island and edge anchors | `blenderParity.test.ts`: web 91 contacts (cap 81, stem 10) vs Blender 100 (92, 8) |
 | Preview / low poly / resolution | Only Tip preview; low poly; resolution; export always Full | `buildSupportMesh` `mode: 'export'` ignores preview and low poly | `mesh.test.ts` |
 | Manual add | Click adds a contact | Support edit mode **Add**: click the model | Browser: 0 → 1 manual |
@@ -37,8 +37,7 @@ Reference: Resin UV `SLA Supports` panel in `S:/ai/mixo3dtool/mixo3d` (`properti
 - Blender's default raft is voxelised at 16 voxels, which pulls its edge about 0.7 mm inward compared with 64 voxels. The web raft matches the 64-voxel profile and ignores Voxel Resolution.
 - Interior contact positions differ, because Geometry Nodes uses a random seed. Counts, edge anchors and spacing match.
 
-- The raft follows the convex hull of the model outline, while SLASG voxelises the real silhouette. A strongly concave model therefore gets a slightly larger raft on the web.
-- Pillar repulsion is not replicated: when 45° necks crowd each other, Blender turns or shortens them (3 to 6 of 17 supports on the probe model).
-- Tree layout is a deterministic approximation of SLASG Auto Tree.
+- Neck normals and landings use a local emulation of SLASG_Line's voxel remesh, which matches Blender's at adaptivity 0. Blender meshes it at adaptivity 0.1; the region merging that adds is not replicated and turns a few necks next to merged flat regions by up to 0.6 mm. What earlier looked like pillar repulsion was this remesh normal blending.
+- Tree eligibility ignores Safe Distance.
 - Generate does not re-pack units on the plate (Blender `ARRANGE_GAP` packing). Imports are placed 3 mm apart, so rafts of neighbouring units can overlap until a unit is moved.
 - `autoSnap` and `scatterSafeDistance` are stored but have no web effect yet.

@@ -24,7 +24,9 @@ interface BlenderCase {
   label?: { min: Vec3; max: Vec3; verts: number }[];
 }
 
-const CASES = (reference as unknown as { cases: Record<string, BlenderCase> }).cases;
+const ALL_CASES = (reference as unknown as { cases: Record<string, BlenderCase> }).cases;
+// Auto Tree cases have their own test (blenderTree.test.ts): their point lists include junctions.
+const CASES = Object.fromEntries(Object.entries(ALL_CASES).filter(([, c]) => !c.settings.scatter_auto_tree));
 
 const KEYS: Record<string, keyof LiveSupportSettings> = {
   touch_diameter: 'touchDiameter', touch_depth: 'touchDepth', neck_diameter: 'neckDiameter', neck_length: 'neckLength',

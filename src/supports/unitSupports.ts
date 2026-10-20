@@ -1,10 +1,20 @@
 import { labelForIndex } from '../analysis/mesh';
+import type { SupportPoint } from '../analysis/types';
 import { composeContacts } from '../analysis/placement';
 import type { PrintUnit, SupportSettings } from '../state/project';
 import { applyTransform, inverseTransformMesh, transformDirection, transformPoint, type ModelTransform } from '../state/transform';
 import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from './mesh';
 import { raftOutline } from './raft';
+import { RemeshTarget } from './remesh';
 import { defaultSupportSettings, type LiveSupportSettings } from './settings';
+
+/** SLASG point class of each placement source (manual points are untagged face points). */
+const CONTACT_KIND: Record<SupportPoint['source'], NonNullable<SupportContact['kind']>> = {
+  interior: 'face',
+  'physical-boundary': 'edge',
+  'sharp-ridge': 'edge',
+  island: 'vertical',
+};
 
 /** Unit settings stored in the scene, completed with defaults for any missing key. */
 export function resolveSettings(settings: SupportSettings | undefined): LiveSupportSettings {
@@ -14,7 +24,7 @@ export function resolveSettings(settings: SupportSettings | undefined): LiveSupp
 /** Final contacts in unit-local space: automatic minus suppressed, plus manual. */
 export function unitContacts(unit: PrintUnit): SupportContact[] {
   return composeContacts(unit.placement?.points ?? [], unit.manual, unit.suppressed, resolveSettings(unit.settings).eraseRadius)
-    .map(({ id, position, normal }) => ({ id, position, normal }));
+    .map(({ id, position, normal, source }) => ({ id, position, normal, kind: CONTACT_KIND[source], tree: !id.startsWith('manual-') }));
 }
 
 /**
@@ -46,6 +56,18 @@ function cachedOutline(unit: PrintUnit, frame: ModelTransform, model: ReturnType
   return outline;
 }
 
+const remeshCache = new WeakMap<object, { key: string; target: RemeshTarget }>();
+
+/** SLASG_Line's remesh depends only on the model, its frame and Middle Ø; it fills in lazily, so keep it. */
+function cachedRemesh(unit: PrintUnit, frame: ModelTransform, model: ReturnType<typeof applyTransform>, pillarDiameter: number): RemeshTarget {
+  const key = JSON.stringify([frame, pillarDiameter]);
+  const cached = remeshCache.get(unit.source);
+  if (cached?.key === key) return cached.target;
+  const target = new RemeshTarget(model, pillarDiameter);
+  remeshCache.set(unit.source, { key, target });
+  return target;
+}
+
 /** Live support mesh for a unit in its local space, ready to render under the unit's parent group. */
 export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'preview' | 'export' = 'preview'): GeneratedSupportMesh {
   if (unit.supports === undefined) return buildSupportMesh([], defaultSupportSettings);
@@ -55,12 +77,15 @@ export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'previ
     id: contact.id,
     position: transformPoint(frame, contact.position),
     normal: transformDirection(frame, contact.normal),
+    ...(contact.kind ? { kind: contact.kind } : {}),
+    ...(contact.tree === false ? { tree: false } : {}),
   }));
   const model = applyTransform(unit.source, frame);
   const mesh = buildSupportMesh(contacts, settings, {
     mode,
     labelText: settings.labelText || labelForIndex(unitIndex),
     model,
+    remesh: cachedRemesh(unit, frame, model, settings.pillarDiameter),
     ...(settings.raftEnabled || settings.roofMode !== 'OFF' ? { raftOutline: cachedOutline(unit, frame, model, settings) } : {}),
   });
   return inverseTransformMesh(mesh, frame);
