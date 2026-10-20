@@ -56,15 +56,22 @@ function cachedOutline(unit: PrintUnit, frame: ModelTransform, model: ReturnType
   return outline;
 }
 
-const remeshCache = new WeakMap<object, { key: string; target: RemeshTarget }>();
+const remeshCache = new WeakMap<object, Map<string, RemeshTarget>>();
 
-/** SLASG_Line's remesh depends only on the model, its frame and Middle Ø; it fills in lazily, so keep it. */
-function cachedRemesh(unit: PrintUnit, frame: ModelTransform, model: ReturnType<typeof applyTransform>, pillarDiameter: number): RemeshTarget {
-  const key = JSON.stringify([frame, pillarDiameter]);
-  const cached = remeshCache.get(unit.source);
-  if (cached?.key === key) return cached.target;
-  const target = new RemeshTarget(model, pillarDiameter);
-  remeshCache.set(unit.source, { key, target });
+/**
+ * Remeshes depend only on the model, its frame and the voxel size (SLASG_Line: Middle Ø; the
+ * scatter: Spacing / 4); they fill in lazily as they are queried, so keep them per unit source.
+ */
+function cachedRemesh(unit: PrintUnit, frame: ModelTransform, model: ReturnType<typeof applyTransform>, pillarDiameter: number, voxel?: number): RemeshTarget {
+  const key = JSON.stringify([frame, pillarDiameter, voxel ?? null]);
+  let entries = remeshCache.get(unit.source);
+  if (!entries) remeshCache.set(unit.source, (entries = new Map()));
+  let target = entries.get(key);
+  if (!target) {
+    target = new RemeshTarget(model, pillarDiameter, voxel);
+    if (entries.size > 4) entries.clear();
+    entries.set(key, target);
+  }
   return target;
 }
 
@@ -86,6 +93,7 @@ export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'previ
     labelText: settings.labelText || labelForIndex(unitIndex),
     model,
     remesh: cachedRemesh(unit, frame, model, settings.pillarDiameter),
+    ...(settings.scatterAutoTree && settings.scatterSafeDistance !== 0 ? { scatterRemesh: cachedRemesh(unit, frame, model, 0, settings.scatterSpacing / 4) } : {}),
     ...(settings.raftEnabled || settings.roofMode !== 'OFF' ? { raftOutline: cachedOutline(unit, frame, model, settings) } : {}),
   });
   return inverseTransformMesh(mesh, frame);

@@ -56,6 +56,8 @@ export interface SupportMeshOptions {
   raftOutline?: { raw: Vector[]; polygon: Point2[] };
   /** Cached remesh of `model` for Middle Ø (see `lineTarget`); built on demand otherwise. */
   remesh?: RemeshTarget;
+  /** Cached scatter remesh of `model` (voxel Spacing / 4) for Safe Distance; built on demand otherwise. */
+  scatterRemesh?: RemeshTarget;
 }
 
 export interface Column {
@@ -98,7 +100,7 @@ export function buildSupportMesh(
   const ray = options.model ? lineTarget(options.model, settings, options.remesh) : undefined;
   if (ray) contacts = contacts.map((contact) => ({ ...contact, normal: ray.normal(contact) }));
 
-  const layout = settings.scatterAutoTree ? autoTreeLayout(contacts, options.model, settings) : undefined;
+  const layout = settings.scatterAutoTree ? autoTreeLayout(contacts, options.model, settings, options.scatterRemesh) : undefined;
   const trees = layout && !tipOnly ? layout.trees : [];
   const treeOf = new Map<number, number>();
   trees.forEach((tree, t) => tree.members.forEach((member) => treeOf.set(member, t)));

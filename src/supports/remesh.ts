@@ -26,6 +26,8 @@ interface Leaf {
 
 const LEAF = 8;
 const key = (c: readonly number[]) => `${c[0]},${c[1]},${c[2]}`;
+/** Packed numeric key for per-node caches (17 bits per axis, about +-65k voxels). */
+const nodeKey = (c: readonly number[]) => ((c[0]! + 65536) * 131072 + (c[1]! + 65536)) * 131072 + (c[2]! + 65536);
 
 /**
  * Blender's Mesh to SDF Grid + Grid to Mesh, reproduced from OpenVDB's VolumeToMesh around the
@@ -47,9 +49,9 @@ export class RemeshTarget {
   readonly bottom: number;
   private readonly adaptivity: number;
   private readonly distance: SignedDistance;
-  private readonly values = new Map<string, number>();
-  private readonly exactValues = new Map<string, number>();
-  private readonly signCache = new Map<string, number>();
+  private readonly values = new Map<number, number>();
+  private readonly exactValues = new Map<number, number>();
+  private readonly signCache = new Map<number, number>();
   private readonly leaves = new Map<string, Leaf>();
   private readonly prims = new Map<string, Prim | null>();
   private readonly raw = new Map<string, Vector>();
@@ -190,10 +192,11 @@ export class RemeshTarget {
 
   /** Exact signed distance at node c (single precision), as meshToVolume voxelizes it. */
   private exact(c: Index): number {
-    const k = key(c);
+    const k = nodeKey(c);
     let value = this.exactValues.get(k);
     if (value === undefined) {
-      value = Math.fround(Math.fround(this.distance.at([c[0], c[2], -c[1]])) * this.voxel);
+      // Beyond the 3-voxel band only the sign matters.
+      value = Math.fround(Math.fround(this.distance.at([c[0], c[2], -c[1]], 4)) * this.voxel);
       this.exactValues.set(k, value);
     }
     return value;
@@ -205,7 +208,7 @@ export class RemeshTarget {
    * with one Godunov reinitialization step, and move back by 0.8 voxel - 1e-7.
    */
   private value(c: Index): number {
-    const k = key(c);
+    const k = nodeKey(c);
     let value = this.values.get(k);
     if (value !== undefined) return value;
     const h = this.voxel;
@@ -257,7 +260,7 @@ export class RemeshTarget {
 
   /** Cell signs after OpenVDB's ambiguous-face correction. */
   private signs(c: Index): number {
-    const k = key(c);
+    const k = nodeKey(c);
     let signs = this.signCache.get(k);
     if (signs !== undefined) return signs;
     signs = this.rawSigns(c);
@@ -346,7 +349,7 @@ export class RemeshTarget {
     let result = this.emptyLeaves.get(k);
     if (result === undefined) {
       const centre: Index = [origin[0] + LEAF / 2, origin[1] + LEAF / 2, origin[2] + LEAF / 2];
-      const d = this.distance.at([centre[0], centre[2], -centre[1]]);
+      const d = this.distance.at([centre[0], centre[2], -centre[1]], 12);
       result = Math.abs(d) <= (LEAF / 2 + 2) * Math.sqrt(3);
       this.emptyLeaves.set(k, result);
     }
@@ -616,114 +619,199 @@ function toWeb([x, y, z]: Vector): Vector {
 
 /**
  * Signed distance to a closed mesh (negative inside): nearest triangle through a bounding
- * volume hierarchy, sign from the parity of an upward ray.
+ * volume hierarchy, sign from the parity of an upward ray. Allocation-free on typed arrays.
  */
 class SignedDistance {
-  private readonly triangles: [Vector, Vector, Vector][] = [];
-  private readonly order: number[] = [];
+  private readonly tris: Float64Array;
+  private readonly order: Int32Array;
   /** Per node: min xyz, max xyz. */
-  private readonly boxes: number[] = [];
-  /** Per node: left child (or -1 for a leaf), right child, first triangle, triangle count. */
-  private readonly links: number[] = [];
+  private readonly boxes: Float64Array;
+  /** Per node: left child (-1 for a leaf), right child, first triangle, triangle count. */
+  private readonly links: Int32Array;
+  private readonly stack = new Int32Array(256);
 
   constructor(model: TriangleMesh) {
-    for (let face = 0; face < model.indices.length / 3; face += 1) {
-      this.triangles.push([0, 1, 2].map((k) => {
+    const count = model.indices.length / 3;
+    this.tris = new Float64Array(count * 9);
+    for (let face = 0; face < count; face += 1) {
+      for (let k = 0; k < 3; k += 1) {
         const i = model.indices[face * 3 + k]! * 3;
-        return [model.positions[i]!, model.positions[i + 1]!, model.positions[i + 2]!] as Vector;
-      }) as [Vector, Vector, Vector]);
+        this.tris[face * 9 + k * 3] = model.positions[i]!;
+        this.tris[face * 9 + k * 3 + 1] = model.positions[i + 1]!;
+        this.tris[face * 9 + k * 3 + 2] = model.positions[i + 2]!;
+      }
     }
-    const ids = this.triangles.map((_, i) => i);
-    const centroids = this.triangles.map(([a, b, c]) => [(a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3]);
+    const t = this.tris;
+    const centroid = (f: number, axis: number) => (t[f * 9 + axis]! + t[f * 9 + 3 + axis]! + t[f * 9 + 6 + axis]!) / 3;
+    const boxes: number[] = [];
+    const links: number[] = [];
+    const order: number[] = [];
     const build = (list: number[]): number => {
-      const node = this.links.length / 4;
+      const node = links.length / 4;
       const min = [Infinity, Infinity, Infinity];
       const max = [-Infinity, -Infinity, -Infinity];
-      for (const t of list) for (const p of this.triangles[t]!) for (let axis = 0; axis < 3; axis += 1) {
-        min[axis] = Math.min(min[axis]!, p[axis]!);
-        max[axis] = Math.max(max[axis]!, p[axis]!);
+      for (const f of list) for (let v = 0; v < 3; v += 1) for (let axis = 0; axis < 3; axis += 1) {
+        const value = t[f * 9 + v * 3 + axis]!;
+        if (value < min[axis]!) min[axis] = value;
+        if (value > max[axis]!) max[axis] = value;
       }
-      this.boxes.push(...min, ...max);
-      this.links.push(-1, -1, this.order.length, list.length);
+      boxes.push(...min, ...max);
+      links.push(-1, -1, order.length, list.length);
       if (list.length <= 4) {
-        this.order.push(...list);
+        order.push(...list);
         return node;
       }
-      const lo = [Infinity, Infinity, Infinity];
-      const hi = [-Infinity, -Infinity, -Infinity];
-      for (const t of list) for (let axis = 0; axis < 3; axis += 1) {
-        lo[axis] = Math.min(lo[axis]!, centroids[t]![axis]!);
-        hi[axis] = Math.max(hi[axis]!, centroids[t]![axis]!);
+      let axis = 0;
+      let spread = -1;
+      for (let a = 0; a < 3; a += 1) {
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (const f of list) {
+          const c = centroid(f, a);
+          if (c < lo) lo = c;
+          if (c > hi) hi = c;
+        }
+        if (hi - lo > spread) {
+          spread = hi - lo;
+          axis = a;
+        }
       }
-      const axis = [0, 1, 2].reduce((best, a) => (hi[a]! - lo[a]! > hi[best]! - lo[best]! ? a : best), 0);
-      list.sort((x, y) => centroids[x]![axis]! - centroids[y]![axis]!);
+      list.sort((x, y) => centroid(x, axis) - centroid(y, axis));
       const half = list.length >> 1;
       const left = build(list.slice(0, half));
       const right = build(list.slice(half));
-      this.links[node * 4] = left;
-      this.links[node * 4 + 1] = right;
-      this.links[node * 4 + 3] = 0;
+      links[node * 4] = left;
+      links[node * 4 + 1] = right;
+      links[node * 4 + 3] = 0;
       return node;
     };
-    if (ids.length > 0) build(ids);
+    if (count > 0) build([...Array(count).keys()]);
+    this.boxes = Float64Array.from(boxes);
+    this.links = Int32Array.from(links);
+    this.order = Int32Array.from(order);
   }
 
-  at(point: Vector): number {
-    if (this.links.length === 0) return Infinity;
-    let best = Infinity;
-    const stack = [0];
-    while (stack.length > 0) {
-      const node = stack.pop()!;
-      if (this.boxDistance(node, point) >= best) continue;
+  /** Signed distance, with the magnitude capped at `cap` (beyond it only the sign is exact). */
+  at(point: Vector, cap = Infinity): number {
+    if (this.links.length === 0) return cap;
+    const [px, py, pz] = point;
+    let best = cap * cap;
+    const stack = this.stack;
+    let top = 0;
+    stack[top++] = 0;
+    while (top > 0) {
+      const node = stack[--top]!;
+      if (this.boxDistanceSq(node, px, py, pz) >= best) continue;
       const left = this.links[node * 4]!;
       if (left < 0) {
         const start = this.links[node * 4 + 2]!;
-        for (let n = 0; n < this.links[node * 4 + 3]!; n += 1) {
-          const [a, b, c] = this.triangles[this.order[start + n]!]!;
-          best = Math.min(best, triangleDistance(point, a, b, c));
+        const n = this.links[node * 4 + 3]!;
+        for (let k = 0; k < n; k += 1) {
+          const d = triangleDistanceSq(this.tris, this.order[start + k]! * 9, px, py, pz);
+          if (d < best) best = d;
         }
         continue;
       }
       const right = this.links[node * 4 + 1]!;
-      // Visit the nearer child first.
-      if (this.boxDistance(left, point) < this.boxDistance(right, point)) stack.push(right, left);
-      else stack.push(left, right);
+      if (this.boxDistanceSq(left, px, py, pz) < this.boxDistanceSq(right, px, py, pz)) {
+        stack[top++] = right;
+        stack[top++] = left;
+      } else {
+        stack[top++] = left;
+        stack[top++] = right;
+      }
     }
-    return this.inside(point) ? -best : best;
+    const distance = Math.sqrt(best);
+    return this.inside(px, py, pz) ? -distance : distance;
   }
 
-  private boxDistance(node: number, p: Vector): number {
-    let sum = 0;
-    for (let axis = 0; axis < 3; axis += 1) {
-      const d = Math.max(this.boxes[node * 6 + axis]! - p[axis]!, 0, p[axis]! - this.boxes[node * 6 + 3 + axis]!);
-      sum += d * d;
-    }
-    return Math.sqrt(sum);
+  private boxDistanceSq(node: number, x: number, y: number, z: number): number {
+    const b = node * 6;
+    const dx = Math.max(this.boxes[b]! - x, 0, x - this.boxes[b + 3]!);
+    const dy = Math.max(this.boxes[b + 1]! - y, 0, y - this.boxes[b + 4]!);
+    const dz = Math.max(this.boxes[b + 2]! - z, 0, z - this.boxes[b + 5]!);
+    return dx * dx + dy * dy + dz * dz;
   }
 
-  private inside(point: Vector): boolean {
+  private inside(x0: number, y: number, z0: number): boolean {
     // Nudge the ray off grid-aligned vertices and edges, where parity would double count.
-    const p: Vector = [point[0] + 1.37e-6, point[1], point[2] + 0.71e-6];
+    const x = x0 + 1.37e-6;
+    const z = z0 + 0.71e-6;
+    const t = this.tris;
     let crossings = 0;
-    const stack = [0];
-    while (stack.length > 0) {
-      const node = stack.pop()!;
-      const box = node * 6;
-      if (p[0] < this.boxes[box]! || p[0] > this.boxes[box + 3]! || p[2] < this.boxes[box + 2]! || p[2] > this.boxes[box + 5]! || this.boxes[box + 4]! <= p[1]) continue;
+    const stack = this.stack;
+    let top = 0;
+    stack[top++] = 0;
+    while (top > 0) {
+      const node = stack[--top]!;
+      const b = node * 6;
+      if (x < this.boxes[b]! || x > this.boxes[b + 3]! || z < this.boxes[b + 2]! || z > this.boxes[b + 5]! || this.boxes[b + 4]! <= y) continue;
       const left = this.links[node * 4]!;
       if (left >= 0) {
-        stack.push(left, this.links[node * 4 + 1]!);
+        stack[top++] = left;
+        stack[top++] = this.links[node * 4 + 1]!;
         continue;
       }
       const start = this.links[node * 4 + 2]!;
-      for (let n = 0; n < this.links[node * 4 + 3]!; n += 1) {
-        const [a, b, c] = this.triangles[this.order[start + n]!]!;
-        const hit = verticalHit(p, a, b, c, true);
-        if (hit !== undefined && hit > p[1]) crossings += 1;
+      const n = this.links[node * 4 + 3]!;
+      for (let k = 0; k < n; k += 1) {
+        const o = this.order[start + k]! * 9;
+        const ax = t[o]!, ay = t[o + 1]!, az = t[o + 2]!;
+        const bx = t[o + 3]!, by = t[o + 4]!, bz = t[o + 5]!;
+        const cx = t[o + 6]!, cy = t[o + 7]!, cz = t[o + 8]!;
+        const det = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+        if (Math.abs(det) < 1e-12) continue;
+        const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / det;
+        const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / det;
+        const l3 = 1 - l1 - l2;
+        if (l1 < 0 || l2 < 0 || l3 <= 0) continue;
+        if (l1 * ay + l2 * by + l3 * cy > y) crossings += 1;
       }
     }
     return crossings % 2 === 1;
   }
+}
+
+/** Squared distance from (px, py, pz) to the triangle at offset o of a flat array (Ericson 5.1.5). */
+function triangleDistanceSq(t: Float64Array, o: number, px: number, py: number, pz: number): number {
+  const ax = t[o]!, ay = t[o + 1]!, az = t[o + 2]!;
+  const abx = t[o + 3]! - ax, aby = t[o + 4]! - ay, abz = t[o + 5]! - az;
+  const acx = t[o + 6]! - ax, acy = t[o + 7]! - ay, acz = t[o + 8]! - az;
+  const apx = px - ax, apy = py - ay, apz = pz - az;
+  const d1 = abx * apx + aby * apy + abz * apz;
+  const d2 = acx * apx + acy * apy + acz * apz;
+  if (d1 <= 0 && d2 <= 0) return apx * apx + apy * apy + apz * apz;
+  const bpx = apx - abx, bpy = apy - aby, bpz = apz - abz;
+  const d3 = abx * bpx + aby * bpy + abz * bpz;
+  const d4 = acx * bpx + acy * bpy + acz * bpz;
+  if (d3 >= 0 && d4 <= d3) return bpx * bpx + bpy * bpy + bpz * bpz;
+  const vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) {
+    const v = d1 / (d1 - d3);
+    const x = apx - abx * v, y = apy - aby * v, z = apz - abz * v;
+    return x * x + y * y + z * z;
+  }
+  const cpx = apx - acx, cpy = apy - acy, cpz = apz - acz;
+  const d5 = abx * cpx + aby * cpy + abz * cpz;
+  const d6 = acx * cpx + acy * cpy + acz * cpz;
+  if (d6 >= 0 && d5 <= d6) return cpx * cpx + cpy * cpy + cpz * cpz;
+  const vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) {
+    const w = d2 / (d2 - d6);
+    const x = apx - acx * w, y = apy - acy * w, z = apz - acz * w;
+    return x * x + y * y + z * z;
+  }
+  const va = d3 * d6 - d5 * d4;
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+    const w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+    const x = bpx - (acx - abx) * w, y = bpy - (acy - aby) * w, z = bpz - (acz - abz) * w;
+    return x * x + y * y + z * z;
+  }
+  const denominator = 1 / (va + vb + vc);
+  const v = vb * denominator;
+  const w = vc * denominator;
+  const x = apx - abx * v - acx * w, y = apy - aby * v - acy * w, z = apz - abz * v - acz * w;
+  return x * x + y * y + z * z;
 }
 
 /** Height where the vertical line through `p` meets triangle abc (half-open edges when `strict`). */
