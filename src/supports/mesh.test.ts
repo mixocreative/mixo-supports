@@ -1,0 +1,158 @@
+import { describe, expect, it } from 'vitest';
+import type { TriangleMesh } from '../analysis/types';
+import { buildSupportMesh, contactAtTriangle, meshBounds, type GeneratedSupportMesh, type SupportContact } from './mesh';
+import { defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings } from './settings';
+
+const settings: LiveSupportSettings = { ...defaultSupportSettings, roofSeededModes: [] };
+const contact: SupportContact = { id: 'auto-0', position: [0, 10, 0], normal: [0, -1, 0] };
+const neighbour: SupportContact = { id: 'auto-1', position: [4, 10, 0], normal: [0, -1, 0] };
+
+// A 10 mm cube whose underside sits 10 mm above the plate.
+const cube: TriangleMesh = {
+  positions: new Float32Array([
+    -5, 10, -5, 5, 10, -5, 5, 10, 5, -5, 10, 5,
+    -5, 20, -5, 5, 20, -5, 5, 20, 5, -5, 20, 5,
+  ]),
+  indices: new Uint32Array([0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0]),
+};
+
+/** Every component is a closed solid: each undirected edge is shared by exactly two triangles. */
+function componentsAreClosed(mesh: GeneratedSupportMesh): boolean {
+  return mesh.components.every((component) => {
+    const edges = new Map<string, number>();
+    for (let offset = component.start; offset < component.start + component.count; offset += 3) {
+      for (const [a, b] of [[0, 1], [1, 2], [2, 0]] as const) {
+        const first = mesh.indices[offset + a]!;
+        const second = mesh.indices[offset + b]!;
+        const key = first < second ? `${first}:${second}` : `${second}:${first}`;
+        edges.set(key, (edges.get(key) ?? 0) + 1);
+      }
+    }
+    return [...edges.values()].every((count) => count === 2) && signedVolume(mesh, component) > 0;
+  });
+}
+
+function signedVolume(mesh: GeneratedSupportMesh, component: GeneratedSupportMesh['components'][number]): number {
+  let volume = 0;
+  const p = (index: number) => [mesh.positions[index * 3]!, mesh.positions[index * 3 + 1]!, mesh.positions[index * 3 + 2]!];
+  for (let offset = component.start; offset < component.start + component.count; offset += 3) {
+    const [a, b, c] = [p(mesh.indices[offset]!), p(mesh.indices[offset + 1]!), p(mesh.indices[offset + 2]!)];
+    volume += a[0]! * (b[1]! * c[2]! - b[2]! * c[1]!) - a[1]! * (b[0]! * c[2]! - b[2]! * c[0]!) + a[2]! * (b[0]! * c[1]! - b[1]! * c[0]!);
+  }
+  return volume / 6;
+}
+
+describe('buildSupportMesh', () => {
+  it('builds a single support from the plate up through the contact tip', () => {
+    const mesh = buildSupportMesh([contact], settings);
+
+    expect(mesh.indices.length).toBeGreaterThan(0);
+    expect(mesh.indices.length % 3).toBe(0);
+    expect(meshBounds(mesh).min[1]).toBeCloseTo(0);
+    expect(meshBounds(mesh).max[1]).toBeGreaterThan(contact.position[1]);
+    expect(mesh.parts).toEqual(expect.arrayContaining(['tip', 'neck', 'pillar', 'foot', 'raft']));
+    expect(componentsAreClosed(mesh)).toBe(true);
+    expect(Array.from(mesh.positions).every(Number.isFinite)).toBe(true);
+  });
+
+  it('maps support components back to their contact for picking', () => {
+    const mesh = buildSupportMesh([contact, neighbour], settings);
+    const owners = new Set(mesh.components.filter((component) => component.contactId).map((component) => component.contactId));
+
+    expect(owners).toEqual(new Set(['auto-0', 'auto-1']));
+    expect(contactAtTriangle(mesh, mesh.components.find((component) => component.contactId === 'auto-1')!.start / 3)).toBe('auto-1');
+  });
+
+  it('rests feet on the plate without a raft and on the raft floor with one', () => {
+    const withoutRaft = buildSupportMesh([contact], updateSetting(settings, 'raftEnabled', false));
+    expect(withoutRaft.parts).not.toContain('raft');
+    expect(meshBounds(withoutRaft).min[1]).toBeCloseTo(0);
+
+    const raft = buildSupportMesh([contact], settings);
+    const foot = raft.components.find((component) => component.part === 'foot')!;
+    expect(minY(raft, foot)).toBeCloseTo(settings.raftFloorThickness);
+  });
+
+  it('adds braces between tall neighbouring pillars only when enabled', () => {
+    const tall = [contact, neighbour].map((point) => ({ ...point, position: [point.position[0], 20, 0] as [number, number, number] }));
+    expect(buildSupportMesh([contact, neighbour], settings).parts).not.toContain('brace');
+    expect(buildSupportMesh(tall, settings).parts).toContain('brace');
+    expect(buildSupportMesh(tall, updateSetting(settings, 'trussEnabled', false)).parts).not.toContain('brace');
+  });
+
+  it('merges nearby supports into tree branches and a trunk', () => {
+    const treeContacts: SupportContact[] = [contact, { ...neighbour, id: 'auto-2', position: [1.5, 10, 0] }];
+    const tree = buildSupportMesh(treeContacts, { ...settings, scatterAutoTree: true });
+
+    expect(tree.parts).toContain('tree-branch');
+    expect(tree.parts).toContain('tree-trunk');
+    expect(componentsAreClosed(tree)).toBe(true);
+  });
+
+  it('honours resolution, low poly, preview mode, and full export geometry', () => {
+    const coarse = buildSupportMesh([contact], updateSetting(settings, 'resolution', 6));
+    const fine = buildSupportMesh([contact], updateSetting(settings, 'resolution', 24));
+    const lowPoly = buildSupportMesh([contact], updateSetting(settings, 'lowPolyMode', true));
+    const tipOnly = { ...settings, previewMode: 'ONLY_TIP' as const };
+
+    expect(fine.positions.length).toBeGreaterThan(coarse.positions.length);
+    expect(lowPoly.positions.length).toBeLessThan(buildSupportMesh([contact], settings).positions.length);
+    expect(buildSupportMesh([contact], tipOnly).parts).toEqual(['tip', 'neck']);
+    expect(buildSupportMesh([contact], tipOnly, { mode: 'export' }).parts).toContain('pillar');
+  });
+
+  it('tilts necks no further than the maximum neck angle', () => {
+    const sideways: SupportContact = { id: 'side', position: [0, 10, 0], normal: [1, 0, 0] };
+    const mesh = buildSupportMesh([sideways], updateSetting(settings, 'raftEnabled', false));
+    const neck = mesh.components.find((component) => component.part === 'neck')!;
+    const bounds = componentBounds(mesh, neck);
+    const run = bounds.max[0] - 0.25;
+    const drop = 10 - bounds.min[1];
+
+    expect(Math.atan2(run, drop) * 180 / Math.PI).toBeLessThan(settings.maxNeckAngle + 5);
+  });
+
+  it('builds a roof above the model and a cage around it', () => {
+    const roofSettings = setRoofMode(settings, 'ROOF');
+    const roof = buildSupportMesh([contact], roofSettings, { model: cube });
+    expect(roof.parts).toEqual(expect.arrayContaining(['roof', 'column', 'roof-brace', 'cross-bar']));
+    expect(meshBounds(roof).max[1]).toBeCloseTo(20 + roofSettings.roofGap + roofSettings.storeyFloorThickness, 1);
+
+    const cageSettings = setRoofMode(settings, 'CAGE');
+    const cage = buildSupportMesh([contact], cageSettings, { model: cube });
+    expect(cage.parts).toEqual(expect.arrayContaining(['column', 'cage-ring']));
+    expect(meshBounds(cage).max[1]).toBeGreaterThanOrEqual(20 + cageSettings.cageTopGap);
+    expect(meshBounds(cage).max[0]).toBeGreaterThan(5 + cageSettings.cageSideGap - 1);
+    expect(componentsAreClosed(cage)).toBe(true);
+  });
+
+  it('embosses the unit letter on a raft pad only when the raft exists', () => {
+    const labelled = buildSupportMesh([contact], settings, { labelText: 'B' });
+    expect(labelled.parts).toContain('label');
+    expect(componentsAreClosed(labelled)).toBe(true);
+    expect(buildSupportMesh([contact], updateSetting(settings, 'raftEnabled', false), { labelText: 'B' }).parts).not.toContain('label');
+    expect(buildSupportMesh([contact], updateSetting(settings, 'labelEnabled', false), { labelText: 'B' }).parts).not.toContain('label');
+  });
+
+  it('is deterministic and returns an empty mesh without contacts', () => {
+    expect(buildSupportMesh([contact, neighbour], settings)).toEqual(buildSupportMesh([contact, neighbour], settings));
+    expect(buildSupportMesh([], settings).indices.length).toBe(0);
+  });
+});
+
+function componentBounds(mesh: GeneratedSupportMesh, component: GeneratedSupportMesh['components'][number]) {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (let offset = component.start; offset < component.start + component.count; offset += 1) {
+    const vertex = mesh.indices[offset]! * 3;
+    for (let axis = 0; axis < 3; axis += 1) {
+      min[axis] = Math.min(min[axis]!, mesh.positions[vertex + axis]!);
+      max[axis] = Math.max(max[axis]!, mesh.positions[vertex + axis]!);
+    }
+  }
+  return { min, max };
+}
+
+function minY(mesh: GeneratedSupportMesh, component: GeneratedSupportMesh['components'][number]): number {
+  return componentBounds(mesh, component).min[1]!;
+}
