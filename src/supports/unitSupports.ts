@@ -38,7 +38,7 @@ export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'previ
   const mesh = buildSupportMesh(contacts, settings, {
     mode,
     labelText: settings.labelText || labelForIndex(unitIndex),
-    ...(settings.roofMode === 'OFF' ? {} : { model: applyTransform(unit.source, frame) }),
+    model: applyTransform(unit.source, frame),
   });
   return inverseTransformMesh(mesh, frame);
 }

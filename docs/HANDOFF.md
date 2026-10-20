@@ -22,13 +22,12 @@ After every implementation task, record: the completed requirement; changed file
 - Task 4 builds print-ready live support geometry shared by viewport and export.
 - Task 5 converts import and transforms to multi-object print units (pure layer). The `ObjectViewport`/`App` rendering rewrite is coupled to the Task 6 command UI and lands there.
 - Tasks 6-8 complete the Web Resin Support Parity plan: live support editing UI, export modes, Blender parity checklist, browser verification, deployment.
+- raft reported upside down; output now compared with real Blender (Resin UV, Blender 5.2) and corrected.
 
 ## Latest completed step
 
-- Requirement: raft reported upside down; output now compared with real Blender (Resin UV, Blender 5.2) and corrected.
-- Method: headless probes in the session scratchpad (`blender_probe.py`, `blender_sweep.py`, `blender_mush_sweep.py`) run `mixo.support_generate` on the mushroom fixture and a single tile, read the evaluated support mesh (minus the `mixo_model` copy) and `slasg_assets.contact_points`, and sweep the raft parameters. Blender's STL export was rendered next to the web export in the app.
-- Findings: SLASG rim leans outward going up by Wall Height x tan(Wall Angle) (angle measured from vertical) and is Wall Thickness wide horizontally. Raft bottom edge = foot centres + Expand Width (64 voxels; 16 voxels quantises ~0.7 mm inward). Feet stand on the plate (z 0 to Bottom Thickness) inside the raft floor. Label pad: frustum from the plate to Wall Height at the raft vertex nearest the front-right corner. Contacts: Blender 100 (cap 92 = 52 edge + 40 sparse interior, stem 8); web had 178 from a dense lattice.
-- Changes: `src/supports/mesh.ts` (raft rim, raft radius, feet on plate, label pad), `src/analysis/placement.ts` (priority island > edge > interior, deterministic Poisson-disk interior with 1.2 x spacing gap), `src/supports/settings.ts` (edge inset min(0.15 x spacing, 0.5)), tests updated, new `src/supports/blenderParity.test.ts` pinned to the Blender numbers, `docs/BLENDER_PARITY.md`.
-- Results: web 91 contacts (cap 81, stem 10) vs Blender 100; rim edge 12.90/13.77 vs Blender 13.06/13.92 at 64 voxels; triangles 39.6k vs 41.6k. `npm test` 13 files, 73 tests pass; `npx tsc --noEmit` passes.
-- Risk: neck, tip and pillar-joint shapes were only compared visually; a per-part profile probe on a single centred contact is the next parity step.
-- Next step: probe a single centred contact in Blender and compare the tip/neck/pillar profile height by height.
+- Requirement: same settings in Blender and web must produce the same supports.
+- Harness: `tools/blender-parity/probe.py` (headless Blender 5.2 + mixo3d) records 19 settings cases on a downward pyramid into `tools/blender-parity/reference.json`; `src/supports/blenderCases.test.ts` replays each case (same contacts, true surface normals, same settings) and compares foot radius/centre, column top, touch sphere, neck tilt, and raft profile. Runs in `npm test`.
+- Fixes found by the harness: neck is a cone Middle Ø -> Upper Ø along the clamped normal ending at the contact (no transition cone); feet on the plate with top at Bottom Thickness; Contact Depth sinks only the tip end; edge anchors inset Contact Ø/2 + 0.05; raft follows the model outline grown by Expand Width, floor and rim edges flare outward at Wall Angle; Roof/Cage raise Expand Width to Gap To Model + column radius; the model is now always passed for the raft footprint.
+- Results: `npm test` 14 files, 132 tests pass. All 19 cases match on every compared dimension; 3-6 of 17 supports per 45-degree case are turned/shortened by SLASG pillar repulsion (0 at 30 degrees) and are counted, not compared.
+- Next step: read SLASG's neck/pillar node group in Blender to replicate pillar repulsion, then tighten the test to compare every support.

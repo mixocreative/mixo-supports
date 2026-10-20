@@ -27,8 +27,9 @@ function mushroom() {
 
 describe('Blender parity (mushroom fixture)', () => {
   const settings = { ...defaultSupportSettings, roofSeededModes: [] };
-  const placement = generatePlacement(mushroom(), toPlacementSettings(settings));
-  const mesh = buildSupportMesh(placement.points, settings, { labelText: 'A', mode: 'export' });
+  const model = mushroom();
+  const placement = generatePlacement(model, toPlacementSettings(settings));
+  const mesh = buildSupportMesh(placement.points, settings, { labelText: 'A', mode: 'export', model });
 
   it('places a similar number of contacts on each overhang', () => {
     const cap = placement.points.filter((point) => point.position[1] > 10).length;

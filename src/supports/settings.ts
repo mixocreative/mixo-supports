@@ -273,8 +273,8 @@ export function toPlacementSettings(settings: Readonly<LiveSupportSettings>): Pl
   return {
     overhangAngleDegrees: settings.scatterAngle,
     spacing: settings.scatterSpacing,
-    // Blender insets edge anchors 0.3 mm at 2 mm spacing (measured), capped at 0.5 mm.
-    edgeInset: Math.min(settings.scatterSpacing * 0.15, 0.5),
+    // Blender insets edge anchors by the contact tip radius plus EDGE_INSET_MARGIN (0.05 mm), measured.
+    edgeInset: settings.touchDiameter / 2 + 0.05,
     sharpEdgeAngleDegrees: settings.scatterRidgeAngle,
     includeIslands: settings.scatterIslands,
     includeDownward: settings.scatterFacingDown,

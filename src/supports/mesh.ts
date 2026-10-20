@@ -70,8 +70,12 @@ export function buildSupportMesh(
   const tipOnly = !exporting && settings.previewMode === 'ONLY_TIP';
   const segments = !exporting && settings.lowPolyMode ? Math.max(3, Math.round(settings.resolution / 2)) : settings.resolution;
   const raftTop = settings.raftEnabled ? settings.raftFloorThickness : 0;
-  // Feet stand on the plate and are embedded in the raft floor, as in SLASG.
-  const footTop = Math.max(settings.baseHeight, raftTop);
+  // Column profile measured from Blender (SLASG): foot frustum Bottom Ø -> Middle Ø from the
+  // plate to Bottom Thickness (embedded in the raft floor), vertical pillar Middle Ø, then a
+  // neck cone Middle Ø -> Upper Ø of Connection Length along the surface normal (tilted at
+  // most Connection Angle from straight down) ending at the contact, plus a
+  // Contact Ø sphere centred on the contact (sunk by Contact Depth along the normal).
+  const footTop = settings.baseHeight;
   const pillarRadius = settings.pillarDiameter / 2;
   const columns: Column[] = [];
   const footprints: Point2[] = [];
@@ -81,29 +85,18 @@ export function buildSupportMesh(
     const normal = normalize(contact.normal);
     const tip = subtract(contact.position, scale(normal, settings.touchDepth));
     if (tip[1] <= raftTop) continue;
-    const neckEnd = clampAbove(add(tip, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength)), raftTop + MIN_LENGTH);
+    // Contact Depth sinks the tip; the neck still ends Connection Length from the contact (Blender).
+    const reach = add(contact.position, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength));
+    const neckBottom: Vector = [reach[0], Math.max(reach[1], footTop + MIN_LENGTH), reach[2]];
 
     builder.begin('tip', contact.id);
     builder.sphere(tip, settings.touchDiameter / 2, segments);
     builder.end();
     builder.begin('neck', contact.id);
-    builder.frustum(tip, neckEnd, settings.touchDiameter / 2, settings.neckDiameter / 2, segments);
+    builder.frustum(neckBottom, tip, pillarRadius, settings.neckDiameter / 2, segments);
     builder.end();
     if (tipOnly) continue;
-
-    const pillarTop: Vector = [neckEnd[0], neckEnd[1] - settings.pillarDiameter, neckEnd[2]];
-    if (pillarTop[1] <= footTop + MIN_LENGTH) {
-      // Too close to the plate for a pillar: one cone carries the neck straight down.
-      builder.begin('foot', contact.id);
-      builder.frustum([neckEnd[0], 0, neckEnd[2]], neckEnd, settings.baseDiameter / 2, settings.neckDiameter / 2, segments);
-      builder.end();
-      footprints.push([neckEnd[0], neckEnd[2]]);
-      continue;
-    }
-    builder.begin('pillar', contact.id);
-    builder.frustum(neckEnd, pillarTop, settings.neckDiameter / 2, pillarRadius, segments);
-    builder.end();
-    anchors.push({ id: contact.id, position: pillarTop });
+    anchors.push({ id: contact.id, position: neckBottom });
   }
 
   if (!tipOnly) {
@@ -126,7 +119,7 @@ export function buildSupportMesh(
         const radius = record.kind === 'trunk' ? trunkRadius.get(record.junctionId)! : pillarRadius;
         const [x, , z] = record.from;
         builder.begin(record.kind === 'trunk' ? 'tree-trunk' : 'pillar', record.kind === 'pillar' ? record.contactId : undefined);
-        builder.frustum(record.from, [x, footTop, z], radius, radius, segments);
+        if (record.from[1] - footTop > MIN_LENGTH) builder.frustum(record.from, [x, footTop, z], radius, radius, segments);
         builder.end();
         builder.begin('foot', record.kind === 'pillar' ? record.contactId : undefined);
         builder.frustum([x, 0, z], [x, footTop, z], Math.max(settings.baseDiameter / 2, radius * 1.5), radius, segments);
@@ -234,22 +227,29 @@ function addStructures(
     const center = mean(modelPoints);
     cageColumns = sampleRing(dilatedHull(modelPoints, settings.cageSideGap), center, settings.columnCount);
   }
-  const raftPoints = [...footprints, ...cageColumns];
+  // Measured against Blender (SLASG voxel raft at 64 voxels): the raft follows the model's
+  // outline on the plate grown by Expand Width (feet only when no model is given). Floor and
+  // rim edges flare outward going up at the Wall Angle; the rim is Wall Thickness wide.
+  // Roof and Cage raise Expand Width to Gap To Model + column radius so columns clear the model.
+  const outline = options.model ? modelPoints : footprints;
+  const raftPoints = [...outline, ...cageColumns];
   if (raftPoints.length === 0) return;
   const center = mean(raftPoints);
-  // Measured against Blender (SLASG voxel raft, 64 voxels): the raft's bottom edge sits
-  // Expand Width out from the foot centres; the rim leans outward going up by
-  // Wall Height x tan(Wall Angle) and is Wall Thickness wide; the floor fills inside it.
-  const raftRadius = Math.max(0.05, settings.raftExpandWidth);
+  const expand = settings.roofMode === 'OFF' ? settings.raftExpandWidth : Math.max(settings.raftExpandWidth, settings.cageSideGap + columnRadius);
+  const raftRadius = Math.max(0.05, expand);
   const ring = (radius: number) => sampleRing(dilatedHull(raftPoints, Math.max(0.05, radius)), center, RING_SAMPLES);
+  const slope = Math.tan(settings.raftWallAngle * Math.PI / 180);
 
   if (settings.raftEnabled) {
     const floorRing = ring(raftRadius);
     builder.begin('raft');
-    builder.loft([floorRing.map(([x, z]) => [x, 0, z] as Vector), floorRing.map(([x, z]) => [x, settings.raftFloorThickness, z] as Vector)], true);
+    builder.loft([
+      floorRing.map(([x, z]) => [x, 0, z] as Vector),
+      ring(raftRadius + settings.raftFloorThickness * slope).map(([x, z]) => [x, settings.raftFloorThickness, z] as Vector),
+    ], true);
     builder.end();
 
-    const lean = settings.raftWallHeight * Math.tan(settings.raftWallAngle * Math.PI / 180);
+    const lean = settings.raftWallHeight * slope;
     if (settings.raftWallHeight > 0 && settings.raftWallThickness > 0) {
       builder.begin('raft');
       builder.loft([
@@ -574,10 +574,6 @@ function basis(axis: Vector): [Vector, Vector] {
   const helper: Vector = Math.abs(axis[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
   const u = normalize(cross(helper, axis));
   return [u, cross(axis, u)];
-}
-
-function clampAbove(point: Vector, y: number): Vector {
-  return point[1] >= y ? point : [point[0], y, point[2]];
 }
 
 function centroid(points: readonly Vector[]): Vector {

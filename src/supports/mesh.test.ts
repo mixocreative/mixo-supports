@@ -120,15 +120,30 @@ describe('buildSupportMesh', () => {
     expect(buildSupportMesh([contact], tipOnly, { mode: 'export' }).parts).toContain('pillar');
   });
 
-  it('tilts necks no further than the maximum neck angle', () => {
-    const sideways: SupportContact = { id: 'side', position: [0, 10, 0], normal: [1, 0, 0] };
+  it('matches the Blender column profile: foot, pillar and a vertical neck cone under a downward contact', () => {
+    const sideways: SupportContact = { id: 'down', position: [0, 5, 0], normal: [0, -1, 0] };
     const mesh = buildSupportMesh([sideways], updateSetting(settings, 'raftEnabled', false));
-    const neck = mesh.components.find((component) => component.part === 'neck')!;
-    const bounds = componentBounds(mesh, neck);
-    const run = bounds.max[0] - 0.25;
-    const drop = 10 - bounds.min[1];
+    const part = (name: string) => componentBounds(mesh, mesh.components.find((component) => component.part === name)!);
 
-    expect(Math.atan2(run, drop) * 180 / Math.PI).toBeLessThan(settings.maxNeckAngle + 5);
+    const neck = part('neck');
+    expect(neck.min[1]).toBeCloseTo(5 - settings.neckLength);
+    expect(neck.max[0]).toBeCloseTo(settings.pillarDiameter / 2, 2);
+    const foot = part('foot');
+    expect(foot.min[1]).toBeCloseTo(0);
+    expect(foot.max[1]).toBeCloseTo(settings.baseHeight);
+    expect(foot.max[0]).toBeCloseTo(settings.baseDiameter / 2, 2);
+    expect(part('pillar').max[1]).toBeCloseTo(5 - settings.neckLength);
+  });
+
+  it('tilts the neck along the normal, clamped to the connection angle (Blender: 1.41 mm shift at 45 degrees)', () => {
+    const slanted: SupportContact = { id: 'slant', position: [0, 8, 0], normal: [0, -Math.SQRT1_2, -Math.SQRT1_2] };
+    const steep: SupportContact = { id: 'steep', position: [10, 8, 0], normal: [1, 0, 0] };
+    const mesh = buildSupportMesh([slanted, steep], updateSetting(settings, 'raftEnabled', false));
+    const foot = (id: string) => componentBounds(mesh, mesh.components.find((component) => component.part === 'foot' && component.contactId === id)!);
+    const shift = (id: string, x: number) => Math.hypot((foot(id).min[0]! + foot(id).max[0]!) / 2 - x, (foot(id).min[2]! + foot(id).max[2]!) / 2);
+
+    expect(shift('slant', 0)).toBeCloseTo(settings.neckLength * Math.sin(Math.PI / 4), 2);
+    expect(shift('steep', 10)).toBeCloseTo(settings.neckLength * Math.sin(settings.maxNeckAngle * Math.PI / 180), 2);
   });
 
   it('builds a roof above the model and a cage around it', () => {

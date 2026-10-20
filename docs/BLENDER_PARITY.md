@@ -1,5 +1,7 @@
 # Blender Parity Checklist
 
+Same settings, same output: `tools/blender-parity/` records Blender output for 19 settings cases, and `src/supports/blenderCases.test.ts` replays each one through the web generator (see that README for the confirmed rules).
+
 Reference: Resin UV `SLA Supports` panel in `S:/ai/mixo3dtool/mixo3d` (`properties.py`, `helpers/slasg_map.py`, `ops/support_manual.py`). Parity is judged by behaviour, contact counts, dimensions and bounding boxes. Exact Geometry Nodes vertex output is out of scope.
 
 | Panel feature | Blender behaviour | Web implementation | Evidence |
@@ -35,7 +37,8 @@ Reference: Resin UV `SLA Supports` panel in `S:/ai/mixo3dtool/mixo3d` (`properti
 - Blender's default raft is voxelised at 16 voxels, which pulls its edge about 0.7 mm inward compared with 64 voxels. The web raft matches the 64-voxel profile and ignores Voxel Resolution.
 - Interior contact positions differ, because Geometry Nodes uses a random seed. Counts, edge anchors and spacing match.
 
-- Rafts, roofs and cages follow the convex hull of the feet, so a concave footprint gets a convex raft.
+- The raft follows the convex hull of the model outline, while SLASG voxelises the real silhouette. A strongly concave model therefore gets a slightly larger raft on the web.
+- Pillar repulsion is not replicated: when 45° necks crowd each other, Blender turns or shortens them (3 to 6 of 17 supports on the probe model).
 - Tree layout is a deterministic approximation of SLASG Auto Tree.
 - Generate does not re-pack units on the plate (Blender `ARRANGE_GAP` packing). Imports are placed 3 mm apart, so rafts of neighbouring units can overlap until a unit is moved.
 - `autoSnap` and `scatterSafeDistance` are stored but have no web effect yet.
