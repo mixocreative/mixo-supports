@@ -111,4 +111,24 @@ describe('reduceScene', () => {
     expect(deserializeScene(serializeScene(scene))).toEqual(scene);
     expect(deserializeScene(serializeScene(scene)).units[0].supports!.kind).toBe('support-mesh');
   });
+
+  it('clears manual edits, removes units, and applies batches atomically', () => {
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: { ...unitA, manual: [contact], suppressed: ['auto-a'] } });
+    const cleared = reduceScene(scene, { type: 'supports/clear-manual', unitId: 'unit-a' });
+    expect(cleared.units[0]).toMatchObject({ manual: [], suppressed: [] });
+    expect(cleared.units[0].placement).toBeDefined();
+
+    const both = reduceScene(emptyScene, { type: 'batch', commands: [
+      { type: 'unit/add', unit: unitA },
+      { type: 'unit/add', unit: { ...unitA, id: 'unit-b' } },
+      { type: 'selection/set', unitIds: ['unit-a', 'unit-b'], activeUnitId: 'unit-b' },
+    ] });
+    expect(both.units.map((unit) => unit.id)).toEqual(['unit-a', 'unit-b']);
+
+    const removed = reduceScene(both, { type: 'unit/remove', unitId: 'unit-b' });
+    expect(removed.units.map((unit) => unit.id)).toEqual(['unit-a']);
+    expect(removed.selectedUnitIds).toEqual(['unit-a']);
+    expect(removed.activeUnitId).toBeUndefined();
+    expect(reduceScene(both, { type: 'batch', commands: [] })).toBe(both);
+  });
 });

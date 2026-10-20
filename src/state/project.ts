@@ -44,7 +44,10 @@ export const emptyScene: PrintScene = {
 };
 
 export type SceneCommand =
+  | { type: 'batch'; commands: SceneCommand[] }
   | { type: 'unit/add'; unit: PrintUnit }
+  | { type: 'unit/remove'; unitId: string }
+  | { type: 'supports/clear-manual'; unitId: string }
   | { type: 'supports/set'; unitId: string; placement?: PlacementResult; supports?: SupportMesh }
   | { type: 'supports/remove'; unitId: string }
   | { type: 'selection/set'; unitIds: string[]; activeUnitId?: string }
@@ -57,8 +60,21 @@ export type SceneCommand =
 
 export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScene {
   switch (command.type) {
+    case 'batch':
+      return command.commands.reduce(reduceScene, scene);
     case 'unit/add':
       return { ...scene, units: [...scene.units, normalizeUnit(command.unit)] };
+    case 'unit/remove': {
+      if (!scene.units.some((unit) => unit.id === command.unitId)) return scene;
+      const remaining = {
+        ...scene,
+        units: scene.units.filter((unit) => unit.id !== command.unitId),
+        selectedUnitIds: scene.selectedUnitIds.filter((id) => id !== command.unitId),
+      };
+      return scene.activeUnitId === command.unitId ? withoutActiveUnit(remaining) : remaining;
+    }
+    case 'supports/clear-manual':
+      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, manual: [], suppressed: [] }));
     case 'selection/set':
       return command.activeUnitId === undefined
         ? { ...withoutActiveUnit(scene), selectedUnitIds: [...command.unitIds] }
@@ -107,7 +123,7 @@ function cloneTransform(transform: ModelTransform): ModelTransform {
   };
 }
 
-function withoutActiveUnit(scene: PrintScene): Omit<PrintScene, 'activeUnitId'> {
+function withoutActiveUnit(scene: PrintScene): PrintScene {
   const { activeUnitId: _activeUnitId, ...withoutActive } = scene;
   return withoutActive;
 }

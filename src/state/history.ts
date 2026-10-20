@@ -10,10 +10,18 @@ export function createSceneHistory(scene: PrintScene): SceneHistory {
   return { past: [], present: normalizeScene(scene), future: [] };
 }
 
+/** Undo depth retained; older snapshots are dropped. */
+export const HISTORY_LIMIT = 100;
+
+/**
+ * Applies a command as one undoable step. The reducer already validates and copies the
+ * data each command introduces, so unchanged units (and their meshes) are shared
+ * between snapshots rather than copied per step.
+ */
 export function withSceneCommand(history: SceneHistory, command: SceneCommand): SceneHistory {
   const present = reduceScene(history.present, command);
   if (present === history.present) return history;
-  return { past: [...history.past, history.present], present: normalizeScene(present), future: [] };
+  return { past: [...history.past, history.present].slice(-HISTORY_LIMIT), present, future: [] };
 }
 
 export function undoScene(history: SceneHistory): SceneHistory {
