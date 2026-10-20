@@ -22,7 +22,7 @@ export interface SupportMesh {
 export interface PrintUnit {
   id: string;
   name: string;
-  /** Imported model geometry; reducer commands never mutate it. */
+  /** Imported model geometry; the scene owns a private copy that commands never mutate. */
   source: TriangleMesh;
   transform: ModelTransform;
   settings: SupportSettings;
@@ -143,9 +143,9 @@ export function sceneJsonReviver(_key: string, value: unknown): unknown {
 }
 
 function normalizeUnit(unit: PrintUnit): PrintUnit {
-  validateMesh(unit.source, 'source');
   return {
     ...unit,
+    source: cloneMesh(unit.source, 'source'),
     id: normalizeString(unit.id, 'unit id'),
     name: normalizeString(unit.name, 'unit name'),
     transform: cloneTransform(unit.transform),
@@ -158,13 +158,14 @@ function normalizeUnit(unit: PrintUnit): PrintUnit {
 }
 
 function normalizeSupportMesh(mesh: SupportMesh): SupportMesh {
-  return { kind: mesh.kind, data: normalizeJsonObject(mesh.data) };
+  return { kind: normalizeString(mesh.kind, 'support mesh kind'), data: normalizeJsonObject(mesh.data) };
 }
 
-function validateMesh(mesh: TriangleMesh, label: string): void {
+function cloneMesh(mesh: TriangleMesh, label: string): TriangleMesh {
   if (!(mesh.positions instanceof Float32Array) || !(mesh.indices instanceof Uint32Array)) {
     throw new TypeError(`${label} must contain typed-array mesh data`);
   }
+  return { positions: new Float32Array(mesh.positions), indices: new Uint32Array(mesh.indices) };
 }
 
 function normalizePlacement(placement: PlacementResult): PlacementResult {

@@ -34,7 +34,18 @@ describe('reduceScene', () => {
 
     expect(next.units).toHaveLength(1);
     expect(next.units[0]).toMatchObject({ id: 'unit-a', source: unitA.source, supports: unitA.supports });
-    expect(next.units[0].source).toBe(unitA.source);
+    expect(next.units[0].source).not.toBe(unitA.source);
+    expect(Array.from(next.units[0].source.positions)).toEqual(Array.from(unitA.source.positions));
+  });
+
+  it('owns copied source mesh data after adding a unit', () => {
+    const imported: TriangleMesh = { positions: new Float32Array(source.positions), indices: new Uint32Array(source.indices) };
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: { ...unitA, source: imported } });
+
+    imported.positions[0] = 99;
+    imported.indices[0] = 2;
+    expect(Array.from(scene.units[0].source.positions)).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    expect(Array.from(scene.units[0].source.indices)).toEqual([0, 1, 2]);
   });
 
   it('removes only derived supports and preserves the source model', () => {
@@ -71,6 +82,7 @@ describe('reduceScene', () => {
 
     expect(() => reduceScene(scene, { type: 'settings/set', unitId: 'unit-a', settings: { preview: new Object3D() as never } })).toThrow('JSON-safe');
     expect(() => reduceScene(scene, { type: 'supports/set', unitId: 'unit-a', supports: { kind: 'support-mesh', data: { preview: new Object3D() as never } } })).toThrow('JSON-safe');
+    expect(() => reduceScene(scene, { type: 'supports/set', unitId: 'unit-a', supports: { kind: new Object3D() as never, data: {} } })).toThrow('support mesh kind');
 
     const safe = reduceScene(scene, { type: 'settings/set', unitId: 'unit-a', settings: { labels: ['a', true, null], depth: 2 } });
     expect(JSON.parse(JSON.stringify(safe))).toBeTruthy();
@@ -97,5 +109,6 @@ describe('reduceScene', () => {
     const scene = reduceScene(emptyScene, { type: 'unit/add', unit: unitA });
 
     expect(deserializeScene(serializeScene(scene))).toEqual(scene);
+    expect(deserializeScene(serializeScene(scene)).units[0].supports!.kind).toBe('support-mesh');
   });
 });

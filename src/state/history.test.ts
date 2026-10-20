@@ -50,4 +50,12 @@ describe('scene history', () => {
 
     expect(deserializeSceneHistory(serializeSceneHistory(history))).toEqual(history);
   });
+
+  it('owns source typed arrays in its snapshots', () => {
+    const scene = { ...emptyScene, units: [unit] };
+    const history = createSceneHistory(scene);
+
+    scene.units[0].source.positions[0] = 99;
+    expect(history.present.units[0].source.positions[0]).toBe(0);
+  });
 });
