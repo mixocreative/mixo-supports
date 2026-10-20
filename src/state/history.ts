@@ -1,4 +1,4 @@
-import { reduceScene, type PrintScene, type SceneCommand } from './project';
+import { normalizeScene, reduceScene, type PrintScene, type SceneCommand } from './project';
 
 export interface SceneHistory {
   past: PrintScene[];
@@ -7,13 +7,13 @@ export interface SceneHistory {
 }
 
 export function createSceneHistory(scene: PrintScene): SceneHistory {
-  return { past: [], present: scene, future: [] };
+  return { past: [], present: normalizeScene(scene), future: [] };
 }
 
 export function withSceneCommand(history: SceneHistory, command: SceneCommand): SceneHistory {
   const present = reduceScene(history.present, command);
   if (present === history.present) return history;
-  return { past: [...history.past, history.present], present, future: [] };
+  return { past: [...history.past, history.present], present: normalizeScene(present), future: [] };
 }
 
 export function undoScene(history: SceneHistory): SceneHistory {

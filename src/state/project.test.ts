@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Object3D } from 'three';
 import type { SupportPoint, TriangleMesh } from '../analysis/types';
 import { emptyScene, identityTransform, reduceScene, type PrintScene, type PrintUnit } from './project';
 
@@ -63,5 +64,15 @@ describe('reduceScene', () => {
       suppressed: ['auto-a'],
     });
     expect(suppressed.units[0]).not.toBe(scene.units[0]);
+  });
+
+  it('rejects runtime objects from settings and support payloads while retaining JSON-safe scenes', () => {
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: { ...unitA, supports: undefined, placement: undefined } });
+
+    expect(() => reduceScene(scene, { type: 'settings/set', unitId: 'unit-a', settings: { preview: new Object3D() as never } })).toThrow('JSON-safe');
+    expect(() => reduceScene(scene, { type: 'supports/set', unitId: 'unit-a', supports: { kind: 'support-mesh', data: { preview: new Object3D() as never } } })).toThrow('JSON-safe');
+
+    const safe = reduceScene(scene, { type: 'settings/set', unitId: 'unit-a', settings: { labels: ['a', true, null], depth: 2 } });
+    expect(JSON.parse(JSON.stringify(safe))).toBeTruthy();
   });
 });

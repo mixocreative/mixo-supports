@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Object3D } from 'three';
 import type { TriangleMesh } from '../analysis/types';
 import { createSceneHistory, redoScene, undoScene, withSceneCommand } from './history';
 import { emptyScene, identityTransform, type PrintUnit } from './project';
@@ -30,5 +31,14 @@ describe('scene history', () => {
 
     expect(branched.future).toEqual([]);
     expect(branched.present.units[0].transform.position).toEqual([2, 0, 0]);
+  });
+
+  it('only stores JSON-safe scenes in history snapshots', () => {
+    const unsafe = { ...unit, settings: { preview: new Object3D() as never } };
+
+    expect(() => createSceneHistory({ ...emptyScene, units: [unsafe] })).toThrow('JSON-safe');
+
+    const history = withSceneCommand(createSceneHistory(emptyScene), { type: 'unit/add', unit });
+    expect(JSON.parse(JSON.stringify(history))).toBeTruthy();
   });
 });
