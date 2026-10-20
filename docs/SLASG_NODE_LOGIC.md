@@ -26,7 +26,11 @@ How Resin UV builds live supports. This was read node by node from the Geometry 
    - **Inset**: each sample moves along the in-plane perpendicular `face.normal × edgeDir`, oriented toward the face centre, by r + 1e-4 with r = Contact Ø/2 + 0.05. The point must lie inside that face with clearance r. Otherwise the deepest of 16 steps that is inside with clearance min(0.05, r/4) is used; if none is inside, the next incident face is tried.
    - **Dedup**: a candidate is skipped when it is within 0.9 × spacing of any earlier point, across all regions.
    - Points are tagged `Edge = 1`, `Vertical = 0`.
-6. **Auto Tree** (optional): duplicates each point, merges duplicates within Merge Distance into junctions, and places each junction at the island minimum of (leaf z − Branch Descent − 2 × horizontal leaf distance). Junctions below z = Spacing are removed.
+6. **Auto Tree** (optional):
+   - **Safe Distance**: the non-overhang faces of R (Separate Geometry, inverted) are copied twice, moved out and in by Safe Distance along their vertex normals. A ray goes straight down from p − (0, 0, Spacing/32) with length p.z. A point whose ray hits the moved-out copy but misses the moved-in copy is deleted; a point can branch only when the moved-out copy is missed. With Safe Distance 0 both copies are R itself.
+   - Branching points are duplicated; Merge by Distance (Merge Distance) clusters the duplicates greedily into junctions at the members' mean.
+   - The Spacing/16 clean-up merge then welds every point within Spacing/16 of a junction into it: that contact disappears and the junction moves to the mean of the welded points. One-member clusters fuse back onto their contact the same way.
+   - Each junction drops to (mean z − Branch Descent − 2 × the longest horizontal member distance). Junctions below z = Spacing are removed.
 7. Manual points (vertices of the support object) are joined last.
 
 ### MIXO_ManualPoints
@@ -47,7 +51,7 @@ How Resin UV builds live supports. This was read node by node from the Geometry 
   | Vertical | (0, 0, −1) |
 
   Because of the remesh, normals blend within about one voxel of edges and apexes. That is why the edge contacts next to the apex tilt less than 45° and why their directions change with Middle Ø. It also explains what earlier looked like "pillar repulsion": the small sideways turns of crowded rim necks are vertex-normal blending, not a separate step.
-- **Remesh details** (checked vertex for vertex with `tools/blender-parity/remesh_dump.py`). The grid nodes sit at multiples of the voxel (single precision). A node exactly on the surface counts as inside. Each sign-changing cell has one vertex at the mean of its edge crossings, and each sign-changing grid edge has one quad of the four surrounding cell vertices. Where the surface passes through nodes, OpenVDB keeps coincident duplicate vertices and zero-area quads.
+- **Remesh details** (OpenVDB `VolumeToMesh`, checked vertex for vertex and face for face with `tools/blender-parity/remesh_dump.py`). The grid nodes sit at multiples of the voxel (single precision). A node on the surface counts as inside. Each sign-changing cell has one point per edge group at the mean of that group's crossings, and each sign-changing grid edge has one quad of the four surrounding points. Adaptivity 0.1: inside each 8³ leaf, 2³, then 4³, then 8³ blocks merge into one point (the mean of their cells' points) when the block is manifold, none of its cells is ambiguous, and every pair of cell gradients has 1 − dot ≤ 0.1; quads whose corners share a point become triangles or vanish. Points of triangles facing more than 120° away from the field gradient move to the mean of the polygons around them. Blender's grid is not tagged as a level set, so the face orientation is OpenVDB's inverted one. Where the surface passes through nodes, OpenVDB keeps coincident duplicate points and zero-area faces.
 - **Clamp.** If angle(n, down) > Max Neck Angle, d = down rotated toward n by exactly Max Neck Angle; otherwise d = n.
 - **Snap.** Auto Snap moves p to the nearest feature point; when it is off, p stays as is.
 - **Tip.** t = p − d · Contact Depth. An IcoSphere instance sits at t (subdivision 2, radius Contact Ø/2, Diameter attribute 0).
@@ -134,8 +138,8 @@ Points → SLASG_Line → SLASG_Truss2 (when Bracing is on) → SLASG_Realizer, 
 | Island minima, incl. remesh plateau grid | emulated: leaf-block centres exact, totals within ~15% |
 | Erase-radius suppression | implemented |
 | Label (Bfont glyphs, Size / 0.686, pad frustum, anchor) | sizes exact; position within 0.4 mm |
-| Remesh (Mesh to SDF Grid, Grid to Mesh) | emulated locally around queried points: vertex for vertex with Blender at adaptivity 0, including quad vertex order (`remesh.test.ts`) |
-| Neck normals: face (nearest quad), edge (mean vertex normal), vertical | exact on the adaptivity-0 remesh. Not emulated: adaptivity 0.1 region merging, which changes a few necks next to merged flat regions by up to 0.6 mm (1 face contact near the apex edge, and the negative-side rim contacts where the top face lies on a voxel plane) |
+| Remesh (Mesh to SDF Grid, Grid to Mesh at adaptivity 0.1) | OpenVDB port, evaluated per 8³ leaf around queried points: vertex for vertex and face for face with Blender on the probe pyramid at adaptivity 0 and 0.1 (`remesh.test.ts`) |
+| Neck normals: face (nearest polygon), edge (mean vertex normal), vertical | 461 of 476 probe contacts within 0.02 mm, total 3.2 mm (`blenderNecks.test.ts`); the rest sit where the pyramid's faces pass exactly through voxel nodes and Blender's zero-area faces carry float-noise normals |
 | Roof / Cage (Ceiling plates, brace bands, cage rings) | ported: columns, cross bars, slab, plates and rings match per case (`blenderRoof.test.ts`) |
-| Auto Tree (eligibility, clustering, descent, snap, branches, junction landing, trunk) | junctions within 0.01 mm; branch curves within 0.005 mm except the remesh-adaptivity contacts (`blenderTree.test.ts`) |
-| Safe Distance for tree eligibility | not ported (stored only) |
+| Auto Tree (eligibility, clustering, Spacing/16 weld, descent, snap, branches, junction landing, trunk) | junctions within 0.01 mm; every branch curve within 0.005 mm (`blenderTree.test.ts`) |
+| Safe Distance (delete / no-branch rays against R's moved non-overhang faces) | same contacts and trees as Blender on a ledge model at Safe 0 and 1.7; 2 tie contacts at 0.8 (`blenderSafe.test.ts`) |

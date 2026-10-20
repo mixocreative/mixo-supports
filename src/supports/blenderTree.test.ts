@@ -21,9 +21,7 @@ const cases = Object.entries((reference as unknown as { cases: Record<string, Tr
 const toWeb = ([x, y, z]: readonly number[]): Vec3 => [x!, z!, -y!];
 const toBlender = ([x, y, z]: readonly number[]): Vec3 => [x!, -z!, y!];
 
-const EXACT_CURVES: Record<string, number> = { tree_default: 5, tree_wide: 1 };
-
-describe.each(cases)('Blender %s', (name, blender) => {
+describe.each(cases)('Blender %s', (_name, blender) => {
   const settings: LiveSupportSettings = {
     ...defaultSupportSettings, roofSeededModes: [], scatterAutoTree: true,
     scatterMergeDistance: blender.settings.scatter_merge_distance as number,
@@ -65,7 +63,6 @@ describe.each(cases)('Blender %s', (name, blender) => {
       && piece.rings[0]![3] < 0.2 && piece.rings[piece.rings.length - 1]![3] < 0.2);
     const webCurves = trees.flatMap(({ geometry }) => geometry.curves.filter((curve) => curve.part === 'tree-branch'));
     expect(webCurves.length).toBe(blenderCurves.length);
-    let exact = 0;
     for (const curve of webCurves) {
       const nodes = curve.nodes.map((node) => [...toBlender(node.point), node.radius]);
       const tip = nodes[0]!;
@@ -76,14 +73,7 @@ describe.each(cases)('Blender %s', (name, blender) => {
       expect(nodes.length).toBe(rings.length);
       const error = Math.max(...nodes.map((node, i) => Math.hypot(node[0]! - rings[i]![0], node[1]! - rings[i]![1], node[2]! - rings[i]![2])));
       nodes.forEach((node, i) => expect(Math.abs(node[3]! - rings[i]![3])).toBeLessThan(0.01));
-      // The tip and the radii always match; the path matches wherever the neck normal does.
-      expect(error).toBeLessThan(0.6);
-      if (error < 0.005) exact += 1;
+      expect(error).toBeLessThan(0.005);
     }
-    // Blender's remesh uses adaptivity 0.1, which merges flat voxel regions; ours is the
-    // adaptivity-0 mesh (vertex for vertex). Contacts whose nearest remesh face or edge was
-    // merged (the face contact near the apex edge, and rim contacts on the negative side where
-    // the top face lies on a voxel plane) get a neck up to ~0.6 mm off.
-    expect(exact).toBeGreaterThanOrEqual(EXACT_CURVES[name]!);
   });
 });

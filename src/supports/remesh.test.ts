@@ -4,7 +4,8 @@ import { RemeshTarget } from './remesh';
 
 /**
  * The SLASG_Line remesh against Blender (tools/blender-parity/remesh_dump.py): the probe spike,
- * apex down at y = 5, top +-3 mm at y = 8, voxel 0.8. Blender (x, y, z) = web (x, -z, y).
+ * apex down at y = 5, top +-3 mm at y = 8, voxel 0.8, at Grid to Mesh adaptivity 0 and 0.1 (SLASG's).
+ * Blender (x, y, z) = web (x, -z, y).
  */
 const spike = {
   positions: new Float32Array([0, 5, 0, -3, 8, 3, 3, 8, 3, 3, 8, -3, -3, 8, -3]),
@@ -14,16 +15,11 @@ const spike = {
 describe('RemeshTarget', () => {
   const target = new RemeshTarget(spike, 0.8);
 
-  it('reproduces every vertex of the adaptivity-0 remesh', () => {
-    const duals = target as unknown as { dual(i: number, j: number, k: number): [number, number, number] | null };
-    const ours: [number, number, number][] = [];
-    for (let i = -5; i <= 5; i += 1) for (let j = 5; j <= 11; j += 1) for (let k = -5; k <= 5; k += 1) {
-      const vertex = duals.dual(i, j, k);
-      if (vertex) ours.push([vertex[0], -vertex[2], vertex[1]]);
-    }
+  it.each([['adaptivity 0', 0, blender.verts], ['adaptivity 0.1', 0.1, blender.adaptive]] as const)('reproduces every vertex of the remesh at %s', (_name, adaptivity, expected) => {
+    const ours = new RemeshTarget(spike, 0.8, undefined, adaptivity).verticesInBox([-4, 3, -4], [4, 10, 4]).map(([x, y, z]) => [x, -z, y]);
     const near = (a: readonly number[], list: readonly (readonly number[])[]) => list.some((b) => Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!) < 1e-3);
-    for (const vertex of blender.verts) expect(near(vertex, ours), `${vertex}`).toBe(true);
-    for (const vertex of ours) expect(near(vertex, blender.verts), `${vertex}`).toBe(true);
+    for (const vertex of expected) expect(near(vertex, ours), `${vertex}`).toBe(true);
+    for (const vertex of ours) expect(near(vertex, expected), `${vertex}`).toBe(true);
   });
 
   it('lands below the apex where the Blender raycast does', () => {

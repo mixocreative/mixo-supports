@@ -98,12 +98,13 @@ export function buildSupportMesh(
   const ray = options.model ? lineTarget(options.model, settings, options.remesh) : undefined;
   if (ray) contacts = contacts.map((contact) => ({ ...contact, normal: ray.normal(contact) }));
 
-  const trees = settings.scatterAutoTree && !tipOnly ? autoTreeLayout(contacts, options.model, settings) : [];
+  const layout = settings.scatterAutoTree ? autoTreeLayout(contacts, options.model, settings) : undefined;
+  const trees = layout && !tipOnly ? layout.trees : [];
   const treeOf = new Map<number, number>();
   trees.forEach((tree, t) => tree.members.forEach((member) => treeOf.set(member, t)));
 
   contacts.forEach((contact, index) => {
-    if (treeOf.has(index)) return;
+    if (treeOf.has(index) || layout?.removed.has(index)) return;
     const column = contactColumn(contact, settings, ray, tipOnly);
     if (!column) return;
     builder.begin('tip', contact.id);
@@ -241,7 +242,7 @@ export function treeGeometry(tree: AutoTree, contacts: readonly SupportContact[]
 export function autoTrees(contacts: readonly SupportContact[], settings: Readonly<LiveSupportSettings>, model: TriangleMesh): { tree: AutoTree; geometry: TreeGeometry }[] {
   const ray = lineTarget(model, settings);
   const sampled = contacts.map((contact) => ({ ...contact, normal: ray.normal(contact) }));
-  return autoTreeLayout(sampled, model, settings).map((tree) => ({ tree, geometry: treeGeometry(tree, sampled, settings, ray) }));
+  return autoTreeLayout(sampled, model, settings).trees.map((tree) => ({ tree, geometry: treeGeometry(tree, sampled, settings, ray) }));
 }
 
 /** Bounding box of a mesh's vertices. */

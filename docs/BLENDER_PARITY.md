@@ -37,7 +37,7 @@ Reference: Resin UV `SLA Supports` panel in `S:/ai/mixo3dtool/mixo3d` (`properti
 - Blender's default raft is voxelised at 16 voxels, which pulls its edge about 0.7 mm inward compared with 64 voxels. The web raft matches the 64-voxel profile and ignores Voxel Resolution.
 - Interior contact positions differ, because Geometry Nodes uses a random seed. Counts, edge anchors and spacing match.
 
-- Neck normals and landings use a local emulation of SLASG_Line's voxel remesh, which matches Blender's at adaptivity 0. Blender meshes it at adaptivity 0.1; the region merging that adds is not replicated and turns a few necks next to merged flat regions by up to 0.6 mm. What earlier looked like pillar repulsion was this remesh normal blending.
-- Tree eligibility ignores Safe Distance.
+- Neck normals, landings and Safe Distance use a port of OpenVDB's VolumeToMesh (adaptivity 0.1), evaluated lazily per 8³ leaf. It matches Blender vertex for vertex on the probe model; where a model's faces pass exactly through voxel nodes, Blender's zero-area faces carry float-noise normals that cannot be reproduced. What earlier looked like pillar repulsion was this remesh normal blending.
+- First generation on a large model costs a few seconds more (about 2.5 s on 77k triangles); later rebuilds reuse the cached remesh. Safe Distance above 0 builds a second remesh at Spacing / 4 (about 7 s on that model).
 - Generate does not re-pack units on the plate (Blender `ARRANGE_GAP` packing). Imports are placed 3 mm apart, so rafts of neighbouring units can overlap until a unit is moved.
 - `autoSnap` and `scatterSafeDistance` are stored but have no web effect yet.
