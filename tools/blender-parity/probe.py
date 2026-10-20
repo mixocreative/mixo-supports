@@ -43,6 +43,10 @@ CASES = {
     "truss_custom": {"truss_enabled": True, "truss_angle": math.radians(30), "truss_spacing": 1.0,
                      "truss_min_height": 4.0, "truss_top_spacing": 0.5, "truss_distance_limit": 3.0, "truss_diameter": 0.5},
     "truss_heavy": {"preset": "HEAVY", "truss_enabled": True},
+    "roof_default": {"roof_mode": "ROOF"},
+    "roof_open": {"roof_mode": "ROOF", "storey_enclose_ceiling": False, "brace_concentric": 2, "roof_gap": 7.0},
+    "cage_default": {"roof_mode": "CAGE"},
+    "cage_tight": {"roof_mode": "CAGE", "cage_pitch": 6.0, "column_count": 8, "diagonal_enabled": False},
     "label_default": {"label_enabled": True},
     "label_custom": {"label_enabled": True, "label_text": "B", "label_size": 4.0, "label_height": 1.0, "label_margin": 0.5,
                      "label_offset_x": 1.0, "label_offset_y": -2.0},
@@ -178,6 +182,7 @@ results = {}
 for name, overrides in CASES.items():
     properties.set_suspended(sp, **{k: v for k, v in BASE.items() if k not in ("preset", "lift_height")})
     sp.lift_height = BASE["lift_height"]
+    properties.set_suspended(sp, roof_mode="OFF")
     if "preset" in overrides:
         properties.apply_preset(sup, overrides["preset"])
     rest = {k: v for k, v in overrides.items() if k != "preset"}
@@ -187,19 +192,37 @@ for name, overrides in CASES.items():
     pieces, spheres = evaluated()
     contacts = [[round(c, 4) for c in p] for p in slasg_assets.contact_points(sup)]
     classes = contact_classes()
-    raft = max(pieces, key=len) if sp.raft_enabled else None
+    flat = [p for p in pieces if max(v[2] for v in p) <= max(sp.raft_wall_height, sp.raft_floor_thickness) + 0.01 and min(v[2] for v in p) < 0.01]
+    raft = max(flat, key=len) if sp.raft_enabled and flat else None
     brace_size = 2 * sp.resolution
     braces = [rings_of(p, sp.resolution) for p in pieces if p is not raft and len(p) == brace_size]
     label_top = sp.raft_wall_height + sp.label_height + 0.02
     labels = [p for p in pieces if p is not raft and len(p) != brace_size and len(p) % sp.resolution != 0
               and min(v[2] for v in p) > -1e-4 and max(v[2] for v in p) <= label_top]
     label = [{"min": [round(min(v[a] for v in p), 4) for a in range(3)], "max": [round(max(v[a] for v in p), 4) for a in range(3)], "verts": len(p)} for p in labels]
+    roof_pieces = []
+    if sp.roof_mode != "OFF":
+        contact_xy = [(c[0], c[1]) for c in slasg_assets.contact_points(sup)]
+        def is_support(p):
+            top = max(p, key=lambda v: v[2])
+            return any(math.hypot(top[0] - x, top[1] - y) < 0.5 for x, y in contact_xy) and len(p) % sp.resolution == 0
+        kept = []
+        for p in pieces:
+            if p is raft or any(p is q for q in labels) or is_support(p):
+                continue
+            row = {"n": len(p), "min": [round(min(v[a] for v in p), 4) for a in range(3)], "max": [round(max(v[a] for v in p), 4) for a in range(3)]}
+            if len(p) % 12 == 0 and len(p) <= 240:
+                row["rings"] = rings_of(p, 12)
+            kept.append((p, row))
+        roof_pieces = [row for _, row in kept]
+        pieces = [p for p in pieces if not any(p is q for q, _ in kept)]
     columns = [describe_piece(p) for p in pieces if p is not raft and len(p) != brace_size and not any(p is q for q in labels)]
     settings = {k: (math.degrees(v) if "angle" in k else v) for k, v in
                 ((k, getattr(sp, k)) for k in list(properties._SUPPORT_FIELDS) + ["lift_height", "preset", "label_enabled", "label_text",
-                 "label_size", "label_height", "label_margin", "label_offset_x", "label_offset_y"])
-                if not isinstance(v, str) or k in ("preset", "label_text")}
-    results[name] = {"settings": settings, "contacts": contacts, "classes": classes, "spheres": spheres, "columns": columns, "braces": braces, "label": label,
+                 "label_size", "label_height", "label_margin", "label_offset_x", "label_offset_y", "roof_mode", "roof_gap",
+                 "cage_side_gap", "cage_top_gap", "cage_pitch", "cage_ring_diameter"])
+                if not isinstance(v, str) or k in ("preset", "label_text", "roof_mode")}
+    results[name] = {"settings": settings, "contacts": contacts, "classes": classes, "spheres": spheres, "columns": columns, "braces": braces, "label": label, "roof": roof_pieces,
                      "raft": describe_raft(raft) if raft else None}
     print("CASE", name, len(contacts), "contacts", len(columns), "columns")
 

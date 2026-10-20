@@ -1,7 +1,8 @@
 import type { TriangleMesh } from '../analysis/types';
 import { layoutBfont } from './bfont';
 import type { LiveSupportSettings } from './settings';
-import { cornerBisectors, raftPerimeter } from './raft';
+import { cornerBisectors, raftOutline } from './raft';
+import { buildRoofCage } from './roof';
 import { buildTreeTopology } from './tree';
 
 type Vector = [number, number, number];
@@ -42,8 +43,8 @@ export interface SupportMeshOptions {
   model?: TriangleMesh;
   /** Unit letter embossed on the raft when labels are enabled. */
   labelText?: string;
-  /** Precomputed raft perimeter for `model` (it only depends on the model, Expand and voxels). */
-  raftPerimeter?: Point2[];
+  /** Precomputed raft outline for `model` (it only depends on the model, Expand and voxels). */
+  raftOutline?: { raw: Vector[]; polygon: Point2[] };
 }
 
 export interface Column {
@@ -377,83 +378,57 @@ function addStructures(
   footprints: Point2[],
   settings: Readonly<LiveSupportSettings>,
   options: SupportMeshOptions,
-  segments: number,
-  raftTop: number,
+  _segments: number,
+  _raftTop: number,
 ): void {
-  const modelPoints = options.model ? modelOutline(options.model) : footprints;
-  const modelTop = options.model ? meshBounds(options.model).max[1] : 0;
-  const columnRadius = settings.columnDiameter / 2;
-  let cageColumns: Point2[] = [];
-
-  if (settings.roofMode === 'CAGE' && modelPoints.length > 0) {
-    const center = mean(modelPoints);
-    cageColumns = sampleRing(dilatedHull(modelPoints, settings.cageSideGap), center, settings.columnCount);
-  }
-  // Measured against Blender (SLASG voxel raft at 64 voxels): the raft follows the model's
-  // outline on the plate grown by Expand Width (feet only when no model is given). Floor and
-  // rim edges flare outward going up at the Wall Angle; the rim is Wall Thickness wide.
-  // Roof and Cage raise Expand Width to Gap To Model + column radius so columns clear the model.
-  const outline = options.model ? modelPoints : footprints;
-  const raftPoints = [...outline, ...cageColumns];
-  if (raftPoints.length === 0) return;
-  const center = mean(raftPoints);
-  const expand = settings.roofMode === 'OFF' ? settings.raftExpandWidth : Math.max(settings.raftExpandWidth, settings.cageSideGap + columnRadius);
-  const raftRadius = Math.max(0.05, expand);
-  const ring = (radius: number) => sampleRing(dilatedHull(raftPoints, Math.max(0.05, radius)), center, RING_SAMPLES);
-  const slope = Math.tan(settings.raftWallAngle * Math.PI / 180);
+  // Roof / Cage: Resin UV sends Expand Width >= Gap To Model + column radius and at least
+  // 64 voxels, and SLASG's intermediate raft pushes the floor out by Column Ø.
+  const roof = settings.roofMode !== 'OFF';
+  const expand = roof ? Math.max(settings.raftExpandWidth, settings.cageSideGap + settings.columnDiameter / 2) : settings.raftExpandWidth;
+  const voxels = roof ? Math.max(settings.voxelResolution, 64) : settings.voxelResolution;
+  const outline = options.raftOutline ?? (options.model ? raftOutline(options.model, expand, voxels) : undefined);
 
   if (settings.raftEnabled) {
-    const perimeter = options.raftPerimeter ?? (options.model ? raftPerimeter(options.model, expand, settings.voxelResolution) : []);
-    const floorRing = perimeter.length >= 3 ? perimeter : ring(raftRadius);
-    addRaft(builder, floorRing, settings);
-    if (settings.labelEnabled && options.labelText) addLabel(builder, raftLabelCandidates(floorRing, settings), settings, options.labelText);
+    let floor: Point2[] = outline && outline.polygon.length >= 3 ? outline.polygon : footprintRing(footprints, expand);
+    if (floor.length < 3) return;
+    if (roof) {
+      const bisectors = cornerBisectors(floor);
+      floor = floor.map(([x, z], i) => [x - bisectors[i]![0] * settings.columnDiameter, z - bisectors[i]![1] * settings.columnDiameter]);
+    }
+    addRaft(builder, floor, settings);
+    if (settings.labelEnabled && options.labelText) addLabel(builder, raftLabelCandidates(floor, settings), settings, options.labelText);
   }
 
-  if (settings.roofMode === 'ROOF') {
-    const top = Math.max(modelTop, raftTop) + settings.roofGap;
-    const roofRing = sampleRing(dilatedHull(raftPoints, raftRadius), center, RING_SAMPLES);
-    const roofColumns = sampleRing(dilatedHull(raftPoints, Math.max(columnRadius, raftRadius - columnRadius)), center, settings.columnCount);
-    builder.begin('roof');
-    if (settings.storeyEncloseCeiling) {
-      builder.loft([roofRing.map(([x, z]) => [x, top, z] as Vector), roofRing.map(([x, z]) => [x, top + settings.storeyFloorThickness, z] as Vector)], true);
-    } else {
-      const trayInner = sampleRing(dilatedHull(raftPoints, Math.max(0.1, raftRadius - 2 * settings.columnDiameter)), center, RING_SAMPLES);
-      builder.loft([
-        roofRing.map(([x, z]) => [x, top, z] as Vector),
-        roofRing.map(([x, z]) => [x, top + settings.storeyFloorThickness, z] as Vector),
-        trayInner.map(([x, z]) => [x, top + settings.storeyFloorThickness, z] as Vector),
-        trayInner.map(([x, z]) => [x, top, z] as Vector),
-      ], false);
-    }
+  if (!roof || !outline || !options.model) return;
+  const geometry = buildRoofCage(outline.raw, meshBounds(options.model).max[1], settings);
+  // Realizer.003 always tubes the column lines at 12 sides.
+  for (const bar of geometry.bars) {
+    builder.begin(bar.part);
+    builder.frustum(bar.from, bar.to, bar.radius, bar.radius, 12);
     builder.end();
-    addColumns(builder, roofColumns, raftTop, top + settings.storeyFloorThickness / 2, columnRadius, segments);
-    if (settings.diagonalEnabled) addCrossBars(builder, roofColumns, [raftTop, top], settings.diagonalDiameter / 2, segments);
-
-    const braceRadius = settings.braceThickness / 2;
-    const underRoof = top - braceRadius;
-    const maxDrop = Math.max(0, (top - modelTop) * 0.8);
-    for (const [x, z] of roofColumns) {
-      const distance = Math.hypot(center[0] - x, center[1] - z);
-      const drop = Math.min(distance * Math.tan(settings.braceAngle * Math.PI / 180), maxDrop);
-      builder.begin('roof-brace');
-      builder.frustum([x, underRoof - drop, z], [center[0], underRoof, center[1]], braceRadius, braceRadius, segments);
-      builder.end();
-    }
-    for (let ring = 1; ring <= settings.braceConcentric; ring += 1) {
-      const fraction = ring / (settings.braceConcentric + 1);
-      const points = sampleRing(dilatedHull(raftPoints, raftRadius), center, settings.columnCount * 2)
-        .map(([x, z]) => [center[0] + (x - center[0]) * fraction, underRoof, center[1] + (z - center[1]) * fraction] as Vector);
-      addLoop(builder, 'roof-brace', points, braceRadius, segments);
-    }
-  } else if (settings.roofMode === 'CAGE' && cageColumns.length > 0) {
-    const top = Math.max(modelTop, raftTop) + settings.cageTopGap;
-    addColumns(builder, cageColumns, raftTop, top, columnRadius, segments);
-    const levels: number[] = [];
-    for (let y = raftTop + settings.cagePitch; y < top - settings.cageRingDiameter; y += settings.cagePitch) levels.push(y);
-    levels.push(top);
-    for (const y of levels) addLoop(builder, 'cage-ring', cageColumns.map(([x, z]) => [x, y, z] as Vector), settings.cageRingDiameter / 2, segments);
-    if (settings.diagonalEnabled) addCrossBars(builder, cageColumns, [raftTop, ...levels], settings.diagonalDiameter / 2, segments);
   }
+  for (const sweep of geometry.sweeps) {
+    builder.begin(sweep.part);
+    builder.sweep(sweep.polygon, sweep.offset);
+    builder.end();
+  }
+  for (const band of geometry.bands) {
+    const shift = (points: Vector[], sign: number) => points.map((point, i) => add(point, scale(band.normals[i]!, sign * band.thickness / 2)));
+    builder.begin('roof-brace');
+    builder.loft([shift(band.bottom, 1), shift(band.top, 1), shift(band.top, -1), shift(band.bottom, -1)], false);
+    builder.end();
+  }
+  for (const ring of geometry.rings) {
+    builder.begin('cage-ring');
+    builder.closedTube(ring.points, ring.radius, 12);
+    builder.end();
+  }
+}
+
+/** Raft outline without a model (tests): convex hull of the feet grown by Expand Width. */
+function footprintRing(footprints: readonly Point2[], expand: number): Point2[] {
+  if (footprints.length === 0) return [];
+  return sampleRing(dilatedHull(footprints, Math.max(0.05, expand)), mean(footprints), RING_SAMPLES);
 }
 
 /**
@@ -504,42 +479,6 @@ function raftLabelCandidates(polygon: readonly Point2[], settings: Readonly<Live
   return out;
 }
 
-function addColumns(builder: MeshBuilder, points: readonly Point2[], bottom: number, top: number, radius: number, segments: number): void {
-  for (const [x, z] of points) {
-    builder.begin('column');
-    builder.frustum([x, bottom, z], [x, top, z], radius, radius, segments);
-    builder.end();
-  }
-}
-
-/** X-shaped bars between neighbouring columns for each storey between consecutive levels. */
-function addCrossBars(builder: MeshBuilder, points: readonly Point2[], levels: readonly number[], radius: number, segments: number): void {
-  for (let level = 0; level + 1 < levels.length; level += 1) {
-    const [low, high] = [levels[level]!, levels[level + 1]!];
-    points.forEach(([x, z], index) => {
-      const [nx, nz] = points[(index + 1) % points.length]!;
-      builder.begin('cross-bar');
-      builder.frustum([x, low, z], [nx, high, nz], radius, radius, segments);
-      builder.end();
-      builder.begin('cross-bar');
-      builder.frustum([nx, low, nz], [x, high, z], radius, radius, segments);
-      builder.end();
-    });
-  }
-}
-
-/** A closed loop of round bars through `points`, with spheres hiding the joints. */
-function addLoop(builder: MeshBuilder, part: SupportPart, points: readonly Vector[], radius: number, segments: number): void {
-  points.forEach((point, index) => {
-    builder.begin(part);
-    builder.frustum(point, points[(index + 1) % points.length]!, radius, radius, segments);
-    builder.end();
-    builder.begin(part);
-    builder.sphere(point, radius, segments);
-    builder.end();
-  });
-}
-
 /**
  * MIXO_Label: the anchor is the support vertex at or below Pad Height (= Wall Height) nearest
  * the bbox corner (Blender max x / min y = web max x / max z). The pad is a frustum from the
@@ -580,15 +519,6 @@ function addLabel(builder: MeshBuilder, candidates: readonly Vector[], settings:
     builder.extrudeGlyph(glyph.vertices.map((v) => toWeb(v, padHeight - 0.01)), glyph.vertices.map((v) => toWeb(v, padHeight + settings.labelHeight)), glyph.triangles);
     builder.end();
   }
-}
-
-/** Model footprint on the plate (XZ), subsampled so hulls stay cheap on large meshes. */
-function modelOutline(model: TriangleMesh): Point2[] {
-  const vertexCount = model.positions.length / 3;
-  const step = Math.max(1, Math.floor(vertexCount / 4000));
-  const points: Point2[] = [];
-  for (let vertex = 0; vertex < vertexCount; vertex += step) points.push([model.positions[vertex * 3]!, model.positions[vertex * 3 + 2]!]);
-  return convexHull(points);
 }
 
 /** Convex hull of the points grown by `radius` (approximated with 16-gon discs). */
@@ -743,6 +673,46 @@ class MeshBuilder {
         this.indices.push(t[q!]!, t[p!]!, b[p!]!, t[q!]!, b[p!]!, b[q!]!);
       }
     }
+  }
+
+  /** Planar polygon extruded along `offset` (closed solid, ear-clipped caps in the polygon's plane). */
+  sweep(polygon: readonly Vector[], offset: Vector): void {
+    const bottom = polygon.map((point) => this.vertex(point));
+    const top = polygon.map((point) => this.vertex(add(point, offset)));
+    const count = polygon.length;
+    for (let step = 0; step < count; step += 1) {
+      const next = (step + 1) % count;
+      this.indices.push(bottom[step]!, bottom[next]!, top[next]!, bottom[step]!, top[next]!, top[step]!);
+    }
+    let normal: Vector = [0, 0, 0];
+    polygon.forEach((point, i) => {
+      const next = polygon[(i + 1) % count]!;
+      normal = add(normal, [(point[1] - next[1]) * (point[2] + next[2]), (point[2] - next[2]) * (point[0] + next[0]), (point[0] - next[0]) * (point[1] + next[1])]);
+    });
+    const [u, v] = basis(normalize(normal));
+    const plane = polygon.map((point) => [dot(point, u), dot(point, v)] as Point2);
+    for (const [a, c, d] of earClip(plane)) {
+      this.indices.push(bottom[a]!, bottom[d]!, bottom[c]!);
+      this.indices.push(top[a]!, top[c]!, top[d]!);
+    }
+  }
+
+  /** Closed tube following a closed polyline (Curve to Mesh of a cyclic curve with a circle profile). */
+  closedTube(points: readonly Vector[], radius: number, segments: number): void {
+    const count = points.length;
+    let normal = basis(normalize(subtract(points[1]!, points[0]!)))[0];
+    const rings = points.map((point, index) => {
+      const back = normalize(subtract(point, points[(index - 1 + count) % count]!));
+      const ahead = normalize(subtract(points[(index + 1) % count]!, point));
+      const tangent = normalize(add(back, ahead));
+      normal = normalize(subtract(normal, scale(tangent, dot(normal, tangent))));
+      const binormal = cross(tangent, normal);
+      return Array.from({ length: segments }, (_, step) => {
+        const angle = (step / segments) * Math.PI * 2;
+        return add(point, add(scale(normal, Math.cos(angle) * radius), scale(binormal, Math.sin(angle) * radius)));
+      });
+    });
+    this.loft(rings, false);
   }
 
   /** Closed tube through a polyline with per-node radius (Blender Curve to Tube, flat caps). */

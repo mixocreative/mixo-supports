@@ -2,8 +2,8 @@ import { labelForIndex } from '../analysis/mesh';
 import { composeContacts } from '../analysis/placement';
 import type { PrintUnit, SupportSettings } from '../state/project';
 import { applyTransform, inverseTransformMesh, transformDirection, transformPoint, type ModelTransform } from '../state/transform';
-import { buildSupportMesh, type GeneratedSupportMesh, type Point2, type SupportContact } from './mesh';
-import { raftPerimeter } from './raft';
+import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from './mesh';
+import { raftOutline } from './raft';
 import { defaultSupportSettings, type LiveSupportSettings } from './settings';
 
 /** Unit settings stored in the scene, completed with defaults for any missing key. */
@@ -26,21 +26,24 @@ export function generationTransform(unit: PrintUnit): ModelTransform {
   return stored && Array.isArray(stored.position) && Array.isArray(stored.rotation) ? stored : unit.transform;
 }
 
-const perimeterCache = new WeakMap<object, Map<string, Point2[]>>();
+type Outline = ReturnType<typeof raftOutline>;
+const outlineCache = new WeakMap<object, Map<string, Outline>>();
 
 /** The raft outline depends only on the model, its frame, Expand Width and voxels; cache it per unit source. */
-function cachedPerimeter(unit: PrintUnit, frame: ModelTransform, model: ReturnType<typeof applyTransform>, settings: LiveSupportSettings): Point2[] {
-  const expand = settings.roofMode === 'OFF' ? settings.raftExpandWidth : Math.max(settings.raftExpandWidth, settings.cageSideGap + settings.columnDiameter / 2);
-  const key = JSON.stringify([frame, expand, settings.voxelResolution]);
-  let entries = perimeterCache.get(unit.source);
-  if (!entries) perimeterCache.set(unit.source, (entries = new Map()));
-  let perimeter = entries.get(key);
-  if (!perimeter) {
-    perimeter = raftPerimeter(model, expand, settings.voxelResolution);
+function cachedOutline(unit: PrintUnit, frame: ModelTransform, model: ReturnType<typeof applyTransform>, settings: LiveSupportSettings): Outline {
+  const roof = settings.roofMode !== 'OFF';
+  const expand = roof ? Math.max(settings.raftExpandWidth, settings.cageSideGap + settings.columnDiameter / 2) : settings.raftExpandWidth;
+  const voxels = roof ? Math.max(settings.voxelResolution, 64) : settings.voxelResolution;
+  const key = JSON.stringify([frame, expand, voxels]);
+  let entries = outlineCache.get(unit.source);
+  if (!entries) outlineCache.set(unit.source, (entries = new Map()));
+  let outline = entries.get(key);
+  if (!outline) {
+    outline = raftOutline(model, expand, voxels);
     if (entries.size > 8) entries.clear();
-    entries.set(key, perimeter);
+    entries.set(key, outline);
   }
-  return perimeter;
+  return outline;
 }
 
 /** Live support mesh for a unit in its local space, ready to render under the unit's parent group. */
@@ -58,7 +61,7 @@ export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'previ
     mode,
     labelText: settings.labelText || labelForIndex(unitIndex),
     model,
-    ...(settings.raftEnabled ? { raftPerimeter: cachedPerimeter(unit, frame, model, settings) } : {}),
+    ...(settings.raftEnabled || settings.roofMode !== 'OFF' ? { raftOutline: cachedOutline(unit, frame, model, settings) } : {}),
   });
   return inverseTransformMesh(mesh, frame);
 }

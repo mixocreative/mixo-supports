@@ -14,8 +14,17 @@ type Point2 = [number, number];
  * from above (Blender +Z).
  */
 export function raftPerimeter(model: TriangleMesh, expand: number, voxelResolution: number): Point2[] {
+  return raftOutline(model, expand, voxelResolution).polygon;
+}
+
+/**
+ * Raft outline: the raw dual-contour boundary loop (as SLASG_Raft's Perimiter output, with each
+ * vertex's height above the plate, Blender start vertex, counter-clockwise) and its 3 x Voxel Resolution
+ * resample that becomes the raft n-gon. Roof and Cage columns stand on the raw loop.
+ */
+export function raftOutline(model: TriangleMesh, expand: number, voxelResolution: number): { raw: [number, number, number][]; polygon: Point2[] } {
   const triangles = projectTriangles(model);
-  if (triangles.length === 0) return [];
+  if (triangles.length === 0) return { raw: [], polygon: [] };
   const bounds3 = bounds3d(model);
   const diagonal = Math.hypot(bounds3.max[0] - bounds3.min[0], bounds3.max[1] - bounds3.min[1], bounds3.max[2] - bounds3.min[2]);
   const voxel = (diagonal + 2 * expand) / voxelResolution;
@@ -42,11 +51,17 @@ export function raftPerimeter(model: TriangleMesh, expand: number, voxelResoluti
   const at = (grid: Float64Array, i: number, j: number) => grid[j * width + i]!;
   /** Dual vertex of the cell (i, j) in layer [0, v]: mean of its edge crossings, projected to plan. */
   const dual = (i: number, j: number): Point2 => {
+    const [x, , z] = dual3(i, j);
+    return [x, z];
+  };
+  /** Dual vertex (x, height, z): mean of the iso crossings on the cell's twelve edges. */
+  const dual3 = (i: number, j: number): [number, number, number] => {
     let sx = 0;
+    let sy = 0;
     let sz = 0;
     let n = 0;
     const corners: [number, number][] = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]];
-    for (const grid of [f0, f1]) {
+    for (const [grid, height] of [[f0, 0], [f1, voxel]] as const) {
       for (let k = 0; k < 4; k += 1) {
         const [ai, aj] = corners[k]!;
         const [bi, bj] = corners[(k + 1) % 4]!;
@@ -57,22 +72,30 @@ export function raftPerimeter(model: TriangleMesh, expand: number, voxelResoluti
         const [ax, az] = node(ai, aj);
         const [bx, bz] = node(bi, bj);
         sx += ax + (bx - ax) * t;
+        sy += height;
         sz += az + (bz - az) * t;
         n += 1;
       }
     }
     for (const [ci, cj] of corners) {
-      if ((at(f0, ci, cj) < 0) === (at(f1, ci, cj) < 0)) continue;
+      const a = at(f0, ci, cj);
+      const b = at(f1, ci, cj);
+      if ((a < 0) === (b < 0)) continue;
       const [x, z] = node(ci, cj);
       sx += x;
+      sy += voxel * (a / (a - b));
       sz += z;
       n += 1;
     }
-    return n === 0 ? node(i, j) : [sx / n, sz / n];
+    if (n === 0) {
+      const [x, z] = node(i, j);
+      return [x, 0, z];
+    }
+    return [sx / n, sy / n, sz / n];
   };
 
   const loops = traceContours(f0, width, height);
-  if (loops.length === 0) return [];
+  if (loops.length === 0) return { raw: [], polygon: [] };
   const outerCells = loops.reduce((best, loop) => {
     const size = (cells: [number, number][]) => Math.abs(area(cells.map(([i, j]) => dual(i, j))));
     return size(loop) > size(best) ? loop : best;
@@ -88,9 +111,13 @@ export function raftPerimeter(model: TriangleMesh, expand: number, voxelResoluti
   const before = (a: number[], b: number[]) => a.findIndex((value, index) => value !== b[index]) >= 0 && a[a.findIndex((value, index) => value !== b[index])]! < b[a.findIndex((value, index) => value !== b[index])]!;
   let start = 0;
   outerCells.forEach((cell, index) => { if (before(key(cell), key(outerCells[start]!))) start = index; });
-  let outer = [...outerCells.slice(start), ...outerCells.slice(0, start)].map(([i, j]) => dual(i, j));
-  if (area(outer.map(([x, z]) => [x, -z] as Point2)) > 0) outer = [outer[0]!, ...outer.slice(1).reverse()];
-  return resampleClosed(outer, 3 * voxelResolution);
+  let ordered = [...outerCells.slice(start), ...outerCells.slice(0, start)];
+  if (area(ordered.map(([i, j]) => dual(i, j)).map(([x, z]) => [x, -z] as Point2)) > 0) ordered = [ordered[0]!, ...ordered.slice(1).reverse()];
+  const clockwise = ordered.map(([i, j]) => dual3(i, j));
+  // The perimeter curve itself runs counter-clockwise from the start vertex (Roof/Cage columns
+  // follow it); Fill Curve reverses the corners, so the raft n-gon is the clockwise resample.
+  const raw = [clockwise[0]!, ...clockwise.slice(1).reverse()];
+  return { raw, polygon: resampleClosed(clockwise.map(([x, , z]) => [x, z] as Point2), 3 * voxelResolution) };
 }
 
 /**
