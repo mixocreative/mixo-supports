@@ -72,4 +72,24 @@ describe('generatePlacement', () => {
     expect(withoutIslands.points.some((point) => point.source === 'island')).toBe(false);
     expect(withIslands.points.some((point) => point.source === 'island')).toBe(true);
   });
+
+  it('treats coincident coordinates with distinct vertex indices as disconnected physical boundaries', () => {
+    const duplicatedVertices: TriangleMesh = {
+      positions: new Float32Array([
+        0, 0, 0,
+        1, 0, 0,
+        0, 0, 1,
+        0, 0, 0,
+        1, 0, 0,
+        0, 0, 1,
+      ]),
+      indices: new Uint32Array([0, 1, 2, 3, 4, 5]),
+    };
+
+    const result = generatePlacement(duplicatedVertices, { ...settings, includeIslands: false });
+    const boundaryPoints = result.points.filter((point) => point.source === 'physical-boundary');
+
+    expect(result.regions).toHaveLength(2);
+    expect(boundaryPoints).not.toHaveLength(0);
+  });
 });

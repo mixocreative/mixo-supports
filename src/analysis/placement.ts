@@ -11,6 +11,7 @@ import type {
 type Vector = [number, number, number];
 
 interface FaceData {
+  indices: [number, number, number];
   vertices: [Vector, Vector, Vector];
   normal: Vector;
 }
@@ -90,7 +91,7 @@ function sampleReinforcement(
   for (const faceIndex of region.faceIndices) {
     const face = faces[faceIndex]!;
     for (const [first, second, opposite] of [[0, 1, 2], [1, 2, 0], [2, 0, 1]] as const) {
-      const edge = edgeKeyForPoints(face.vertices[first], face.vertices[second]);
+      const edge = edgeKey(face.indices[first], face.indices[second]);
       const neighbours = facesByEdge.get(edge)!.filter((index) => index !== faceIndex);
       const downwardNeighbours = neighbours.filter((index) => downward[index]);
       const source = neighbours.length === 0 || downwardNeighbours.length !== neighbours.length
@@ -162,8 +163,9 @@ function pointOnFaceAtXZ(face: FaceData, x: number, z: number): Vector | undefin
 
 function faceAt(mesh: TriangleMesh, index: number): FaceData {
   const offset = index * 3;
-  const vertices = [0, 1, 2].map((vertex) => pointAt(mesh, mesh.indices[offset + vertex]!)) as [Vector, Vector, Vector];
-  return { vertices, normal: normalize(cross(subtract(vertices[1], vertices[0]), subtract(vertices[2], vertices[0]))) };
+  const indices = [mesh.indices[offset]!, mesh.indices[offset + 1]!, mesh.indices[offset + 2]!] as [number, number, number];
+  const vertices = indices.map((vertex) => pointAt(mesh, vertex)) as [Vector, Vector, Vector];
+  return { indices, vertices, normal: normalize(cross(subtract(vertices[1], vertices[0]), subtract(vertices[2], vertices[0]))) };
 }
 
 function indexFacesByEdge(mesh: TriangleMesh): Map<string, number[]> {
@@ -171,10 +173,7 @@ function indexFacesByEdge(mesh: TriangleMesh): Map<string, number[]> {
   for (let index = 0; index < Math.floor(mesh.indices.length / 3); index += 1) {
     const offset = index * 3;
     for (const [first, second] of [[0, 1], [1, 2], [2, 0]] as const) {
-      const key = edgeKeyForPoints(
-        pointAt(mesh, mesh.indices[offset + first]!),
-        pointAt(mesh, mesh.indices[offset + second]!),
-      );
+      const key = edgeKey(mesh.indices[offset + first]!, mesh.indices[offset + second]!);
       const entries = edges.get(key);
       if (entries) entries.push(index); else edges.set(key, [index]);
     }
@@ -191,7 +190,7 @@ function isSharp(first: Vector, second: Vector, degrees: number): boolean {
   return Math.acos(Math.max(-1, Math.min(1, dot(first, second)))) * 180 / Math.PI >= degrees;
 }
 
-function edgeKeyForPoints(first: Vector, second: Vector): string { return `${first.join(',')}|${second.join(',')}` < `${second.join(',')}|${first.join(',')}` ? `${first.join(',')}|${second.join(',')}` : `${second.join(',')}|${first.join(',')}`; }
+function edgeKey(first: number, second: number): string { return first < second ? `${first}:${second}` : `${second}:${first}`; }
 function add(first: Vector, second: Vector): Vector { return [first[0] + second[0], first[1] + second[1], first[2] + second[2]]; }
 function subtract(first: Vector, second: Vector): Vector { return [first[0] - second[0], first[1] - second[1], first[2] - second[2]]; }
 function scale(vector: Vector, amount: number): Vector { return [vector[0] * amount, vector[1] * amount, vector[2] * amount]; }
