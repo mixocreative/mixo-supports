@@ -27,6 +27,7 @@ export function generationTransform(unit: PrintUnit): ModelTransform {
 
 /** Live support mesh for a unit in its local space, ready to render under the unit's parent group. */
 export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'preview' | 'export' = 'preview'): GeneratedSupportMesh {
+  if (unit.supports === undefined) return buildSupportMesh([], defaultSupportSettings);
   const settings = resolveSettings(unit.settings);
   const frame = generationTransform(unit);
   const contacts = unitContacts(unit).map((contact) => ({

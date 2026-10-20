@@ -38,9 +38,16 @@ describe('unit supports', () => {
     expect(unitSupportMesh(moved, 0).positions).toEqual(unitSupportMesh(unit, 0).positions);
   });
 
-  it('builds nothing without contacts and uses the current transform before first generation', () => {
+  it('builds nothing without contacts or after supports were removed', () => {
     expect(unitSupportMesh({ ...unit, placement: undefined, manual: [] }, 0).indices.length).toBe(0);
-    const manualOnly = { ...unit, placement: undefined, supports: undefined, transform: identityTransform, manual: [{ ...point('manual-a', 0), position: [0, 10, 0] as [number, number, number] }] };
+    expect(unitSupportMesh({ ...unit, supports: undefined }, 0).indices.length).toBe(0);
+  });
+
+  it('uses the current transform when manual-only supports have no stored frame', () => {
+    const manualOnly = {
+      ...unit, placement: undefined, supports: { kind: 'live', data: {} }, transform: identityTransform,
+      manual: [{ ...point('manual-a', 0), position: [0, 10, 0] as [number, number, number] }],
+    };
     expect(meshBounds(unitSupportMesh(manualOnly, 0)).min[1]).toBeCloseTo(0);
   });
 });
