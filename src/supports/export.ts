@@ -2,6 +2,7 @@ import { BufferAttribute, BufferGeometry, Group, Mesh, Vector3 } from 'three';
 import type { TriangleMesh } from '../analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
 import { applyTransform } from '../state/transform';
+import type { GeneratedSupportMesh } from './mesh';
 import { unitSupportMesh } from './unitSupports';
 
 export type ExportKind =
@@ -21,22 +22,31 @@ export interface ExportJob {
 }
 
 /** A single export group for the active unit or the whole scene, in plate space (y = 0 is the plate). */
-export function buildExportScene(scene: PrintScene, request: ExportRequest): Group {
+export function buildExportScene(scene: PrintScene, request: ExportRequest, meshes?: ReadonlyMap<string, GeneratedSupportMesh>): Group {
   const group = new Group();
-  for (const [unit, index] of unitsFor(scene, request.kind)) addUnit(group, unit, index, request.kind.endsWith('supports'));
+  for (const [unit, index] of unitsFor(scene, request.kind)) addUnit(group, unit, index, request.kind.endsWith('supports'), meshes);
   return group;
 }
 
-/** Download jobs: one per unit for the separate modes, otherwise one. Empty groups are skipped. */
-export function buildExportJobs(scene: PrintScene, request: ExportRequest): ExportJob[] {
+/** The units (with their scene index) an export of this kind includes. */
+export function exportUnits(scene: PrintScene, kind: ExportKind): [PrintUnit, number][] {
+  return unitsFor(scene, kind);
+}
+
+/**
+ * Download jobs: one per unit for the separate modes, otherwise one. Empty groups are skipped.
+ * `meshes` supplies prebuilt export-mode support meshes by unit id (the app builds them in a
+ * worker); missing ones are built here.
+ */
+export function buildExportJobs(scene: PrintScene, request: ExportRequest, meshes?: ReadonlyMap<string, GeneratedSupportMesh>): ExportJob[] {
   const suffix = request.kind.endsWith('supports') ? 'supports' : 'printable';
   if (request.kind === 'whole-printable') {
-    const group = buildExportScene(scene, request);
+    const group = buildExportScene(scene, request, meshes);
     return group.children.length === 0 ? [] : [{ fileName: `scene-${suffix}.stl`, group }];
   }
   const jobs = unitsFor(scene, request.kind).map(([unit, index]) => {
     const group = new Group();
-    addUnit(group, unit, index, suffix === 'supports');
+    addUnit(group, unit, index, suffix === 'supports', meshes);
     return { name: `${unit.name}-${suffix}`, group };
   }).filter((job) => job.group.children.length > 0);
   const names = uniqueFileNames(jobs.map((job) => job.name));
@@ -91,9 +101,9 @@ function unitsFor(scene: PrintScene, kind: ExportKind): [PrintUnit, number][] {
   return indexed;
 }
 
-function addUnit(group: Group, unit: PrintUnit, index: number, supportsOnly: boolean): void {
+function addUnit(group: Group, unit: PrintUnit, index: number, supportsOnly: boolean, meshes?: ReadonlyMap<string, GeneratedSupportMesh>): void {
   if (!supportsOnly) group.add(meshObject(applyTransform(unit.source, unit.transform), `${unit.name} model`));
-  const supports = unitSupportMesh(unit, index, 'export');
+  const supports = meshes?.get(unit.id) ?? unitSupportMesh(unit, index, 'export');
   if (supports.indices.length > 0) group.add(meshObject(applyTransform(supports, unit.transform), `${unit.name} supports`));
 }
 

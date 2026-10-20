@@ -4,14 +4,16 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Object3D } from 'three';
 import { labelForIndex } from './analysis/mesh';
 import { isCurrentPlacement } from './analysis/placement';
-import type { PlacementWorkerRequest, PlacementWorkerResponse, SupportPoint } from './analysis/types';
+import type { PlacementWorkerProgress, PlacementWorkerRequest, PlacementWorkerResponse, SupportPoint } from './analysis/types';
+import ProgressBar, { type ProgressTask } from './components/ProgressBar';
+import { SupportMeshClient, type MeshProgress } from './workers/meshClient';
 import ObjectViewport, { acceptModelFile, type EditMode, type GizmoMode } from './components/ObjectViewport';
 import SettingsPanel from './components/SettingsPanel';
 import { createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
 import { importGltfUnits, importStlUnit, placeImportedUnits, type ImportedMesh } from './state/import';
 import { emptyScene, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, type ModelTransform } from './state/transform';
-import { buildExportJobs, encodeStl, type ExportKind } from './supports/export';
+import { buildExportJobs, encodeStl, exportUnits, type ExportKind } from './supports/export';
 import { meshBounds, type GeneratedSupportMesh } from './supports/mesh';
 import { applyPreset, defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings, type SettingKey } from './supports/settings';
 import { resolveSettings, unitContacts, unitSupportMesh } from './supports/unitSupports';
@@ -69,18 +71,62 @@ export default function App() {
     return selected.length > 0 ? selected : current.units;
   }, []);
 
-  // Support meshes are derived from scene state; units that did not change keep their cached mesh.
-  const meshCache = useRef(new WeakMap<PrintUnit, { index: number; mesh: GeneratedSupportMesh }>());
-  const supportMeshes = useMemo(() => {
-    const meshes = new Map<string, GeneratedSupportMesh>();
-    scene.units.forEach((unit, index) => {
-      const cached = meshCache.current.get(unit);
-      const mesh = cached && cached.index === index ? cached.mesh : unitSupportMesh(unit, index);
-      meshCache.current.set(unit, { index, mesh });
-      meshes.set(unit.id, mesh);
+  // ---- Progress ------------------------------------------------------------------------
+  // Long jobs run in workers; each reports progress here so the viewport can show it.
+  const [tasks, setTasks] = useState<ReadonlyMap<string, ProgressTask>>(new Map());
+  const setTask = useCallback((key: string, task: ProgressTask | undefined) => setTasks((current) => {
+    const next = new Map(current);
+    if (task) next.set(key, task); else next.delete(key);
+    return next;
+  }), []);
+  const unitName = useCallback((unitId: string) => {
+    const index = sceneRef.current.units.findIndex((unit) => unit.id === unitId);
+    const unit = sceneRef.current.units[index];
+    return unit ? `${resolveSettings(unit.settings).labelText || labelForIndex(index)} ${unit.name}` : 'unit';
+  }, []);
+
+  // ---- Support meshes ------------------------------------------------------------------
+  // Built in a worker from scene state; a unit keeps showing its previous mesh until the new
+  // one arrives, and units that did not change are not rebuilt.
+  const [supportMeshes, setSupportMeshes] = useState<ReadonlyMap<string, GeneratedSupportMesh>>(new Map());
+  const requested = useRef(new Map<string, { unit: PrintUnit; index: number }>());
+  const meshClient = useRef<SupportMeshClient | null>(null);
+  const client = useCallback(() => {
+    meshClient.current ??= new SupportMeshClient(
+      (progress: MeshProgress) => setTask(`mesh:${progress.mode}:${progress.unitId}`, {
+        label: `${progress.mode === 'export' ? 'Preparing export for' : 'Building supports for'} ${unitName(progress.unitId)}`,
+        stage: progress.stage,
+        fraction: progress.fraction,
+      }),
+      (mode, unitId) => setTask(`mesh:${mode}:${unitId}`, undefined),
+    );
+    return meshClient.current;
+  }, [setTask, unitName]);
+  useEffect(() => () => meshClient.current?.dispose(), []);
+
+  useEffect(() => {
+    const ids = new Set(scene.units.map((unit) => unit.id));
+    for (const id of [...requested.current.keys()]) if (!ids.has(id)) requested.current.delete(id);
+    setSupportMeshes((current) => {
+      const kept = new Map([...current].filter(([id]) => ids.has(id)));
+      return kept.size === current.size ? current : kept;
     });
-    return meshes;
-  }, [scene.units]);
+    scene.units.forEach((unit, index) => {
+      const previous = requested.current.get(unit.id);
+      if (previous && previous.unit === unit && previous.index === index) return;
+      requested.current.set(unit.id, { unit, index });
+      if (unit.supports === undefined) {
+        const empty = unitSupportMesh(unit, index);
+        setSupportMeshes((current) => new Map(current).set(unit.id, empty));
+        return;
+      }
+      setTask(`mesh:preview:${unit.id}`, { label: `Building supports for ${unitName(unit.id)}`, stage: 'Queued', fraction: 0 });
+      client().build(unit, index, 'preview').then((mesh) => {
+        if (!mesh || requested.current.get(unit.id)?.unit !== unit) return;
+        setSupportMeshes((current) => new Map(current).set(unit.id, mesh));
+      }, (error: Error) => setStatus(`Support building failed: ${error.message}`));
+    });
+  }, [scene.units, client, setTask, unitName]);
 
   // ---- Placement worker ------------------------------------------------------------
   const workerRef = useRef<Worker | null>(null);
@@ -88,12 +134,19 @@ export default function App() {
   const revision = useRef(0);
   const jobId = useRef(0);
 
-  const onPlacement = useCallback((response: PlacementWorkerResponse) => {
+  const onPlacement = useCallback((response: PlacementWorkerResponse | PlacementWorkerProgress) => {
     const job = pending.current.get(response.unitId);
+    if (response.kind === 'progress') {
+      if (job?.revision === response.revision) {
+        setTask(`placement:${response.unitId}`, { label: `Placing contacts on ${unitName(response.unitId)}`, stage: response.stage, fraction: response.fraction });
+      }
+      return;
+    }
     const latest = job ? { [response.unitId]: job.revision } : {};
     if (!job || !isCurrentPlacement(latest, response)) return;
     pending.current.delete(response.unitId);
     setPendingCount(pending.current.size);
+    setTask(`placement:${response.unitId}`, undefined);
     if (!sceneRef.current.units.some((unit) => unit.id === response.unitId)) return;
     const toLocal = (point: SupportPoint): SupportPoint => ({
       ...point,
@@ -117,13 +170,14 @@ export default function App() {
     ] });
     const unit = sceneRef.current.units.find((candidate) => candidate.id === response.unitId);
     setStatus(`${unit?.name ?? 'Unit'}: ${points.length} automatic contacts generated.`);
-  }, [dispatch]);
+  }, [dispatch, setTask, unitName]);
 
   const worker = useCallback(() => {
     if (!workerRef.current) {
       const created = new Worker(new URL('./workers/supportWorker.ts', import.meta.url), { type: 'module' });
-      created.onmessage = (event: MessageEvent<PlacementWorkerResponse>) => onPlacement(event.data);
+      created.onmessage = (event: MessageEvent<PlacementWorkerResponse | PlacementWorkerProgress>) => onPlacement(event.data);
       created.onerror = () => {
+        for (const id of pending.current.keys()) setTask(`placement:${id}`, undefined);
         pending.current.clear();
         setPendingCount(0);
         setStatus('Support analysis failed; adjust the model or settings and generate again.');
@@ -133,7 +187,7 @@ export default function App() {
       workerRef.current = created;
     }
     return workerRef.current;
-  }, [onPlacement]);
+  }, [onPlacement, setTask]);
   useEffect(() => () => workerRef.current?.terminate(), []);
 
   const generate = useCallback((unitIds?: readonly string[]) => {
@@ -156,10 +210,11 @@ export default function App() {
       pending.current.set(unit.id, job);
       const request: PlacementWorkerRequest = { jobId: ++jobId.current, unitId: unit.id, revision: job.revision, mesh, settings: toPlacementSettings(settings) };
       worker().postMessage(request, [mesh.positions.buffer, mesh.indices.buffer]);
+      setTask(`placement:${unit.id}`, { label: `Placing contacts on ${unitName(unit.id)}`, stage: 'Queued', fraction: 0 });
     }
     setPendingCount(pending.current.size);
     setStatus(`Analysing overhangs for ${units.length} unit${units.length === 1 ? '' : 's'}.`);
-  }, [targets, worker]);
+  }, [setTask, targets, unitName, worker]);
 
   const regenerateTimer = useRef<number | undefined>(undefined);
   const regenerateQueue = useRef(new Set<string>());
@@ -295,9 +350,24 @@ export default function App() {
     setStatus(`Removed ${hits.length} support${hits.length === 1 ? '' : 's'} within ${radius} mm.`);
   }, [dispatch, removeContact]);
 
-  const runExport = (kind: ExportKind) => {
-    const jobs = buildExportJobs(sceneRef.current, { kind });
-    if (jobs.length === 0) return setStatus(kind.startsWith('active') && !sceneRef.current.activeUnitId ? 'Select a unit to export.' : 'Nothing to export for this mode.');
+  const [exporting, setExporting] = useState(false);
+  const runExport = async (kind: ExportKind) => {
+    const current = sceneRef.current;
+    const units = exportUnits(current, kind);
+    if (units.length === 0) return setStatus(kind.startsWith('active') && !current.activeUnitId ? 'Select a unit to export.' : 'Nothing to export for this mode.');
+    setExporting(true);
+    setStatus('Preparing export at full resolution.');
+    let meshes: Map<string, GeneratedSupportMesh>;
+    try {
+      const built = await Promise.all(units.map(async ([unit, index]) => [unit.id, await client().build(unit, index, 'export')] as const));
+      meshes = new Map(built.filter((entry): entry is readonly [string, GeneratedSupportMesh] => entry[1] !== undefined));
+    } catch (error) {
+      setExporting(false);
+      return setStatus(`Export failed: ${error instanceof Error ? error.message : 'support building error'}`);
+    }
+    setExporting(false);
+    const jobs = buildExportJobs(current, { kind }, meshes);
+    if (jobs.length === 0) return setStatus('Nothing to export for this mode.');
     for (const job of jobs) {
       const url = URL.createObjectURL(new Blob([encodeStl(job.group)], { type: 'model/stl' }));
       const anchor = document.createElement('a');
@@ -437,6 +507,7 @@ export default function App() {
           onErase={onErase}
         />
         {isDraggingOver && <div className="viewport-drop-overlay">Drop to import</div>}
+        <ProgressBar tasks={[...tasks.values()]} />
         <div className={`viewport-object-status${editMode === 'off' ? '' : ' editing'}`}>
           {editMode === 'off' ? (activeUnit ? activeUnit.name : 'Nothing selected') : `Editing supports on ${activeUnit?.name ?? 'unit'}`}
         </div>
@@ -455,7 +526,7 @@ export default function App() {
         />
         <section className="export">
           <h3>Export STL</h3>
-          {EXPORTS.map((entry) => <button key={entry.kind} onClick={() => runExport(entry.kind)} disabled={scene.units.length === 0}>{entry.label}</button>)}
+          {EXPORTS.map((entry) => <button key={entry.kind} onClick={() => void runExport(entry.kind)} disabled={scene.units.length === 0 || exporting}>{entry.label}</button>)}
           <p className="help">Exports match the viewport at full resolution. Source models are never changed.</p>
         </section>
       </aside>

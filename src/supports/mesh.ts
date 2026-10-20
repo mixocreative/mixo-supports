@@ -1,4 +1,4 @@
-import type { TriangleMesh } from '../analysis/types';
+import type { ProgressCallback, TriangleMesh } from '../analysis/types';
 import { layoutBfont } from './bfont';
 import type { LiveSupportSettings } from './settings';
 import { cornerBisectors, raftOutline } from './raft';
@@ -58,6 +58,8 @@ export interface SupportMeshOptions {
   remesh?: RemeshTarget;
   /** Cached scatter remesh of `model` (voxel Spacing / 4) for Safe Distance; built on demand otherwise. */
   scatterRemesh?: RemeshTarget;
+  /** Called as the build advances (normals, columns, trees, structures). */
+  onProgress?: ProgressCallback;
 }
 
 export interface Column {
@@ -98,14 +100,25 @@ export function buildSupportMesh(
   const footprints: Point2[] = [];
   const anchors: { id: string; position: Vector }[] = [];
   const ray = options.model ? lineTarget(options.model, settings, options.remesh) : undefined;
-  if (ray) contacts = contacts.map((contact) => ({ ...contact, normal: ray.normal(contact) }));
+  const progress = options.onProgress;
+  const total = Math.max(contacts.length, 1);
+  if (ray) {
+    contacts = contacts.map((contact, index) => {
+      if (index % 8 === 0) progress?.(0.5 * index / total, 'Sampling surface normals');
+      return { ...contact, normal: ray.normal(contact) };
+    });
+  }
+  progress?.(0.5, 'Laying out trees');
 
-  const layout = settings.scatterAutoTree ? autoTreeLayout(contacts, options.model, settings, options.scatterRemesh) : undefined;
+  const layout = settings.scatterAutoTree
+    ? autoTreeLayout(contacts, options.model, settings, options.scatterRemesh, progress && ((fraction) => progress(0.5 + 0.1 * fraction, 'Laying out trees')))
+    : undefined;
   const trees = layout && !tipOnly ? layout.trees : [];
   const treeOf = new Map<number, number>();
   trees.forEach((tree, t) => tree.members.forEach((member) => treeOf.set(member, t)));
 
   contacts.forEach((contact, index) => {
+    if (index % 8 === 0) progress?.(0.6 + 0.25 * index / total, 'Building columns');
     if (treeOf.has(index) || layout?.removed.has(index)) return;
     const column = contactColumn(contact, settings, ray, tipOnly);
     if (!column) return;
@@ -140,7 +153,9 @@ export function buildSupportMesh(
       columns.push({ x, z, bottom: footTop, top: y });
       footprints.push([x, z]);
     }
+    progress?.(0.85, 'Building trees');
     for (const tree of trees) addTree(builder, tree, contacts, settings, ray, segments, columns, footprints);
+    progress?.(0.9, 'Building raft and bracing');
     if (settings.trussEnabled) addBraces(builder, columns, settings, segments);
     addStructures(builder, footprints, settings, options, segments, raftTop);
   }

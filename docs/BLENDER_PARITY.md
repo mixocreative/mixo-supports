@@ -38,6 +38,6 @@ Reference: Resin UV `SLA Supports` panel in `S:/ai/mixo3dtool/mixo3d` (`properti
 - Interior contact positions differ, because Geometry Nodes uses a random seed. Counts, edge anchors and spacing match.
 
 - Neck normals, landings and Safe Distance use a port of OpenVDB's VolumeToMesh (adaptivity 0.1), evaluated lazily per 8³ leaf. It matches Blender vertex for vertex on the probe model; where a model's faces pass exactly through voxel nodes, Blender's zero-area faces carry float-noise normals that cannot be reproduced. What earlier looked like pillar repulsion was this remesh normal blending.
-- First generation on a large model costs a few seconds more (about 2.5 s on 77k triangles); later rebuilds reuse the cached remesh. Safe Distance above 0 builds a second remesh at Spacing / 4 (about 7 s on that model).
+- Placement and support building run in web workers, so the page never freezes; a progress bar over the viewport names the job, its stage and the percentage. First support build on a 77k-triangle model takes about 1.5 s, later rebuilds reuse the worker's cached remesh. Safe Distance above 0 builds a second remesh at Spacing / 4 (a few seconds on that model, cached afterwards).
 - Generate does not re-pack units on the plate (Blender `ARRANGE_GAP` packing). Imports are placed 3 mm apart, so rafts of neighbouring units can overlap until a unit is moved.
 - `autoSnap` and `scatterSafeDistance` are stored but have no web effect yet.

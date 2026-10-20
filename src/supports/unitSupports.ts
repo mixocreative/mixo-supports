@@ -1,5 +1,5 @@
 import { labelForIndex } from '../analysis/mesh';
-import type { SupportPoint } from '../analysis/types';
+import type { ProgressCallback, SupportPoint } from '../analysis/types';
 import { composeContacts } from '../analysis/placement';
 import type { PrintUnit, SupportSettings } from '../state/project';
 import { applyTransform, inverseTransformMesh, transformDirection, transformPoint, type ModelTransform } from '../state/transform';
@@ -76,7 +76,7 @@ function cachedRemesh(unit: PrintUnit, frame: ModelTransform, model: ReturnType<
 }
 
 /** Live support mesh for a unit in its local space, ready to render under the unit's parent group. */
-export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'preview' | 'export' = 'preview'): GeneratedSupportMesh {
+export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'preview' | 'export' = 'preview', onProgress?: ProgressCallback): GeneratedSupportMesh {
   if (unit.supports === undefined) return buildSupportMesh([], defaultSupportSettings);
   const settings = resolveSettings(unit.settings);
   const frame = generationTransform(unit);
@@ -95,6 +95,8 @@ export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'previ
     remesh: cachedRemesh(unit, frame, model, settings.pillarDiameter),
     ...(settings.scatterAutoTree && settings.scatterSafeDistance !== 0 ? { scatterRemesh: cachedRemesh(unit, frame, model, 0, settings.scatterSpacing / 4) } : {}),
     ...(settings.raftEnabled || settings.roofMode !== 'OFF' ? { raftOutline: cachedOutline(unit, frame, model, settings) } : {}),
+    ...(onProgress ? { onProgress } : {}),
   });
+  onProgress?.(1, 'Done');
   return inverseTransformMesh(mesh, frame);
 }

@@ -5,6 +5,7 @@ import type {
   PlacementSettings,
   SupportPoint,
   SupportPointSource,
+  ProgressCallback,
   TriangleMesh,
 } from './types';
 
@@ -27,16 +28,20 @@ interface Candidate {
  * Blender samples the Poisson field and minima on an OpenVDB remesh of the model; the web uses
  * the exact model, so those two streams match Blender statistically, not point for point.
  */
-export function generatePlacement(mesh: TriangleMesh, settings: PlacementSettings): PlacementResult {
+export function generatePlacement(mesh: TriangleMesh, settings: PlacementSettings, onProgress?: ProgressCallback): PlacementResult {
   validateSettings(settings);
+  onProgress?.(0, 'Finding overhangs');
   const downward = classifyDownwardFaces(mesh, settings.overhangAngleDegrees);
   const regions = partitionRegions(mesh, downward);
   const regionOf = new Map<number, number>();
   for (const region of regions) for (const face of region.faceIndices) regionOf.set(face, region.id);
 
   const candidates: Candidate[] = [];
+  onProgress?.(0.15, 'Scattering contacts');
   if (settings.includeDownward !== false) candidates.push(...poissonOnOverhangs(mesh, settings, regionOf));
+  onProgress?.(0.5, 'Finding lowest points');
   if (settings.includeIslands) candidates.push(...plateauMinima(mesh, settings), ...islandMinima(mesh, settings));
+  onProgress?.(0.75, 'Reinforcing edges');
   if (settings.reinforceEdges !== false) {
     for (const anchor of edgeAnchors(mesh, {
       overhangAngleDegrees: settings.overhangAngleDegrees,
@@ -48,6 +53,7 @@ export function generatePlacement(mesh: TriangleMesh, settings: PlacementSetting
     }
   }
 
+  onProgress?.(0.95, 'Collecting contacts');
   const seen = new Set<string>();
   const points: SupportPoint[] = [];
   for (const candidate of candidates) {

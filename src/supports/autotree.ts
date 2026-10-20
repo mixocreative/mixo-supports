@@ -34,7 +34,13 @@ export interface AutoTreeLayout {
  *    horizontal branch, and is dropped (members become plain columns) below Spacing;
  * 4. ManualPoints snaps every point, junctions included, onto the nearest model surface.
  */
-export function autoTreeLayout(contacts: readonly TreeContact[], model: TriangleMesh | undefined, settings: Readonly<LiveSupportSettings>, scatterRemesh?: RemeshTarget): AutoTreeLayout {
+export function autoTreeLayout(
+  contacts: readonly TreeContact[],
+  model: TriangleMesh | undefined,
+  settings: Readonly<LiveSupportSettings>,
+  scatterRemesh?: RemeshTarget,
+  onProgress?: (fraction: number) => void,
+): AutoTreeLayout {
   const spacing = settings.scatterSpacing;
   const faces = model ? triangles(model) : [];
   const blockers = model ? blockerFaces(model, settings.scatterAngle * Math.PI / 180) : [];
@@ -46,6 +52,7 @@ export function autoTreeLayout(contacts: readonly TreeContact[], model: Triangle
   const removed = new Set<number>();
   const normals = new Map<string, Vector>();
   const eligible = contacts.map((contact, index) => {
+    if (index % 8 === 0) onProgress?.(index / Math.max(contacts.length, 1));
     const from: Vector = [contact.position[0], contact.position[1] - spacing / 32, contact.position[2]];
     if (!remesh) return contact.tree !== false && !hitsBelow(blockers, from, contact.position[1]);
     const [outward, inward] = remeshBlockers(remesh, from, contact.position[1], safe, limit, normals);

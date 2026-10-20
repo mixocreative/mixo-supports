@@ -182,6 +182,34 @@ h3 { font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: .06
   pointer-events: none;
 }
 
+/* ---- Background work ----------------------------------------------------- */
+.progress {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.progress-track { height: 2px; background: var(--line); overflow: hidden; }
+.progress-fill { height: 100%; background: var(--red); transition: width .25s ease-out; }
+.progress-caption {
+  position: absolute;
+  left: 18px;
+  top: 38px;
+  margin: 0;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 12px;
+  letter-spacing: .02em;
+}
+.progress-stage { color: var(--muted); }
+.progress-percent { font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
+@media (prefers-reduced-motion: reduce) { .progress-fill { transition: none; } }
+
 /* ---- Settings ------------------------------------------------------------ */
 .settings { border: 0; margin: 0; padding: 0; min-width: 0; }
 .settings:disabled { opacity: .5; }
