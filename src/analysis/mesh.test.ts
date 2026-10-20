@@ -37,6 +37,19 @@ describe('classifyDownwardFaces', () => {
     expect(classifyDownwardFaces(slopedFace, 45)).toEqual([true]);
     expect(classifyDownwardFaces(slopedFace, 44)).toEqual([false]);
   });
+
+  it('does not classify a vertical face as downward at 90 degrees', () => {
+    const verticalFace: TriangleMesh = {
+      positions: new Float32Array([
+        0, 0, 0,
+        0, 1, 0,
+        0, 0, 1,
+      ]),
+      indices: new Uint32Array([0, 1, 2]),
+    };
+
+    expect(classifyDownwardFaces(verticalFace, 90)).toEqual([false]);
+  });
 });
 
 describe('partitionRegions', () => {

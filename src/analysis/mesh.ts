@@ -36,7 +36,9 @@ export function classifyDownwardFaces(
       abX * acY - abY * acX,
     );
 
-    downward.push(normalLength > 0 && normalY / normalLength <= threshold + 1e-12);
+    downward.push(
+      normalLength > 0 && normalY < 0 && normalY / normalLength <= threshold + 1e-12,
+    );
   }
 
   return downward;
