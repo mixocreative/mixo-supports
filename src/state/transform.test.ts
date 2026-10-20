@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Object3D } from 'three';
-import { applyTransform, transformFromObject } from './transform';
+import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformDirection, transformFromObject, transformPoint, unitWorldTransform } from './transform';
 import type { TriangleMesh } from '../analysis/types';
 
 const source: TriangleMesh = {
@@ -45,5 +45,25 @@ describe('transformFromObject', () => {
       position: [1, 2, 3],
       rotation: [0, 0.5, 0],
     });
+  });
+});
+
+describe('unit parenting', () => {
+  const transform = { position: [10, 5, -3] as [number, number, number], rotation: [0.3, 1.1, -0.4] as [number, number, number] };
+
+  it('round-trips points and directions between local and world space', () => {
+    const local: [number, number, number] = [1, 2, 3];
+    const world = transformPoint(transform, local);
+    inverseTransformPoint(transform, world).forEach((value, axis) => expect(value).toBeCloseTo(local[axis]!));
+    const direction = transformDirection(transform, [0, -1, 0]);
+    expect(Math.hypot(...direction)).toBeCloseTo(1);
+    inverseTransformDirection(transform, direction).forEach((value, axis) => expect(value).toBeCloseTo([0, -1, 0][axis]!));
+  });
+
+  it('moves support and model vertices with the same unit parent transform', () => {
+    const unit = { transform };
+    const modelVertex: [number, number, number] = [0.5, 0.25, -1];
+    const supportVertex: [number, number, number] = [0.5, 0.25, -1];
+    expect(unitWorldTransform(unit, supportVertex)).toEqual(unitWorldTransform(unit, modelVertex));
   });
 });
