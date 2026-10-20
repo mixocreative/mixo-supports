@@ -133,6 +133,17 @@ describe('automatic contact ids', () => {
   });
 });
 
+describe('erase radius (MIXO_ManualPoints)', () => {
+  const point = (x: number, id = `auto-${x * 100}_100_0`) => ({ id, regionId: 0, position: [x, 1, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], source: 'interior' as const });
+
+  it('removes every contact within the erase radius of a removal marker, manual ones included', () => {
+    const auto = [point(0), point(1), point(3)];
+    const manual = [{ ...point(0.5, 'manual-a') }];
+    expect(composeContacts(auto, manual, ['auto-0_100_0'], 1.5).map((p) => p.id)).toEqual(['auto-300_100_0']);
+    expect(composeContacts(auto, manual, ['auto-0_100_0']).map((p) => p.id)).toEqual(['auto-100_100_0', 'auto-300_100_0', 'manual-a']);
+  });
+});
+
 describe('placement toggles', () => {
   it('can skip downward interior sampling and edge reinforcement', () => {
     const result = generatePlacement(squareOverhang, { ...settings, includeDownward: false, reinforceEdges: false });

@@ -13,7 +13,7 @@ export function resolveSettings(settings: SupportSettings | undefined): LiveSupp
 
 /** Final contacts in unit-local space: automatic minus suppressed, plus manual. */
 export function unitContacts(unit: PrintUnit): SupportContact[] {
-  return composeContacts(unit.placement?.points ?? [], unit.manual, unit.suppressed)
+  return composeContacts(unit.placement?.points ?? [], unit.manual, unit.suppressed, resolveSettings(unit.settings).eraseRadius)
     .map(({ id, position, normal }) => ({ id, position, normal }));
 }
 

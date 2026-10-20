@@ -64,14 +64,29 @@ export function generatePlacement(mesh: TriangleMesh, settings: PlacementSetting
   };
 }
 
-/** Final contacts for one unit: automatic contacts minus suppressed IDs, then manual additions. */
+/**
+ * Final contacts for one unit, as MIXO_ManualPoints builds them: automatic contacts plus manual
+ * additions, then every contact within `eraseRadius` of a removal marker is deleted. Markers
+ * are the removed automatic IDs, which encode their positions; with no radius only the exact
+ * IDs are hidden.
+ */
 export function composeContacts(
   auto: readonly SupportPoint[],
   manual: readonly SupportPoint[],
   suppressed: readonly string[],
+  eraseRadius = 0,
 ): SupportPoint[] {
   const hidden = new Set(suppressed);
-  return [...auto.filter((point) => !hidden.has(point.id)), ...manual];
+  const markers = suppressed.map(positionFromId).filter((point): point is Vector => point !== undefined);
+  const erased = (point: SupportPoint) => hidden.has(point.id)
+    || (eraseRadius > 0 && markers.some((marker) => distance(marker, point.position) < eraseRadius));
+  return [...auto, ...manual].filter((point) => !erased(point));
+}
+
+/** Position encoded in an automatic contact ID (0.01 mm grid), if it is one. */
+export function positionFromId(id: string): Vector | undefined {
+  const match = /^auto-(-?\d+)_(-?\d+)_(-?\d+)$/.exec(id);
+  return match ? [Number(match[1]) / 100, Number(match[2]) / 100, Number(match[3]) / 100] : undefined;
 }
 
 /** Worker results are accepted only for the newest generation request of their unit. */
