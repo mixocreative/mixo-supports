@@ -1,5 +1,5 @@
 import type { TriangleMesh } from '../analysis/types';
-import { GLYPH_ROWS, layoutText } from './font';
+import { layoutBfont } from './bfont';
 import type { LiveSupportSettings } from './settings';
 import { cornerBisectors, raftPerimeter } from './raft';
 import { buildTreeTopology } from './tree';
@@ -406,7 +406,7 @@ function addStructures(
     const perimeter = options.raftPerimeter ?? (options.model ? raftPerimeter(options.model, expand, settings.voxelResolution) : []);
     const floorRing = perimeter.length >= 3 ? perimeter : ring(raftRadius);
     addRaft(builder, floorRing, settings);
-    if (settings.labelEnabled && options.labelText) addLabel(builder, floorRing, settings, options.labelText);
+    if (settings.labelEnabled && options.labelText) addLabel(builder, raftLabelCandidates(floorRing, settings), settings, options.labelText);
   }
 
   if (settings.roofMode === 'ROOF') {
@@ -462,13 +462,8 @@ function addStructures(
  * Height (leaning outward the same way). Blender raises the band quads whose face index
  * (N + 1 + k) mod 3 is at most 1, so every third segment stays a gap for resin drainage.
  */
-function addRaft(builder: MeshBuilder, input: readonly Point2[], settings: Readonly<LiveSupportSettings>): void {
-  // Bisectors assume counter-clockwise winding in Blender's plan (x, -z).
-  const planArea = input.reduce((sum, p, i) => {
-    const q = input[(i + 1) % input.length]!;
-    return sum + p[0] * -q[1] - q[0] * -p[1];
-  }, 0);
-  const polygon = planArea < 0 ? [...input].reverse() : input;
+function addRaft(builder: MeshBuilder, polygon: readonly Point2[], settings: Readonly<LiveSupportSettings>): void {
+  // Corner order is kept as given: Blender numbers the rim band (and its gaps) from it.
   const slope = Math.tan(settings.raftWallAngle * Math.PI / 180);
   const bisectors = cornerBisectors(polygon);
   const shifted = (amount: number, y: number) => polygon.map(([x, z], i) => [x + bisectors[i]![0] * amount, y, z + bisectors[i]![1] * amount] as Vector);
@@ -497,6 +492,16 @@ function addRaft(builder: MeshBuilder, input: readonly Point2[], settings: Reado
     builder.strip(corners.map((c) => outerBottom[c]!), corners.map((c) => innerBottom[c]!), corners.map((c) => outerTop[c]!), corners.map((c) => innerTop[c]!));
     builder.end();
   }
+}
+
+/** Raft vertices MIXO_Label can anchor to: bottom ring, flared floor top and rim tops. */
+function raftLabelCandidates(polygon: readonly Point2[], settings: Readonly<LiveSupportSettings>): Vector[] {
+  const bisectors = cornerBisectors(polygon);
+  const slope = Math.tan(settings.raftWallAngle * Math.PI / 180);
+  const ring = (amount: number, y: number) => polygon.map(([x, z], i) => [x + bisectors[i]![0] * amount, y, z + bisectors[i]![1] * amount] as Vector);
+  const out = [...ring(0, 0), ...ring(-settings.raftFloorThickness * slope, settings.raftFloorThickness)];
+  if (settings.raftWallHeight > settings.raftFloorThickness) out.push(...ring(-settings.raftWallHeight * slope, settings.raftWallHeight));
+  return out;
 }
 
 function addColumns(builder: MeshBuilder, points: readonly Point2[], bottom: number, top: number, radius: number, segments: number): void {
@@ -536,39 +541,43 @@ function addLoop(builder: MeshBuilder, part: SupportPart, points: readonly Vecto
 }
 
 /**
- * Unit letter on its own pad, as Blender's MIXO_Label: centred on the raft vertex nearest
- * the footprint's front-right corner (Blender max x / min y), a frustum from the plate to
- * Wall Height whose sides flare outward going up at the Wall Angle, letters on top.
+ * MIXO_Label: the anchor is the support vertex at or below Pad Height (= Wall Height) nearest
+ * the bbox corner (Blender max x / min y = web max x / max z). The pad is a frustum from the
+ * plate to Pad Height whose bottom is the letters' bbox plus 2 x Margin and whose top is wider
+ * by Pad Height x tan(Wall Angle) on each side; the letters (Blender's Bfont, String to Curves
+ * size = Letter Size, filled) are extruded Emboss Height up from the pad top. Pad and letters
+ * are centred on anchor + offset.
  */
-function addLabel(builder: MeshBuilder, raftRing: readonly Point2[], settings: Readonly<LiveSupportSettings>, text: string): void {
-  const { runs, columns } = layoutText(text);
-  if (columns === 0) return;
-  const pixel = settings.labelSize / GLYPH_ROWS;
-  const width = columns * pixel + settings.labelMargin * 2;
-  const depth = settings.labelSize + settings.labelMargin * 2;
-  const maxX = Math.max(...raftRing.map(([x]) => x));
-  const maxZ = Math.max(...raftRing.map(([, z]) => z));
-  const anchor = raftRing.reduce((best, point) => (
-    Math.hypot(point[0] - maxX, point[1] - maxZ) < Math.hypot(best[0] - maxX, best[1] - maxZ) ? point : best
-  ));
+function addLabel(builder: MeshBuilder, candidates: readonly Vector[], settings: Readonly<LiveSupportSettings>, text: string): void {
+  // Resin UV passes Size / LABEL_CAP_RATIO (0.686) so a capital is exactly Letter Size tall.
+  const glyphs = layoutBfont(text, settings.labelSize / 0.686);
+  if (glyphs.length === 0) return;
+  const padHeight = settings.raftWallHeight;
+  const below = candidates.filter((point) => point[1] <= padHeight + 0.01);
+  if (below.length === 0) return;
+  const maxX = Math.max(...below.map((p) => p[0]));
+  const maxZ = Math.max(...below.map((p) => p[2]));
+  const anchor = below.reduce((best, p) => (Math.hypot(p[0] - maxX, p[2] - maxZ) < Math.hypot(best[0] - maxX, best[2] - maxZ) ? p : best));
+  const xs = glyphs.flatMap((glyph) => glyph.vertices.map((v) => v[0]));
+  const ys = glyphs.flatMap((glyph) => glyph.vertices.map((v) => v[1]));
+  const [minX, maxGX, minY, maxGY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const width = maxGX - minX + 2 * settings.labelMargin;
+  const depth = maxGY - minY + 2 * settings.labelMargin;
+  // Blender offsets are in its X/Y plane; web z is Blender -y.
   const cx = anchor[0] + settings.labelOffsetX;
-  const cz = anchor[1] - settings.labelOffsetY;
-  const padTop = settings.raftWallHeight > 0 ? settings.raftWallHeight : settings.raftFloorThickness;
-  const flare = padTop * Math.tan(settings.raftWallAngle * Math.PI / 180);
+  const cz = anchor[2] - settings.labelOffsetY;
+  const flare = padHeight * Math.tan(settings.raftWallAngle * Math.PI / 180);
   const rect = (halfX: number, halfZ: number, y: number): Vector[] => [
     [cx - halfX, y, cz - halfZ], [cx + halfX, y, cz - halfZ], [cx + halfX, y, cz + halfZ], [cx - halfX, y, cz + halfZ],
   ];
-
   builder.begin('label');
-  builder.loft([rect(width / 2, depth / 2, 0), rect(width / 2 + flare, depth / 2 + flare, padTop)], true);
+  builder.loft([rect(width / 2, depth / 2, 0), rect(width / 2 + flare, depth / 2 + flare, padHeight)], true);
   builder.end();
-  const x0 = cx - width / 2 + settings.labelMargin;
-  const z0 = cz - depth / 2 + settings.labelMargin;
-  for (const run of runs) {
-    const x = x0 + run.column * pixel;
-    const z = z0 + run.row * pixel;
+  // Glyph (gx, gy) in Blender's text plane maps to web (x, -y), centred on the anchor.
+  const toWeb = ([gx, gy]: readonly number[], y: number): Vector => [cx + gx! - (minX + maxGX) / 2, y, cz - (gy! - (minY + maxGY) / 2)];
+  for (const glyph of glyphs) {
     builder.begin('label');
-    builder.box([x, padTop - 0.01, z], [x + run.length * pixel, padTop + settings.labelHeight, z + pixel]);
+    builder.extrudeGlyph(glyph.vertices.map((v) => toWeb(v, padHeight - 0.01)), glyph.vertices.map((v) => toWeb(v, padHeight + settings.labelHeight)), glyph.triangles);
     builder.end();
   }
 }
@@ -712,6 +721,28 @@ class MeshBuilder {
     const last = ob!.length - 1;
     this.indices.push(ob![0]!, ot![0]!, it![0]!, ob![0]!, it![0]!, ib![0]!);
     this.indices.push(ob![last]!, ib![last]!, it![last]!, ob![last]!, it![last]!, ot![last]!);
+  }
+
+  /** Closed solid from a triangulated glyph: bottom and top copies joined along boundary edges. */
+  extrudeGlyph(bottom: readonly Vector[], top: readonly Vector[], triangles: readonly number[][]): void {
+    const b = bottom.map((point) => this.vertex(point));
+    const t = top.map((point) => this.vertex(point));
+    const uses = new Map<string, number>();
+    for (const [i, j, k] of triangles) {
+      this.indices.push(t[i!]!, t[j!]!, t[k!]!);
+      this.indices.push(b[i!]!, b[k!]!, b[j!]!);
+      for (const [p, q] of [[i!, j!], [j!, k!], [k!, i!]]) {
+        const key = p! < q! ? `${p}:${q}` : `${q}:${p}`;
+        uses.set(key, (uses.get(key) ?? 0) + 1);
+      }
+    }
+    for (const [i, j, k] of triangles) {
+      for (const [p, q] of [[i!, j!], [j!, k!], [k!, i!]]) {
+        const key = p! < q! ? `${p}:${q}` : `${q}:${p}`;
+        if (uses.get(key) !== 1) continue;
+        this.indices.push(t[q!]!, t[p!]!, b[p!]!, t[q!]!, b[p!]!, b[q!]!);
+      }
+    }
   }
 
   /** Closed tube through a polyline with per-node radius (Blender Curve to Tube, flat caps). */

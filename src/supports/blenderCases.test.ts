@@ -21,6 +21,7 @@ interface BlenderCase {
   raft: { reach_bottom: number; reach_top: number; z_max: number } | null;
   braces?: [number, number, number, number][][];
   classes?: { co: Vec3; class: 'edge' | 'vertical' | 'face' }[];
+  label?: { min: Vec3; max: Vec3; verts: number }[];
 }
 
 const CASES = (reference as unknown as { cases: Record<string, BlenderCase> }).cases;
@@ -29,7 +30,8 @@ const KEYS: Record<string, keyof LiveSupportSettings> = {
   touch_diameter: 'touchDiameter', touch_depth: 'touchDepth', neck_diameter: 'neckDiameter', neck_length: 'neckLength',
   max_neck_angle: 'maxNeckAngle', pillar_diameter: 'pillarDiameter', base_diameter: 'baseDiameter', base_height: 'baseHeight',
   raft_enabled: 'raftEnabled', truss_enabled: 'trussEnabled', truss_angle: 'trussAngle', truss_spacing: 'trussSpacing',
-  truss_min_height: 'trussMinHeight', truss_top_spacing: 'trussTopSpacing', truss_distance_limit: 'trussDistanceLimit', truss_diameter: 'trussDiameter', raft_expand_width: 'raftExpandWidth', raft_floor_thickness: 'raftFloorThickness',
+  label_enabled: 'labelEnabled', label_size: 'labelSize', label_height: 'labelHeight', label_margin: 'labelMargin',
+  label_offset_x: 'labelOffsetX', label_offset_y: 'labelOffsetY', truss_min_height: 'trussMinHeight', truss_top_spacing: 'trussTopSpacing', truss_distance_limit: 'trussDistanceLimit', truss_diameter: 'trussDiameter', raft_expand_width: 'raftExpandWidth', raft_floor_thickness: 'raftFloorThickness',
   raft_wall_height: 'raftWallHeight', raft_wall_thickness: 'raftWallThickness', raft_wall_angle: 'raftWallAngle',
   voxel_resolution: 'voxelResolution', resolution: 'resolution', lift_height: 'liftHeight',
 };
@@ -189,6 +191,43 @@ describe.each(Object.entries(CASES))('Blender case %s', (name, blender) => {
     anchors.forEach((anchor, index) => {
       expect(Math.hypot(...[0, 1, 2].map((axis) => anchor.position[axis]! - expected[index]![axis]!))).toBeLessThan(1e-3);
     });
+  });
+
+  it('builds the letter label pad and Bfont letters like MIXO_Label', () => {
+    if (!blender.label || blender.label.length === 0) return;
+    const text = (blender.settings.label_text as string) || 'A';
+    const labelled = buildSupportMesh(contacts, settings, { mode: 'export', model: spike(settings.liftHeight), labelText: text });
+    const parts = labelled.components.filter((component) => component.part === 'label');
+    const box = (list: typeof parts) => {
+      const min: Vec3 = [Infinity, Infinity, Infinity];
+      const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+      for (const component of list) {
+        for (let offset = component.start; offset < component.start + component.count; offset += 1) {
+          const v = labelled.indices[offset]! * 3;
+          const blenderPoint = [labelled.positions[v]!, -labelled.positions[v + 2]!, labelled.positions[v + 1]!];
+          for (let axis = 0; axis < 3; axis += 1) {
+            min[axis] = Math.min(min[axis]!, blenderPoint[axis]!);
+            max[axis] = Math.max(max[axis]!, blenderPoint[axis]!);
+          }
+        }
+      }
+      return { min, max };
+    };
+    const pad = box(parts.slice(0, 1));
+    const letters = box(parts.slice(1));
+    const blenderPad = blender.label.find((piece) => piece.verts === 8)!;
+    const blenderLetters = blender.label.filter((piece) => piece.verts !== 8);
+    const letterMin = [0, 1, 2].map((axis) => Math.min(...blenderLetters.map((piece) => piece.min[axis]!)));
+    const letterMax = [0, 1, 2].map((axis) => Math.max(...blenderLetters.map((piece) => piece.max[axis]!)));
+    for (let axis = 0; axis < 3; axis += 1) {
+      // Pad and letter sizes are exact. The anchor snaps to the nearest raft perimeter vertex,
+      // and OpenVDB's level-set renormalisation moves those vertices ~0.06 mm at 16 voxels,
+      // which can pick a neighbouring vertex: position agrees within 0.4 mm.
+      expect(Math.abs((pad.max[axis]! - pad.min[axis]!) - (blenderPad.max[axis]! - blenderPad.min[axis]!))).toBeLessThan(0.02);
+      expect(Math.abs((letters.max[axis]! - letters.min[axis]!) - (letterMax[axis]! - letterMin[axis]!))).toBeLessThan(0.03);
+      expect(Math.abs(pad.min[axis]! - blenderPad.min[axis]!)).toBeLessThan(0.4);
+      expect(Math.abs(letters.min[axis]! - letterMin[axis]!)).toBeLessThan(0.4);
+    }
   });
 
   it('matches the neck top radius (Upper Ø) of the vertical apex column', () => {

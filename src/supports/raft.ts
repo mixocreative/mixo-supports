@@ -71,26 +71,44 @@ export function raftPerimeter(model: TriangleMesh, expand: number, voxelResoluti
     return n === 0 ? node(i, j) : [sx / n, sz / n];
   };
 
-  const loops = traceContours(f0, width, height).map((cells) => cells.map(([i, j]) => dual(i, j)));
+  const loops = traceContours(f0, width, height);
   if (loops.length === 0) return [];
-  // Blender X/Y plan is web (x, -z): orient counter-clockwise there.
-  let outer = loops.reduce((best, loop) => (Math.abs(area(loop)) > Math.abs(area(best)) ? loop : best));
-  if (area(outer.map(([x, z]) => [x, -z] as Point2)) < 0) outer = [...outer].reverse();
+  const outerCells = loops.reduce((best, loop) => {
+    const size = (cells: [number, number][]) => Math.abs(area(cells.map(([i, j]) => dual(i, j))));
+    return size(loop) > size(best) ? loop : best;
+  });
+  // OpenVDB emits points leaf by leaf (8^3 blocks in x, y, z order), x-major inside a leaf, so
+  // the perimeter curve starts at the loop vertex with the smallest such key (Blender X/Y; web
+  // cell (i, j) spans Blender y cell -(j0 + j + 1)). Blender's loop then runs clockwise.
+  const key = ([i, j]: [number, number]) => {
+    const x = i0 + i;
+    const y = -(j0 + j + 1);
+    return [Math.floor(x / 8), Math.floor(y / 8), ((x % 8) + 8) % 8, ((y % 8) + 8) % 8];
+  };
+  const before = (a: number[], b: number[]) => a.findIndex((value, index) => value !== b[index]) >= 0 && a[a.findIndex((value, index) => value !== b[index])]! < b[a.findIndex((value, index) => value !== b[index])]!;
+  let start = 0;
+  outerCells.forEach((cell, index) => { if (before(key(cell), key(outerCells[start]!))) start = index; });
+  let outer = [...outerCells.slice(start), ...outerCells.slice(0, start)].map(([i, j]) => dual(i, j));
+  if (area(outer.map(([x, z]) => [x, -z] as Point2)) > 0) outer = [outer[0]!, ...outer.slice(1).reverse()];
   return resampleClosed(outer, 3 * voxelResolution);
 }
 
-/** Interior unit bisector at each corner of a counter-clockwise (Blender plan) polygon, in web (x, z). */
+/**
+ * Blender Face Corner Angle bisector at each corner, in web (x, z): the next-edge direction
+ * rotated about the n-gon normal by half the interior angle (reflex corners handled). The
+ * normal follows the winding in Blender's plan (x, y = -z), so either orientation works.
+ */
 export function cornerBisectors(polygon: readonly Point2[]): Point2[] {
-  return polygon.map((point, index) => {
-    const previous = polygon[(index - 1 + polygon.length) % polygon.length]!;
-    const next = polygon[(index + 1) % polygon.length]!;
-    // Work in Blender plan coordinates (x, y = -z), where the polygon is counter-clockwise.
-    const a = normalize2([previous[0] - point[0], -(previous[1] - point[1])]);
-    const b = normalize2([next[0] - point[0], -(next[1] - point[1])]);
+  const plan = polygon.map(([x, z]) => [x, -z] as Point2);
+  const up = area(plan) >= 0 ? 1 : -1;
+  return plan.map((point, index) => {
+    const previous = plan[(index - 1 + plan.length) % plan.length]!;
+    const next = plan[(index + 1) % plan.length]!;
+    const a = normalize2([previous[0] - point[0], previous[1] - point[1]]);
+    const b = normalize2([next[0] - point[0], next[1] - point[1]]);
     let angle = Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1])));
-    if (a[0] * b[1] - a[1] * b[0] > 0) angle = 2 * Math.PI - angle;
-    // Rotate b about +Z by half the corner angle.
-    const half = angle / 2;
+    if ((a[0] * b[1] - a[1] * b[0]) * up > 0) angle = 2 * Math.PI - angle;
+    const half = (angle / 2) * up;
     const rx = b[0] * Math.cos(half) - b[1] * Math.sin(half);
     const ry = b[0] * Math.sin(half) + b[1] * Math.cos(half);
     return [rx, -ry];

@@ -43,6 +43,9 @@ CASES = {
     "truss_custom": {"truss_enabled": True, "truss_angle": math.radians(30), "truss_spacing": 1.0,
                      "truss_min_height": 4.0, "truss_top_spacing": 0.5, "truss_distance_limit": 3.0, "truss_diameter": 0.5},
     "truss_heavy": {"preset": "HEAVY", "truss_enabled": True},
+    "label_default": {"label_enabled": True},
+    "label_custom": {"label_enabled": True, "label_text": "B", "label_size": 4.0, "label_height": 1.0, "label_margin": 0.5,
+                     "label_offset_x": 1.0, "label_offset_y": -2.0},
 }
 
 bpy.ops.wm.read_homefile(use_empty=True)
@@ -187,11 +190,16 @@ for name, overrides in CASES.items():
     raft = max(pieces, key=len) if sp.raft_enabled else None
     brace_size = 2 * sp.resolution
     braces = [rings_of(p, sp.resolution) for p in pieces if p is not raft and len(p) == brace_size]
-    columns = [describe_piece(p) for p in pieces if p is not raft and len(p) != brace_size]
+    label_top = sp.raft_wall_height + sp.label_height + 0.02
+    labels = [p for p in pieces if p is not raft and len(p) != brace_size and len(p) % sp.resolution != 0
+              and min(v[2] for v in p) > -1e-4 and max(v[2] for v in p) <= label_top]
+    label = [{"min": [round(min(v[a] for v in p), 4) for a in range(3)], "max": [round(max(v[a] for v in p), 4) for a in range(3)], "verts": len(p)} for p in labels]
+    columns = [describe_piece(p) for p in pieces if p is not raft and len(p) != brace_size and not any(p is q for q in labels)]
     settings = {k: (math.degrees(v) if "angle" in k else v) for k, v in
-                ((k, getattr(sp, k)) for k in list(properties._SUPPORT_FIELDS) + ["lift_height", "preset"])
-                if not isinstance(v, str) or k == "preset"}
-    results[name] = {"settings": settings, "contacts": contacts, "classes": classes, "spheres": spheres, "columns": columns, "braces": braces,
+                ((k, getattr(sp, k)) for k in list(properties._SUPPORT_FIELDS) + ["lift_height", "preset", "label_enabled", "label_text",
+                 "label_size", "label_height", "label_margin", "label_offset_x", "label_offset_y"])
+                if not isinstance(v, str) or k in ("preset", "label_text")}
+    results[name] = {"settings": settings, "contacts": contacts, "classes": classes, "spheres": spheres, "columns": columns, "braces": braces, "label": label,
                      "raft": describe_raft(raft) if raft else None}
     print("CASE", name, len(contacts), "contacts", len(columns), "columns")
 
