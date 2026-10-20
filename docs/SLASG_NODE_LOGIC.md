@@ -118,17 +118,21 @@ How Resin UV builds live supports. This was read node by node from the Geometry 
 
 Points → SLASG_Line → SLASG_Truss2 (when Bracing is on) → SLASG_Realizer, joined with SLASG_Raft (when the raft is on). Roof and Cage go through SLASG_Ceiling and SLASG_Column; these are documented separately.
 
-## Web status (see `src/supports/mesh.ts`)
+## Web status (see `src/supports/`, verified by `src/supports/blenderCases.test.ts`)
 
 | Rule | Status |
 |---|---|
-| Clamped neck, tip, depth, foot, raft profile | matches (harness) |
-| Neck normal blending from the SDF remesh | not yet; the exact face normal is used |
-| Transition segment (Middle Ø long) and bend fillet (radius Middle Ø/2, 3 divisions) | not yet |
-| Landing on the model (raycast) | not yet; every pillar goes to the plate |
-| Truss pairing and zigzag levels | different algorithm; to port |
-| Tree diameter, sqrt area rule | linear; to fix |
-| Raft perimeter: voxel contour at Expand + 0.1, resampled to 3 × res | convex hull + Expand; to port |
-| Edge candidates (endpoints, perpendicular inset, 0.9 × spacing dedup) | approximated; to port exactly |
-| Erase radius suppression and surface snap | exact-ID suppression; to port |
-| Label font (Bfont) | 5×7 bitmap; to replace |
+| Column curve (tip, neck along clamped normal, Middle Ø transition, bend fillet, pillar, foot, no clamping) | exact: every ring of every column in every case within 0.01 mm |
+| Landing on the model (ray cast from b, inverted neck above 2 × Neck Length) | implemented (exact model as target) |
+| Tree diameter, sqrt area rule | implemented |
+| Bracing (pairing, validation, zigzag levels, trim) | exact: brace for brace |
+| Raft perimeter (voxel contour at Expand + 0.1, 3 × res resample, OpenVDB start vertex, clockwise) | within 0.008 mm at 64 voxels, 0.06 mm at 16 (OpenVDB renormalisation) |
+| Raft floor flare, rim inset, gapped wall runs | implemented as Blender |
+| Edge anchors (`rebuild_edge_candidates`) | exact: point for point, same order |
+| Poisson interior | Blender's algorithm on the exact model; counts match, positions differ (OpenVDB remesh input) |
+| Island minima, incl. remesh plateau grid | emulated: leaf-block centres exact, totals within ~15% |
+| Erase-radius suppression | implemented |
+| Label (Bfont glyphs, Size / 0.686, pad frustum, anchor) | sizes exact; position within 0.4 mm |
+| Neck normals blended by the SDF remesh near edges | not emulated: exact face normals; affects necks within about one voxel of an edge |
+| Roof / Cage (Ceiling plates, StraightSkeleton, bands, cage rings) | not yet ported: old approximation |
+| Auto Tree topology (scatter branch) | not yet ported: approximation |
