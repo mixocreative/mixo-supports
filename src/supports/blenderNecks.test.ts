@@ -5,9 +5,8 @@ import { RemeshTarget } from './remesh';
 /**
  * Neck directions against Resin UV for every contact of every column case
  * (tools/blender-parity/probe.py): the remesh normal of the contact's class, clamped to
- * Connection Angle, must put the neck end on Blender's foot centre. The few misses are
- * contacts where the probe pyramid's 45° faces pass exactly through voxel nodes and Blender's
- * zero-area faces carry float-noise normals.
+ * Connection Angle, must put the neck end on Blender's foot centre. The four misses (0.022 mm
+ * each, touch_depth_0_2) sit where Blender's zero-area faces carry float-noise normals.
  */
 type V = [number, number, number];
 interface Case {
@@ -51,6 +50,6 @@ it('puts necks where Resin UV does for nearly every contact', () => {
     }
   }
   expect(total).toBe(476);
-  expect(matched).toBeGreaterThanOrEqual(461);
-  expect(error).toBeLessThan(3.5);
+  expect(matched).toBeGreaterThanOrEqual(472);
+  expect(error).toBeLessThan(0.2);
 });

@@ -48,6 +48,7 @@ export class RemeshTarget {
   private readonly adaptivity: number;
   private readonly distance: SignedDistance;
   private readonly values = new Map<string, number>();
+  private readonly exactValues = new Map<string, number>();
   private readonly signCache = new Map<string, number>();
   private readonly leaves = new Map<string, Leaf>();
   private readonly prims = new Map<string, Prim | null>();
@@ -71,7 +72,11 @@ export class RemeshTarget {
     this.voxel = Math.fround(voxel ?? Math.max(Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2000, pillarDiameter));
     this.adaptivity = Math.fround(adaptivity);
     this.bottom = min[1] - 2 * this.voxel;
-    this.distance = new SignedDistance(model);
+    // meshToVolume measures distance in index space from single-precision index points.
+    const h = this.voxel;
+    const indexPositions = new Float32Array(model.positions.length);
+    model.positions.forEach((v, n) => { indexPositions[n] = Math.fround(Math.fround(v) / h); });
+    this.distance = new SignedDistance({ positions: indexPositions, indices: model.indices });
   }
 
   /** Face normal of the nearest remesh face (`face` points) or nearest-edge normal (`edge` points). */
@@ -183,21 +188,61 @@ export class RemeshTarget {
 
   // ---- OpenVDB internals, Blender index space ----
 
-  private value(c: Index): number {
+  /** Exact signed distance at node c (single precision), as meshToVolume voxelizes it. */
+  private exact(c: Index): number {
     const k = key(c);
-    let value = this.values.get(k);
+    let value = this.exactValues.get(k);
     if (value === undefined) {
-      const h = this.voxel;
-      value = Math.fround(this.distance.at([c[0] * h, c[2] * h, -c[1] * h]));
-      // Nodes on the surface count as inside, as Blender's grid classifies them.
-      if (Math.abs(value) < 1e-6) value = 0;
-      this.values.set(k, value);
+      value = Math.fround(Math.fround(this.distance.at([c[0], c[2], -c[1]])) * this.voxel);
+      this.exactValues.set(k, value);
     }
     return value;
   }
 
+  /**
+   * Grid value at node c. meshToVolume keeps a band of 3 voxels each side (beyond it the
+   * background, +-3 voxels) and renormalizes it: values move in by 0.8 voxel, take the min
+   * with one Godunov reinitialization step, and move back by 0.8 voxel - 1e-7.
+   */
+  private value(c: Index): number {
+    const k = key(c);
+    let value = this.values.get(k);
+    if (value !== undefined) return value;
+    const h = this.voxel;
+    const band = Math.fround(3 * h);
+    const offset = Math.fround(0.8 * h);
+    const back = Math.fround(offset - Math.fround(1e-7));
+    const shifted = (n: Index) => {
+      const d = this.exact(n);
+      return Math.abs(d) < band ? Math.fround(d - offset) : (d < 0 ? -band : band);
+    };
+    const d = this.exact(c);
+    if (Math.abs(d) >= band) {
+      value = d < 0 ? -band : band;
+    } else {
+      const phi = shifted(c);
+      const [i, j, kk] = c;
+      const up = [shifted([i + 1, j, kk]) - phi, shifted([i, j + 1, kk]) - phi, shifted([i, j, kk + 1]) - phi].map(Math.fround);
+      const down = [phi - shifted([i - 1, j, kk]), phi - shifted([i, j - 1, kk]), phi - shifted([i, j, kk - 1])].map(Math.fround);
+      let normSq = 0;
+      for (let axis = 0; axis < 3; axis += 1) {
+        normSq += phi > 0
+          ? Math.max(Math.max(down[axis]!, 0) ** 2, Math.min(up[axis]!, 0) ** 2)
+          : Math.max(Math.min(down[axis]!, 0) ** 2, Math.max(up[axis]!, 0) ** 2);
+      }
+      normSq = Math.fround(normSq);
+      const diff = Math.fround(Math.fround(Math.sqrt(normSq)) / h - 1);
+      const sign = Math.fround(phi / Math.fround(Math.sqrt(phi * phi + normSq)));
+      const renormalized = Math.fround(phi - Math.fround(h * sign * diff));
+      value = Math.fround(Math.min(phi, renormalized) + back);
+    }
+    this.values.set(k, value);
+    return value;
+  }
+
+  /** OpenVDB isInsideValue: strictly below the iso value 0. */
   private inside(c: Index): boolean {
-    return this.value(c) <= 0;
+    return this.value(c) < 0;
   }
 
   /** The eight corner values in OpenVDB order. */
@@ -207,7 +252,7 @@ export class RemeshTarget {
   }
 
   private rawSigns(c: Index): number {
-    return this.cornerValues(c).reduce((signs, v, n) => signs | (v <= 0 ? 1 << n : 0), 0);
+    return this.cornerValues(c).reduce((signs, v, n) => signs | (v < 0 ? 1 << n : 0), 0);
   }
 
   /** Cell signs after OpenVDB's ambiguous-face correction. */
@@ -300,10 +345,9 @@ export class RemeshTarget {
     const k = key(origin);
     let result = this.emptyLeaves.get(k);
     if (result === undefined) {
-      const h = this.voxel;
       const centre: Index = [origin[0] + LEAF / 2, origin[1] + LEAF / 2, origin[2] + LEAF / 2];
-      const d = this.distance.at([centre[0] * h, centre[2] * h, -centre[1] * h]);
-      result = Math.abs(d) <= (LEAF / 2 + 2) * Math.sqrt(3) * h;
+      const d = this.distance.at([centre[0], centre[2], -centre[1]]);
+      result = Math.abs(d) <= (LEAF / 2 + 2) * Math.sqrt(3);
       this.emptyLeaves.set(k, result);
     }
     return result;
