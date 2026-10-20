@@ -7,3 +7,39 @@ export interface Region {
   id: number;
   faceIndices: number[];
 }
+
+export type SupportPointSource = 'interior' | 'physical-boundary' | 'sharp-ridge' | 'island';
+
+export interface SupportPoint {
+  id: string;
+  regionId: number;
+  position: [number, number, number];
+  normal: [number, number, number];
+  source: SupportPointSource;
+}
+
+export interface PlacementSettings {
+  overhangAngleDegrees: number;
+  spacing: number;
+  edgeInset: number;
+  sharpEdgeAngleDegrees: number;
+  includeIslands: boolean;
+}
+
+export interface PlacementResult {
+  points: SupportPoint[];
+  regions: Region[];
+  contactPositions: Float32Array;
+  contactNormals: Float32Array;
+}
+
+export interface PlacementWorkerRequest {
+  jobId: number;
+  mesh: TriangleMesh;
+  settings: PlacementSettings;
+}
+
+export interface PlacementWorkerResponse {
+  jobId: number;
+  result: PlacementResult;
+}
