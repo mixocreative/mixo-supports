@@ -78,6 +78,7 @@ describe('support settings', () => {
     const settings = updateSetting(updateSetting(defaultSupportSettings, 'scatterSpacing', 4), 'scatterIslands', false);
     expect(toPlacementSettings(settings)).toEqual({
       overhangAngleDegrees: 45, spacing: 4, edgeInset: 0.5, sharpEdgeAngleDegrees: 45, includeIslands: false,
+      includeDownward: true, reinforceEdges: true,
     });
   });
 });

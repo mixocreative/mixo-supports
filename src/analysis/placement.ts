@@ -34,8 +34,8 @@ export function generatePlacement(mesh: TriangleMesh, settings: PlacementSetting
 
   for (const region of regions) {
     if (settings.includeIslands) candidates.push(lowestIsland(region, faces));
-    candidates.push(...sampleRegionInterior(region, faces, settings.spacing));
-    candidates.push(...sampleReinforcement(region, faces, downward, facesByEdge, settings));
+    if (settings.includeDownward !== false) candidates.push(...sampleRegionInterior(region, faces, settings.spacing));
+    if (settings.reinforceEdges !== false) candidates.push(...sampleReinforcement(region, faces, downward, facesByEdge, settings));
   }
 
   const points = deduplicate(candidates, settings.spacing * 0.35);
@@ -45,6 +45,24 @@ export function generatePlacement(mesh: TriangleMesh, settings: PlacementSetting
     contactPositions: new Float32Array(points.flatMap((point) => point.position)),
     contactNormals: new Float32Array(points.flatMap((point) => point.normal)),
   };
+}
+
+/** Final contacts for one unit: automatic contacts minus suppressed IDs, then manual additions. */
+export function composeContacts(
+  auto: readonly SupportPoint[],
+  manual: readonly SupportPoint[],
+  suppressed: readonly string[],
+): SupportPoint[] {
+  const hidden = new Set(suppressed);
+  return [...auto.filter((point) => !hidden.has(point.id)), ...manual];
+}
+
+/** Worker results are accepted only for the newest generation request of their unit. */
+export function isCurrentPlacement(
+  latest: Readonly<Record<string, number>>,
+  response: { unitId: string; revision: number },
+): boolean {
+  return latest[response.unitId] === response.revision;
 }
 
 function validateSettings(settings: PlacementSettings): void {

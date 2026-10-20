@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generatePlacement } from './placement';
+import { composeContacts, generatePlacement, isCurrentPlacement } from './placement';
 import type { PlacementSettings, TriangleMesh } from './types';
 
 const squareOverhang: TriangleMesh = {
@@ -91,5 +91,43 @@ describe('generatePlacement', () => {
 
     expect(result.regions).toHaveLength(2);
     expect(boundaryPoints).not.toHaveLength(0);
+  });
+});
+
+describe('composeContacts', () => {
+  const auto = [
+    { id: 'auto-0', regionId: 0, position: [0, 1, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], source: 'interior' as const },
+    { id: 'auto-1', regionId: 0, position: [1, 1, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], source: 'interior' as const },
+  ];
+  const manual = { id: 'manual-a', regionId: -1, position: [2, 1, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], source: 'interior' as const };
+
+  it('drops suppressed automatic contacts and appends manual contacts', () => {
+    expect(composeContacts(auto.slice(0, 1), [manual], ['auto-0'])).toEqual([manual]);
+    expect(composeContacts(auto, [manual], ['auto-0']).map((point) => point.id)).toEqual(['auto-1', 'manual-a']);
+  });
+
+  it('keeps suppression after a deterministic regeneration', () => {
+    const first = generatePlacement(squareOverhang, settings);
+    const suppressed = [first.points[0]!.id];
+    const regenerated = generatePlacement(squareOverhang, settings);
+
+    expect(composeContacts(regenerated.points, [], suppressed).some((point) => point.id === suppressed[0])).toBe(false);
+    expect(composeContacts(regenerated.points, [], suppressed)).toHaveLength(first.points.length - 1);
+  });
+});
+
+describe('placement toggles', () => {
+  it('can skip downward interior sampling and edge reinforcement', () => {
+    const result = generatePlacement(squareOverhang, { ...settings, includeDownward: false, reinforceEdges: false });
+    expect(result.points.map((point) => point.source)).toEqual(['island']);
+  });
+});
+
+describe('isCurrentPlacement', () => {
+  it('accepts only the latest revision for a unit', () => {
+    const latest = { 'unit-a': 3 };
+    expect(isCurrentPlacement(latest, { unitId: 'unit-a', revision: 3 })).toBe(true);
+    expect(isCurrentPlacement(latest, { unitId: 'unit-a', revision: 2 })).toBe(false);
+    expect(isCurrentPlacement(latest, { unitId: 'unit-b', revision: 3 })).toBe(false);
   });
 });

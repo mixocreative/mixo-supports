@@ -276,6 +276,8 @@ export function toPlacementSettings(settings: Readonly<LiveSupportSettings>): Pl
     edgeInset: settings.scatterSpacing * 0.125,
     sharpEdgeAngleDegrees: settings.scatterRidgeAngle,
     includeIslands: settings.scatterIslands,
+    includeDownward: settings.scatterFacingDown,
+    reinforceEdges: settings.reinforceOverhangEdges,
   };
 }
 

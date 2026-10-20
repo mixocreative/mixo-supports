@@ -16,13 +16,14 @@ The required router probe was attempted at session start but returned no provide
 
 After every implementation task, record: the completed requirement; changed files; exact commands and results; `git status --short`; adopted Blender behavior; risks or failures; and exactly one next executable step. A successor must first read this file, `docs/superpowers/specs/2026-10-20-web-resin-support-parity-design.md`, the active implementation plan, and current Git status.
 
+## Completed task log
+- Task 2 models the complete live Blender support settings and Light/Middle/Heavy presets (Task 1 third-review follow-up committed separately as `a00e520`).
+
 ## Latest completed step
 
-- Requirement: Task 2 models the complete live Blender support settings and Light/Middle/Heavy presets (Task 1 third-review follow-up committed separately as `a00e520`).
-- Changed files: `src/supports/settings.ts`, `src/supports/settings.test.ts`, `docs/HANDOFF.md`. `src/analysis/types.ts` intentionally unchanged: `PlacementSettings` is derived via `toPlacementSettings`, and `LiveSupportSettings` is a type alias assignable to `SupportSettings` (verified with a throwaway `tsc` check).
-- Commands and results: `npm test -- src/supports/settings.test.ts` RED ("Cannot find module './settings'"); after implementation `npm test` passed (7 files, 33 tests); `npx tsc --noEmit` passed; `git diff --check` clean.
-- Property coverage: every `_SUPPORT_FIELDS` key plus `lift_height`, `erase_radius`, `roof_mode`, `roof_gap`, `cage_*`, `label_*`, `preset`, `reinforce_overhang_edges` (camelCase). Excluded: `role`, `proxy`, `markers`, `edge_candidates`, `target*`, `show_model` (proxy/original-copy semantics; printable vs supports-only export replaces it). Angles stored in degrees (Blender radians). `preview_mode` menu mapped to `FULL`/`ONLY_TIP`.
-- Adopted Blender behavior: preset values from `slasg_map.PRESETS` (Support Spacing not preset-owned, preset never resets it); editing a preset-owned key flips to `CUSTOM`; numeric edits clamp to Blender min/max and integer props round; roof/cage mode defaults (`ROOF_DEFAULTS`) seed only on first use, tracked in `roofSeededModes`. `toPlacementSettings` keeps the prototype's `edgeInset = spacing * 0.125` since Blender has no edge-inset setting.
-- Risk: `reduceScene` `settings/set` still accepts any JSON object; it does not yet validate against `LiveSupportSettings`. `scatterFacingDown`, `reinforceOverhangEdges`, `scatterSafeDistance`, `autoSnap` have no effect on web placement yet.
-- Git state: Task 2 files committed; untracked user-owned `dist/`, `node_modules/`, `parity-audit-reply.log` left alone.
-- Next step: execute Task 3 in `docs/superpowers/plans/2026-10-20-web-resin-support-parity.md`: write failing contact-composition and tree-topology tests.
+- Requirement: Task 3 preserves placement edits across regeneration and adds deterministic tree topology.
+- Changed files: `src/analysis/placement.ts`, `src/analysis/placement.test.ts`, `src/analysis/types.ts`, `src/workers/supportWorker.ts`, `src/supports/tree.ts`, `src/supports/tree.test.ts`, `src/supports/settings.ts`, `src/supports/settings.test.ts`, `docs/HANDOFF.md`.
+- Commands and results: focused tests RED (`composeContacts is not a function`, missing `./tree`, toggles ignored); then `npm test` passed (8 files, 39 tests); `npx tsc --noEmit` passed; `git diff --check` clean.
+- Decisions: `composeContacts(auto, manual, suppressed)` = auto minus suppressed IDs, then manual. Auto IDs are deterministic so suppression survives regeneration (fixture: square overhang, one suppressed gives count - 1). `PlacementSettings` gained optional `includeDownward`/`reinforceEdges` (Blender Downward Faces / Reinforce Overhang Edges) mapped by `toPlacementSettings`. Worker request/response carry `unitId` + `revision`; `isCurrentPlacement(latest, response)` rejects stale results. Tree: anchors join the first cluster whose XZ centroid is within `mergeDistance`; junction = lowest anchor minus `branchDescent` at the centroid; trunk to plate; clusters whose junction would hit `floor` stay pillars. Fixture: 3 anchors give 1 junction, 2 branches, 1 trunk, 1 pillar.
+- Risk: tree layout is a web approximation of SLASG Auto Tree, compared by topology only.
+- Next step: Task 4 - write failing support mesh tests in `src/supports/mesh.test.ts`.

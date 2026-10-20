@@ -24,6 +24,10 @@ export interface PlacementSettings {
   edgeInset: number;
   sharpEdgeAngleDegrees: number;
   includeIslands: boolean;
+  /** Blender "Downward Faces"; defaults to true. */
+  includeDownward?: boolean;
+  /** Blender "Reinforce Overhang Edges"; defaults to true. */
+  reinforceEdges?: boolean;
 }
 
 export interface PlacementResult {
@@ -35,11 +39,15 @@ export interface PlacementResult {
 
 export interface PlacementWorkerRequest {
   jobId: number;
+  unitId: string;
+  revision: number;
   mesh: TriangleMesh;
   settings: PlacementSettings;
 }
 
 export interface PlacementWorkerResponse {
   jobId: number;
+  unitId: string;
+  revision: number;
   result: PlacementResult;
 }

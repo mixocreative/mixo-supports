@@ -9,6 +9,8 @@ const workerScope = self as unknown as {
 workerScope.onmessage = ({ data }: MessageEvent<PlacementWorkerRequest>) => {
   const response: PlacementWorkerResponse = {
     jobId: data.jobId,
+    unitId: data.unitId,
+    revision: data.revision,
     result: generatePlacement(data.mesh, data.settings),
   };
   workerScope.postMessage(response, [
