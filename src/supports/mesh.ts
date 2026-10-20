@@ -1,10 +1,11 @@
 import type { TriangleMesh } from '../analysis/types';
 import { GLYPH_ROWS, layoutText } from './font';
 import type { LiveSupportSettings } from './settings';
+import { cornerBisectors, raftPerimeter } from './raft';
 import { buildTreeTopology } from './tree';
 
 type Vector = [number, number, number];
-type Point2 = [number, number];
+export type Point2 = [number, number];
 
 /** A support contact in build-plate space: Y is up and the plate is y = 0 (mm). */
 export interface SupportContact {
@@ -41,9 +42,11 @@ export interface SupportMeshOptions {
   model?: TriangleMesh;
   /** Unit letter embossed on the raft when labels are enabled. */
   labelText?: string;
+  /** Precomputed raft perimeter for `model` (it only depends on the model, Expand and voxels). */
+  raftPerimeter?: Point2[];
 }
 
-interface Column {
+export interface Column {
   x: number;
   z: number;
   bottom: number;
@@ -320,41 +323,53 @@ function neckDirection(normal: Vector, maxAngle: number): Vector {
   return [normal[0] / horizontal * sin, -Math.cos(limit), normal[2] / horizontal * sin];
 }
 
-function addBraces(builder: MeshBuilder, columns: readonly Column[], settings: Readonly<LiveSupportSettings>, segments: number): void {
-  const radius = settings.trussDiameter / 2;
-  const slope = Math.tan(settings.trussAngle * Math.PI / 180);
-  const paired = new Set<string>();
-  columns.forEach((column, index) => {
-    if (column.top - column.bottom < settings.trussMinHeight) return;
-    let nearest = -1;
-    let nearestDistance = Infinity;
-    columns.forEach((other, otherIndex) => {
-      if (otherIndex === index || other.top - other.bottom < settings.trussMinHeight) return;
-      const distance = Math.hypot(other.x - column.x, other.z - column.z);
-      if (distance < nearestDistance) {
-        nearest = otherIndex;
-        nearestDistance = distance;
+/**
+ * SLASG_Truss2. Pillars (transition bottom down to Bottom Thickness) are sorted by Blender
+ * x + y; each pairs with its nearest later pillar. A valid pair (distance in (0.9 Middle Ø,
+ * Distance Limit], taller top above Minimum Height) gets a zigzag of braces from a 2 x Vy grid:
+ * row y joins the partner at level y + y mod 2 to the own pillar at level y + 1 - y mod 2,
+ * z = Bottom Thickness + level x rise + Spacing x (y + 1), rise = d tan(90° - angle); braces
+ * reaching above a pillar's top minus Top Spacing are dropped.
+ */
+export function trussSegments(columns: readonly Column[], settings: Readonly<LiveSupportSettings>): [Vector, Vector][] {
+  // Blender sorts by x + y (Z-up); web z is Blender -y.
+  const order = columns.map((column, index) => ({ column, index })).sort((a, b) => (a.column.x - a.column.z) - (b.column.x - b.column.z) || a.index - b.index).map(({ column }) => column);
+  const base = settings.baseHeight;
+  const rise = (d: number) => d * Math.tan(Math.PI / 2 - settings.trussAngle * Math.PI / 180);
+  const segments: [Vector, Vector][] = [];
+  order.forEach((own, i) => {
+    let partner: Column | undefined;
+    let distance = Infinity;
+    for (let k = i + 1; k < order.length; k += 1) {
+      const other = order[k]!;
+      const d = Math.hypot(other.x - own.x, other.z - own.z);
+      if (d < distance) {
+        distance = d;
+        partner = other;
       }
-    });
-    if (nearest < 0 || nearestDistance > settings.trussDistanceLimit || nearestDistance < settings.pillarDiameter) return;
-    const key = index < nearest ? `${index}:${nearest}` : `${nearest}:${index}`;
-    if (paired.has(key)) return;
-    paired.add(key);
-
-    const other = columns[nearest]!;
-    const rise = nearestDistance * slope;
-    const ceiling = Math.min(column.top, other.top) - settings.trussTopSpacing;
-    let y = Math.max(column.bottom, other.bottom) + settings.trussSpacing;
-    let forward = true;
-    while (y + rise <= ceiling) {
-      const [from, to] = forward ? [column, other] : [other, column];
-      builder.begin('brace');
-      builder.frustum([from.x, y, from.z], [to.x, y + rise, to.z], radius, radius, segments);
-      builder.end();
-      y += Math.max(settings.trussSpacing, rise);
-      forward = !forward;
+    }
+    if (!partner) return;
+    const top = Math.max(own.top, partner.top);
+    if (!(distance > 0.9 * settings.pillarDiameter && top > settings.trussMinHeight && distance <= settings.trussDistanceLimit)) return;
+    const step = rise(distance);
+    const rows = Math.ceil(top / (step + settings.trussSpacing)) + 1;
+    for (let y = 0; y < rows; y += 1) {
+      const partnerY = base + (y + (y % 2)) * step + settings.trussSpacing * (y + 1);
+      const ownY = base + (y + 1 - (y % 2)) * step + settings.trussSpacing * (y + 1);
+      if (partnerY > partner.top - settings.trussTopSpacing || ownY > own.top - settings.trussTopSpacing) continue;
+      segments.push([[partner.x, partnerY, partner.z], [own.x, ownY, own.z]]);
     }
   });
+  return segments;
+}
+
+function addBraces(builder: MeshBuilder, columns: readonly Column[], settings: Readonly<LiveSupportSettings>, segments: number): void {
+  const radius = settings.trussDiameter / 2;
+  for (const [from, to] of trussSegments(columns, settings)) {
+    builder.begin('brace');
+    builder.frustum(from, to, radius, radius, segments);
+    builder.end();
+  }
 }
 
 function addStructures(
@@ -388,25 +403,9 @@ function addStructures(
   const slope = Math.tan(settings.raftWallAngle * Math.PI / 180);
 
   if (settings.raftEnabled) {
-    const floorRing = ring(raftRadius);
-    builder.begin('raft');
-    builder.loft([
-      floorRing.map(([x, z]) => [x, 0, z] as Vector),
-      ring(raftRadius + settings.raftFloorThickness * slope).map(([x, z]) => [x, settings.raftFloorThickness, z] as Vector),
-    ], true);
-    builder.end();
-
-    const lean = settings.raftWallHeight * slope;
-    if (settings.raftWallHeight > 0 && settings.raftWallThickness > 0) {
-      builder.begin('raft');
-      builder.loft([
-        ring(raftRadius).map(([x, z]) => [x, 0, z] as Vector),
-        ring(raftRadius + lean).map(([x, z]) => [x, settings.raftWallHeight, z] as Vector),
-        ring(raftRadius + lean - settings.raftWallThickness).map(([x, z]) => [x, settings.raftWallHeight, z] as Vector),
-        ring(raftRadius - settings.raftWallThickness).map(([x, z]) => [x, 0, z] as Vector),
-      ], false);
-      builder.end();
-    }
+    const perimeter = options.raftPerimeter ?? (options.model ? raftPerimeter(options.model, expand, settings.voxelResolution) : []);
+    const floorRing = perimeter.length >= 3 ? perimeter : ring(raftRadius);
+    addRaft(builder, floorRing, settings);
     if (settings.labelEnabled && options.labelText) addLabel(builder, floorRing, settings, options.labelText);
   }
 
@@ -454,6 +453,49 @@ function addStructures(
     levels.push(top);
     for (const y of levels) addLoop(builder, 'cage-ring', cageColumns.map(([x, z]) => [x, y, z] as Vector), settings.cageRingDiameter / 2, segments);
     if (settings.diagonalEnabled) addCrossBars(builder, cageColumns, [raftTop, ...levels], settings.diagonalDiameter / 2, segments);
+  }
+}
+
+/**
+ * SLASG_Raft solids from the resampled perimeter: a floor whose edge flares outward by
+ * Floor x tan(Wall Angle), an inset band of Wall Thickness, and wall runs raised to Wall
+ * Height (leaning outward the same way). Blender raises the band quads whose face index
+ * (N + 1 + k) mod 3 is at most 1, so every third segment stays a gap for resin drainage.
+ */
+function addRaft(builder: MeshBuilder, input: readonly Point2[], settings: Readonly<LiveSupportSettings>): void {
+  // Bisectors assume counter-clockwise winding in Blender's plan (x, -z).
+  const planArea = input.reduce((sum, p, i) => {
+    const q = input[(i + 1) % input.length]!;
+    return sum + p[0] * -q[1] - q[0] * -p[1];
+  }, 0);
+  const polygon = planArea < 0 ? [...input].reverse() : input;
+  const slope = Math.tan(settings.raftWallAngle * Math.PI / 180);
+  const bisectors = cornerBisectors(polygon);
+  const shifted = (amount: number, y: number) => polygon.map(([x, z], i) => [x + bisectors[i]![0] * amount, y, z + bisectors[i]![1] * amount] as Vector);
+  const floor = settings.raftFloorThickness;
+  builder.begin('raft');
+  builder.prism(shifted(0, 0), shifted(-floor * slope, floor));
+  builder.end();
+  if (settings.raftWallHeight <= floor || settings.raftWallThickness <= 0) return;
+
+  const lean = -(settings.raftWallHeight - floor) * slope;
+  const outerBottom = shifted(-floor * slope, floor);
+  const innerBottom = shifted(-floor * slope + settings.raftWallThickness, floor);
+  const outerTop = shifted(-floor * slope + lean, settings.raftWallHeight);
+  const innerTop = shifted(-floor * slope + settings.raftWallThickness + lean, settings.raftWallHeight);
+  const n = polygon.length;
+  const raised = (k: number) => ((n + 1 + k) % 3) <= 1;
+  let start = 0;
+  while (start < n && raised(start)) start += 1;
+  for (let offset = 0; offset < n; offset += 1) {
+    const k = (start + offset) % n;
+    if (!raised(k) || (offset > 0 && raised((k - 1 + n) % n))) continue;
+    const run: number[] = [k];
+    while (raised((run[run.length - 1]! + 1) % n) && run.length < n) run.push((run[run.length - 1]! + 1) % n);
+    const corners = [...run, (run[run.length - 1]! + 1) % n];
+    builder.begin('raft');
+    builder.strip(corners.map((c) => outerBottom[c]!), corners.map((c) => innerBottom[c]!), corners.map((c) => outerTop[c]!), corners.map((c) => innerTop[c]!));
+    builder.end();
   }
 }
 
@@ -643,6 +685,35 @@ class MeshBuilder {
     this.loft([ring(from, fromRadius), ring(to, toRadius)], true);
   }
 
+  /** Closed prism between two rings of equal count, with ear-clipped (possibly concave) caps. */
+  prism(bottom: readonly Vector[], top: readonly Vector[]): void {
+    const b = bottom.map((point) => this.vertex(point));
+    const t = top.map((point) => this.vertex(point));
+    const count = b.length;
+    for (let step = 0; step < count; step += 1) {
+      const next = (step + 1) % count;
+      this.indices.push(b[step]!, b[next]!, t[next]!, b[step]!, t[next]!, t[step]!);
+    }
+    for (const [a, c, d] of earClip(bottom.map(([x, , z]) => [x, z] as Point2))) {
+      this.indices.push(b[a]!, b[d]!, b[c]!);
+      this.indices.push(t[a]!, t[c]!, t[d]!);
+    }
+  }
+
+  /** Closed solid over a run of corners: bottom and top strips joined by outer, inner and end walls. */
+  strip(outerBottom: readonly Vector[], innerBottom: readonly Vector[], outerTop: readonly Vector[], innerTop: readonly Vector[]): void {
+    const [ob, ib, ot, it] = [outerBottom, innerBottom, outerTop, innerTop].map((line) => line.map((point) => this.vertex(point)));
+    for (let k = 0; k + 1 < ob!.length; k += 1) {
+      this.indices.push(ob![k]!, ib![k]!, ib![k + 1]!, ob![k]!, ib![k + 1]!, ob![k + 1]!);
+      this.indices.push(ot![k]!, ot![k + 1]!, it![k + 1]!, ot![k]!, it![k + 1]!, it![k]!);
+      this.indices.push(ob![k]!, ob![k + 1]!, ot![k + 1]!, ob![k]!, ot![k + 1]!, ot![k]!);
+      this.indices.push(ib![k]!, it![k]!, it![k + 1]!, ib![k]!, it![k + 1]!, ib![k + 1]!);
+    }
+    const last = ob!.length - 1;
+    this.indices.push(ob![0]!, ot![0]!, it![0]!, ob![0]!, it![0]!, ib![0]!);
+    this.indices.push(ob![last]!, ib![last]!, it![last]!, ob![last]!, it![last]!, ot![last]!);
+  }
+
   /** Closed tube through a polyline with per-node radius (Blender Curve to Tube, flat caps). */
   tube(nodes: readonly CurveNode[], segments: number): void {
     const path = nodes.filter((node, index) => index === 0 || Math.hypot(...subtract(node.point, nodes[index - 1]!.point)) > MIN_LENGTH);
@@ -735,6 +806,42 @@ class MeshBuilder {
     }
     return volume;
   }
+}
+
+/** Ear clipping of a simple polygon (either orientation); returns index triples in the polygon's orientation. */
+function earClip(polygon: readonly Point2[]): [number, number, number][] {
+  const signed = polygon.reduce((sum, p, i) => {
+    const q = polygon[(i + 1) % polygon.length]!;
+    return sum + p[0] * q[1] - q[0] * p[1];
+  }, 0);
+  const orientation = Math.sign(signed) || 1;
+  const remaining = polygon.map((_, i) => i);
+  const triangles: [number, number, number][] = [];
+  const cross2 = (o: Point2, a: Point2, b: Point2) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  let guard = 0;
+  while (remaining.length > 3 && guard < polygon.length * polygon.length) {
+    guard += 1;
+    let clipped = false;
+    for (let k = 0; k < remaining.length; k += 1) {
+      const [ia, ib, ic] = [remaining[(k - 1 + remaining.length) % remaining.length]!, remaining[k]!, remaining[(k + 1) % remaining.length]!];
+      const [a, b, c] = [polygon[ia]!, polygon[ib]!, polygon[ic]!];
+      if (cross2(a, b, c) * orientation <= 1e-12) continue;
+      const contains = remaining.some((other) => {
+        if (other === ia || other === ib || other === ic) return false;
+        const p = polygon[other]!;
+        return cross2(a, b, p) * orientation >= 0 && cross2(b, c, p) * orientation >= 0 && cross2(c, a, p) * orientation >= 0;
+      });
+      if (contains) continue;
+      triangles.push([ia, ib, ic]);
+      remaining.splice(k, 1);
+      clipped = true;
+      break;
+    }
+    if (!clipped) break;
+  }
+  if (remaining.length === 3) triangles.push([remaining[0]!, remaining[1]!, remaining[2]!]);
+  else for (let k = 1; k + 1 < remaining.length; k += 1) triangles.push([remaining[0]!, remaining[k]!, remaining[k + 1]!]);
+  return triangles;
 }
 
 function basis(axis: Vector): [Vector, Vector] {

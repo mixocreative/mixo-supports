@@ -2,7 +2,8 @@ import { labelForIndex } from '../analysis/mesh';
 import { composeContacts } from '../analysis/placement';
 import type { PrintUnit, SupportSettings } from '../state/project';
 import { applyTransform, inverseTransformMesh, transformDirection, transformPoint, type ModelTransform } from '../state/transform';
-import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from './mesh';
+import { buildSupportMesh, type GeneratedSupportMesh, type Point2, type SupportContact } from './mesh';
+import { raftPerimeter } from './raft';
 import { defaultSupportSettings, type LiveSupportSettings } from './settings';
 
 /** Unit settings stored in the scene, completed with defaults for any missing key. */
@@ -25,6 +26,23 @@ export function generationTransform(unit: PrintUnit): ModelTransform {
   return stored && Array.isArray(stored.position) && Array.isArray(stored.rotation) ? stored : unit.transform;
 }
 
+const perimeterCache = new WeakMap<object, Map<string, Point2[]>>();
+
+/** The raft outline depends only on the model, its frame, Expand Width and voxels; cache it per unit source. */
+function cachedPerimeter(unit: PrintUnit, frame: ModelTransform, model: ReturnType<typeof applyTransform>, settings: LiveSupportSettings): Point2[] {
+  const expand = settings.roofMode === 'OFF' ? settings.raftExpandWidth : Math.max(settings.raftExpandWidth, settings.cageSideGap + settings.columnDiameter / 2);
+  const key = JSON.stringify([frame, expand, settings.voxelResolution]);
+  let entries = perimeterCache.get(unit.source);
+  if (!entries) perimeterCache.set(unit.source, (entries = new Map()));
+  let perimeter = entries.get(key);
+  if (!perimeter) {
+    perimeter = raftPerimeter(model, expand, settings.voxelResolution);
+    if (entries.size > 8) entries.clear();
+    entries.set(key, perimeter);
+  }
+  return perimeter;
+}
+
 /** Live support mesh for a unit in its local space, ready to render under the unit's parent group. */
 export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'preview' | 'export' = 'preview'): GeneratedSupportMesh {
   if (unit.supports === undefined) return buildSupportMesh([], defaultSupportSettings);
@@ -35,10 +53,12 @@ export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'previ
     position: transformPoint(frame, contact.position),
     normal: transformDirection(frame, contact.normal),
   }));
+  const model = applyTransform(unit.source, frame);
   const mesh = buildSupportMesh(contacts, settings, {
     mode,
     labelText: settings.labelText || labelForIndex(unitIndex),
-    model: applyTransform(unit.source, frame),
+    model,
+    ...(settings.raftEnabled ? { raftPerimeter: cachedPerimeter(unit, frame, model, settings) } : {}),
   });
   return inverseTransformMesh(mesh, frame);
 }

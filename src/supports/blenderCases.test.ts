@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import reference from '../../tools/blender-parity/reference.json';
 import type { TriangleMesh } from '../analysis/types';
-import { buildSupportMesh, columnChain, type GeneratedSupportMesh, type SupportContact } from './mesh';
+import { buildSupportMesh, columnChain, trussSegments, type Column, type GeneratedSupportMesh, type SupportContact } from './mesh';
 import { defaultSupportSettings, type LiveSupportSettings } from './settings';
 
 /**
@@ -18,6 +18,7 @@ interface BlenderCase {
   spheres: { center: Vec3; radius: number }[];
   columns: BlenderColumn[];
   raft: { reach_bottom: number; reach_top: number; z_max: number } | null;
+  braces?: [number, number, number, number][][];
 }
 
 const CASES = (reference as unknown as { cases: Record<string, BlenderCase> }).cases;
@@ -25,7 +26,8 @@ const CASES = (reference as unknown as { cases: Record<string, BlenderCase> }).c
 const KEYS: Record<string, keyof LiveSupportSettings> = {
   touch_diameter: 'touchDiameter', touch_depth: 'touchDepth', neck_diameter: 'neckDiameter', neck_length: 'neckLength',
   max_neck_angle: 'maxNeckAngle', pillar_diameter: 'pillarDiameter', base_diameter: 'baseDiameter', base_height: 'baseHeight',
-  raft_enabled: 'raftEnabled', raft_expand_width: 'raftExpandWidth', raft_floor_thickness: 'raftFloorThickness',
+  raft_enabled: 'raftEnabled', truss_enabled: 'trussEnabled', truss_angle: 'trussAngle', truss_spacing: 'trussSpacing',
+  truss_min_height: 'trussMinHeight', truss_top_spacing: 'trussTopSpacing', truss_distance_limit: 'trussDistanceLimit', truss_diameter: 'trussDiameter', raft_expand_width: 'raftExpandWidth', raft_floor_thickness: 'raftFloorThickness',
   raft_wall_height: 'raftWallHeight', raft_wall_thickness: 'raftWallThickness', raft_wall_angle: 'raftWallAngle',
   voxel_resolution: 'voxelResolution', resolution: 'resolution', lift_height: 'liftHeight',
 };
@@ -150,6 +152,29 @@ describe.each(Object.entries(CASES))('Blender case %s', (name, blender) => {
     expect(compared).toBe(blender.contacts.length);
   });
 
+  it('places every brace where Blender does (SLASG_Truss2)', () => {
+    if (!settings.trussEnabled) return;
+    // Pillars from Blender's own neck directions, so pairing is tested in isolation.
+    const columns: Column[] = blender.contacts.map((contact, index) => {
+      const column = columnFor(blender, contact);
+      const length = settings.neckLength;
+      const dx = column.foot_center[0] - contact[0];
+      const dy = column.foot_center[1] - contact[1];
+      const direction: Vec3 = [dx / length, dy / length, -Math.sqrt(Math.max(0, length ** 2 - dx * dx - dy * dy)) / length];
+      const chain = columnChain({ id: `c${index}`, position: toWeb(contact), normal: toWeb(direction) }, { ...settings, maxNeckAngle: 89 });
+      const lower = chain[chain.length - 3]!.point;
+      return { x: lower[0], z: lower[2], top: lower[1], bottom: settings.baseHeight };
+    });
+    const web = trussSegments(columns, settings).map(([a, b]) => [a, b].map((p) => [p[0], -p[2], p[1]]));
+    const expected = (blender.braces ?? []).map((brace) => [brace[0]!, brace[1]!].map(([x, y, z]) => [x!, y!, z!]));
+    expect(web.length).toBe(expected.length);
+    for (const segment of expected) {
+      const match = web.some((candidate) => [0, 1].every((end) => Math.hypot(...[0, 1, 2].map((axis) => candidate[end]![axis]! - segment[end]![axis]!)) < 0.01)
+        || [0, 1].every((end) => Math.hypot(...[0, 1, 2].map((axis) => candidate[1 - end]![axis]! - segment[end]![axis]!)) < 0.01));
+      expect(match, `brace ${JSON.stringify(segment)}`).toBe(true);
+    }
+  });
+
   it('matches the neck top radius (Upper Ø) of the vertical apex column', () => {
     const apexIndex = blender.contacts.findIndex((c) => Math.hypot(c[0], c[1]) < 1e-3);
     const column = columnFor(blender, blender.contacts[apexIndex]!);
@@ -166,9 +191,10 @@ describe.each(Object.entries(CASES))('Blender case %s', (name, blender) => {
     }
     const raft = bounds(mesh, 'raft');
     expect(raft.max[1]).toBeCloseTo(blender.raft.z_max, 2);
-    // Reach along the X axis at the plate and at the rim top. SLASG voxelises the raft;
-    // at 64 voxels it matches within 0.15 mm, at the default 16 voxels within ~0.9 mm.
-    const tolerance = settings.voxelResolution >= 64 ? 0.15 : 0.9;
+    // Reach along the X axis at the plate and at the rim top.
+    // The voxel-contour emulation (src/supports/raft.ts) lands within 0.02 mm at 32+ voxels
+    // and 0.08 mm at 16, where the resample start point is the remaining difference.
+    const tolerance = settings.voxelResolution >= 32 ? 0.02 : 0.08;
     const reach = (y: number) => {
       let value = 0;
       for (const component of mesh.components.filter((c) => c.part === 'raft')) {

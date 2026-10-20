@@ -39,6 +39,10 @@ CASES = {
     **{f"expand_{e}_v64": {"raft_expand_width": float(e), "raft_wall_height": 0.0, "voxel_resolution": 64} for e in (0, 1, 2, 4, 6, 8)},
     "expand_3_v16_nowall": {"raft_wall_height": 0.0},
     "expand_3_v32_nowall": {"raft_wall_height": 0.0, "voxel_resolution": 32},
+    "truss_default": {"truss_enabled": True},
+    "truss_custom": {"truss_enabled": True, "truss_angle": math.radians(30), "truss_spacing": 1.0,
+                     "truss_min_height": 4.0, "truss_top_spacing": 0.5, "truss_distance_limit": 3.0, "truss_diameter": 0.5},
+    "truss_heavy": {"preset": "HEAVY", "truss_enabled": True},
 }
 
 bpy.ops.wm.read_homefile(use_empty=True)
@@ -157,11 +161,13 @@ for name, overrides in CASES.items():
     pieces, spheres = evaluated()
     contacts = [[round(c, 4) for c in p] for p in slasg_assets.contact_points(sup)]
     raft = max(pieces, key=len) if sp.raft_enabled else None
-    columns = [describe_piece(p) for p in pieces if p is not raft]
+    brace_size = 2 * sp.resolution
+    braces = [rings_of(p, sp.resolution) for p in pieces if p is not raft and len(p) == brace_size]
+    columns = [describe_piece(p) for p in pieces if p is not raft and len(p) != brace_size]
     settings = {k: (math.degrees(v) if "angle" in k else v) for k, v in
                 ((k, getattr(sp, k)) for k in list(properties._SUPPORT_FIELDS) + ["lift_height", "preset"])
                 if not isinstance(v, str) or k == "preset"}
-    results[name] = {"settings": settings, "contacts": contacts, "spheres": spheres, "columns": columns,
+    results[name] = {"settings": settings, "contacts": contacts, "spheres": spheres, "columns": columns, "braces": braces,
                      "raft": describe_raft(raft) if raft else None}
     print("CASE", name, len(contacts), "contacts", len(columns), "columns")
 

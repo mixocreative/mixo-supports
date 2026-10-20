@@ -14,8 +14,8 @@ import { defaultSupportSettings, toPlacementSettings } from './settings';
  */
 const BLENDER = {
   contacts: { total: 100, cap: 92, stem: 8 },
-  // Raft reach along -x from the model centre at 64 voxels (16 voxels quantises ~0.7 mm inward).
-  raft: { bottom: 13.06, wallTop: 13.92 },
+  // Raft reach along -x from the model centre at the default 16 voxels.
+  raft: { bottom: 12.368, wallTop: 13.232 },
   triangles: 41649,
 };
 
@@ -48,8 +48,8 @@ describe('Blender parity (mushroom fixture)', () => {
       }
       return value;
     };
-    expect(reach(0)).toBeCloseTo(BLENDER.raft.bottom, 0);
-    expect(reach(settings.raftWallHeight)).toBeCloseTo(BLENDER.raft.wallTop, 0);
+    expect(Math.abs(reach(0) - BLENDER.raft.bottom)).toBeLessThan(0.25);
+    expect(Math.abs(reach(settings.raftWallHeight) - BLENDER.raft.wallTop)).toBeLessThan(0.25);
     expect(reach(settings.raftWallHeight)).toBeGreaterThan(reach(0));
   });
 

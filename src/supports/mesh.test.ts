@@ -73,22 +73,24 @@ describe('buildSupportMesh', () => {
     expect(minY(raft, foot)).toBeCloseTo(0);
   });
 
-  it('builds the raft rim leaning outward going up (Blender SLASG profile)', () => {
+  it('builds the raft floor and gapped rim leaning outward going up (Blender SLASG profile)', () => {
     const mesh = buildSupportMesh([contact], updateSetting(settings, 'labelEnabled', false));
-    const rim = mesh.components.filter((component) => component.part === 'raft')[1]!;
+    const raft = mesh.components.filter((component) => component.part === 'raft');
     const reachAt = (y: number) => {
       let reach = 0;
-      for (let offset = rim.start; offset < rim.start + rim.count; offset += 1) {
-        const vertex = mesh.indices[offset]! * 3;
-        if (Math.abs(mesh.positions[vertex + 1]! - y) < 1e-4) reach = Math.max(reach, Math.abs(mesh.positions[vertex]!));
+      for (const component of raft) {
+        for (let offset = component.start; offset < component.start + component.count; offset += 1) {
+          const vertex = mesh.indices[offset]! * 3;
+          if (Math.abs(mesh.positions[vertex + 1]! - y) < 1e-4) reach = Math.max(reach, Math.abs(mesh.positions[vertex]!));
+        }
       }
       return reach;
     };
-    const lean = settings.raftWallHeight * Math.tan(settings.raftWallAngle * Math.PI / 180);
-
+    const slope = Math.tan(settings.raftWallAngle * Math.PI / 180);
+    expect(raft.length).toBeGreaterThan(2);
     expect(reachAt(0)).toBeCloseTo(settings.raftExpandWidth, 1);
-    expect(reachAt(settings.raftWallHeight)).toBeCloseTo(settings.raftExpandWidth + lean, 1);
-    expect(reachAt(settings.raftWallHeight)).toBeGreaterThan(reachAt(0));
+    expect(reachAt(settings.raftFloorThickness)).toBeCloseTo(settings.raftExpandWidth + settings.raftFloorThickness * slope, 1);
+    expect(reachAt(settings.raftWallHeight)).toBeCloseTo(settings.raftExpandWidth + settings.raftWallHeight * slope, 1);
   });
 
   it('adds braces between tall neighbouring pillars only when enabled', () => {
