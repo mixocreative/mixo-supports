@@ -24,4 +24,4 @@ After every implementation task, record: the completed requirement; changed file
 - Git state before this update: untracked `dist/` and `node_modules/`; preserve them as user-owned artifacts.
 - Decision: supports are separate derived groups parented to their original print unit; no original copy or bake state exists.
 - Risk: current React state supports only one model and point/cylinder preview supports, so the upcoming data-model migration is foundational.
-- Next step: review the new design document, then write a task-level implementation plan with test-first milestones.
+- Next step: execute Task 1 in `docs/superpowers/plans/2026-10-20-web-resin-support-parity.md`: write failing multi-object scene-state and undo/redo tests.

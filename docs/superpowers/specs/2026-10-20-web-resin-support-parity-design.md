@@ -21,13 +21,13 @@ The user can select one or more units, configure preset or custom support settin
 
 `PrintScene` owns ordered `PrintUnit` records. Each unit contains immutable imported geometry, a model transform, support settings, a generated placement result, manual additions, suppressed automatic-contact IDs, and the generated support mesh. Three.js objects are derived from this serializable state and are never kept in undo history.
 
-`SupportSettings` represents Blender-aligned contact, neck, pillar, foot, brace, raft, tree, automatic-placement, quality, and export controls. Light, Middle, Heavy, and Custom presets map to concrete values. Editing an individual preset-backed property changes the preset state to Custom.
+`SupportSettings` represents Blender-aligned contact, neck, pillar, foot, brace, raft, roof/cage, tree, letter-label, automatic-placement, quality, and export controls. Light, Middle, Heavy, and Custom presets map to concrete values. Editing an individual preset-backed property changes the preset state to Custom.
 
 ## Geometry and placement
 
 Placement runs in a worker per print unit. It derives automatic contacts from downward faces, physical boundaries, sharp ridges, and unsupported islands; merges those contacts with manual additions; and removes contacts suppressed by manual edits. Tree mode computes branch joins from generated contacts according to its merge distance and vertical drop parameters.
 
-The mesh generator is pure and deterministic. It turns placement plus settings into indexed triangles for tip, neck, pillar, foot, brace, raft, and tree branches. The viewport and STL encoder consume that same output, preventing preview/export divergence.
+The mesh generator is pure and deterministic. It turns placement plus settings into indexed triangles for tip, neck, pillar, foot, brace, raft, roof/cage, labels, and tree branches. The viewport and STL encoder consume that same output, preventing preview/export divergence.
 
 ## Interaction and history
 
