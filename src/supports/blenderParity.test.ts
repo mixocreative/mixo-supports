@@ -14,6 +14,8 @@ import { defaultSupportSettings, toPlacementSettings } from './settings';
  */
 const BLENDER = {
   contacts: { total: 100, cap: 92, stem: 8 },
+  // By scatter class: Resin UV edge anchors, island minima (vertical necks), Poisson field.
+  classes: { edge: 40, minima: 38, poisson: 22 },
   // Raft reach along -x from the model centre at the default 16 voxels.
   raft: { bottom: 12.368, wallTop: 13.232 },
   triangles: 41649,
@@ -38,6 +40,13 @@ describe('Blender parity (mushroom fixture)', () => {
     expect(placement.points.length).toBeLessThan(BLENDER.contacts.total * 1.2);
     expect(Math.abs(cap - BLENDER.contacts.cap)).toBeLessThanOrEqual(BLENDER.contacts.cap * 0.2);
     expect(Math.abs(stem - BLENDER.contacts.stem)).toBeLessThanOrEqual(3);
+  });
+
+  it('matches each scatter stream: exact edge anchors, minima and Poisson in range', () => {
+    const count = (sources: string[]) => placement.points.filter((point) => sources.includes(point.source)).length;
+    expect(count(['physical-boundary', 'sharp-ridge'])).toBe(BLENDER.classes.edge);
+    expect(Math.abs(count(['island']) - BLENDER.classes.minima)).toBeLessThanOrEqual(BLENDER.classes.minima * 0.25);
+    expect(Math.abs(count(['interior']) - BLENDER.classes.poisson)).toBeLessThanOrEqual(BLENDER.classes.poisson * 0.25);
   });
 
   it('matches the raft footprint and outward-leaning rim', () => {

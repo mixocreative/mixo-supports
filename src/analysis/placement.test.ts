@@ -36,7 +36,9 @@ describe('generatePlacement', () => {
 
     expect(result).toEqual(generatePlacement(squareOverhang, settings));
     expect(result.points.some((point) => point.source === 'physical-boundary')).toBe(true);
-    expect(hasPairsCloserThan(result.points, settings.spacing * 0.35)).toBe(false);
+    // Blender joins its streams without cross-class de-duplication; each stream is spaced itself.
+    expect(hasPairsCloserThan(result.points.filter((point) => point.source === 'interior'), settings.spacing)).toBe(false);
+    expect(hasPairsCloserThan(result.points.filter((point) => point.source === 'physical-boundary' || point.source === 'sharp-ridge'), settings.spacing * 0.9)).toBe(false);
   });
 
   it('insets physical-boundary contacts onto their downward face', () => {
@@ -53,15 +55,16 @@ describe('generatePlacement', () => {
     }
   });
 
-  it('marks sharp shared edges and optionally emits the lowest island contact', () => {
+  it('marks sharp shared edges and optionally emits island minima', () => {
+    // Two overhang faces 40 degrees either side of straight down meet at an 80 degree ridge.
     const sharpFold: TriangleMesh = {
       positions: new Float32Array([
         0, 0, 0,
         1, 0, 0,
-        0, 0, 1,
-        0.5, -0.5, 1,
+        0, 0.84, 1,
+        0, 0.84, -1,
       ]),
-      indices: new Uint32Array([0, 1, 2, 0, 1, 3]),
+      indices: new Uint32Array([0, 1, 2, 0, 3, 1]),
     };
 
     const ridges = generatePlacement(sharpFold, settings);
@@ -133,7 +136,8 @@ describe('automatic contact ids', () => {
 describe('placement toggles', () => {
   it('can skip downward interior sampling and edge reinforcement', () => {
     const result = generatePlacement(squareOverhang, { ...settings, includeDownward: false, reinforceEdges: false });
-    expect(result.points.map((point) => point.source)).toEqual(['island']);
+    expect(result.points.length).toBeGreaterThan(0);
+    expect(new Set(result.points.map((point) => point.source))).toEqual(new Set(['island']));
   });
 });
 

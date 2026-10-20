@@ -123,6 +123,29 @@ def rings_of(vs, size):
     return rings
 
 
+def contact_classes():
+    """Contact points with their scatter class: edge (Python anchors), vertical (island minima) or face."""
+    later = [m for m in sup.modifiers if m.name in ("mixo_gen", "mixo_label", "mixo_model")]
+    shown = [(m, m.show_viewport) for m in later]
+    for m in later:
+        m.show_viewport = False
+    try:
+        dg = bpy.context.evaluated_depsgraph_get()
+        dg.update()
+        me = sup.evaluated_get(dg).to_mesh()
+        edge = me.attributes.get("Edge")
+        vertical = me.attributes.get("Vertical")
+        out = []
+        for i, v in enumerate(me.vertices):
+            kind = "edge" if edge and edge.data[i].value > 0 else "vertical" if vertical and vertical.data[i].value > 0 else "face"
+            out.append({"co": [round(c, 4) for c in v.co], "class": kind})
+        return out
+    finally:
+        for m, state in shown:
+            m.show_viewport = state
+        sup.update_tag()
+
+
 def describe_piece(vs):
     zs = [v[2] for v in vs]
     zmin, zmax = min(zs), max(zs)
@@ -160,6 +183,7 @@ for name, overrides in CASES.items():
     slasg_assets.push_all(sup)
     pieces, spheres = evaluated()
     contacts = [[round(c, 4) for c in p] for p in slasg_assets.contact_points(sup)]
+    classes = contact_classes()
     raft = max(pieces, key=len) if sp.raft_enabled else None
     brace_size = 2 * sp.resolution
     braces = [rings_of(p, sp.resolution) for p in pieces if p is not raft and len(p) == brace_size]
@@ -167,7 +191,7 @@ for name, overrides in CASES.items():
     settings = {k: (math.degrees(v) if "angle" in k else v) for k, v in
                 ((k, getattr(sp, k)) for k in list(properties._SUPPORT_FIELDS) + ["lift_height", "preset"])
                 if not isinstance(v, str) or k == "preset"}
-    results[name] = {"settings": settings, "contacts": contacts, "spheres": spheres, "columns": columns, "braces": braces,
+    results[name] = {"settings": settings, "contacts": contacts, "classes": classes, "spheres": spheres, "columns": columns, "braces": braces,
                      "raft": describe_raft(raft) if raft else None}
     print("CASE", name, len(contacts), "contacts", len(columns), "columns")
 

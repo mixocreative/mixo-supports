@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import reference from '../../tools/blender-parity/reference.json';
+import { edgeAnchors } from '../analysis/edgeAnchors';
 import type { TriangleMesh } from '../analysis/types';
 import { buildSupportMesh, columnChain, trussSegments, type Column, type GeneratedSupportMesh, type SupportContact } from './mesh';
 import { defaultSupportSettings, type LiveSupportSettings } from './settings';
@@ -19,6 +20,7 @@ interface BlenderCase {
   columns: BlenderColumn[];
   raft: { reach_bottom: number; reach_top: number; z_max: number } | null;
   braces?: [number, number, number, number][][];
+  classes?: { co: Vec3; class: 'edge' | 'vertical' | 'face' }[];
 }
 
 const CASES = (reference as unknown as { cases: Record<string, BlenderCase> }).cases;
@@ -173,6 +175,20 @@ describe.each(Object.entries(CASES))('Blender case %s', (name, blender) => {
         || [0, 1].every((end) => Math.hypot(...[0, 1, 2].map((axis) => candidate[1 - end]![axis]! - segment[end]![axis]!)) < 0.01));
       expect(match, `brace ${JSON.stringify(segment)}`).toBe(true);
     }
+  });
+
+  it('places the edge anchors exactly where Resin UV does (rebuild_edge_candidates)', () => {
+    const expected = (blender.classes ?? []).filter((item) => item.class === 'edge').map((item) => toWeb(item.co));
+    const anchors = edgeAnchors(spike(settings.liftHeight), {
+      overhangAngleDegrees: blender.settings.scatter_angle as number,
+      spacing: blender.settings.scatter_spacing as number,
+      radius: settings.touchDiameter / 2 + 0.05,
+      facingDown: blender.settings.scatter_facing_down as boolean,
+    });
+    expect(anchors.length).toBe(expected.length);
+    anchors.forEach((anchor, index) => {
+      expect(Math.hypot(...[0, 1, 2].map((axis) => anchor.position[axis]! - expected[index]![axis]!))).toBeLessThan(1e-3);
+    });
   });
 
   it('matches the neck top radius (Upper Ø) of the vertical apex column', () => {
