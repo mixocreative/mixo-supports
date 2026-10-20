@@ -14,4 +14,4 @@ The required router probe was attempted at session start but returned no provide
 
 ## Next operational step
 
-After design-document review, create the implementation plan and scaffold the test-first TypeScript project.
+Implement approved Object Mode: full viewport import, selected-model transform gizmo, and transform-aware support analysis. Multi-model object management remains deferred.
