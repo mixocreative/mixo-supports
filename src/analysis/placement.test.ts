@@ -116,6 +116,20 @@ describe('composeContacts', () => {
   });
 });
 
+describe('automatic contact ids', () => {
+  it('derive from position so suppressions follow the spot, not the sample order', () => {
+    const coarse = generatePlacement(squareOverhang, settings);
+    const dense = generatePlacement(squareOverhang, { ...settings, spacing: 0.15 });
+    const shared = coarse.points.filter((point) => dense.points.some((other) => other.id === point.id));
+
+    expect(new Set(coarse.points.map((point) => point.id)).size).toBe(coarse.points.length);
+    for (const point of shared) {
+      dense.points.find((other) => other.id === point.id)!.position.forEach((value, axis) => expect(value).toBeCloseTo(point.position[axis]!, 2));
+    }
+    expect(coarse.points[0]!.id).toMatch(/^auto--?\d+_-?\d+_-?\d+$/);
+  });
+});
+
 describe('placement toggles', () => {
   it('can skip downward interior sampling and edge reinforcement', () => {
     const result = generatePlacement(squareOverhang, { ...settings, includeDownward: false, reinforceEdges: false });

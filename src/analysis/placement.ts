@@ -163,9 +163,18 @@ function deduplicate(candidates: readonly Candidate[], minimumDistance: number):
   const accepted: SupportPoint[] = [];
   for (const candidate of candidates) {
     if (accepted.some((point) => distance(point.position, candidate.position) < minimumDistance)) continue;
-    accepted.push({ ...candidate, id: `auto-${candidate.regionId}-${candidate.source}-${accepted.length}` });
+    accepted.push({ ...candidate, id: positionId(candidate.position) });
   }
   return accepted;
+}
+
+/**
+ * Automatic IDs encode the contact position (0.01 mm grid), like Blender's removed-point
+ * markers: a suppression keeps hiding the same spot after any regeneration and simply
+ * stops matching when that spot is no longer sampled.
+ */
+function positionId(position: Vector): string {
+  return `auto-${position.map((value) => Math.round(value * 100)).join('_')}`;
 }
 
 function pointOnFaceAtXZ(face: FaceData, x: number, z: number): Vector | undefined {
