@@ -1,55 +1,454 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import * as THREE from 'three';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
-import type { PlacementSettings, SupportPoint, TriangleMesh } from './analysis/types';
-import ObjectViewport, { acceptModelFile, type GizmoMode, type ManualMode } from './components/ObjectViewport';
-import { applyTransform, identityTransform, type ModelTransform } from './state/transform';
+import type { Object3D } from 'three';
+import { labelForIndex } from './analysis/mesh';
+import { isCurrentPlacement } from './analysis/placement';
+import type { PlacementWorkerRequest, PlacementWorkerResponse, SupportPoint } from './analysis/types';
+import ObjectViewport, { acceptModelFile, type EditMode, type GizmoMode } from './components/ObjectViewport';
+import SettingsPanel from './components/SettingsPanel';
+import { createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
+import { importGltfUnits, importStlUnit, placeImportedUnits, type ImportedMesh } from './state/import';
+import { emptyScene, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
+import { applyTransform, inverseTransformDirection, inverseTransformPoint, type ModelTransform } from './state/transform';
+import { buildExportJobs, encodeStl, type ExportKind } from './supports/export';
+import { meshBounds, type GeneratedSupportMesh } from './supports/mesh';
+import { applyPreset, defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings, type SettingKey } from './supports/settings';
+import { resolveSettings, unitContacts, unitSupportMesh } from './supports/unitSupports';
 
-const defaultSettings: PlacementSettings = { overhangAngleDegrees: 45, spacing: 6, edgeInset: .75, sharpEdgeAngleDegrees: 55, includeIslands: true };
-const number = (value: string, fallback: number) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+type HistoryAction = { type: 'command'; command: SceneCommand } | { type: 'undo' } | { type: 'redo' };
+
+function historyReducer(history: SceneHistory, action: HistoryAction): SceneHistory {
+  if (action.type === 'undo') return undoScene(history);
+  if (action.type === 'redo') return redoScene(history);
+  return withSceneCommand(history, action.command);
+}
+
+/** Settings whose change moves contacts; units with supports regenerate automatically (Blender keeps them live). */
+const PLACEMENT_KEYS: ReadonlySet<SettingKey> = new Set<SettingKey>([
+  'scatterSpacing', 'scatterAngle', 'scatterFacingDown', 'scatterIslands', 'scatterRidgeAngle', 'reinforceOverhangEdges', 'liftHeight',
+]);
+const REGENERATE_DELAY_MS = 350;
+
+const EXPORTS: { kind: ExportKind; label: string; primary?: boolean }[] = [
+  { kind: 'active-printable', label: 'Active · model + supports', primary: true },
+  { kind: 'active-supports', label: 'Active · supports only' },
+  { kind: 'separate-printable', label: 'Each unit · model + supports' },
+  { kind: 'separate-supports', label: 'Each unit · supports only' },
+  { kind: 'whole-printable', label: 'Whole scene · one file' },
+];
+
+interface PendingJob {
+  revision: number;
+  /** Lifted unit transform committed with the result. */
+  transform: ModelTransform;
+  /** Frame the worker analysed: the unit rotation without translation. */
+  orientation: ModelTransform;
+}
 
 export default function App() {
-  const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null); const [name, setName] = useState('No model loaded');
-  const [auto, setAuto] = useState<SupportPoint[]>([]); const [manual, setManual] = useState<SupportPoint[]>([]); const [suppressed, setSuppressed] = useState<string[]>([]); const [settings, setSettings] = useState(defaultSettings);
-  const [status, setStatus] = useState('Drop an STL, GLB, or GLTF to begin'); const [manualMode, setManualMode] = useState<ManualMode>('none'); const [gizmoMode, setGizmoMode] = useState<GizmoMode>('translate');
-  const [modelVisible, setModelVisible] = useState(true); const [wireframe, setWireframe] = useState(false); const [radius, setRadius] = useState(.8); const [selected, setSelected] = useState(false); const [modelTransform, setModelTransform] = useState<ModelTransform>(identityTransform); const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const job = useRef(0); const points = useMemo(() => [...auto.filter((point) => !suppressed.includes(point.id)), ...manual], [auto, manual, suppressed]);
+  const [history, dispatchHistory] = useReducer(historyReducer, emptyScene, createSceneHistory);
+  const scene = history.present;
+  const sceneRef = useRef(scene);
+  sceneRef.current = scene;
+  const dispatch = useCallback((command: SceneCommand) => dispatchHistory({ type: 'command', command }), []);
 
-  const importFile = useCallback(async (file: File) => {
-    if (!acceptModelFile(file)) return setStatus('Import error: choose an STL, GLB, or GLTF file.');
-    try {
-      const data = await file.arrayBuffer(); let imported: THREE.BufferGeometry;
-      if (file.name.toLowerCase().endsWith('.stl')) imported = new STLLoader().parse(data);
-      else { const gltf = await new Promise<any>((resolve, reject) => new GLTFLoader().parse(data, '', resolve, reject)); let found: THREE.BufferGeometry | undefined; gltf.scene.traverse((object: THREE.Object3D) => { if (!found && object instanceof THREE.Mesh) found = object.geometry.clone(); }); if (!found) throw new Error('No mesh found in file'); imported = found; }
-      imported.computeVertexNormals(); imported.center(); const box = new THREE.Box3().setFromBufferAttribute(imported.getAttribute('position') as THREE.BufferAttribute); imported.translate(0, -box.min.y + 1, 0);
-      setGeometry(imported); setName(file.name); setModelTransform(identityTransform); setSelected(true); setStatus('Model loaded and selected. Existing supports are retained; generate to refresh placement.');
-    } catch (error) { setStatus(`Import error: ${error instanceof Error ? error.message : 'Unsupported model'}`); }
+  const [status, setStatus] = useState('Drop STL, GLB or glTF files to begin. Every mesh becomes a print unit.');
+  const [editMode, setEditMode] = useState<EditMode>('off');
+  const [gizmoMode, setGizmoMode] = useState<GizmoMode>('translate');
+  const [modelVisible, setModelVisible] = useState(true);
+  const [wireframe, setWireframe] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  const activeUnit = scene.units.find((unit) => unit.id === scene.activeUnitId);
+  const activeIndex = activeUnit ? scene.units.indexOf(activeUnit) : -1;
+  const activeSettings = useMemo(() => resolveSettings(activeUnit?.settings), [activeUnit?.settings]);
+  const targets = useCallback((current: PrintScene) => {
+    const selected = current.units.filter((unit) => current.selectedUnitIds.includes(unit.id));
+    return selected.length > 0 ? selected : current.units;
   }, []);
 
-  const generate = useCallback(() => {
-    if (!geometry) return setStatus('Load a model before generating supports.');
-    const position = geometry.getAttribute('position') as THREE.BufferAttribute; const index = geometry.getIndex();
-    const source: TriangleMesh = { positions: new Float32Array(position.array as ArrayLike<number>), indices: index ? new Uint32Array(index.array as ArrayLike<number>) : new Uint32Array(Array.from({ length: position.count }, (_, i) => i)) };
-    const mesh = applyTransform(source, modelTransform); const id = ++job.current; setStatus('Analysing connected overhang regions…'); const worker = new Worker(new URL('./workers/supportWorker.ts', import.meta.url), { type: 'module' });
-    worker.onmessage = (event) => { if (event.data.jobId === id) { setAuto(event.data.result.points); setStatus(`Live supports ready: ${event.data.result.points.length} automatic + ${manual.length} manual`); worker.terminate(); } };
-    worker.onerror = () => { setStatus('Support analysis failed; adjust the model or settings.'); worker.terminate(); }; worker.postMessage({ jobId: id, mesh, settings }, [mesh.positions.buffer, mesh.indices.buffer]);
-  }, [geometry, manual.length, modelTransform, settings]);
-  const updateTransform = useCallback((transform: ModelTransform) => { setModelTransform(transform); setStatus('Model transform changed; existing supports are stale. Generate supports to update placement.'); }, []);
-  const exportStl = useCallback((supportOnly = false) => {
-    if (!geometry && !points.length) return; const scene = new THREE.Scene();
-    if (!supportOnly && geometry) { const model = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial()); model.position.fromArray(modelTransform.position); model.rotation.fromArray(modelTransform.rotation); scene.add(model); }
-    points.forEach((point) => { const height = Math.max(.5, point.position[1]); const pillar = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 10), new THREE.MeshBasicMaterial()); pillar.position.set(point.position[0], height / 2, point.position[2]); scene.add(pillar); });
-    const data = new STLExporter().parse(scene, { binary: true }) as DataView; const blob = new Blob([data.buffer as ArrayBuffer], { type: 'model/stl' }); const anchor = document.createElement('a'); anchor.href = URL.createObjectURL(blob); anchor.download = `${name.replace(/\.[^.]+$/, '')}-${supportOnly ? 'supports' : 'printable'}.stl`; anchor.click(); URL.revokeObjectURL(anchor.href); setStatus('STL download created locally.');
-  }, [geometry, modelTransform, name, points, radius]);
-  const setPreset = (preset: 'Light' | 'Medium' | 'Heavy') => { const spacing = preset === 'Light' ? 8 : preset === 'Medium' ? 6 : 4; setSettings((current) => ({ ...current, spacing, edgeInset: spacing * .125 })); setStatus(`${preset} preset selected; generate to update placement.`); };
-  const dropImport = (event: React.DragEvent<HTMLElement>) => { event.preventDefault(); setIsDraggingOver(false); const file = event.dataTransfer.files[0]; if (file) void importFile(file); };
+  // Support meshes are derived from scene state; units that did not change keep their cached mesh.
+  const meshCache = useRef(new WeakMap<PrintUnit, { index: number; mesh: GeneratedSupportMesh }>());
+  const supportMeshes = useMemo(() => {
+    const meshes = new Map<string, GeneratedSupportMesh>();
+    scene.units.forEach((unit, index) => {
+      const cached = meshCache.current.get(unit);
+      const mesh = cached && cached.index === index ? cached.mesh : unitSupportMesh(unit, index);
+      meshCache.current.set(unit, { index, mesh });
+      meshes.set(unit.id, mesh);
+    });
+    return meshes;
+  }, [scene.units]);
 
-  return <main><header><div><span className="eyebrow">MIXO / SLA TOOLS</span><h1>Resin Support Studio</h1></div><div className="header-actions"><button onClick={() => setModelVisible((visible) => !visible)}>{modelVisible ? 'Hide' : 'Show'} model</button><button onClick={() => setWireframe((value) => !value)}>{wireframe ? 'Solid' : 'X-ray'}</button><button className="primary" onClick={generate}>Generate supports</button></div></header><section className="workspace">
-    <aside className="panel left"><h2>Model & placement</h2><label className="drop"><input type="file" accept=".stl,.glb,.gltf" onChange={(event) => event.target.files?.[0] && void importFile(event.target.files[0])} /><strong>Choose model</strong><small>STL · GLB · GLTF — stays on this device</small></label><h3>Object mode</h3><div className="mode-row"><button aria-pressed={gizmoMode === 'none'} className={gizmoMode === 'none' ? 'active' : ''} onClick={() => setGizmoMode('none')}>Select</button><button aria-pressed={gizmoMode === 'translate'} className={gizmoMode === 'translate' ? 'active' : ''} onClick={() => setGizmoMode('translate')}>Move</button><button aria-pressed={gizmoMode === 'rotate'} className={gizmoMode === 'rotate' ? 'active' : ''} onClick={() => setGizmoMode('rotate')}>Rotate</button></div><h3>Quick preset</h3><div className="preset-row">{(['Light', 'Medium', 'Heavy'] as const).map((preset) => <button key={preset} onClick={() => setPreset(preset)}>{preset}</button>)}</div><h3>Manual edit mode</h3><div className="mode-row">{(['add', 'remove', 'move'] as ManualMode[]).map((mode) => <button key={mode} className={manualMode === mode ? 'active' : ''} onClick={() => setManualMode(manualMode === mode ? 'none' : mode)}>{mode}</button>)}</div><p className="help">Add: click a surface. Remove: click an existing support. Move is reserved for the next interaction pass.</p><h3>Actions</h3><button onClick={() => { setManual([]); setSuppressed([]); setStatus('Manual edits cleared; automatic points restored.'); }}>Clear manual edits</button><button onClick={() => { setAuto([]); setManual([]); setSuppressed([]); setStatus('Derived supports removed; source model unchanged.'); }}>Remove supports</button></aside>
-    <section className={isDraggingOver ? 'viewport viewport--dropping' : 'viewport'} onDragOver={(event) => { event.preventDefault(); setIsDraggingOver(true); }} onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDraggingOver(false); }} onDrop={dropImport}><ObjectViewport model={geometry} points={points} radius={radius} modelVisible={modelVisible} wireframe={wireframe} manualMode={manualMode} selected={selected} transform={modelTransform} gizmoMode={gizmoMode} onSelect={setSelected} onTransform={updateTransform} onGizmoDragging={() => {}} onManual={(point) => { setManual((current) => [...current, point]); setStatus('Manual support added.'); }} onSupport={(id) => { if (manualMode === 'remove') { setSuppressed((current) => [...current, id]); setManual((current) => current.filter((point) => point.id !== id)); setStatus('Support removed; automatic removal persists during regeneration.'); } }} />{isDraggingOver && <div className="viewport-drop-overlay">Drop STL, GLB, or GLTF to import</div>}<div className="viewport-object-status">OBJECT MODE · {selected ? `SELECTED · ${gizmoMode === 'none' ? 'SELECT' : gizmoMode.toUpperCase()}` : 'NO SELECTION'}</div><div className="viewport-note">ORBIT · PAN · ZOOM &nbsp; / &nbsp; millimetres</div></section>
-    <aside className="panel right"><h2>Support settings</h2><Control label="Lift height" value={6} onChange={() => {}} /><Control label="Support spacing" value={settings.spacing} onChange={(value) => setSettings((current) => ({ ...current, spacing: value, edgeInset: value * .125 }))} /><Control label="Overhang angle" value={settings.overhangAngleDegrees} onChange={(value) => setSettings((current) => ({ ...current, overhangAngleDegrees: value }))} /><Control label="Contact / pillar Ø" value={radius} step={.1} onChange={setRadius} /><label className="check"><input type="checkbox" checked={settings.includeIslands} onChange={(event) => setSettings((current) => ({ ...current, includeIslands: event.target.checked }))} /> Include unsupported islands</label><details><summary>Advanced placement</summary><Control label="Ridge angle" value={settings.sharpEdgeAngleDegrees} onChange={(value) => setSettings((current) => ({ ...current, sharpEdgeAngleDegrees: value }))} /><Control label="Edge inset" value={settings.edgeInset} step={.1} onChange={(value) => setSettings((current) => ({ ...current, edgeInset: value }))} /></details><h3>Export</h3><button className="primary" onClick={() => exportStl(false)}>Download printable STL</button><button onClick={() => exportStl(true)}>Download supports only</button><p className="help">Baking creates local STL triangles. The source mesh is never changed.</p></aside>
-  </section><footer><span>{name}</span><span>{geometry ? `${geometry.getAttribute('position').count / 3 | 0} triangles` : '— triangles'}</span><span>{auto.length} automatic · {manual.length} manual · {suppressed.length} removed</span><strong>{status}</strong></footer></main>;
+  // ---- Placement worker ------------------------------------------------------------
+  const workerRef = useRef<Worker | null>(null);
+  const pending = useRef(new Map<string, PendingJob>());
+  const revision = useRef(0);
+  const jobId = useRef(0);
+
+  const onPlacement = useCallback((response: PlacementWorkerResponse) => {
+    const job = pending.current.get(response.unitId);
+    const latest = job ? { [response.unitId]: job.revision } : {};
+    if (!job || !isCurrentPlacement(latest, response)) return;
+    pending.current.delete(response.unitId);
+    setPendingCount(pending.current.size);
+    if (!sceneRef.current.units.some((unit) => unit.id === response.unitId)) return;
+    const toLocal = (point: SupportPoint): SupportPoint => ({
+      ...point,
+      position: inverseTransformPoint(job.orientation, point.position),
+      normal: inverseTransformDirection(job.orientation, point.normal),
+    });
+    const points = response.result.points.map(toLocal);
+    dispatch({ type: 'batch', commands: [
+      { type: 'transform/set', unitId: response.unitId, transform: job.transform },
+      {
+        type: 'supports/set',
+        unitId: response.unitId,
+        placement: {
+          points,
+          regions: response.result.regions,
+          contactPositions: new Float32Array(points.flatMap((point) => point.position)),
+          contactNormals: new Float32Array(points.flatMap((point) => point.normal)),
+        },
+        supports: { kind: 'live', data: { transform: { position: [...job.transform.position], rotation: [...job.transform.rotation] } } },
+      },
+    ] });
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === response.unitId);
+    setStatus(`${unit?.name ?? 'Unit'}: ${points.length} automatic contacts generated.`);
+  }, [dispatch]);
+
+  const worker = useCallback(() => {
+    if (!workerRef.current) {
+      const created = new Worker(new URL('./workers/supportWorker.ts', import.meta.url), { type: 'module' });
+      created.onmessage = (event: MessageEvent<PlacementWorkerResponse>) => onPlacement(event.data);
+      created.onerror = () => {
+        pending.current.clear();
+        setPendingCount(0);
+        setStatus('Support analysis failed; adjust the model or settings and generate again.');
+        workerRef.current?.terminate();
+        workerRef.current = null;
+      };
+      workerRef.current = created;
+    }
+    return workerRef.current;
+  }, [onPlacement]);
+  useEffect(() => () => workerRef.current?.terminate(), []);
+
+  const generate = useCallback((unitIds?: readonly string[]) => {
+    const current = sceneRef.current;
+    const units = unitIds ? current.units.filter((unit) => unitIds.includes(unit.id)) : targets(current);
+    if (units.length === 0) return setStatus('Import a model before generating supports.');
+    for (const unit of units) {
+      const settings = resolveSettings(unit.settings);
+      // The lowest model point sits Lift Height above the plate (y = 0) where the supports stand.
+      const lowest = meshBounds(applyTransform(unit.source, unit.transform)).min[1];
+      const transform: ModelTransform = {
+        position: [unit.transform.position[0], unit.transform.position[1] + settings.liftHeight - lowest, unit.transform.position[2]],
+        rotation: [...unit.transform.rotation],
+      };
+      // Placement runs on the rotated but untranslated model so moving a unit never
+      // shifts the sampling lattice; automatic IDs (and suppressions) stay stable.
+      const orientation: ModelTransform = { position: [0, 0, 0], rotation: transform.rotation };
+      const mesh = applyTransform(unit.source, orientation);
+      const job: PendingJob = { revision: ++revision.current, transform, orientation };
+      pending.current.set(unit.id, job);
+      const request: PlacementWorkerRequest = { jobId: ++jobId.current, unitId: unit.id, revision: job.revision, mesh, settings: toPlacementSettings(settings) };
+      worker().postMessage(request, [mesh.positions.buffer, mesh.indices.buffer]);
+    }
+    setPendingCount(pending.current.size);
+    setStatus(`Analysing overhangs for ${units.length} unit${units.length === 1 ? '' : 's'}…`);
+  }, [targets, worker]);
+
+  const regenerateTimer = useRef<number | undefined>(undefined);
+  const regenerateQueue = useRef(new Set<string>());
+  const scheduleRegenerate = useCallback((unitIds: string[]) => {
+    unitIds.forEach((id) => regenerateQueue.current.add(id));
+    window.clearTimeout(regenerateTimer.current);
+    regenerateTimer.current = window.setTimeout(() => {
+      const ids = [...regenerateQueue.current].filter((id) => sceneRef.current.units.find((unit) => unit.id === id)?.supports);
+      regenerateQueue.current.clear();
+      if (ids.length > 0) generate(ids);
+    }, REGENERATE_DELAY_MS);
+  }, [generate]);
+
+  // ---- Import --------------------------------------------------------------------------
+  const importFiles = useCallback(async (files: readonly File[]) => {
+    const accepted = files.filter(acceptModelFile);
+    if (accepted.length === 0) return setStatus('Import error: choose STL, GLB or glTF files.');
+    try {
+      const imported: ImportedMesh[][] = [];
+      for (const file of accepted) {
+        const data = await file.arrayBuffer();
+        if (/\.stl$/i.test(file.name)) imported.push([importStlUnit(new STLLoader().parse(data), file.name)]);
+        else {
+          const gltf = await new Promise<{ scene: Object3D }>((resolve, reject) => new GLTFLoader().parse(data, '', resolve, reject));
+          const meshes = importGltfUnits(gltf, file.name);
+          if (meshes.length === 0) throw new Error(`${file.name} contains no mesh`);
+          imported.push(meshes);
+        }
+      }
+      let units = [...sceneRef.current.units];
+      const added: PrintUnit[] = [];
+      for (const group of imported) {
+        const placed = placeImportedUnits(group, units, { lift: defaultSupportSettings.liftHeight, createId: () => `unit-${crypto.randomUUID()}` });
+        units = [...units, ...placed];
+        added.push(...placed);
+      }
+      dispatch({ type: 'batch', commands: [
+        ...added.map((unit) => ({ type: 'unit/add' as const, unit })),
+        { type: 'selection/set', unitIds: added.map((unit) => unit.id), activeUnitId: added[0]!.id },
+      ] });
+      setStatus(`Imported ${added.length} print unit${added.length === 1 ? '' : 's'}. Generate to place supports.`);
+    } catch (error) {
+      setStatus(`Import error: ${error instanceof Error ? error.message : 'unsupported model'}`);
+    }
+  }, [dispatch]);
+
+  // ---- Commands ------------------------------------------------------------------------
+  const forTargets = useCallback((make: (unit: PrintUnit) => SceneCommand | undefined) => {
+    const commands = targets(sceneRef.current).map(make).filter((command): command is SceneCommand => command !== undefined);
+    if (commands.length > 0) dispatch({ type: 'batch', commands });
+    return commands.length;
+  }, [dispatch, targets]);
+
+  const changeSettings = useCallback((change: (settings: LiveSupportSettings) => LiveSupportSettings, regenerate: boolean) => {
+    const units = targets(sceneRef.current);
+    forTargets((unit) => ({ type: 'settings/set', unitId: unit.id, settings: change(resolveSettings(unit.settings)) as SupportSettings }));
+    if (regenerate) scheduleRegenerate(units.filter((unit) => unit.supports).map((unit) => unit.id));
+  }, [forTargets, scheduleRegenerate, targets]);
+
+  const onSettingChange = useCallback(<K extends SettingKey>(key: K, value: LiveSupportSettings[K]) => {
+    changeSettings((settings) => updateSetting(settings, key, value), PLACEMENT_KEYS.has(key));
+  }, [changeSettings]);
+
+  const removeSupports = () => {
+    const count = forTargets((unit) => (unit.supports ? { type: 'supports/remove', unitId: unit.id } : undefined));
+    setStatus(count ? `Removed supports from ${count} unit${count === 1 ? '' : 's'}; models untouched, manual edits kept for regeneration.` : 'No supports to remove.');
+  };
+  const clearManual = () => {
+    const count = forTargets((unit) => (unit.manual.length || unit.suppressed.length ? { type: 'supports/clear-manual', unitId: unit.id } : undefined));
+    setStatus(count ? 'Manual edits cleared; automatic contacts restored.' : 'No manual edits to clear.');
+  };
+  const deleteUnits = useCallback(() => {
+    const ids = sceneRef.current.selectedUnitIds;
+    if (ids.length === 0) return;
+    dispatch({ type: 'batch', commands: ids.map((unitId) => ({ type: 'unit/remove' as const, unitId })) });
+    setStatus(`Deleted ${ids.length} unit${ids.length === 1 ? '' : 's'} (undo restores).`);
+  }, [dispatch]);
+
+  const onSelect = useCallback((unitId: string | null, additive: boolean) => {
+    const current = sceneRef.current;
+    if (unitId === null) return dispatch({ type: 'selection/set', unitIds: [] });
+    const ids = additive
+      ? (current.selectedUnitIds.includes(unitId) ? current.selectedUnitIds.filter((id) => id !== unitId) : [...current.selectedUnitIds, unitId])
+      : [unitId];
+    const active = ids.includes(unitId) ? unitId : ids[ids.length - 1];
+    if (ids.join() === current.selectedUnitIds.join() && active === current.activeUnitId) return;
+    dispatch({ type: 'selection/set', unitIds: ids, ...(active ? { activeUnitId: active } : {}) });
+  }, [dispatch]);
+
+  const onTransform = useCallback((unitId: string, transform: ModelTransform) => {
+    dispatch({ type: 'transform/set', unitId, transform });
+    setStatus('Unit moved with its supports. Regenerate to re-plant supports after a rotation.');
+  }, [dispatch]);
+
+  const onAddContact = useCallback((unitId: string, point: [number, number, number], normal: [number, number, number]) => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
+    if (!unit) return;
+    const contact: SupportPoint = {
+      id: `manual-${crypto.randomUUID()}`,
+      regionId: -1,
+      position: inverseTransformPoint(unit.transform, point),
+      normal: inverseTransformDirection(unit.transform, normal),
+      source: 'interior',
+    };
+    const commands: SceneCommand[] = unit.supports ? [] : [{
+      type: 'supports/set', unitId, supports: { kind: 'live', data: { transform: { position: [...unit.transform.position], rotation: [...unit.transform.rotation] } } },
+    }];
+    dispatch({ type: 'batch', commands: [...commands, { type: 'manual/add', unitId, point: contact }] });
+    setStatus('Manual support added.');
+  }, [dispatch]);
+
+  const removeContact = useCallback((unit: PrintUnit, contactId: string): SceneCommand => (
+    unit.manual.some((point) => point.id === contactId)
+      ? { type: 'manual/remove', unitId: unit.id, pointId: contactId }
+      : { type: 'suppression/add', unitId: unit.id, pointId: contactId }
+  ), []);
+
+  const onRemoveContact = useCallback((unitId: string, contactId: string) => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
+    if (!unit) return;
+    dispatch(removeContact(unit, contactId));
+    setStatus('Support removed; the removal persists through regeneration.');
+  }, [dispatch, removeContact]);
+
+  const onErase = useCallback((unitId: string, point: [number, number, number]) => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
+    if (!unit) return;
+    const local = inverseTransformPoint(unit.transform, point);
+    const radius = resolveSettings(unit.settings).eraseRadius;
+    const hits = unitContacts(unit).filter((contact) => Math.hypot(...contact.position.map((value, axis) => value - local[axis]!)) <= radius);
+    if (hits.length === 0) return setStatus(`No support contact within ${radius} mm of the click.`);
+    dispatch({ type: 'batch', commands: hits.map((contact) => removeContact(unit, contact.id)) });
+    setStatus(`Removed ${hits.length} support${hits.length === 1 ? '' : 's'} within ${radius} mm.`);
+  }, [dispatch, removeContact]);
+
+  const runExport = (kind: ExportKind) => {
+    const jobs = buildExportJobs(sceneRef.current, { kind });
+    if (jobs.length === 0) return setStatus(kind.startsWith('active') && !sceneRef.current.activeUnitId ? 'Select a unit to export.' : 'Nothing to export for this mode.');
+    for (const job of jobs) {
+      const url = URL.createObjectURL(new Blob([encodeStl(job.group)], { type: 'model/stl' }));
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = job.fileName;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    setStatus(`Exported ${jobs.map((job) => job.fileName).join(', ')}.`);
+  };
+
+  // ---- Keyboard ------------------------------------------------------------------------
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      const mod = event.ctrlKey || event.metaKey;
+      if (mod && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        dispatchHistory({ type: event.shiftKey ? 'redo' : 'undo' });
+      } else if (mod && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        dispatchHistory({ type: 'redo' });
+      } else if (event.key === 'Tab') {
+        event.preventDefault();
+        setEditMode((mode) => (mode === 'off' ? 'add' : 'off'));
+      } else if (event.key === 'Escape') {
+        setEditMode('off');
+      } else if (event.key === 'Delete' && editMode === 'off') {
+        deleteUnits();
+      } else if (editMode === 'off' && event.key.toLowerCase() === 'g') {
+        setGizmoMode('translate');
+      } else if (editMode === 'off' && event.key.toLowerCase() === 'r') {
+        setGizmoMode('rotate');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [deleteUnits, editMode]);
+
+  const dropImport = (event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    setIsDraggingOver(false);
+    void importFiles([...event.dataTransfer.files]);
+  };
+
+  const contactCounts = activeUnit ? {
+    auto: activeUnit.placement?.points.filter((point) => !activeUnit.suppressed.includes(point.id)).length ?? 0,
+    manual: activeUnit.manual.length,
+    removed: activeUnit.suppressed.length,
+  } : undefined;
+  const selectedCount = scene.selectedUnitIds.length;
+  const scopeLabel = selectedCount > 0 ? `${selectedCount} selected` : `all ${scene.units.length}`;
+
+  return <main>
+    <header>
+      <div><span className="eyebrow">MIXO / SLA TOOLS</span><h1>Resin Support Studio</h1></div>
+      <div className="header-actions">
+        <button onClick={() => dispatchHistory({ type: 'undo' })} disabled={history.past.length === 0} title="Undo (Ctrl+Z)">Undo</button>
+        <button onClick={() => dispatchHistory({ type: 'redo' })} disabled={history.future.length === 0} title="Redo (Ctrl+Shift+Z)">Redo</button>
+        <button onClick={() => setModelVisible((visible) => !visible)}>{modelVisible ? 'Hide' : 'Show'} models</button>
+        <button onClick={() => setWireframe((value) => !value)}>{wireframe ? 'Solid' : 'Wireframe'}</button>
+        <button className="primary" onClick={() => generate()} disabled={scene.units.length === 0}>{pendingCount > 0 ? 'Generating…' : `Generate supports (${scopeLabel})`}</button>
+      </div>
+    </header>
+    <section className="workspace">
+      <aside className="panel left">
+        <label className="drop">
+          <input type="file" multiple accept=".stl,.glb,.gltf" onChange={(event) => { void importFiles([...(event.target.files ?? [])]); event.target.value = ''; }} />
+          <strong>Import models</strong>
+          <small>STL · GLB · glTF — files stay on this device</small>
+        </label>
+        <h3>Print units</h3>
+        {scene.units.length === 0 ? <p className="help">No units yet. Each STL, and each mesh inside a glTF, becomes its own unit.</p> : <ul className="units">
+          {scene.units.map((unit, index) => {
+            const selected = scene.selectedUnitIds.includes(unit.id);
+            return <li key={unit.id}>
+              <button className={`unit${selected ? ' selected' : ''}${unit.id === scene.activeUnitId ? ' active' : ''}`} onClick={(event) => onSelect(unit.id, event.shiftKey || event.ctrlKey || event.metaKey)}>
+                <b>{resolveSettings(unit.settings).labelText || labelForIndex(index)}</b>
+                <span>{unit.name}</span>
+                <small>{unit.supports ? `${unitContacts(unit).length} supports` : 'no supports'}</small>
+              </button>
+            </li>;
+          })}
+        </ul>}
+        <div className="row">
+          <button onClick={() => dispatch({ type: 'selection/set', unitIds: scene.units.map((unit) => unit.id), ...(scene.units[0] ? { activeUnitId: scene.activeUnitId ?? scene.units[0].id } : {}) })} disabled={scene.units.length === 0}>Select all</button>
+          <button onClick={deleteUnits} disabled={selectedCount === 0}>Delete</button>
+        </div>
+        <h3>Object mode</h3>
+        <div className="segmented">
+          {(['none', 'translate', 'rotate'] as const).map((mode) => <button key={mode} className={gizmoMode === mode ? 'active' : ''} aria-pressed={gizmoMode === mode} onClick={() => { setGizmoMode(mode); setEditMode('off'); }}>{mode === 'none' ? 'select' : mode === 'translate' ? 'move' : 'rotate'}</button>)}
+        </div>
+        <h3>Support edit mode</h3>
+        <div className="segmented">
+          {(['off', 'add', 'remove'] as const).map((mode) => <button key={mode} className={editMode === mode ? 'active' : ''} aria-pressed={editMode === mode} onClick={() => setEditMode(mode)} disabled={mode !== 'off' && !activeUnit}>{mode}</button>)}
+        </div>
+        <p className="help">{editMode === 'off'
+          ? 'Tab enters edit mode on the active unit. Shift+click adds units to the selection.'
+          : editMode === 'add'
+            ? 'Click the model: add support · Ctrl+click / right-click a support: remove · Ctrl+click the model: erase within radius · Esc: done'
+            : 'Click a support or near contacts on the model to remove · Esc: done'}</p>
+        <h3>Supports ({scopeLabel})</h3>
+        <button className="primary" onClick={() => generate()} disabled={scene.units.length === 0}>Generate / regenerate</button>
+        <button onClick={clearManual} disabled={scene.units.length === 0}>Clear manual edits</button>
+        <button onClick={removeSupports} disabled={scene.units.length === 0}>Remove supports</button>
+      </aside>
+      <section
+        className={isDraggingOver ? 'viewport viewport--dropping' : 'viewport'}
+        onDragOver={(event) => { event.preventDefault(); setIsDraggingOver(true); }}
+        onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDraggingOver(false); }}
+        onDrop={dropImport}
+      >
+        <ObjectViewport
+          scene={scene}
+          supportMeshes={supportMeshes}
+          editMode={editMode}
+          gizmoMode={gizmoMode}
+          modelVisible={modelVisible}
+          wireframe={wireframe}
+          onSelect={onSelect}
+          onTransform={onTransform}
+          onAddContact={onAddContact}
+          onRemoveContact={onRemoveContact}
+          onErase={onErase}
+        />
+        {isDraggingOver && <div className="viewport-drop-overlay">Drop STL, GLB or glTF to import</div>}
+        <div className="viewport-object-status">{editMode === 'off' ? 'OBJECT MODE' : `SUPPORT EDIT · ${editMode.toUpperCase()}`} · {activeUnit ? activeUnit.name.toUpperCase() : 'NO ACTIVE UNIT'}</div>
+        <div className="viewport-note">ORBIT · PAN · ZOOM &nbsp;/&nbsp; mm &nbsp;/&nbsp; plate y = 0</div>
+      </section>
+      <aside className="panel right">
+        <h2>Support settings {activeUnit ? <small>· {activeUnit.name}{selectedCount > 1 ? ` + ${selectedCount - 1}` : ''}</small> : null}</h2>
+        {!activeUnit && <p className="help">Select a unit to edit its settings. Changes apply to every selected unit.</p>}
+        <SettingsPanel
+          settings={activeSettings}
+          autoLabel={activeIndex >= 0 ? labelForIndex(activeIndex) : 'A'}
+          disabled={!activeUnit}
+          onChange={onSettingChange}
+          onPreset={(preset) => changeSettings((settings) => applyPreset(preset, settings), false)}
+          onRoofMode={(mode) => changeSettings((settings) => setRoofMode(settings, mode), false)}
+        />
+        <h3>Export STL</h3>
+        {EXPORTS.map((entry) => <button key={entry.kind} className={entry.primary ? 'primary' : ''} onClick={() => runExport(entry.kind)} disabled={scene.units.length === 0}>{entry.label}</button>)}
+        <p className="help">Exports use the same generated geometry as the viewport, at full resolution. Source models are never modified.</p>
+      </aside>
+    </section>
+    <footer>
+      <span>{scene.units.length} unit{scene.units.length === 1 ? '' : 's'}</span>
+      <span>{activeUnit ? `${activeUnit.name} · ${(activeUnit.source.indices.length / 3).toLocaleString()} triangles` : '—'}</span>
+      <span>{contactCounts ? `${contactCounts.auto} automatic · ${contactCounts.manual} manual · ${contactCounts.removed} removed` : ''}</span>
+      <strong>{status}</strong>
+    </footer>
+  </main>;
 }
-function Control({ label, value, onChange, step = 1 }: { label: string; value: number; onChange: (value: number) => void; step?: number }) { return <label className="control"><span>{label}<b>{value} mm</b></span><input type="range" min={step} max={label.includes('angle') ? 85 : label.includes('height') ? 30 : 15} step={step} value={value} onChange={(event) => onChange(number(event.target.value, value))} /></label>; }

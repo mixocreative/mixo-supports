@@ -1,13 +1,18 @@
 import { Grid, OrbitControls, TransformControls } from '@react-three/drei';
 import { Canvas, type ThreeEvent } from '@react-three/fiber';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { TransformControls as TransformControlsImpl } from 'three-stdlib';
-import type { SupportPoint } from '../analysis/types';
+import type { TriangleMesh } from '../analysis/types';
+import type { PrintScene, PrintUnit } from '../state/project';
 import { transformFromObject, type ModelTransform } from '../state/transform';
+import { contactAtTriangle, type GeneratedSupportMesh } from '../supports/mesh';
 
-export type ManualMode = 'add' | 'remove' | 'move' | 'none';
 export type GizmoMode = 'none' | 'translate' | 'rotate';
+/** Support edit mode: `add` places contacts (Ctrl/right-click removes); `remove` deletes on click. */
+export type EditMode = 'off' | 'add' | 'remove';
+
+type Vector = [number, number, number];
 
 export function acceptModelFile(file: File): boolean {
   return /\.(stl|glb|gltf)$/i.test(file.name);
@@ -17,77 +22,155 @@ export function isTransformMode(mode: GizmoMode): mode is 'translate' | 'rotate'
   return mode !== 'none';
 }
 
-function SupportLayer({ points, radius, selected, onClick }: { points: SupportPoint[]; radius: number; selected?: string; onClick: (id: string) => void }) {
-  return <group>{points.map((point) => {
-    const height = Math.max(0.5, point.position[1]);
-    const color = point.source === 'physical-boundary' || point.source === 'sharp-ridge' ? '#ffb84d' : point.source === 'island' ? '#d98cff' : '#5eead4';
-    return <group key={point.id} position={[point.position[0], 0, point.position[2]]} onClick={(event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); onClick(point.id); }}>
-      <mesh position={[0, height / 2, 0]}><cylinderGeometry args={[radius, radius, height, 10]} /><meshStandardMaterial color={selected === point.id ? '#ffffff' : color} /></mesh>
-      <mesh position={[0, height, 0]}><sphereGeometry args={[radius * 1.35, 10, 8]} /><meshStandardMaterial color={color} /></mesh>
-      <mesh position={[0, .18, 0]}><cylinderGeometry args={[radius * 2.2, radius * 2.5, .36, 12]} /><meshStandardMaterial color="#2dd4bf" /></mesh>
-    </group>;
-  })}</group>;
-}
+/** Pointer travel (px) above which a click is treated as an orbit drag and ignored. */
+const CLICK_TOLERANCE = 4;
 
-interface ObjectViewportProps {
-  model: THREE.BufferGeometry | null;
-  points: SupportPoint[];
-  radius: number;
+export interface ObjectViewportProps {
+  scene: PrintScene;
+  supportMeshes: ReadonlyMap<string, GeneratedSupportMesh>;
+  editMode: EditMode;
+  gizmoMode: GizmoMode;
   modelVisible: boolean;
   wireframe: boolean;
-  manualMode: ManualMode;
-  selected: boolean;
-  transform: ModelTransform;
-  gizmoMode: GizmoMode;
-  onSelect: (selected: boolean) => void;
-  onTransform: (transform: ModelTransform) => void;
-  onGizmoDragging: (dragging: boolean) => void;
-  onManual: (point: SupportPoint) => void;
-  onSupport: (id: string) => void;
+  onSelect: (unitId: string | null, additive: boolean) => void;
+  onTransform: (unitId: string, transform: ModelTransform) => void;
+  onAddContact: (unitId: string, point: Vector, normal: Vector) => void;
+  onRemoveContact: (unitId: string, contactId: string) => void;
+  onErase: (unitId: string, point: Vector) => void;
 }
 
-function Scene(props: ObjectViewportProps & { gizmoDragging: boolean }) {
-  const [modelGroup, setModelGroup] = useState<THREE.Group | null>(null);
-  const addManualSupport = (event: ThreeEvent<MouseEvent>) => {
-    if (props.manualMode !== 'add' || !modelGroup) return;
-    event.stopPropagation();
-    const hit = event.point;
+function toGeometry(mesh: TriangleMesh): THREE.BufferGeometry {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function useGeometry(mesh: TriangleMesh | undefined): THREE.BufferGeometry | undefined {
+  const geometry = useMemo(() => (mesh && mesh.indices.length > 0 ? toGeometry(mesh) : undefined), [mesh]);
+  useEffect(() => () => geometry?.dispose(), [geometry]);
+  return geometry;
+}
+
+interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMeshes' | 'gizmoMode' | 'onTransform'> {
+  unit: PrintUnit;
+  supports?: GeneratedSupportMesh;
+  selected: boolean;
+  active: boolean;
+  onGroup?: (group: THREE.Group | null) => void;
+}
+
+function UnitObject(props: UnitObjectProps) {
+  const { unit, supports, editMode } = props;
+  const model = useGeometry(unit.source);
+  const supportGeometry = useGeometry(supports);
+  const surfaceNormal = (event: ThreeEvent<MouseEvent>): Vector => {
     const normal = event.face?.normal.clone().transformDirection(event.object.matrixWorld).normalize() ?? new THREE.Vector3(0, -1, 0);
-    props.onManual({ id: `manual-${crypto.randomUUID()}`, regionId: -1, position: [hit.x, hit.y, hit.z], normal: [normal.x, normal.y, normal.z], source: 'interior' });
+    return [normal.x, normal.y, normal.z];
   };
 
-  return <>
-    <color attach="background" args={['#08101a']} />
-    <ambientLight intensity={1.1} />
-    <directionalLight position={[20, 30, 10]} intensity={2} />
-    <Grid args={[120, 120]} cellSize={5} cellThickness={.6} sectionSize={25} sectionThickness={1.2} fadeDistance={150} />
-    <OrbitControls makeDefault enabled={!props.gizmoDragging} />
-    <group rotation={[-Math.PI / 2, 0, 0]} />
-    {props.model && <group ref={setModelGroup} position={props.transform.position} rotation={props.transform.rotation}>
-      <mesh geometry={props.model} visible={props.modelVisible} onClick={(event) => { props.onSelect(true); addManualSupport(event); }}>
-        <meshStandardMaterial color={props.selected ? '#b7d3ff' : '#96a7c7'} emissive={props.selected ? '#173b62' : '#000000'} emissiveIntensity={props.selected ? .35 : 0} metalness={.18} roughness={.6} wireframe={props.wireframe} />
-      </mesh>
-    </group>}
-    {props.selected && modelGroup && isTransformMode(props.gizmoMode) && <ModelTransformControls mode={props.gizmoMode} object={modelGroup} onDraggingChanged={props.onGizmoDragging} onTransform={props.onTransform} />}
-    <SupportLayer points={props.points} radius={props.radius} onClick={props.onSupport} />
-  </>;
+  const clickModel = (event: ThreeEvent<MouseEvent>) => {
+    if (event.delta > CLICK_TOLERANCE) return;
+    event.stopPropagation();
+    const point: Vector = [event.point.x, event.point.y, event.point.z];
+    if (editMode === 'off') return props.onSelect(unit.id, event.shiftKey);
+    if (!props.active) return props.onSelect(unit.id, false);
+    if (editMode === 'remove' || event.ctrlKey || event.metaKey) return props.onErase(unit.id, point);
+    props.onAddContact(unit.id, point, surfaceNormal(event));
+  };
+
+  const removeSupport = (event: ThreeEvent<MouseEvent>, force: boolean) => {
+    if (event.delta > CLICK_TOLERANCE || editMode === 'off' || !supports || event.faceIndex == null) return;
+    if (!force && editMode !== 'remove' && !event.ctrlKey && !event.metaKey) return;
+    event.stopPropagation();
+    event.nativeEvent.preventDefault?.();
+    const contactId = contactAtTriangle(supports, event.faceIndex);
+    if (contactId) props.onRemoveContact(unit.id, contactId);
+  };
+
+  return <group ref={props.onGroup} position={unit.transform.position} rotation={unit.transform.rotation} name={unit.id}>
+    {model && <mesh geometry={model} visible={props.modelVisible} onClick={clickModel}>
+      <meshStandardMaterial
+        color={props.active ? '#c4dbff' : props.selected ? '#a9c4ee' : '#8e9fbd'}
+        emissive={props.active ? '#1d4775' : props.selected ? '#132f4f' : '#000000'}
+        emissiveIntensity={props.selected ? 0.4 : 0}
+        metalness={0.15}
+        roughness={0.62}
+        flatShading
+        wireframe={props.wireframe}
+      />
+    </mesh>}
+    {supportGeometry && <mesh
+      geometry={supportGeometry}
+      onClick={(event) => removeSupport(event, false)}
+      onContextMenu={(event) => removeSupport(event, true)}
+    >
+      <meshStandardMaterial color={props.selected ? '#5eead4' : '#3fb6aa'} metalness={0.05} roughness={0.55} />
+    </mesh>}
+  </group>;
 }
 
-function ModelTransformControls({ mode, object, onDraggingChanged, onTransform }: { mode: 'translate' | 'rotate'; object: THREE.Group; onDraggingChanged: (dragging: boolean) => void; onTransform: (transform: ModelTransform) => void }) {
+function UnitTransformControls({ mode, object, onDraggingChanged, onCommit }: {
+  mode: 'translate' | 'rotate';
+  object: THREE.Group;
+  onDraggingChanged: (dragging: boolean) => void;
+  onCommit: (transform: ModelTransform) => void;
+}) {
   const controls = useRef<TransformControlsImpl>(null);
   useEffect(() => {
-    const control = controls.current;
+    const control = controls.current as unknown as THREE.EventDispatcher<{ 'dragging-changed': { value: boolean } }> | null;
     if (!control) return;
-    const handleDraggingChanged = (event: THREE.Event & { value: boolean }) => onDraggingChanged(event.value);
-    (control as any).addEventListener('dragging-changed', handleDraggingChanged);
-    return () => (control as any).removeEventListener('dragging-changed', handleDraggingChanged);
-  }, [onDraggingChanged]);
-  return <TransformControls ref={controls} mode={mode} object={object} onObjectChange={() => onTransform(transformFromObject(object))} />;
+    // One history step per drag: the gizmo moves the group live; the scene commits on release.
+    const handle = (event: { value: boolean }) => {
+      onDraggingChanged(event.value);
+      if (!event.value) onCommit(transformFromObject(object));
+    };
+    control.addEventListener('dragging-changed', handle);
+    return () => control.removeEventListener('dragging-changed', handle);
+  }, [object, onCommit, onDraggingChanged]);
+  return <TransformControls ref={controls} mode={mode} object={object} />;
 }
 
 export default function ObjectViewport(props: ObjectViewportProps) {
-  const [gizmoDragging, setGizmoDragging] = useState(false);
-  return <Canvas camera={{ position: [32, 25, 32], fov: 42 }} onPointerMissed={() => props.onSelect(false)}>
-    <Scene {...props} gizmoDragging={gizmoDragging} onGizmoDragging={(dragging) => { setGizmoDragging(dragging); props.onGizmoDragging(dragging); }} />
+  const [dragging, setDragging] = useState(false);
+  const [activeGroup, setActiveGroup] = useState<THREE.Group | null>(null);
+  const { scene } = props;
+  const selected = new Set(scene.selectedUnitIds);
+  const activeId = scene.activeUnitId;
+
+  return <Canvas
+    camera={{ position: [70, 60, 90], fov: 40, near: 0.5, far: 4000 }}
+    onPointerMissed={(event) => { if (props.editMode === 'off' && event.button === 0 && !dragging) props.onSelect(null, false); }}
+    onContextMenu={(event) => event.preventDefault()}
+  >
+    <color attach="background" args={['#08101a']} />
+    <ambientLight intensity={1.05} />
+    <directionalLight position={[40, 80, 30]} intensity={2.1} />
+    <directionalLight position={[-50, 20, -40]} intensity={0.6} />
+    <Grid args={[240, 240]} cellSize={5} cellThickness={0.6} sectionSize={25} sectionThickness={1.2} fadeDistance={400} infiniteGrid />
+    <OrbitControls makeDefault enabled={!dragging} />
+    {scene.units.map((unit) => <UnitObject
+      key={unit.id}
+      unit={unit}
+      supports={props.supportMeshes.get(unit.id)}
+      selected={selected.has(unit.id)}
+      active={unit.id === activeId}
+      editMode={props.editMode}
+      modelVisible={props.modelVisible}
+      wireframe={props.wireframe}
+      onSelect={props.onSelect}
+      onAddContact={props.onAddContact}
+      onRemoveContact={props.onRemoveContact}
+      onErase={props.onErase}
+      {...(unit.id === activeId ? { onGroup: setActiveGroup } : {})}
+    />)}
+    {activeId && activeGroup && props.editMode === 'off' && isTransformMode(props.gizmoMode) && <UnitTransformControls
+      mode={props.gizmoMode}
+      object={activeGroup}
+      onDraggingChanged={setDragging}
+      onCommit={(transform) => props.onTransform(activeId, transform)}
+    />}
   </Canvas>;
 }
