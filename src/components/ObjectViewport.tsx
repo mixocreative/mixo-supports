@@ -93,11 +93,11 @@ function UnitObject(props: UnitObjectProps) {
   return <group ref={props.onGroup} position={unit.transform.position} rotation={unit.transform.rotation} name={unit.id}>
     {model && <mesh geometry={model} visible={props.modelVisible} onClick={clickModel}>
       <meshStandardMaterial
-        color={props.active ? '#c4dbff' : props.selected ? '#a9c4ee' : '#8e9fbd'}
-        emissive={props.active ? '#1d4775' : props.selected ? '#132f4f' : '#000000'}
-        emissiveIntensity={props.selected ? 0.4 : 0}
-        metalness={0.15}
-        roughness={0.62}
+        color={props.active ? '#f6f3ec' : props.selected ? '#e6e1d7' : '#cdc8bf'}
+        emissive={props.active ? '#7f0019' : '#000000'}
+        emissiveIntensity={props.active ? 0.06 : 0}
+        metalness={0}
+        roughness={0.85}
         flatShading
         wireframe={props.wireframe}
       />
@@ -107,7 +107,7 @@ function UnitObject(props: UnitObjectProps) {
       onClick={(event) => removeSupport(event, false)}
       onContextMenu={(event) => removeSupport(event, true)}
     >
-      <meshStandardMaterial color={props.selected ? '#5eead4' : '#3fb6aa'} metalness={0.05} roughness={0.55} />
+      <meshStandardMaterial color={props.selected ? '#b59f78' : '#c8b896'} metalness={0} roughness={0.9} />
     </mesh>}
   </group>;
 }
@@ -145,11 +145,11 @@ export default function ObjectViewport(props: ObjectViewportProps) {
     onPointerMissed={(event) => { if (props.editMode === 'off' && event.button === 0 && !dragging) props.onSelect(null, false); }}
     onContextMenu={(event) => event.preventDefault()}
   >
-    <color attach="background" args={['#08101a']} />
-    <ambientLight intensity={1.05} />
-    <directionalLight position={[40, 80, 30]} intensity={2.1} />
-    <directionalLight position={[-50, 20, -40]} intensity={0.6} />
-    <Grid args={[240, 240]} cellSize={5} cellThickness={0.6} sectionSize={25} sectionThickness={1.2} fadeDistance={400} infiniteGrid />
+    <color attach="background" args={['#e9e6df']} />
+    <hemisphereLight args={['#fbfaf7', '#cfc8bb', 1.3]} />
+    <directionalLight position={[40, 80, 30]} intensity={1.4} />
+    <directionalLight position={[-50, 30, -40]} intensity={0.45} />
+    <Grid args={[240, 240]} cellSize={5} cellThickness={0.5} cellColor="#d3cdc2" sectionSize={25} sectionThickness={0.9} sectionColor="#b9b1a3" fadeDistance={400} fadeStrength={1.5} infiniteGrid />
     <OrbitControls makeDefault enabled={!dragging} />
     {scene.units.map((unit) => <UnitObject
       key={unit.id}

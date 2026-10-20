@@ -30,12 +30,12 @@ const PLACEMENT_KEYS: ReadonlySet<SettingKey> = new Set<SettingKey>([
 ]);
 const REGENERATE_DELAY_MS = 350;
 
-const EXPORTS: { kind: ExportKind; label: string; primary?: boolean }[] = [
-  { kind: 'active-printable', label: 'Active · model + supports', primary: true },
-  { kind: 'active-supports', label: 'Active · supports only' },
-  { kind: 'separate-printable', label: 'Each unit · model + supports' },
-  { kind: 'separate-supports', label: 'Each unit · supports only' },
-  { kind: 'whole-printable', label: 'Whole scene · one file' },
+const EXPORTS: { kind: ExportKind; label: string }[] = [
+  { kind: 'active-printable', label: 'Active unit with model' },
+  { kind: 'active-supports', label: 'Active unit, supports only' },
+  { kind: 'separate-printable', label: 'Each unit with model' },
+  { kind: 'separate-supports', label: 'Each unit, supports only' },
+  { kind: 'whole-printable', label: 'Whole plate in one file' },
 ];
 
 interface PendingJob {
@@ -158,7 +158,7 @@ export default function App() {
       worker().postMessage(request, [mesh.positions.buffer, mesh.indices.buffer]);
     }
     setPendingCount(pending.current.size);
-    setStatus(`Analysing overhangs for ${units.length} unit${units.length === 1 ? '' : 's'}…`);
+    setStatus(`Analysing overhangs for ${units.length} unit${units.length === 1 ? '' : 's'}.`);
   }, [targets, worker]);
 
   const regenerateTimer = useRef<number | undefined>(undefined);
@@ -354,13 +354,17 @@ export default function App() {
 
   return <main>
     <header>
-      <div><span className="eyebrow">MIXO / SLA TOOLS</span><h1>Resin Support Studio</h1></div>
+      <div className="brand"><h1>Resin Support Studio</h1><small>Mixo supports</small></div>
       <div className="header-actions">
-        <button onClick={() => dispatchHistory({ type: 'undo' })} disabled={history.past.length === 0} title="Undo (Ctrl+Z)">Undo</button>
-        <button onClick={() => dispatchHistory({ type: 'redo' })} disabled={history.future.length === 0} title="Redo (Ctrl+Shift+Z)">Redo</button>
-        <button onClick={() => setModelVisible((visible) => !visible)}>{modelVisible ? 'Hide' : 'Show'} models</button>
-        <button onClick={() => setWireframe((value) => !value)}>{wireframe ? 'Solid' : 'Wireframe'}</button>
-        <button className="primary" onClick={() => generate()} disabled={scene.units.length === 0}>{pendingCount > 0 ? 'Generating…' : `Generate supports (${scopeLabel})`}</button>
+        <div className="toolbar-group">
+          <button onClick={() => dispatchHistory({ type: 'undo' })} disabled={history.past.length === 0} title="Undo (Ctrl+Z)">Undo</button>
+          <button onClick={() => dispatchHistory({ type: 'redo' })} disabled={history.future.length === 0} title="Redo (Ctrl+Shift+Z)">Redo</button>
+        </div>
+        <div className="toolbar-group">
+          <button onClick={() => setModelVisible((visible) => !visible)}>{modelVisible ? 'Hide' : 'Show'} models</button>
+          <button onClick={() => setWireframe((value) => !value)}>{wireframe ? 'Solid' : 'Wireframe'}</button>
+        </div>
+        <button className="primary" onClick={() => generate()} disabled={scene.units.length === 0}>{pendingCount > 0 ? 'Generating supports' : `Generate supports for ${scopeLabel}`}</button>
       </div>
     </header>
     <section className="workspace">
@@ -368,42 +372,50 @@ export default function App() {
         <label className="drop">
           <input type="file" multiple accept=".stl,.glb,.gltf" onChange={(event) => { void importFiles([...(event.target.files ?? [])]); event.target.value = ''; }} />
           <strong>Import models</strong>
-          <small>STL · GLB · glTF — files stay on this device</small>
+          <small>STL, GLB or glTF. Files stay on this device.</small>
         </label>
-        <h3>Print units</h3>
-        {scene.units.length === 0 ? <p className="help">No units yet. Each STL, and each mesh inside a glTF, becomes its own unit.</p> : <ul className="units">
-          {scene.units.map((unit, index) => {
-            const selected = scene.selectedUnitIds.includes(unit.id);
-            return <li key={unit.id}>
-              <button className={`unit${selected ? ' selected' : ''}${unit.id === scene.activeUnitId ? ' active' : ''}`} onClick={(event) => onSelect(unit.id, event.shiftKey || event.ctrlKey || event.metaKey)}>
-                <b>{resolveSettings(unit.settings).labelText || labelForIndex(index)}</b>
-                <span>{unit.name}</span>
-                <small>{unit.supports ? `${unitContacts(unit).length} supports` : 'no supports'}</small>
-              </button>
-            </li>;
-          })}
-        </ul>}
-        <div className="row">
-          <button onClick={() => dispatch({ type: 'selection/set', unitIds: scene.units.map((unit) => unit.id), ...(scene.units[0] ? { activeUnitId: scene.activeUnitId ?? scene.units[0].id } : {}) })} disabled={scene.units.length === 0}>Select all</button>
-          <button onClick={deleteUnits} disabled={selectedCount === 0}>Delete</button>
-        </div>
-        <h3>Object mode</h3>
-        <div className="segmented">
-          {(['none', 'translate', 'rotate'] as const).map((mode) => <button key={mode} className={gizmoMode === mode ? 'active' : ''} aria-pressed={gizmoMode === mode} onClick={() => { setGizmoMode(mode); setEditMode('off'); }}>{mode === 'none' ? 'select' : mode === 'translate' ? 'move' : 'rotate'}</button>)}
-        </div>
-        <h3>Support edit mode</h3>
-        <div className="segmented">
-          {(['off', 'add', 'remove'] as const).map((mode) => <button key={mode} className={editMode === mode ? 'active' : ''} aria-pressed={editMode === mode} onClick={() => setEditMode(mode)} disabled={mode !== 'off' && !activeUnit}>{mode}</button>)}
-        </div>
-        <p className="help">{editMode === 'off'
-          ? 'Tab enters edit mode on the active unit. Shift+click adds units to the selection.'
-          : editMode === 'add'
-            ? 'Click the model: add support · Ctrl+click / right-click a support: remove · Ctrl+click the model: erase within radius · Esc: done'
-            : 'Click a support or near contacts on the model to remove · Esc: done'}</p>
-        <h3>Supports ({scopeLabel})</h3>
-        <button className="primary" onClick={() => generate()} disabled={scene.units.length === 0}>Generate / regenerate</button>
-        <button onClick={clearManual} disabled={scene.units.length === 0}>Clear manual edits</button>
-        <button onClick={removeSupports} disabled={scene.units.length === 0}>Remove supports</button>
+        <section>
+          <h3>Print units</h3>
+          {scene.units.length === 0 ? <p className="help">Each STL, and each mesh inside a glTF, becomes its own unit.</p> : <ul className="units">
+            {scene.units.map((unit, index) => {
+              const selected = scene.selectedUnitIds.includes(unit.id);
+              return <li key={unit.id}>
+                <button className={`unit${selected ? ' selected' : ''}${unit.id === scene.activeUnitId ? ' active' : ''}`} onClick={(event) => onSelect(unit.id, event.shiftKey || event.ctrlKey || event.metaKey)}>
+                  <b>{resolveSettings(unit.settings).labelText || labelForIndex(index)}</b>
+                  <span>{unit.name}</span>
+                  <small>{unit.supports ? `${unitContacts(unit).length} supports` : 'No supports yet'}</small>
+                </button>
+              </li>;
+            })}
+          </ul>}
+          <div className="row">
+            <button onClick={() => dispatch({ type: 'selection/set', unitIds: scene.units.map((unit) => unit.id), ...(scene.units[0] ? { activeUnitId: scene.activeUnitId ?? scene.units[0].id } : {}) })} disabled={scene.units.length === 0}>Select all</button>
+            <button onClick={deleteUnits} disabled={selectedCount === 0}>Delete</button>
+          </div>
+        </section>
+        <section>
+          <h3>Object</h3>
+          <div className="segmented">
+            {(['none', 'translate', 'rotate'] as const).map((mode) => <button key={mode} className={gizmoMode === mode ? 'active' : ''} aria-pressed={gizmoMode === mode} onClick={() => { setGizmoMode(mode); setEditMode('off'); }}>{mode === 'none' ? 'select' : mode === 'translate' ? 'move' : 'rotate'}</button>)}
+          </div>
+        </section>
+        <section>
+          <h3>Edit supports</h3>
+          <div className="segmented">
+            {(['off', 'add', 'remove'] as const).map((mode) => <button key={mode} className={editMode === mode ? 'active' : ''} aria-pressed={editMode === mode} onClick={() => setEditMode(mode)} disabled={mode !== 'off' && !activeUnit}>{mode}</button>)}
+          </div>
+          <p className="help">{editMode === 'off'
+            ? 'Press Tab to edit the active unit. Shift-click adds units to the selection.'
+            : editMode === 'add'
+              ? 'Click the model to add a support. Right-click or Ctrl-click a support to remove it. Ctrl-click the model to erase nearby supports. Esc when done.'
+              : 'Click a support, or the model near one, to remove it. Esc when done.'}</p>
+        </section>
+        <section>
+          <h3>Supports for {scopeLabel}</h3>
+          <button onClick={() => generate()} disabled={scene.units.length === 0}>Regenerate</button>
+          <button onClick={clearManual} disabled={scene.units.length === 0}>Clear manual edits</button>
+          <button onClick={removeSupports} disabled={scene.units.length === 0}>Remove supports</button>
+        </section>
       </aside>
       <section
         className={isDraggingOver ? 'viewport viewport--dropping' : 'viewport'}
@@ -424,12 +436,14 @@ export default function App() {
           onRemoveContact={onRemoveContact}
           onErase={onErase}
         />
-        {isDraggingOver && <div className="viewport-drop-overlay">Drop STL, GLB or glTF to import</div>}
-        <div className="viewport-object-status">{editMode === 'off' ? 'OBJECT MODE' : `SUPPORT EDIT · ${editMode.toUpperCase()}`} · {activeUnit ? activeUnit.name.toUpperCase() : 'NO ACTIVE UNIT'}</div>
-        <div className="viewport-note">ORBIT · PAN · ZOOM &nbsp;/&nbsp; mm &nbsp;/&nbsp; plate y = 0</div>
+        {isDraggingOver && <div className="viewport-drop-overlay">Drop to import</div>}
+        <div className={`viewport-object-status${editMode === 'off' ? '' : ' editing'}`}>
+          {editMode === 'off' ? (activeUnit ? activeUnit.name : 'Nothing selected') : `Editing supports on ${activeUnit?.name ?? 'unit'}`}
+        </div>
+        <div className="viewport-note">Millimetres. Build plate at zero.</div>
       </section>
       <aside className="panel right">
-        <h2>Support settings {activeUnit ? <small>· {activeUnit.name}{selectedCount > 1 ? ` + ${selectedCount - 1}` : ''}</small> : null}</h2>
+        <h2>Support settings{activeUnit ? <small>{activeUnit.name}{selectedCount > 1 ? ` and ${selectedCount - 1} more` : ''}</small> : null}</h2>
         {!activeUnit && <p className="help">Select a unit to edit its settings. Changes apply to every selected unit.</p>}
         <SettingsPanel
           settings={activeSettings}
@@ -439,15 +453,17 @@ export default function App() {
           onPreset={(preset) => changeSettings((settings) => applyPreset(preset, settings), false)}
           onRoofMode={(mode) => changeSettings((settings) => setRoofMode(settings, mode), false)}
         />
-        <h3>Export STL</h3>
-        {EXPORTS.map((entry) => <button key={entry.kind} className={entry.primary ? 'primary' : ''} onClick={() => runExport(entry.kind)} disabled={scene.units.length === 0}>{entry.label}</button>)}
-        <p className="help">Exports use the same generated geometry as the viewport, at full resolution. Source models are never modified.</p>
+        <section className="export">
+          <h3>Export STL</h3>
+          {EXPORTS.map((entry) => <button key={entry.kind} onClick={() => runExport(entry.kind)} disabled={scene.units.length === 0}>{entry.label}</button>)}
+          <p className="help">Exports match the viewport at full resolution. Source models are never changed.</p>
+        </section>
       </aside>
     </section>
     <footer>
       <span>{scene.units.length} unit{scene.units.length === 1 ? '' : 's'}</span>
-      <span>{activeUnit ? `${activeUnit.name} · ${(activeUnit.source.indices.length / 3).toLocaleString()} triangles` : '—'}</span>
-      <span>{contactCounts ? `${contactCounts.auto} automatic · ${contactCounts.manual} manual · ${contactCounts.removed} removed` : ''}</span>
+      {activeUnit && <span>{(activeUnit.source.indices.length / 3).toLocaleString()} triangles</span>}
+      {contactCounts && <span>{contactCounts.auto} automatic, {contactCounts.manual} manual, {contactCounts.removed} removed</span>}
       <strong>{status}</strong>
     </footer>
   </main>;
