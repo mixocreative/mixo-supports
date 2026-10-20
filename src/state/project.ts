@@ -66,7 +66,7 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
     case 'supports/set':
       return updateUnit(scene, command.unitId, (unit) => ({
         ...unit,
-        placement: command.placement,
+        placement: command.placement === undefined ? undefined : normalizePlacement(command.placement),
         supports: command.supports === undefined ? undefined : normalizeSupportMesh(command.supports),
       }));
     case 'supports/remove':
@@ -76,7 +76,10 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
     case 'settings/set':
       return updateUnit(scene, command.unitId, (unit) => ({ ...unit, settings: normalizeJsonObject(command.settings) as SupportSettings }));
     case 'manual/add':
-      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, manual: [...unit.manual, command.point] }));
+      return updateUnit(scene, command.unitId, (unit) => ({
+        ...unit,
+        manual: [...unit.manual, cloneJsonValue(command.point) as unknown as SupportPoint],
+      }));
     case 'manual/remove':
       return updateUnit(scene, command.unitId, (unit) => ({ ...unit, manual: unit.manual.filter((point) => point.id !== command.pointId) }));
     case 'suppression/add':
@@ -116,6 +119,27 @@ export function normalizeScene(scene: PrintScene): PrintScene {
     selectedUnitIds: scene.selectedUnitIds.map((id) => normalizeString(id, 'selected unit id')),
     ...(scene.activeUnitId === undefined ? {} : { activeUnitId: normalizeString(scene.activeUnitId, 'active unit id') }),
   };
+}
+
+export function serializeScene(scene: PrintScene): string {
+  return JSON.stringify(normalizeScene(scene), sceneJsonReplacer);
+}
+
+export function deserializeScene(serialized: string): PrintScene {
+  return normalizeScene(JSON.parse(serialized, sceneJsonReviver) as PrintScene);
+}
+
+export function sceneJsonReplacer(_key: string, value: unknown): unknown {
+  if (value instanceof Float32Array) return { $printSceneType: 'Float32Array', values: Array.from(value) };
+  if (value instanceof Uint32Array) return { $printSceneType: 'Uint32Array', values: Array.from(value) };
+  return value;
+}
+
+export function sceneJsonReviver(_key: string, value: unknown): unknown {
+  if (!isTypedArrayEncoding(value)) return value;
+  return value.$printSceneType === 'Float32Array'
+    ? new Float32Array(value.values)
+    : new Uint32Array(value.values);
 }
 
 function normalizeUnit(unit: PrintUnit): PrintUnit {
@@ -165,6 +189,14 @@ function normalizeVector(vector: readonly number[], label: string): [number, num
 function normalizeString(value: unknown, label: string): string {
   if (typeof value !== 'string') throw new TypeError(`${label} must be a string`);
   return value;
+}
+
+function isTypedArrayEncoding(value: unknown): value is { $printSceneType: 'Float32Array' | 'Uint32Array'; values: number[] } {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const encoded = value as Record<string, unknown>;
+  return (encoded.$printSceneType === 'Float32Array' || encoded.$printSceneType === 'Uint32Array')
+    && Array.isArray(encoded.values)
+    && encoded.values.every((entry) => typeof entry === 'number');
 }
 
 function normalizeJsonObject(value: JSONObject): JSONObject {

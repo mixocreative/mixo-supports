@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Object3D } from 'three';
 import type { SupportPoint, TriangleMesh } from '../analysis/types';
-import { emptyScene, identityTransform, reduceScene, type PrintScene, type PrintUnit } from './project';
+import { deserializeScene, emptyScene, identityTransform, reduceScene, serializeScene, type PrintScene, type PrintUnit } from './project';
 
 const source: TriangleMesh = {
   positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
@@ -74,5 +74,28 @@ describe('reduceScene', () => {
 
     const safe = reduceScene(scene, { type: 'settings/set', unitId: 'unit-a', settings: { labels: ['a', true, null], depth: 2 } });
     expect(JSON.parse(JSON.stringify(safe))).toBeTruthy();
+  });
+
+  it('clones and validates placement and manual contacts at reducer boundaries', () => {
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: { ...unitA, supports: undefined, placement: undefined } });
+    const placement = { ...unitA.placement!, points: [{ ...contact, position: [...contact.position] as [number, number, number] }] };
+    const withPlacement = reduceScene(scene, { type: 'supports/set', unitId: 'unit-a', placement, supports: unitA.supports });
+    const manual = { ...contact, position: [...contact.position] as [number, number, number] };
+    const withManual = reduceScene(withPlacement, { type: 'manual/add', unitId: 'unit-a', point: manual });
+
+    placement.points[0].position[0] = 99;
+    placement.contactPositions[0] = 99;
+    manual.position[0] = 88;
+    expect(withPlacement.units[0].placement!.points[0].position[0]).toBe(0);
+    expect(withPlacement.units[0].placement!.contactPositions[0]).toBe(0);
+    expect(withManual.units[0].manual[0].position[0]).toBe(0);
+    expect(() => reduceScene(scene, { type: 'supports/set', unitId: 'unit-a', placement: { ...placement, points: [{ ...contact, position: new Object3D() as never }] } })).toThrow('JSON-safe');
+    expect(() => reduceScene(scene, { type: 'manual/add', unitId: 'unit-a', point: { ...contact, normal: new Object3D() as never } })).toThrow('JSON-safe');
+  });
+
+  it('faithfully round-trips a populated scene through JSON', () => {
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: unitA });
+
+    expect(deserializeScene(serializeScene(scene))).toEqual(scene);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Object3D } from 'three';
 import type { TriangleMesh } from '../analysis/types';
-import { createSceneHistory, redoScene, undoScene, withSceneCommand } from './history';
+import { createSceneHistory, deserializeSceneHistory, redoScene, serializeSceneHistory, undoScene, withSceneCommand } from './history';
 import { emptyScene, identityTransform, type PrintUnit } from './project';
 
 const source: TriangleMesh = { positions: new Float32Array([0, 0, 0]), indices: new Uint32Array() };
@@ -40,5 +40,14 @@ describe('scene history', () => {
 
     const history = withSceneCommand(createSceneHistory(emptyScene), { type: 'unit/add', unit });
     expect(JSON.parse(JSON.stringify(history))).toBeTruthy();
+  });
+
+  it('faithfully round-trips populated history through JSON', () => {
+    const history = withSceneCommand(
+      withSceneCommand(createSceneHistory(emptyScene), { type: 'unit/add', unit }),
+      { type: 'selection/set', unitIds: ['unit-a'], activeUnitId: 'unit-a' },
+    );
+
+    expect(deserializeSceneHistory(serializeSceneHistory(history))).toEqual(history);
   });
 });
