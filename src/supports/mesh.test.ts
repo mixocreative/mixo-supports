@@ -63,19 +63,38 @@ describe('buildSupportMesh', () => {
     expect(contactAtTriangle(mesh, mesh.components.find((component) => component.contactId === 'auto-1')!.start / 3)).toBe('auto-1');
   });
 
-  it('rests feet on the plate without a raft and on the raft floor with one', () => {
+  it('stands feet on the plate, embedded in the raft floor, as Blender does', () => {
     const withoutRaft = buildSupportMesh([contact], updateSetting(settings, 'raftEnabled', false));
     expect(withoutRaft.parts).not.toContain('raft');
     expect(meshBounds(withoutRaft).min[1]).toBeCloseTo(0);
 
     const raft = buildSupportMesh([contact], settings);
     const foot = raft.components.find((component) => component.part === 'foot')!;
-    expect(minY(raft, foot)).toBeCloseTo(settings.raftFloorThickness);
+    expect(minY(raft, foot)).toBeCloseTo(0);
+  });
+
+  it('builds the raft rim leaning outward going up (Blender SLASG profile)', () => {
+    const mesh = buildSupportMesh([contact], updateSetting(settings, 'labelEnabled', false));
+    const rim = mesh.components.filter((component) => component.part === 'raft')[1]!;
+    const reachAt = (y: number) => {
+      let reach = 0;
+      for (let offset = rim.start; offset < rim.start + rim.count; offset += 1) {
+        const vertex = mesh.indices[offset]! * 3;
+        if (Math.abs(mesh.positions[vertex + 1]! - y) < 1e-4) reach = Math.max(reach, Math.abs(mesh.positions[vertex]!));
+      }
+      return reach;
+    };
+    const lean = settings.raftWallHeight * Math.tan(settings.raftWallAngle * Math.PI / 180);
+
+    expect(reachAt(0)).toBeCloseTo(settings.raftExpandWidth, 1);
+    expect(reachAt(settings.raftWallHeight)).toBeCloseTo(settings.raftExpandWidth + lean, 1);
+    expect(reachAt(settings.raftWallHeight)).toBeGreaterThan(reachAt(0));
   });
 
   it('adds braces between tall neighbouring pillars only when enabled', () => {
     const tall = [contact, neighbour].map((point) => ({ ...point, position: [point.position[0], 20, 0] as [number, number, number] }));
-    expect(buildSupportMesh([contact, neighbour], settings).parts).not.toContain('brace');
+    const short = [contact, neighbour].map((point) => ({ ...point, position: [point.position[0], 7, 0] as [number, number, number] }));
+    expect(buildSupportMesh(short, settings).parts).not.toContain('brace');
     expect(buildSupportMesh(tall, settings).parts).toContain('brace');
     expect(buildSupportMesh(tall, updateSetting(settings, 'trussEnabled', false)).parts).not.toContain('brace');
   });

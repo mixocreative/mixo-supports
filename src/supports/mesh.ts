@@ -70,7 +70,8 @@ export function buildSupportMesh(
   const tipOnly = !exporting && settings.previewMode === 'ONLY_TIP';
   const segments = !exporting && settings.lowPolyMode ? Math.max(3, Math.round(settings.resolution / 2)) : settings.resolution;
   const raftTop = settings.raftEnabled ? settings.raftFloorThickness : 0;
-  const footTop = raftTop + settings.baseHeight;
+  // Feet stand on the plate and are embedded in the raft floor, as in SLASG.
+  const footTop = Math.max(settings.baseHeight, raftTop);
   const pillarRadius = settings.pillarDiameter / 2;
   const columns: Column[] = [];
   const footprints: Point2[] = [];
@@ -94,7 +95,7 @@ export function buildSupportMesh(
     if (pillarTop[1] <= footTop + MIN_LENGTH) {
       // Too close to the plate for a pillar: one cone carries the neck straight down.
       builder.begin('foot', contact.id);
-      builder.frustum([neckEnd[0], raftTop, neckEnd[2]], neckEnd, settings.baseDiameter / 2, settings.neckDiameter / 2, segments);
+      builder.frustum([neckEnd[0], 0, neckEnd[2]], neckEnd, settings.baseDiameter / 2, settings.neckDiameter / 2, segments);
       builder.end();
       footprints.push([neckEnd[0], neckEnd[2]]);
       continue;
@@ -128,7 +129,7 @@ export function buildSupportMesh(
         builder.frustum(record.from, [x, footTop, z], radius, radius, segments);
         builder.end();
         builder.begin('foot', record.kind === 'pillar' ? record.contactId : undefined);
-        builder.frustum([x, raftTop, z], [x, footTop, z], Math.max(settings.baseDiameter / 2, radius * 1.5), radius, segments);
+        builder.frustum([x, 0, z], [x, footTop, z], Math.max(settings.baseDiameter / 2, radius * 1.5), radius, segments);
         builder.end();
         columns.push({ x, z, bottom: footTop, top: record.from[1] });
         footprints.push([x, z]);
@@ -236,25 +237,26 @@ function addStructures(
   const raftPoints = [...footprints, ...cageColumns];
   if (raftPoints.length === 0) return;
   const center = mean(raftPoints);
-  const raftRadius = settings.baseDiameter / 2 + settings.raftExpandWidth;
+  // Measured against Blender (SLASG voxel raft, 64 voxels): the raft's bottom edge sits
+  // Expand Width out from the foot centres; the rim leans outward going up by
+  // Wall Height x tan(Wall Angle) and is Wall Thickness wide; the floor fills inside it.
+  const raftRadius = Math.max(0.05, settings.raftExpandWidth);
+  const ring = (radius: number) => sampleRing(dilatedHull(raftPoints, Math.max(0.05, radius)), center, RING_SAMPLES);
 
   if (settings.raftEnabled) {
-    const floorRing = sampleRing(dilatedHull(raftPoints, raftRadius), center, RING_SAMPLES);
+    const floorRing = ring(raftRadius);
     builder.begin('raft');
     builder.loft([floorRing.map(([x, z]) => [x, 0, z] as Vector), floorRing.map(([x, z]) => [x, settings.raftFloorThickness, z] as Vector)], true);
     builder.end();
 
-    const run = Math.min(10, settings.raftWallHeight / Math.tan(Math.max(1, settings.raftWallAngle) * Math.PI / 180));
-    const inner = Math.max(0.1, raftRadius - settings.raftWallThickness);
-    if (settings.raftWallHeight > 0) {
-      const ring = (radius: number) => sampleRing(dilatedHull(raftPoints, radius), center, RING_SAMPLES);
-      const [outerBottom, outerTop, innerRing] = [ring(raftRadius + run), ring(raftRadius), ring(inner)];
+    const lean = settings.raftWallHeight * Math.tan(settings.raftWallAngle * Math.PI / 180);
+    if (settings.raftWallHeight > 0 && settings.raftWallThickness > 0) {
       builder.begin('raft');
       builder.loft([
-        outerBottom.map(([x, z]) => [x, 0, z] as Vector),
-        outerTop.map(([x, z]) => [x, settings.raftWallHeight, z] as Vector),
-        innerRing.map(([x, z]) => [x, settings.raftWallHeight, z] as Vector),
-        innerRing.map(([x, z]) => [x, 0, z] as Vector),
+        ring(raftRadius).map(([x, z]) => [x, 0, z] as Vector),
+        ring(raftRadius + lean).map(([x, z]) => [x, settings.raftWallHeight, z] as Vector),
+        ring(raftRadius + lean - settings.raftWallThickness).map(([x, z]) => [x, settings.raftWallHeight, z] as Vector),
+        ring(raftRadius - settings.raftWallThickness).map(([x, z]) => [x, 0, z] as Vector),
       ], false);
       builder.end();
     }
@@ -344,26 +346,38 @@ function addLoop(builder: MeshBuilder, part: SupportPart, points: readonly Vecto
   });
 }
 
-/** Unit letter raised on a pad at the raft's front-left corner, readable from above. */
+/**
+ * Unit letter on its own pad, as Blender's MIXO_Label: centred on the raft vertex nearest
+ * the footprint's front-right corner (Blender max x / min y), a frustum from the plate to
+ * Wall Height whose sides flare outward going up at the Wall Angle, letters on top.
+ */
 function addLabel(builder: MeshBuilder, raftRing: readonly Point2[], settings: Readonly<LiveSupportSettings>, text: string): void {
   const { runs, columns } = layoutText(text);
   if (columns === 0) return;
   const pixel = settings.labelSize / GLYPH_ROWS;
-  const margin = Math.max(settings.labelMargin, pixel);
-  const width = columns * pixel + margin * 2;
-  const depth = settings.labelSize + margin * 2;
-  const minX = Math.min(...raftRing.map(([x]) => x));
+  const width = columns * pixel + settings.labelMargin * 2;
+  const depth = settings.labelSize + settings.labelMargin * 2;
+  const maxX = Math.max(...raftRing.map(([x]) => x));
   const maxZ = Math.max(...raftRing.map(([, z]) => z));
-  const x0 = minX - width * 0.5 + settings.labelOffsetX;
-  const z0 = maxZ - depth * 0.5 + settings.labelOffsetY;
-  const padTop = settings.raftFloorThickness;
+  const anchor = raftRing.reduce((best, point) => (
+    Math.hypot(point[0] - maxX, point[1] - maxZ) < Math.hypot(best[0] - maxX, best[1] - maxZ) ? point : best
+  ));
+  const cx = anchor[0] + settings.labelOffsetX;
+  const cz = anchor[1] - settings.labelOffsetY;
+  const padTop = settings.raftWallHeight > 0 ? settings.raftWallHeight : settings.raftFloorThickness;
+  const flare = padTop * Math.tan(settings.raftWallAngle * Math.PI / 180);
+  const rect = (halfX: number, halfZ: number, y: number): Vector[] => [
+    [cx - halfX, y, cz - halfZ], [cx + halfX, y, cz - halfZ], [cx + halfX, y, cz + halfZ], [cx - halfX, y, cz + halfZ],
+  ];
 
   builder.begin('label');
-  builder.box([x0, 0, z0], [x0 + width, padTop, z0 + depth]);
+  builder.loft([rect(width / 2, depth / 2, 0), rect(width / 2 + flare, depth / 2 + flare, padTop)], true);
   builder.end();
+  const x0 = cx - width / 2 + settings.labelMargin;
+  const z0 = cz - depth / 2 + settings.labelMargin;
   for (const run of runs) {
-    const x = x0 + margin + run.column * pixel;
-    const z = z0 + margin + run.row * pixel;
+    const x = x0 + run.column * pixel;
+    const z = z0 + run.row * pixel;
     builder.begin('label');
     builder.box([x, padTop - 0.01, z], [x + run.length * pixel, padTop + settings.labelHeight, z + pixel]);
     builder.end();

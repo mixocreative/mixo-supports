@@ -8,11 +8,11 @@ Reference: Resin UV `SLA Supports` panel in `S:/ai/mixo3dtool/mixo3d` (`properti
 | Presets Light/Middle/Heavy | `slasg_map.PRESETS`; editing a preset value switches to Custom; Support Spacing is not part of a preset | `supports/settings.ts` `presetValues`, `updateSetting`, `PRESET_KEYS` | `settings.test.ts`; browser: Heavy applied live |
 | Contact / neck / pillar / foot settings | Contact Ø, Contact Depth, Upper Ø, Connection Length/Angle, Middle Ø, Bottom Ø/Thickness | `mesh.ts` tip sphere, neck frustum clamped to `maxNeckAngle`, transition cone, pillar, foot | `mesh.test.ts` (plate at y=0, neck angle, foot on raft floor) |
 | Bracing | Braces, Ø, angle, Z spacing, start height, top spacing, distance limit | `mesh.ts` `addBraces` (nearest-neighbour zigzag) | `mesh.test.ts` brace on/off and height gating |
-| Raft | Raft on/off, expand width, floor thickness, sloped wall | `mesh.ts` convex raft floor + sloped rim | `mesh.test.ts`; browser screenshots |
+| Raft | Raft on/off, expand width, floor thickness, wall height/thickness/angle | `mesh.ts`: floor at Expand Width from the foot centres; rim Wall Thickness wide, leaning **outward going up** by Wall Height x tan(Wall Angle); feet stand on the plate inside the floor | Measured in Blender 5.2: `blenderParity.test.ts` (rim edge 13.06 at the bottom and 13.92 at the top vs web 12.90 and 13.77) |
 | Roof / Cage | Off/Roof/Cage, mode defaults seeded on first use, columns, cross bars, roof braces, rings | `setRoofMode` + `addStructures` | `settings.test.ts`, `mesh.test.ts`; browser: roof and cage rendered |
-| Letter label | Unit letter A, B, … embossed on a raft pad; needs Raft | `font.ts` 5x7 glyph runs + `addLabel`; letter from `labelForIndex` unless overridden | `mesh.test.ts`; browser: pads visible |
+| Letter label | Pad centred on the raft's front-right vertex, frustum from the plate to Wall Height flaring at Wall Angle, letters on top | `font.ts` 5x7 glyph runs + `addLabel` | `mesh.test.ts`; side-by-side render against a Blender STL export |
 | Tree supports | Auto Tree, merge distance, branch descent, section increment | `tree.ts` topology + trunk radius growth in `mesh.ts` | `tree.test.ts`, `mesh.test.ts`; browser: tree rendered |
-| Auto placement | Spacing, overhang angle, downward faces, islands, ridge angle, reinforce overhang edges | `analysis/placement.ts` with `includeDownward` / `reinforceEdges` toggles | `placement.test.ts`; browser: spacing 2 → 3 regenerated live (58 contacts) |
+| Auto placement | Stock scatter field plus edge anchors inset 0.3 mm at 2 mm spacing; priority minima > edges > surface | Deterministic Poisson-disk interior (minimum gap 1.2 x spacing) after island and edge anchors | `blenderParity.test.ts`: web 91 contacts (cap 81, stem 10) vs Blender 100 (92, 8) |
 | Preview / low poly / resolution | Only Tip preview; low poly; resolution; export always Full | `buildSupportMesh` `mode: 'export'` ignores preview and low poly | `mesh.test.ts` |
 | Manual add | Click adds a contact | Support edit mode **Add**: click the model | Browser: 0 → 1 manual |
 | Manual remove | Ctrl+Click / right-click removes; erase radius | Right-click or Ctrl+click a support; Ctrl+click the model (or **Remove** mode) erases within Erase Radius | Browser: right-click 178 → 177 automatic, 1 removed |
@@ -31,6 +31,9 @@ Reference: Resin UV `SLA Supports` panel in `S:/ai/mixo3dtool/mixo3d` (`properti
 - Vertex-for-vertex Geometry Nodes output.
 
 ## Known differences
+
+- Blender's default raft is voxelised at 16 voxels, which pulls its edge about 0.7 mm inward compared with 64 voxels. The web raft matches the 64-voxel profile and ignores Voxel Resolution.
+- Interior contact positions differ, because Geometry Nodes uses a random seed. Counts, edge anchors and spacing match.
 
 - Rafts, roofs and cages follow the convex hull of the feet, so a concave footprint gets a convex raft.
 - Tree layout is a deterministic approximation of SLASG Auto Tree.
