@@ -7,10 +7,14 @@ import type { SupportPoint } from '../analysis/types';
 import { transformFromObject, type ModelTransform } from '../state/transform';
 
 export type ManualMode = 'add' | 'remove' | 'move' | 'none';
-export type GizmoMode = 'translate' | 'rotate';
+export type GizmoMode = 'none' | 'translate' | 'rotate';
 
 export function acceptModelFile(file: File): boolean {
   return /\.(stl|glb|gltf)$/i.test(file.name);
+}
+
+export function isTransformMode(mode: GizmoMode): mode is 'translate' | 'rotate' {
+  return mode !== 'none';
 }
 
 function SupportLayer({ points, radius, selected, onClick }: { points: SupportPoint[]; radius: number; selected?: string; onClick: (id: string) => void }) {
@@ -64,12 +68,12 @@ function Scene(props: ObjectViewportProps & { gizmoDragging: boolean }) {
         <meshStandardMaterial color={props.selected ? '#b7d3ff' : '#96a7c7'} emissive={props.selected ? '#173b62' : '#000000'} emissiveIntensity={props.selected ? .35 : 0} metalness={.18} roughness={.6} wireframe={props.wireframe} />
       </mesh>
     </group>}
-    {props.selected && modelGroup && <ModelTransformControls mode={props.gizmoMode} object={modelGroup} onDraggingChanged={props.onGizmoDragging} onTransform={props.onTransform} />}
+    {props.selected && modelGroup && isTransformMode(props.gizmoMode) && <ModelTransformControls mode={props.gizmoMode} object={modelGroup} onDraggingChanged={props.onGizmoDragging} onTransform={props.onTransform} />}
     <SupportLayer points={props.points} radius={props.radius} onClick={props.onSupport} />
   </>;
 }
 
-function ModelTransformControls({ mode, object, onDraggingChanged, onTransform }: { mode: GizmoMode; object: THREE.Group; onDraggingChanged: (dragging: boolean) => void; onTransform: (transform: ModelTransform) => void }) {
+function ModelTransformControls({ mode, object, onDraggingChanged, onTransform }: { mode: 'translate' | 'rotate'; object: THREE.Group; onDraggingChanged: (dragging: boolean) => void; onTransform: (transform: ModelTransform) => void }) {
   const controls = useRef<TransformControlsImpl>(null);
   useEffect(() => {
     const control = controls.current;
