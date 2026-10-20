@@ -1,4 +1,6 @@
+import { RemeshTarget, SurfaceQuery } from '../supports/remesh';
 import { edgeAnchors } from './edgeAnchors';
+import { mergeByDistance } from './kdtree';
 import { classifyDownwardFaces, partitionRegions } from './mesh';
 import type {
   PlacementResult,
@@ -37,11 +39,21 @@ export function generatePlacement(mesh: TriangleMesh, settings: PlacementSetting
   for (const region of regions) for (const face of region.faceIndices) regionOf.set(face, region.id);
 
   const candidates: Candidate[] = [];
-  onProgress?.(0.15, 'Scattering contacts');
-  if (settings.includeDownward !== false) candidates.push(...poissonOnOverhangs(mesh, settings, regionOf));
-  onProgress?.(0.5, 'Finding lowest points');
-  if (settings.includeIslands) candidates.push(...plateauMinima(mesh, settings), ...islandMinima(mesh, settings));
-  onProgress?.(0.75, 'Reinforcing edges');
+  // The Poisson field and the minima come from R, the model remeshed at Spacing / 4; like
+  // MIXO_ManualPoints, their points are then snapped onto the model's surface.
+  const needsRemesh = settings.includeDownward !== false || settings.includeIslands;
+  // A signed distance needs a closed surface; for open or broken meshes the same rules run on
+  // the model itself.
+  const remesh = !needsRemesh ? undefined : isClosed(mesh)
+    ? new RemeshTarget(mesh, 0, settings.spacing / 4).fullMesh((fraction) => onProgress?.(0.1 + 0.4 * fraction, 'Remeshing the model'))
+    : exactAsRemesh(mesh);
+  const surface = needsRemesh ? new SurfaceQuery(mesh) : undefined;
+  const snap = (candidate: Candidate): Candidate => ({ ...candidate, position: surface!.nearest(candidate.position) });
+  onProgress?.(0.5, 'Scattering contacts');
+  if (remesh && settings.includeDownward !== false) candidates.push(...poissonOnRemesh(remesh, settings).map(snap));
+  onProgress?.(0.65, 'Finding lowest points');
+  if (remesh && settings.includeIslands) candidates.push(...minimaOnRemesh(remesh, settings).map(snap));
+  onProgress?.(0.8, 'Reinforcing edges');
   if (settings.reinforceEdges !== false) {
     for (const anchor of edgeAnchors(mesh, {
       overhangAngleDegrees: settings.overhangAngleDegrees,
@@ -116,33 +128,75 @@ function validateSettings(settings: PlacementSettings): void {
  * each triangle draws floor(area x density + rng) points with Blender's per-triangle seeded RNG,
  * then points closer than Distance Min to an earlier kept point are eliminated in order.
  */
-function poissonOnOverhangs(mesh: TriangleMesh, settings: PlacementSettings, regionOf: ReadonlyMap<number, number>): Candidate[] {
-  const spacing = settings.spacing;
-  const density = (1 / spacing) ** 4;
-  const cosine = Math.cos(settings.overhangAngleDegrees * Math.PI / 180);
-  const raw: Candidate[] = [];
-  let selected = 0;
+type Remesh = ReturnType<RemeshTarget['fullMesh']>;
+
+/** Every edge (vertices welded by position) is shared by exactly two faces. */
+function isClosed(mesh: TriangleMesh): boolean {
+  const ids = new Map<string, number>();
+  const weld = (index: number) => {
+    const key = pointAt(mesh, index).map((v) => Math.round(v * 1e5)).join(',');
+    let id = ids.get(key);
+    if (id === undefined) ids.set(key, (id = ids.size));
+    return id;
+  };
+  const edges = new Map<string, number>();
   for (let face = 0; face < mesh.indices.length / 3; face += 1) {
-    const [a, b, c] = [0, 1, 2].map((k) => pointAt(mesh, mesh.indices[face * 3 + k]!)) as [Vector, Vector, Vector];
-    const crossed = cross(subtract(b, a), subtract(c, a));
-    const normal = normalize(crossed);
-    if (-normal[1] < cosine - 1e-9) continue;
-    const area = Math.hypot(...crossed) / 2;
-    const rng = new BlenderRng(blenderHash(selected, 0));
-    selected += 1;
-    const amount = area * density;
-    const count = Math.floor(amount) + ((amount - Math.floor(amount)) > rng.float() ? 1 : 0);
-    for (let point = 0; point < count; point += 1) {
-      let r1 = rng.float();
-      let r2 = rng.float();
-      if (r1 + r2 > 1) {
-        r1 = 1 - r1;
-        r2 = 1 - r2;
-      }
-      const position = add(add(scale(a, r1), scale(b, r2)), scale(c, 1 - r1 - r2));
-      raw.push({ regionId: regionOf.get(face) ?? -1, position, normal, source: 'interior' });
+    const v = [0, 1, 2].map((k) => weld(mesh.indices[face * 3 + k]!));
+    for (let k = 0; k < 3; k += 1) {
+      const a = v[k]!;
+      const b = v[(k + 1) % 3]!;
+      if (a === b) continue;
+      const key = a < b ? `${a},${b}` : `${b},${a}`;
+      edges.set(key, (edges.get(key) ?? 0) + 1);
     }
   }
+  return edges.size > 0 && [...edges.values()].every((count) => count === 2);
+}
+
+/** The model in the remesh's shape (vertices, faces, face normals). */
+function exactAsRemesh(mesh: TriangleMesh): Remesh {
+  const vertices = Array.from({ length: mesh.positions.length / 3 }, (_, i) => pointAt(mesh, i));
+  const faces = Array.from({ length: mesh.indices.length / 3 }, (_, face) => [0, 1, 2].map((k) => mesh.indices[face * 3 + k]!));
+  const normals = faces.map(([a, b, c]) => {
+    const crossed = cross(subtract(vertices[b!]!, vertices[a!]!), subtract(vertices[c!]!, vertices[a!]!));
+    return Math.hypot(...crossed) === 0 ? null : normalize(crossed);
+  });
+  return { vertices, faces, normals };
+}
+
+/**
+ * Distribute Points on Faces (POISSON) on the overhang faces of R (true normal within Overhang
+ * Angle of straight down), triangle by triangle in Blender's order: quads split along 0-2,
+ * each triangle seeded with hash(triangle index, 0), Density Max = (1/Spacing)^4; then every
+ * point within Spacing of an earlier kept point is eliminated.
+ */
+function poissonOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate[] {
+  const spacing = settings.spacing;
+  const density = (1 / spacing) ** 4;
+  const limit = settings.overhangAngleDegrees * Math.PI / 180;
+  const raw: Candidate[] = [];
+  let triangle = 0;
+  remesh.faces.forEach((face, f) => {
+    const normal = remesh.normals[f];
+    if (!normal || Math.acos(Math.max(-1, Math.min(1, -normal[1]))) > limit) return;
+    for (let k = 1; k < face.length - 1; k += 1) {
+      const [a, b, c] = [face[0]!, face[k]!, face[k + 1]!].map((v) => remesh.vertices[v]!) as [Vector, Vector, Vector];
+      const area = Math.hypot(...cross(subtract(b, a), subtract(c, a))) / 2;
+      const rng = new BlenderRng(blenderHash(triangle, 0));
+      triangle += 1;
+      const amount = area * density;
+      const count = Math.floor(amount) + ((amount - Math.floor(amount)) > rng.float() ? 1 : 0);
+      for (let point = 0; point < count; point += 1) {
+        let r1 = rng.float();
+        let r2 = rng.float();
+        if (r1 + r2 > 1) {
+          r1 = 1 - r1;
+          r2 = 1 - r2;
+        }
+        raw.push({ regionId: -1, position: add(add(scale(a, r1), scale(b, r2)), scale(c, 1 - r1 - r2)), normal, source: 'interior' });
+      }
+    }
+  });
   const kept: Candidate[] = [];
   const grid = new SpatialHash(spacing);
   const eliminated = new Array<boolean>(raw.length).fill(false);
@@ -156,240 +210,53 @@ function poissonOnOverhangs(mesh: TriangleMesh, settings: PlacementSettings, reg
 }
 
 /**
- * Island minima: vertices whose lowest adjacent edge midpoint is not below them, merged within
- * Spacing (first point kept), dropped when the vertex normal leans past Overhang Angle.
+ * Island minima on R: vertices whose lowest adjacent edge (by midpoint height) is not below
+ * them. Merge by Distance (Spacing; Blender's KD-tree, so ties resolve alike) clusters them
+ * in R vertex order at the mean position, each cluster snaps to the nearest unmerged minimum, and a minimum is dropped when
+ * the true normal of its nearest R vertex leans more than Overhang Angle from straight down.
  */
-function islandMinima(mesh: TriangleMesh, settings: PlacementSettings): Candidate[] {
-  const vertexCount = mesh.positions.length / 3;
-  const lowestNeighbour = new Float64Array(vertexCount).fill(Infinity);
-  const normals = new Float64Array(vertexCount * 3);
-  for (let face = 0; face < mesh.indices.length / 3; face += 1) {
-    const ids = [0, 1, 2].map((k) => mesh.indices[face * 3 + k]!);
-    const verts = ids.map((id) => pointAt(mesh, id)) as [Vector, Vector, Vector];
-    const normal = normalize(cross(subtract(verts[1], verts[0]), subtract(verts[2], verts[0])));
-    for (let k = 0; k < 3; k += 1) {
-      const [i, j] = [ids[k]!, ids[(k + 1) % 3]!];
-      const midpoint = (verts[k]![1] + verts[(k + 1) % 3]![1]) / 2;
-      lowestNeighbour[i] = Math.min(lowestNeighbour[i]!, midpoint);
-      lowestNeighbour[j] = Math.min(lowestNeighbour[j]!, midpoint);
-      // Angle-weighted vertex normal, as Blender computes vertex normals.
-      const corner = verts[k]!;
-      const angle = Math.acos(Math.max(-1, Math.min(1, dot(normalize(subtract(verts[(k + 1) % 3]!, corner)), normalize(subtract(verts[(k + 2) % 3]!, corner))))));
-      for (let axis = 0; axis < 3; axis += 1) normals[ids[k]! * 3 + axis] += normal[axis]! * angle;
-    }
-  }
+function minimaOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate[] {
+  const count = remesh.vertices.length;
+  const lowest = new Float64Array(count).fill(Infinity);
+  const normals = new Float64Array(count * 3);
+  remesh.faces.forEach((face, f) => {
+    const n = face.length;
+    const normal = remesh.normals[f];
+    face.forEach((v, k) => {
+      const w = face[(k + 1) % n]!;
+      const p = remesh.vertices[v]!;
+      const q = remesh.vertices[w]!;
+      const midpoint = (p[1] + q[1]) / 2;
+      if (midpoint < lowest[v]!) lowest[v] = midpoint;
+      if (midpoint < lowest[w]!) lowest[w] = midpoint;
+      if (!normal) return;
+      // Blender vertex normal: face normals weighted by the corner angle.
+      const e1 = subtract(remesh.vertices[face[(k + n - 1) % n]!]!, p);
+      const e2 = subtract(q, p);
+      const l1 = Math.hypot(...e1);
+      const l2 = Math.hypot(...e2);
+      if (l1 === 0 || l2 === 0) return;
+      const angle = Math.acos(Math.max(-1, Math.min(1, dot(e1, e2) / (l1 * l2))));
+      for (let axis = 0; axis < 3; axis += 1) normals[v * 3 + axis] += normal[axis]! * angle;
+    });
+  });
+  const candidates: number[] = [];
+  for (let v = 0; v < count; v += 1) if (lowest[v]! !== Infinity && !(lowest[v]! < remesh.vertices[v]![1])) candidates.push(v);
+  const points = candidates.map((v) => remesh.vertices[v]!);
+  const merged = mergeByDistance(points, settings.spacing)
+    .map((cluster) => scale(cluster.reduce<Vector>((sum, k) => add(sum, points[k]!), [0, 0, 0]), 1 / cluster.length));
   const limit = settings.overhangAngleDegrees * Math.PI / 180;
+  const nearestOf = (point: Vector, list: readonly number[]) => list.reduce((best, v) => (distance(remesh.vertices[v]!, point) < distance(remesh.vertices[best]!, point) ? v : best));
+  const all = [...Array(count).keys()];
   const minima: Candidate[] = [];
-  const onPlateau = plateauVertices(mesh);
-  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
-    const position = pointAt(mesh, vertex);
-    if (onPlateau.has(vertex)) continue;
-    if (lowestNeighbour[vertex]! < position[1] || lowestNeighbour[vertex] === Infinity) continue;
-    const normal = normalize([normals[vertex * 3]!, normals[vertex * 3 + 1]!, normals[vertex * 3 + 2]!]);
+  for (const centre of merged) {
+    const position = remesh.vertices[nearestOf(centre, candidates)]!;
+    const near = nearestOf(position, all);
+    const normal = normalize([normals[near * 3]!, normals[near * 3 + 1]!, normals[near * 3 + 2]!]);
     if (Math.acos(Math.max(-1, Math.min(1, -normal[1]))) > limit) continue;
-    if (minima.some((other) => distance(other.position, position) < settings.spacing)) continue;
     minima.push({ regionId: -1, position, normal: [0, -1, 0], source: 'island' });
   }
   return minima;
-}
-
-/** Exactly horizontal, downward-facing triangles: the remesh turns these into minima plateaus. */
-function plateauFaces(mesh: TriangleMesh): number[] {
-  const faces: number[] = [];
-  for (let face = 0; face < mesh.indices.length / 3; face += 1) {
-    const [a, b, c] = [0, 1, 2].map((k) => pointAt(mesh, mesh.indices[face * 3 + k]!)) as [Vector, Vector, Vector];
-    const normal = normalize(cross(subtract(b, a), subtract(c, a)));
-    if (normal[1] < -1 + 1e-9) faces.push(face);
-  }
-  return faces;
-}
-
-function plateauVertices(mesh: TriangleMesh): Set<number> {
-  const out = new Set<number>();
-  for (const face of plateauFaces(mesh)) for (let k = 0; k < 3; k += 1) out.add(mesh.indices[face * 3 + k]!);
-  return out;
-}
-
-/**
- * Minima of the Spacing/4 remesh on horizontal overhangs (emulating OpenVDB adaptive meshing,
- * adaptivity 0.1). Every remesh vertex of a flat plateau sits at the same height, so all are
- * local minima. Adaptivity collapses each fully flat 8-voxel leaf block (2 x Spacing) into one
- * vertex at its centre; blocks touching other geometry keep full-resolution vertices (none
- * within a voxel of an edge where the surface drops away), and the rounded rim contributes
- * vertices on the plateau edge on its minimum-x / minimum-Blender-y sides only, as observed.
- * Merge by Distance (Spacing) clusters the vertices in order; each cluster is averaged and
- * snapped back to its nearest member.
- */
-function plateauMinima(mesh: TriangleMesh, settings: PlacementSettings): Candidate[] {
-  const voxel = settings.spacing / 4;
-  const block = 8 * voxel;
-  const faces = plateauFaces(mesh);
-  if (faces.length === 0) return [];
-  const plateau = new Set(faces);
-  const edgeFaces = new Map<string, number[]>();
-  for (let face = 0; face < mesh.indices.length / 3; face += 1) {
-    for (let k = 0; k < 3; k += 1) {
-      const a = mesh.indices[face * 3 + k]!;
-      const b = mesh.indices[face * 3 + (k + 1) % 3]!;
-      const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-      const list = edgeFaces.get(key);
-      if (list) list.push(face); else edgeFaces.set(key, [face]);
-    }
-  }
-  const drops: [Vector, Vector][] = [];
-  const rims: { a: Vector; b: Vector; outward: [number, number] }[] = [];
-  for (const [key, list] of edgeFaces) {
-    const inside = list.filter((face) => plateau.has(face));
-    if (inside.length !== 1) continue;
-    const [a, b] = key.split(':').map((id) => pointAt(mesh, Number(id))) as [Vector, Vector];
-    const other = list.find((face) => !plateau.has(face));
-    const lowest = other === undefined ? a[1] : Math.min(...[0, 1, 2].map((k) => pointAt(mesh, mesh.indices[other * 3 + k]!)[1]));
-    if (lowest < a[1] - 1e-6) {
-      drops.push([a, b]);
-      continue;
-    }
-    // Outward direction of the rim edge in plan, away from its plateau face's centre.
-    const face = inside[0]!;
-    const centre = [0, 1, 2].map((k) => pointAt(mesh, mesh.indices[face * 3 + k]!)).reduce((sum, p) => add(sum, p), [0, 0, 0] as Vector);
-    const mid: Vector = [(a[0] + b[0]) / 2, a[1], (a[2] + b[2]) / 2];
-    let outward: [number, number] = [-(b[2] - a[2]), b[0] - a[0]];
-    if (outward[0] * (mid[0] - centre[0] / 3) + outward[1] * (mid[2] - centre[2] / 3) < 0) outward = [-outward[0], -outward[1]];
-    rims.push({ a, b, outward });
-  }
-  const insidePlateau = (x: number, z: number, y: number) => faces.some((face) => {
-    const [a, b, c] = [0, 1, 2].map((k) => pointAt(mesh, mesh.indices[face * 3 + k]!)) as [Vector, Vector, Vector];
-    return Math.abs(a[1] - y) < 1e-6 && insideTriangleXZ(a, b, c, x, z);
-  });
-  // The remesh unions overlapping parts: a plateau point with solid directly below it (odd
-  // crossings straight down) is interior, and solid within a voxel is a drop (e.g. a stem).
-  const solid = new VerticalParity(mesh);
-  const below = (x: number, z: number, y: number) => solid.inside(x, y - 1e-3, z);
-  const nearSolid = (x: number, z: number, y: number, reach: number) => below(x, z, y)
-    || Array.from({ length: 8 }, (_, k) => (k / 8) * Math.PI * 2).some((angle) => below(x + Math.cos(angle) * reach, z + Math.sin(angle) * reach, y));
-  const nearDrop = (x: number, z: number, reach: number, y = Number.NaN) => drops.some(([p, q]) => segmentDistanceXZ(p, q, x, z) < reach)
-    || (!Number.isNaN(y) && nearSolid(x, z, y, reach));
-  const nearEdge = (x: number, z: number, reach: number) => drops.some(([p, q]) => segmentDistanceXZ(p, q, x, z) < reach) || rims.some(({ a, b }) => segmentDistanceXZ(a, b, x, z) < reach);
-
-  const heights = [...new Set(faces.map((face) => Math.round(pointAt(mesh, mesh.indices[face * 3]!)[1] * 1e6) / 1e6))];
-  const vertices: Vector[] = [];
-  for (const y of heights) {
-    const levelFaces = faces.filter((face) => Math.abs(pointAt(mesh, mesh.indices[face * 3]!)[1] - y) < 1e-6);
-    const xs = levelFaces.flatMap((face) => [0, 1, 2].map((k) => pointAt(mesh, mesh.indices[face * 3 + k]!)[0]));
-    const zs = levelFaces.flatMap((face) => [0, 1, 2].map((k) => pointAt(mesh, mesh.indices[face * 3 + k]!)[2]));
-    for (let bi = Math.floor(Math.min(...xs) / block); bi * block < Math.max(...xs); bi += 1) {
-      for (let bj = Math.floor(Math.min(...zs) / block); bj * block < Math.max(...zs); bj += 1) {
-        const cx = (bi + 0.5) * block;
-        const cz = (bj + 0.5) * block;
-        const corners: [number, number][] = [[bi * block, bj * block], [(bi + 1) * block, bj * block], [(bi + 1) * block, (bj + 1) * block], [bi * block, (bj + 1) * block]];
-        const lattice: [number, number][] = [];
-        for (let i = 0; i < 8; i += 1) for (let j = 0; j < 8; j += 1) lattice.push([bi * block + (i + 0.5) * voxel, bj * block + (j + 0.5) * voxel]);
-        const touchesSolid = lattice.some(([x, z]) => below(x, z, y)) || corners.some(([x, z]) => nearSolid(x, z, y, voxel));
-        const flat = !touchesSolid && corners.every(([x, z]) => insidePlateau(x, z, y)) && !nearEdge(cx, cz, block / 2 + voxel)
-          && !drops.concat(rims.map(({ a, b }) => [a, b] as [Vector, Vector])).some(([p, q]) => segmentDistanceXZ(p, q, cx, cz) < block * Math.SQRT1_2 + voxel);
-        if (flat) {
-          vertices.push([cx, y, cz]);
-          continue;
-        }
-        // Blocks that only meet the outer rim keep no interior minima; only drops (the surface
-        // falling away, e.g. a stem) leave full-resolution minima around them.
-        if (!touchesSolid && !drops.some(([p, q]) => segmentDistanceXZ(p, q, cx, cz) < block * Math.SQRT1_2 + voxel)) continue;
-        for (let i = 0; i < 8; i += 1) {
-          for (let j = 0; j < 8; j += 1) {
-            const x = bi * block + (i + 0.5) * voxel;
-            const z = bj * block + (j + 0.5) * voxel;
-            if (!insidePlateau(x, z, y) || nearDrop(x, z, voxel, y) || nearEdge(x, z, voxel / 2)) continue;
-            vertices.push([x, y, z]);
-          }
-        }
-      }
-    }
-    for (const { a, b, outward } of rims) {
-      if (Math.abs(a[1] - y) > 1e-6) continue;
-      // Blender minimum sides: outward -x, or outward -y in Blender (= +z on the web).
-      if (!(outward[0] < -1e-9 || outward[1] > 1e-9)) continue;
-      const length = Math.hypot(b[0] - a[0], b[2] - a[2]);
-      for (let t = voxel / 2; t < length; t += voxel) {
-        const x = a[0] + (b[0] - a[0]) * (t / length);
-        const z = a[2] + (b[2] - a[2]) * (t / length);
-        if (!nearDrop(x, z, voxel, y)) vertices.push([x, y, z]);
-      }
-    }
-  }
-  const points = vertices.sort((p, q) => p[0] - q[0] || p[2] - q[2] || p[1] - q[1]);
-  const assigned = new Array<boolean>(points.length).fill(false);
-  const minima: Candidate[] = [];
-  points.forEach((seed, index) => {
-    if (assigned[index]) return;
-    const cluster: Vector[] = [];
-    points.forEach((other, k) => {
-      if (!assigned[k] && distance(seed, other) <= settings.spacing) {
-        assigned[k] = true;
-        cluster.push(other);
-      }
-    });
-    const centre = scale(cluster.reduce((sum, p) => add(sum, p), [0, 0, 0] as Vector), 1 / cluster.length);
-    const snapped = cluster.reduce((best, p) => (distance(p, centre) < distance(best, centre) ? p : best));
-    minima.push({ regionId: -1, position: snapped, normal: [0, -1, 0], source: 'island' });
-  });
-  return minima;
-}
-
-/** Parity of crossings straight down: whether a point lies inside the closed model. */
-class VerticalParity {
-  private cells = new Map<string, number[]>();
-  private size: number;
-  constructor(private mesh: TriangleMesh) {
-    const xs: number[] = [];
-    const zs: number[] = [];
-    for (let i = 0; i < mesh.positions.length; i += 3) {
-      xs.push(mesh.positions[i]!);
-      zs.push(mesh.positions[i + 2]!);
-    }
-    this.size = Math.max(0.5, Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)) / 64);
-    for (let face = 0; face < mesh.indices.length / 3; face += 1) {
-      const fx = [0, 1, 2].map((k) => mesh.positions[mesh.indices[face * 3 + k]! * 3]!);
-      const fz = [0, 1, 2].map((k) => mesh.positions[mesh.indices[face * 3 + k]! * 3 + 2]!);
-      for (let ix = Math.floor(Math.min(...fx) / this.size); ix <= Math.floor(Math.max(...fx) / this.size); ix += 1) {
-        for (let iz = Math.floor(Math.min(...fz) / this.size); iz <= Math.floor(Math.max(...fz) / this.size); iz += 1) {
-          const key = `${ix}|${iz}`;
-          const list = this.cells.get(key);
-          if (list) list.push(face); else this.cells.set(key, [face]);
-        }
-      }
-    }
-  }
-
-  inside(x: number, y: number, z: number): boolean {
-    let crossings = 0;
-    for (const face of this.cells.get(`${Math.floor(x / this.size)}|${Math.floor(z / this.size)}`) ?? []) {
-      const [a, b, c] = [0, 1, 2].map((k) => pointAt(this.mesh, this.mesh.indices[face * 3 + k]!)) as [Vector, Vector, Vector];
-      const det = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2]);
-      if (Math.abs(det) < 1e-12) continue;
-      const l1 = ((b[2] - c[2]) * (x - c[0]) + (c[0] - b[0]) * (z - c[2])) / det;
-      const l2 = ((c[2] - a[2]) * (x - c[0]) + (a[0] - c[0]) * (z - c[2])) / det;
-      const l3 = 1 - l1 - l2;
-      // Half-open barycentric test so shared edges are counted once.
-      if (l1 < 0 || l2 < 0 || l3 <= 0) continue;
-      if (l1 * a[1] + l2 * b[1] + l3 * c[1] < y) crossings += 1;
-    }
-    return crossings % 2 === 1;
-  }
-}
-
-function insideTriangleXZ(a: Vector, b: Vector, c: Vector, x: number, z: number): boolean {
-  const det = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2]);
-  if (Math.abs(det) < 1e-12) return false;
-  const l1 = ((b[2] - c[2]) * (x - c[0]) + (c[0] - b[0]) * (z - c[2])) / det;
-  const l2 = ((c[2] - a[2]) * (x - c[0]) + (a[0] - c[0]) * (z - c[2])) / det;
-  return l1 >= -1e-9 && l2 >= -1e-9 && 1 - l1 - l2 >= -1e-9;
-}
-
-function segmentDistanceXZ(a: Vector, b: Vector, x: number, z: number): number {
-  const ex = b[0] - a[0];
-  const ez = b[2] - a[2];
-  const length = ex * ex + ez * ez;
-  const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[2]) * ez) / length));
-  return Math.hypot(x - (a[0] + ex * t), z - (a[2] + ez * t));
 }
 
 /**

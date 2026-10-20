@@ -13,7 +13,7 @@ How Resin UV builds live supports. This was read node by node from the Geometry 
 1. Remesh the target: `Mesh to SDF Grid` (voxel = Spacing / 4, band 3), then `Grid to Mesh` (threshold 0, adaptivity 0.1). Call the result R.
 2. **Bottom faces** (when Facing Down is on): R faces whose true normal is within Overhang Angle of (0,0,-1). On these faces, `Distribute Points on Faces` runs in POISSON mode with Distance Min = Spacing, Density Max = (1/Spacing)^4, Density Factor 1, seed 0. The resulting points lie on R, not on the exact model.
 3. **Island minima** (when Topological Island is on): vertices of R whose lowest adjacent edge is not lower than the vertex itself, i.e. local minima.
-   - They are tagged `Vertical = 1`, merged by distance within Spacing, and snapped back to the nearest original minimum.
+   - They are tagged `Vertical = 1`, merged by distance within Spacing, and snapped back to the nearest original minimum. Merge by Distance walks Blender's balanced KD-tree in index order and skips a node whose split-axis offset is exactly the distance before testing it, so ties depend on the tree; merged points take the mean position.
    - A minimum is dropped when the angle between its R vertex normal and straight down exceeds Overhang Angle.
 4. **Legacy ridge points**: disabled. With Reinforce Overhang Edges on, the ridge threshold is forced to π ("MIXO suppress legacy SDF ridges").
 5. **Mixo edge candidates** (Python `rebuild_edge_candidates`, computed on the exact model):
@@ -134,8 +134,10 @@ Points → SLASG_Line → SLASG_Truss2 (when Bracing is on) → SLASG_Realizer, 
 | Raft perimeter (voxel contour at Expand + 0.1, 3 × res resample, OpenVDB start vertex, clockwise) | within 0.008 mm at 64 voxels, 0.06 mm at 16 (OpenVDB renormalisation) |
 | Raft floor flare, rim inset, gapped wall runs | implemented as Blender |
 | Edge anchors (`rebuild_edge_candidates`) | exact: point for point, same order |
-| Poisson interior | Blender's algorithm on the exact model; counts match, positions differ (OpenVDB remesh input) |
-| Island minima, incl. remesh plateau grid | emulated: leaf-block centres exact, totals within ~15% |
+| Poisson interior | on R (the remesh, built and ordered exactly like Blender's: every triangle, then every quad, leaf by leaf) with Blender's RNG: point for point on the mushroom (22 of 22 within 0.01 mm) |
+| Island minima | on R: lowest-edge-midpoint rule, Merge by Distance through a port of Blender's KD-tree (merge clusters identical to Blender's), snap, normal filter. Where geometry sits exactly on the voxel grid, Blender breaks distance ties and exact 45° normals by float rounding, so some minima land one remesh step (Spacing / 2) away or survive here only (mushroom: every Blender minimum within 1 mm of one of ours) |
+| ManualPoints snap | Poisson and minima points snap to the model surface |
+| Open or broken meshes | not remeshed (a signed distance needs a closed surface); the same Poisson and minima rules run on the model itself |
 | Erase-radius suppression | implemented |
 | Label (Bfont glyphs, Size / 0.686, pad frustum, anchor) | sizes exact; position within 0.4 mm |
 | Remesh (Mesh to SDF Grid, Grid to Mesh at adaptivity 0.1) | OpenVDB port, evaluated per 8³ leaf around queried points: vertex for vertex and face for face with Blender on the probe pyramid at adaptivity 0 and 0.1 (`remesh.test.ts`); on a ledge model shifted off the grid, 41 of 754 vertices differ by up to ~0.05 mm, all next to concave corners (OpenVDB sign tracing) |

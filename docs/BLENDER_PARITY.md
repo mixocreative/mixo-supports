@@ -14,7 +14,7 @@ Reference: Resin UV `SLA Supports` panel in `S:/ai/mixo3dtool/mixo3d` (`properti
 | Roof / Cage | Off/Roof/Cage, mode defaults seeded on first use, columns, cross bars, roof braces, rings | `setRoofMode` + `roof.ts` `buildRoofCage` (SLASG Ceiling and Column) | `blenderRoof.test.ts` against Blender per case, `settings.test.ts`, `mesh.test.ts` |
 | Letter label | Pad centred on the raft's front-right vertex, frustum from the plate to Wall Height flaring at Wall Angle, letters on top | Blender Bfont glyphs (`bfont.json`) + `addLabel` | `blenderCases.test.ts` label cases, `mesh.test.ts` |
 | Tree supports | Auto Tree, merge distance, branch descent, section increment | `autotree.ts` (SLASG scatter branch + ManualPoints snap) and `treeGeometry` in `mesh.ts` (SLASG_Line/Tree2/Realizer) | `blenderTree.test.ts` against Blender, `mesh.test.ts` |
-| Auto placement | Stock scatter field plus edge anchors inset 0.3 mm at 2 mm spacing; priority minima > edges > surface | Deterministic Poisson-disk interior (minimum gap 1.2 x spacing) after island and edge anchors | `blenderParity.test.ts`: web 91 contacts (cap 81, stem 10) vs Blender 100 (92, 8) |
+| Auto placement | SLASG scatter: Poisson on the Spacing/4 remesh, remesh minima, Resin UV edge anchors | Same three streams: Poisson and minima on a port of the same remesh, edge anchors ported exactly | `blenderParity.test.ts`: edge anchors and Poisson point for point with Blender on the mushroom, minima within one remesh step |
 | Preview / low poly / resolution | Only Tip preview; low poly; resolution; export always Full | `buildSupportMesh` `mode: 'export'` ignores preview and low poly | `mesh.test.ts` |
 | Manual add | Click adds a contact | Support edit mode **Add**: click the model | Browser: 0 → 1 manual |
 | Manual remove | Ctrl+Click / right-click removes; erase radius | Right-click or Ctrl+click a support; Ctrl+click the model (or **Remove** mode) erases within Erase Radius | Browser: right-click 178 → 177 automatic, 1 removed |
@@ -35,7 +35,9 @@ Reference: Resin UV `SLA Supports` panel in `S:/ai/mixo3dtool/mixo3d` (`properti
 ## Known differences
 
 - Blender's default raft is voxelised at 16 voxels, which pulls its edge about 0.7 mm inward compared with 64 voxels. The web raft matches the 64-voxel profile and ignores Voxel Resolution.
-- Interior contact positions differ, because Geometry Nodes uses a random seed. Counts, edge anchors and spacing match.
+- Interior (Poisson) contacts match Blender point for point when the model sits on Blender's voxel grid the same way. The web remeshes in the unit's rotated, untranslated frame, so a unit placed at a different offset can scatter differently (equivalent density and spacing).
+- Island minima on geometry lying exactly on the voxel grid can differ by one remesh step (Spacing / 2), because Blender breaks exact ties by float rounding.
+- Placement takes a few seconds on large models (about 4 s on 77k triangles, in the background with a progress bar).
 
 - Neck normals, landings and Safe Distance use a port of OpenVDB's VolumeToMesh (adaptivity 0.1), evaluated lazily per 8³ leaf. It matches Blender vertex for vertex on the probe model; where a model's faces pass exactly through voxel nodes, Blender's zero-area faces carry float-noise normals that cannot be reproduced. What earlier looked like pillar repulsion was this remesh normal blending.
 - Placement and support building run in web workers, so the page never freezes; a progress bar over the viewport names the job, its stage and the percentage. First support build on a 77k-triangle model takes about 1.5 s, later rebuilds reuse the worker's cached remesh. Safe Distance above 0 builds a second remesh at Spacing / 4 (a few seconds on that model, cached afterwards).

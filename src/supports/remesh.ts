@@ -47,6 +47,7 @@ export class RemeshTarget {
   readonly voxel: number;
   /** Lowest web height the remesh can reach. */
   readonly bottom: number;
+  private readonly bounds: [Vector, Vector];
   private readonly adaptivity: number;
   private readonly distance: SignedDistance;
   private readonly values = new Map<number, number>();
@@ -74,6 +75,7 @@ export class RemeshTarget {
     this.voxel = Math.fround(voxel ?? Math.max(Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2000, pillarDiameter));
     this.adaptivity = Math.fround(adaptivity);
     this.bottom = min[1] - 2 * this.voxel;
+    this.bounds = [min, max];
     // meshToVolume measures distance in index space from single-precision index points.
     const h = this.voxel;
     const indexPositions = new Float32Array(model.positions.length);
@@ -177,6 +179,78 @@ export class RemeshTarget {
       if (best && best.point[1] > (lk * LEAF + 2 * LEAF) * h) break;
     }
     return best;
+  }
+
+  /**
+   * The whole remesh as Grid to Mesh outputs it: vertices in OpenVDB order (leaf by leaf; in a
+   * leaf, unmerged cell points by voxel offset, then region points by region id) and faces in
+   * Blender's order (every triangle, then every quad, each leaf by leaf). Zero-area faces keep
+   * their place with a null normal. Positions and normals are web space.
+   */
+  fullMesh(onProgress?: (fraction: number) => void): { vertices: Vector[]; faces: number[][]; normals: (Vector | null)[] } {
+    const h = this.voxel;
+    const [min, max] = this.bounds;
+    // Blender index space: (x, -z, y) of web.
+    const lo = [min[0], -max[2], min[1]].map((v) => Math.floor(Math.floor(v / h) / LEAF) - 1);
+    const hi = [max[0], -min[2], max[1]].map((v) => Math.floor(Math.floor(v / h) / LEAF) + 1);
+    const origins: Index[] = [];
+    for (let i = lo[0]!; i <= hi[0]!; i += 1) for (let j = lo[1]!; j <= hi[1]!; j += 1) for (let k = lo[2]!; k <= hi[2]!; k += 1) {
+      origins.push([i * LEAF, j * LEAF, k * LEAF]);
+    }
+    // OpenVDB tree order: root children by origin (x, y, z), then child offsets x-major at
+    // each internal level (4096 and 128 voxels).
+    const order = (c: Index) => [4096, 128, 8].flatMap((size) => c.map((v) => Math.floor(v / size)));
+    origins.sort((a, b) => {
+      const ka = order(a);
+      const kb = order(b);
+      for (let n = 0; n < ka.length; n += 1) if (ka[n] !== kb[n]) return ka[n]! - kb[n]!;
+      return 0;
+    });
+    const index = new Map<string, number>();
+    const vertices: Vector[] = [];
+    const triangles: number[][] = [];
+    const quads: number[][] = [];
+    const idOf = (id: string) => {
+      let n = index.get(id);
+      if (n === undefined) {
+        index.set(id, (n = vertices.length));
+        vertices.push(toWeb(this.finalPoint(id)));
+      }
+      return n;
+    };
+    origins.forEach((origin, done) => {
+      if (done % 32 === 0) onProgress?.(done / origins.length);
+      if (!this.leafCanHaveSurface(origin)) return;
+      const leaf = this.leaf(origin);
+      const cells: Index[] = [];
+      for (let i = 0; i < LEAF; i += 1) for (let j = 0; j < LEAF; j += 1) for (let k = 0; k < LEAF; k += 1) {
+        const c: Index = [origin[0] + i, origin[1] + j, origin[2] + k];
+        if (this.surface(c)) cells.push(c);
+      }
+      for (const c of cells) {
+        if (leaf.region.has(key(c))) continue;
+        for (let group = 1; group <= EDGE_GROUPS[this.signs(c)]![0]!; group += 1) idOf(`C${key(c)}#${group}`);
+      }
+      for (const region of [...leaf.members.keys()].sort((a, b) => a - b)) idOf(`R${key(origin)}#${region}`);
+      for (const c of cells) {
+        for (const axis of [0, 1, 2] as const) {
+          const prim = this.prim(c, axis);
+          if (prim) (prim.triangle ? triangles : quads).push(prim.ids.map(idOf));
+        }
+      }
+    });
+    const faces = [...triangles, ...quads];
+    const normals = faces.map((face) => {
+      let normal: Vector = [0, 0, 0];
+      face.forEach((v, n) => {
+        const p = vertices[v]!;
+        const q = vertices[face[(n + 1) % face.length]!]!;
+        normal = add(normal, [(p[1] - q[1]) * (p[2] + q[2]), (p[2] - q[2]) * (p[0] + q[0]), (p[0] - q[0]) * (p[1] + q[1])]);
+      });
+      return len(normal) < 1e-12 ? null : normalize(normal);
+    });
+    onProgress?.(1);
+    return { vertices, faces, normals };
   }
 
   /** Vertex positions (web) of the polygons of the leaves overlapping a web-space box. */
@@ -725,6 +799,46 @@ class SignedDistance {
     return this.inside(px, py, pz) ? -distance : distance;
   }
 
+  /** Closest point on the mesh surface (Sample Nearest Surface). */
+  nearestPoint(point: Vector): Vector {
+    const [px, py, pz] = point;
+    let best = Infinity;
+    let bestOffset = -1;
+    const stack = this.stack;
+    let top = 0;
+    stack[top++] = 0;
+    while (top > 0) {
+      const node = stack[--top]!;
+      if (this.boxDistanceSq(node, px, py, pz) >= best) continue;
+      const left = this.links[node * 4]!;
+      if (left < 0) {
+        const start = this.links[node * 4 + 2]!;
+        const n = this.links[node * 4 + 3]!;
+        for (let k = 0; k < n; k += 1) {
+          const o = this.order[start + k]! * 9;
+          const d = triangleDistanceSq(this.tris, o, px, py, pz);
+          if (d < best) {
+            best = d;
+            bestOffset = o;
+          }
+        }
+        continue;
+      }
+      const right = this.links[node * 4 + 1]!;
+      if (this.boxDistanceSq(left, px, py, pz) < this.boxDistanceSq(right, px, py, pz)) {
+        stack[top++] = right;
+        stack[top++] = left;
+      } else {
+        stack[top++] = left;
+        stack[top++] = right;
+      }
+    }
+    if (bestOffset < 0) return point;
+    const t = this.tris;
+    const o = bestOffset;
+    return closestOnTriangle(point, [t[o]!, t[o + 1]!, t[o + 2]!], [t[o + 3]!, t[o + 4]!, t[o + 5]!], [t[o + 6]!, t[o + 7]!, t[o + 8]!]);
+  }
+
   private boxDistanceSq(node: number, x: number, y: number, z: number): number {
     const b = node * 6;
     const dx = Math.max(this.boxes[b]! - x, 0, x - this.boxes[b + 3]!);
@@ -770,6 +884,45 @@ class SignedDistance {
     }
     return crossings % 2 === 1;
   }
+}
+
+/** Nearest-surface queries on a mesh (bounding volume hierarchy). */
+export class SurfaceQuery {
+  private readonly bvh: SignedDistance;
+  constructor(model: TriangleMesh) {
+    this.bvh = new SignedDistance(model);
+  }
+
+  /** Closest point on the surface to `point`. */
+  nearest(point: Vector): Vector {
+    return this.bvh.nearestPoint(point);
+  }
+}
+
+function closestOnTriangle(p: Vector, a: Vector, b: Vector, c: Vector): Vector {
+  // Ericson, Real-Time Collision Detection 5.1.5.
+  const ab = sub(b, a);
+  const ac = sub(c, a);
+  const ap = sub(p, a);
+  const d1 = dot(ab, ap);
+  const d2 = dot(ac, ap);
+  if (d1 <= 0 && d2 <= 0) return a;
+  const bp = sub(p, b);
+  const d3 = dot(ab, bp);
+  const d4 = dot(ac, bp);
+  if (d3 >= 0 && d4 <= d3) return b;
+  const vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) return add(a, scale(ab, d1 / (d1 - d3)));
+  const cp = sub(p, c);
+  const d5 = dot(ab, cp);
+  const d6 = dot(ac, cp);
+  if (d6 >= 0 && d5 <= d6) return c;
+  const vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) return add(a, scale(ac, d2 / (d2 - d6)));
+  const va = d3 * d6 - d5 * d4;
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return add(b, scale(sub(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6))));
+  const denominator = 1 / (va + vb + vc);
+  return add(a, add(scale(ab, vb * denominator), scale(ac, vc * denominator)));
 }
 
 /** Squared distance from (px, py, pz) to the triangle at offset o of a flat array (Ericson 5.1.5). */
