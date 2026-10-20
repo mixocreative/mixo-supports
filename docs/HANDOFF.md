@@ -14,4 +14,4 @@ The required router probe was attempted at session start but returned no provide
 
 ## Next operational step
 
-Implement approved Object Mode: full viewport import, selected-model transform gizmo, and transform-aware support analysis. Multi-model object management remains deferred.
+Object Mode is now implemented: drag an STL, GLB, or GLTF anywhere onto the viewport to import and select it. The selected model can be moved or rotated with the toolbar gizmo; placement analysis uses the serialised transform and existing supports are marked stale after a transform. Multi-model object management remains deferred.
