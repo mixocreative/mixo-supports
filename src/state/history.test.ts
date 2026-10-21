@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Object3D } from 'three';
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../core/analysis/types';
 import { createSceneHistory, deserializeSceneHistory, HISTORY_LIMIT, redoScene, serializeSceneHistory, undoScene, withSceneCommand } from './history';
 import { emptyScene, identityTransform, type PrintUnit } from './project';
 

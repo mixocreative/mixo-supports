@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import blender from '../../tools/blender-parity/remesh_spike.json';
+import blender from '../../../tools/blender-parity/remesh_spike.json';
 import { RemeshTarget } from './remesh';
 
 /**

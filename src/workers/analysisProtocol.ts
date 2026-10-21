@@ -1,5 +1,5 @@
-import type { CheckSettings, SupportProblem } from '../analysis/supportCheck';
-import type { PlacementResult, PlacementSettings, TriangleMesh } from '../analysis/types';
+import type { CheckSettings, SupportProblem } from '../core/analysis/supportCheck';
+import type { PlacementResult, PlacementSettings, TriangleMesh } from '../core/analysis/types';
 
 type Vector = [number, number, number];
 

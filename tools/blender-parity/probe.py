@@ -7,7 +7,7 @@ Run from anywhere (Blender 5.x with the mixo3d add-on source checkout):
 The model is a downward pyramid (apex at the bottom), so every contact lies on a plane
 with a known normal. For each settings case the script records every contact, its touch
 sphere instance, the support piece it grows (foot centre/radius, neck top radius, height),
-and the raft profile. `src/supports/blenderCases.test.ts` replays the same contacts and
+and the raft profile. `src/core/supports/blenderCases.test.ts` replays the same contacts and
 settings through the web generator and compares the numbers.
 """
 import json

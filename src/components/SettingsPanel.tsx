@@ -1,5 +1,5 @@
-import type { LiveSupportSettings, PresetName, RoofMode, SettingKey } from '../supports/settings';
-import { settingLimits } from '../supports/settings';
+import type { LiveSupportSettings, PresetName, RoofMode, SettingKey } from '../core/supports/settings';
+import { settingLimits } from '../core/supports/settings';
 import { t } from '../i18n';
 
 type NumberKey = keyof typeof settingLimits;

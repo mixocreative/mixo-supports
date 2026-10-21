@@ -12,8 +12,7 @@ import type {
   ProgressCallback,
   TriangleMesh,
 } from './types';
-
-type Vector = [number, number, number];
+import { add, cross, distance, normalize, scale, subtract, type Vector } from '../vec3';
 
 interface Candidate {
   regionId: number;
@@ -442,10 +441,3 @@ function pointAt(mesh: TriangleMesh, index: number): Vector {
   return [mesh.positions[offset]!, mesh.positions[offset + 1]!, mesh.positions[offset + 2]!];
 }
 
-function add(first: Vector, second: Vector): Vector { return [first[0] + second[0], first[1] + second[1], first[2] + second[2]]; }
-function subtract(first: Vector, second: Vector): Vector { return [first[0] - second[0], first[1] - second[1], first[2] - second[2]]; }
-function scale(vector: Vector, amount: number): Vector { return [vector[0] * amount, vector[1] * amount, vector[2] * amount]; }
-function dot(first: Vector, second: Vector): number { return first[0] * second[0] + first[1] * second[1] + first[2] * second[2]; }
-function cross(first: Vector, second: Vector): Vector { return [first[1] * second[2] - first[2] * second[1], first[2] * second[0] - first[0] * second[2], first[0] * second[1] - first[1] * second[0]]; }
-function distance(first: Vector, second: Vector): number { return Math.hypot(first[0] - second[0], first[1] - second[1], first[2] - second[2]); }
-function normalize(vector: Vector): Vector { const length = Math.hypot(...vector); return length === 0 ? [0, 0, 0] : [vector[0] / length, vector[1] / length, vector[2] / length]; }

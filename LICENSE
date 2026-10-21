@@ -9,7 +9,7 @@ You may use the hosted application at https://mixocreative.github.io/mixo-suppor
 to prepare your own prints, and the files you export from it are yours.
 
 Third-party components keep their own licenses: the npm dependencies listed in
-package.json; the OpenVDB lookup tables in src/supports/openvdbTables.ts
+package.json; the OpenVDB lookup tables in src/core/supports/openvdbTables.ts
 (Apache-2.0, Copyright Contributors to the OpenVDB Project); and the support
 logic reproduced from the SLASG Blender add-on, MIT License, Copyright (c)
 2026 morokko-at-gh, whose notice follows:

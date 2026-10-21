@@ -1,7 +1,9 @@
 import type { TriangleMesh } from '../analysis/types';
 import { ADAPTABLE, AMBIGUOUS_FACE, EDGE_GROUPS } from './openvdbTables';
+import { add, cross, dot, length, normalize, scale, subtract, type Vector } from '../vec3';
 
-type Vector = [number, number, number];
+/** Unit vector, or straight down for a zero-length one. */
+const normalizeOrDown = (v: Vector): Vector => normalize(v, [0, -1, 0]);
 type Index = [number, number, number];
 
 /** A face of the remesh in web space. `vertices` are the remesh vertex identities. */
@@ -112,7 +114,7 @@ export class RemeshTarget {
         }
       });
     }
-    return normalize(add(this.vertexNormal(bestEdge![0]), this.vertexNormal(bestEdge![1])));
+    return normalizeOrDown(add(this.vertexNormal(bestEdge![0]), this.vertexNormal(bestEdge![1])));
   }
 
   /** Polygons from leaves near the vertical line through (x, z), between web heights `top` and `bottom`. */
@@ -141,14 +143,14 @@ export class RemeshTarget {
       polygon.vertices.forEach((vertex, k) => {
         if (vertex !== id) return;
         const here = polygon.corners[k]!;
-        const a = sub(polygon.corners[(k + n - 1) % n]!, here);
-        const b = sub(polygon.corners[(k + 1) % n]!, here);
-        if (len(a) < 1e-9 || len(b) < 1e-9) return;
-        const angle = Math.acos(Math.max(-1, Math.min(1, dot(a, b) / (len(a) * len(b)))));
+        const a = subtract(polygon.corners[(k + n - 1) % n]!, here);
+        const b = subtract(polygon.corners[(k + 1) % n]!, here);
+        if (length(a) < 1e-9 || length(b) < 1e-9) return;
+        const angle = Math.acos(Math.max(-1, Math.min(1, dot(a, b) / (length(a) * length(b)))));
         sum = add(sum, scale(polygon.normal, angle));
       });
     }
-    return normalize(sum);
+    return normalizeOrDown(sum);
   }
 
   /**
@@ -247,7 +249,7 @@ export class RemeshTarget {
         const q = vertices[face[(n + 1) % face.length]!]!;
         normal = add(normal, [(p[1] - q[1]) * (p[2] + q[2]), (p[2] - q[2]) * (p[0] + q[0]), (p[0] - q[0]) * (p[1] + q[1])]);
       });
-      return len(normal) < 1e-12 ? null : normalize(normal);
+      return length(normal) < 1e-12 ? null : normalizeOrDown(normal);
     });
     onProgress?.(1);
     return { vertices, faces, normals };
@@ -597,7 +599,7 @@ export class RemeshTarget {
 
   private disoriented(prim: Prim): boolean {
     const [v0, v1, v2] = prim.ids.map((id) => this.rawPoint(id)) as [Vector, Vector, Vector];
-    const normal = normalize(cross(sub(v2, v0), sub(v1, v0)));
+    const normal = normalizeOrDown(cross(subtract(v2, v0), subtract(v1, v0)));
     const centroid = scale(add(add(v0, v1), v2), 1 / 3);
     const cell = centroid.map((v) => Math.floor(v / this.voxel + 0.5)) as Index;
     // The inverted orientation flips the gradient too (invertGradientDir).
@@ -615,7 +617,7 @@ export class RemeshTarget {
       normal = add(normal, [(p[1] - q[1]) * (p[2] + q[2]), (p[2] - q[2]) * (p[0] + q[0]), (p[0] - q[0]) * (p[1] + q[1])]);
     });
     // Coincident points (the surface through grid nodes) give zero-area faces with no normal.
-    const result = len(normal) < 1e-12 ? null : { corners, vertices: prim.ids, normal: normalize(normal) };
+    const result = length(normal) < 1e-12 ? null : { corners, vertices: prim.ids, normal: normalizeOrDown(normal) };
     this.polygonCache.set(k, result);
     return result;
   }
@@ -901,26 +903,26 @@ export class SurfaceQuery {
 
 function closestOnTriangle(p: Vector, a: Vector, b: Vector, c: Vector): Vector {
   // Ericson, Real-Time Collision Detection 5.1.5.
-  const ab = sub(b, a);
-  const ac = sub(c, a);
-  const ap = sub(p, a);
+  const ab = subtract(b, a);
+  const ac = subtract(c, a);
+  const ap = subtract(p, a);
   const d1 = dot(ab, ap);
   const d2 = dot(ac, ap);
   if (d1 <= 0 && d2 <= 0) return a;
-  const bp = sub(p, b);
+  const bp = subtract(p, b);
   const d3 = dot(ab, bp);
   const d4 = dot(ac, bp);
   if (d3 >= 0 && d4 <= d3) return b;
   const vc = d1 * d4 - d3 * d2;
   if (vc <= 0 && d1 >= 0 && d3 <= 0) return add(a, scale(ab, d1 / (d1 - d3)));
-  const cp = sub(p, c);
+  const cp = subtract(p, c);
   const d5 = dot(ab, cp);
   const d6 = dot(ac, cp);
   if (d6 >= 0 && d5 <= d6) return c;
   const vb = d5 * d2 - d1 * d6;
   if (vb <= 0 && d2 >= 0 && d6 <= 0) return add(a, scale(ac, d2 / (d2 - d6)));
   const va = d3 * d6 - d5 * d4;
-  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return add(b, scale(sub(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6))));
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return add(b, scale(subtract(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6))));
   const denominator = 1 / (va + vb + vc);
   return add(a, add(scale(ab, vb * denominator), scale(ac, vc * denominator)));
 }
@@ -979,43 +981,33 @@ function verticalHit(p: Vector, a: Vector, b: Vector, c: Vector, strict = false)
 }
 
 function triangleDistance(p: Vector, a: Vector, b: Vector, c: Vector): number {
-  const ab = sub(b, a);
-  const ac = sub(c, a);
-  const ap = sub(p, a);
+  const ab = subtract(b, a);
+  const ac = subtract(c, a);
+  const ap = subtract(p, a);
   const d1 = dot(ab, ap);
   const d2 = dot(ac, ap);
-  if (d1 <= 0 && d2 <= 0) return len(ap);
-  const bp = sub(p, b);
+  if (d1 <= 0 && d2 <= 0) return length(ap);
+  const bp = subtract(p, b);
   const d3 = dot(ab, bp);
   const d4 = dot(ac, bp);
-  if (d3 >= 0 && d4 <= d3) return len(bp);
+  if (d3 >= 0 && d4 <= d3) return length(bp);
   const vc = d1 * d4 - d3 * d2;
-  if (vc <= 0 && d1 >= 0 && d3 <= 0) return len(sub(p, add(a, scale(ab, d1 / (d1 - d3)))));
-  const cp = sub(p, c);
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) return length(subtract(p, add(a, scale(ab, d1 / (d1 - d3)))));
+  const cp = subtract(p, c);
   const d5 = dot(ab, cp);
   const d6 = dot(ac, cp);
-  if (d6 >= 0 && d5 <= d6) return len(cp);
+  if (d6 >= 0 && d5 <= d6) return length(cp);
   const vb = d5 * d2 - d1 * d6;
-  if (vb <= 0 && d2 >= 0 && d6 <= 0) return len(sub(p, add(a, scale(ac, d2 / (d2 - d6)))));
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) return length(subtract(p, add(a, scale(ac, d2 / (d2 - d6)))));
   const va = d3 * d6 - d5 * d4;
-  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return len(sub(p, add(b, scale(sub(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6))))));
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return length(subtract(p, add(b, scale(subtract(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6))))));
   const denominator = 1 / (va + vb + vc);
-  return len(sub(p, add(a, add(scale(ab, vb * denominator), scale(ac, vc * denominator)))));
+  return length(subtract(p, add(a, add(scale(ab, vb * denominator), scale(ac, vc * denominator)))));
 }
 
 function segmentDistance(p: Vector, a: Vector, b: Vector): number {
-  const ab = sub(b, a);
-  const t = Math.max(0, Math.min(1, dot(sub(p, a), ab) / Math.max(dot(ab, ab), 1e-12)));
-  return len(sub(p, add(a, scale(ab, t))));
+  const ab = subtract(b, a);
+  const t = Math.max(0, Math.min(1, dot(subtract(p, a), ab) / Math.max(dot(ab, ab), 1e-12)));
+  return length(subtract(p, add(a, scale(ab, t))));
 }
 
-function add(a: Vector, b: Vector): Vector { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
-function sub(a: Vector, b: Vector): Vector { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
-function scale(v: Vector, s: number): Vector { return [v[0] * s, v[1] * s, v[2] * s]; }
-function dot(a: Vector, b: Vector): number { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
-function cross(a: Vector, b: Vector): Vector { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
-function len(v: Vector): number { return Math.hypot(v[0], v[1], v[2]); }
-function normalize(v: Vector): Vector {
-  const length = len(v);
-  return length === 0 ? [0, -1, 0] : [v[0] / length, v[1] / length, v[2] / length];
-}

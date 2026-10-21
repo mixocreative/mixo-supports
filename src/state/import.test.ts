@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BoxGeometry, BufferGeometry, Float32BufferAttribute, Group, Mesh } from 'three';
 import { geometryToMesh, importGltfUnits, importStlUnit, placeImportedUnits, weldRawMesh } from './import';
 import { identityTransform, type PrintUnit } from './project';
-import { meshBounds } from '../supports/mesh';
+import { meshBounds } from '../core/supports/mesh';
 import { applyTransform } from './transform';
 
 describe('geometryToMesh', () => {

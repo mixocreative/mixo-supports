@@ -1,8 +1,8 @@
 import { BufferAttribute, BufferGeometry, Matrix4, Mesh, type Object3D } from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { TriangleMesh } from '../analysis/types';
-import { meshBounds } from '../supports/mesh';
-import { defaultSupportSettings } from '../supports/settings';
+import type { TriangleMesh } from '../core/analysis/types';
+import { meshBounds } from '../core/supports/mesh';
+import { defaultSupportSettings } from '../core/supports/settings';
 import type { PrintUnit, SupportSettings } from './project';
 import { applyTransform } from './transform';
 

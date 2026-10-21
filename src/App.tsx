@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Object3D } from 'three';
-import { labelForIndex } from './analysis/mesh';
-import type { SupportProblem } from './analysis/supportCheck';
-import type { SupportPoint } from './analysis/types';
+import { labelForIndex } from './core/analysis/mesh';
+import type { SupportProblem } from './core/analysis/supportCheck';
+import type { SupportPoint } from './core/analysis/types';
 import ProgressBar, { type ProgressTask } from './components/ProgressBar';
 import { AnalysisClient } from './workers/analysisClient';
 import { ImportClient } from './workers/importClient';
@@ -17,10 +17,11 @@ import { gltfRawMeshes, placeImportedUnits, type ImportedMesh } from './state/im
 import { emptyScene, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
 import { exportUnits, planExport, type ExportKind } from './supports/export';
-import { meshBounds, type GeneratedSupportMesh, type Vector } from './supports/mesh';
-import { problemInZone, type ZoneStamp } from './supports/zones';
+import { meshBounds, type GeneratedSupportMesh } from './core/supports/mesh';
+import type { Vector } from './core/vec3';
+import { problemInZone, type ZoneStamp } from './core/supports/zones';
 import { contactsInBrush, deleteCommands, paintSelection, pruneSelection, toggleSelection, type BrushMode } from './supports/selection';
-import { applyPreset, defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings, type SettingKey } from './supports/settings';
+import { applyPreset, defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
 import { resolveSettings, unitContacts, unitRemovedCount, unitSupportMesh } from './supports/unitSupports';
 import { enterActsOn } from './editing/keys';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';

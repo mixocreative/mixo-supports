@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import type { PlacementSettings, TriangleMesh } from '../analysis/types';
+import type { PlacementSettings, TriangleMesh } from '../core/analysis/types';
 import { AnalysisClient, analysisPoolSize } from './analysisClient';
 import type { AnalysisRequest, AnalysisResponse } from './analysisProtocol';
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { inverseTransformDirection, type ModelTransform } from '../state/transform';
-import { buildVertexGrid, nextStamp, problemInZone, sameStamp, stampsAlong, stampVertices, zonedAt, zonedVertices, type ZoneStamp } from './zones';
+import { buildVertexGrid, nextStamp, problemInZone, sameStamp, stampsAlong, stampVertices, zonedAt, zonedVertices, type ZoneStamp } from '../core/supports/zones';
 
 const stamp = (kind: ZoneStamp['kind'], normal: ZoneStamp['normal'] = [0, -1, 0]): ZoneStamp => ({ center: [0, 0, 0], radius: 2, normal, kind });
 

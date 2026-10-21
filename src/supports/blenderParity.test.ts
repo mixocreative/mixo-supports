@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { BoxGeometry, BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import mushroomContacts from '../../tools/blender-parity/mushroom_contacts.json';
-import { generatePlacement } from '../analysis/placement';
+import { generatePlacement } from '../core/analysis/placement';
 import { geometryToMesh } from '../state/import';
-import { buildSupportMesh } from './mesh';
-import { defaultSupportSettings, toPlacementSettings } from './settings';
+import { buildSupportMesh } from '../core/supports/mesh';
+import { defaultSupportSettings, toPlacementSettings } from '../core/supports/settings';
 
 /**
  * Reference numbers measured from Resin UV (Blender 5.2, mixo.support_generate, Light

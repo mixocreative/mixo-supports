@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import reference from '../../tools/blender-parity/reference_safe.json';
+import reference from '../../../tools/blender-parity/reference_safe.json';
 import { autoTreeLayout } from './autotree';
 import { defaultSupportSettings, type LiveSupportSettings } from './settings';
 

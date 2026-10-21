@@ -4,16 +4,16 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import * as THREE from 'three';
 import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
 import { TransformControls as TransformControlsImpl } from 'three-stdlib';
-import type { SupportProblem } from '../analysis/supportCheck';
-import type { TriangleMesh } from '../analysis/types';
+import type { SupportProblem } from '../core/analysis/supportCheck';
+import type { TriangleMesh } from '../core/analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
 import { transformFromObject, type ModelTransform } from '../state/transform';
-import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../supports/mesh';
+import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../core/supports/mesh';
 import { brushSamples, contactsInBrush, notSelected, type BrushMode } from '../supports/selection';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
-import { zoneOverlay } from '../supports/overlayMesh';
+import { zoneOverlay } from '../core/supports/overlayMesh';
 import { fitDirection } from '../editing/view';
-import { nextStamp, sameStamp, stampsAlong, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../supports/zones';
+import { nextStamp, sameStamp, stampsAlong, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../core/supports/zones';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import reference from '../../tools/blender-parity/reference.json';
+import reference from '../../../tools/blender-parity/reference.json';
 import { raftOutline } from './raft';
 import { buildRoofCage } from './roof';
 import { defaultSupportSettings, type LiveSupportSettings } from './settings';

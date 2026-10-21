@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Object3D } from 'three';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformDirection, transformFromObject, transformPoint, unitWorldTransform } from './transform';
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../core/analysis/types';
 
 const source: TriangleMesh = {
   positions: new Float32Array([

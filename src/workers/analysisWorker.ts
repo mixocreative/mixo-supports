@@ -1,5 +1,5 @@
-import { generatePlacement } from '../analysis/placement';
-import { checkSupports } from '../analysis/supportCheck';
+import { generatePlacement } from '../core/analysis/placement';
+import { checkSupports } from '../core/analysis/supportCheck';
 import type { AnalysisRequest, AnalysisResponse } from './analysisProtocol';
 
 const workerScope = self as unknown as {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import stages from '../../tools/blender-parity/ridge_stages.json';
+import stages from '../../../tools/blender-parity/ridge_stages.json';
 import { blenderVertexNormals } from '../analysis/blenderBvh';
 import { blenderEdges, legacyRidgeMidpoints } from '../analysis/legacyRidges';
 import { minimaStages } from '../analysis/placement';

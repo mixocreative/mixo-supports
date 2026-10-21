@@ -1,6 +1,6 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three';
 import type { Object3D } from 'three';
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../core/analysis/types';
 
 export interface ModelTransform {
   position: [number, number, number];

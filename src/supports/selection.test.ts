@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SupportContact } from './mesh';
+import type { SupportContact } from '../core/supports/mesh';
 import type { PrintUnit } from '../state/project';
 import { brushSamples, contactsInBrush, deleteCommands, notSelected, paintSelection, pruneSelection, toggleSelection } from './selection';
 

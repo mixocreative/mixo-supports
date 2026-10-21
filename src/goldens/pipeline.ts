@@ -1,12 +1,12 @@
-import { checkSupports, type SupportProblem } from '../analysis/supportCheck';
-import { generatePlacement } from '../analysis/placement';
-import type { SupportPoint, TriangleMesh } from '../analysis/types';
+import { checkSupports, type SupportProblem } from '../core/analysis/supportCheck';
+import { generatePlacement } from '../core/analysis/placement';
+import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import { placeImportedUnits } from '../state/import';
 import { emptyScene, type PrintUnit, type SupportSettings } from '../state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from '../state/transform';
 import { encodeStl, planExport } from '../supports/export';
-import { contactAtTriangle, meshBounds, type GeneratedSupportMesh } from '../supports/mesh';
-import { defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings } from '../supports/settings';
+import { contactAtTriangle, meshBounds, type GeneratedSupportMesh } from '../core/supports/mesh';
+import { defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings } from '../core/supports/settings';
 import { unitContacts, unitSupportMesh } from '../supports/unitSupports';
 import type { GoldenFixture, GoldenVariant } from './fixtures';
 

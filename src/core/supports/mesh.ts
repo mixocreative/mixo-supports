@@ -5,8 +5,10 @@ import { cornerBisectors, raftOutline } from './raft';
 import { buildRoofCage } from './roof';
 import { autoTreeLayout, type AutoTree } from './autotree';
 import { RemeshTarget } from './remesh';
+import { add, cross, dot, normalize, scale, subtract, type Vector } from '../vec3';
 
-export type Vector = [number, number, number];
+/** Unit vector, or straight down for a zero-length one. */
+const normalizeOrDown = (v: Vector): Vector => normalize(v, [0, -1, 0]);
 export type Point2 = [number, number];
 
 /** A support contact in build-plate space: Y is up and the plate is y = 0 (mm). */
@@ -271,7 +273,7 @@ export function treeGeometry(tree: AutoTree, contacts: readonly SupportContact[]
   const spheres = settings.contactShape === 'SPHERE';
   const branches = tree.members.map((member) => {
     const contact = contacts[member]!;
-    const normal = normalize(contact.normal);
+    const normal = normalizeOrDown(contact.normal);
     const tip = subtract(contact.position, scale(normal, tipDepth(settings)));
     const neckEnd = add(contact.position, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength));
     if (spheres) out.spheres.push({ part: 'tip', id: contact.id, centre: tip, radius: settings.touchDiameter / 2 });
@@ -389,7 +391,7 @@ function contactColumn(contact: SupportContact, settings: Readonly<LiveSupportSe
   const raftTop = settings.raftEnabled ? settings.raftFloorThickness : 0;
   const pillarRadius = settings.pillarDiameter / 2;
   const neckRadius = tipRadius(settings);
-  const normal = normalize(contact.normal);
+  const normal = normalizeOrDown(contact.normal);
   const tip = subtract(contact.position, scale(normal, tipDepth(settings)));
   if (tip[1] <= raftTop) return undefined;
   const reach = add(contact.position, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength));
@@ -414,7 +416,7 @@ function contactColumn(contact: SupportContact, settings: Readonly<LiveSupportSe
 
 /** `to` moved `depth` further along the direction from `from` to `to`. */
 function sinkInto(from: Vector, to: Vector, depth: number): Vector {
-  return add(to, scale(normalize(subtract(to, from)), depth));
+  return add(to, scale(normalizeOrDown(subtract(to, from)), depth));
 }
 
 /** Full column curve for a plate-landing contact, ending with the foot (for parity tests). */
@@ -481,7 +483,7 @@ export function filletPolyline(nodes: readonly CurveNode[], radius: number, coun
     const incoming = subtract(node.point, nodes[index - 1]!.point);
     const outgoing = subtract(nodes[index + 1]!.point, node.point);
     if (Math.hypot(...incoming) < MIN_LENGTH || Math.hypot(...outgoing) < MIN_LENGTH) return 0;
-    return Math.acos(Math.max(-1, Math.min(1, dot(normalize(incoming), normalize(outgoing)))));
+    return Math.acos(Math.max(-1, Math.min(1, dot(normalizeOrDown(incoming), normalizeOrDown(outgoing)))));
   });
   const displacement = angles.map((angle) => radius * Math.tan(angle / 2));
   const out: CurveNode[] = [nodes[0]!];
@@ -495,11 +497,11 @@ export function filletPolyline(nodes: readonly CurveNode[], radius: number, coun
     // Limit Radius: each side is shared between the two corners in proportion to their
     // displacements, so an end point leaves its whole side to the corner.
     const share = (length: number, other: number) => Math.min(1, Math.max(0, length / (other + displacement[index]!)));
-    const u = normalize(subtract(corner.point, previous.point));
-    const v = normalize(subtract(next.point, corner.point));
+    const u = normalizeOrDown(subtract(corner.point, previous.point));
+    const v = normalizeOrDown(subtract(next.point, corner.point));
     const limited = radius * Math.min(share(Math.hypot(...subtract(corner.point, previous.point)), displacement[index - 1]!), share(Math.hypot(...subtract(next.point, corner.point)), displacement[index + 1]!));
     const tangent = limited * Math.tan(angle / 2);
-    const w = normalize(subtract(v, scale(u, dot(u, v))));
+    const w = normalizeOrDown(subtract(v, scale(u, dot(u, v))));
     const start = subtract(corner.point, scale(u, tangent));
     const centre = add(start, scale(w, limited));
     for (let step = 0; step <= count; step += 1) {
@@ -552,7 +554,7 @@ class DownRaycaster {
       const y = l1 * a[1] + l2 * b[1] + l3 * c[1];
       if (y >= from[1] - 1e-6 || from[1] - y > length) continue;
       if (!best || y > best.point[1]) {
-        let normal = normalize(cross(subtract(b, a), subtract(c, a)));
+        let normal = normalizeOrDown(cross(subtract(b, a), subtract(c, a)));
         if (normal[1] < 0) normal = [-normal[0], -normal[1], -normal[2]];
         best = { point: [from[0], y, from[2]], normal };
       }
@@ -873,7 +875,7 @@ class MeshBuilder {
   frustum(from: Vector, to: Vector, fromRadius: number, toRadius: number, segments: number): void {
     const axis = subtract(to, from);
     if (Math.hypot(...axis) < MIN_LENGTH) return;
-    const [u, v] = basis(normalize(axis));
+    const [u, v] = basis(normalizeOrDown(axis));
     const ring = (center: Vector, radius: number) => Array.from({ length: segments }, (_, step) => {
       const angle = (step / segments) * Math.PI * 2;
       return add(center, add(scale(u, Math.cos(angle) * radius), scale(v, Math.sin(angle) * radius)));
@@ -946,7 +948,7 @@ class MeshBuilder {
       const next = polygon[(i + 1) % count]!;
       normal = add(normal, [(point[1] - next[1]) * (point[2] + next[2]), (point[2] - next[2]) * (point[0] + next[0]), (point[0] - next[0]) * (point[1] + next[1])]);
     });
-    const [u, v] = basis(normalize(normal));
+    const [u, v] = basis(normalizeOrDown(normal));
     const plane = polygon.map((point) => [dot(point, u), dot(point, v)] as Point2);
     for (const [a, c, d] of earClip(plane)) {
       this.indices.push(bottom[a]!, bottom[d]!, bottom[c]!);
@@ -957,12 +959,12 @@ class MeshBuilder {
   /** Closed tube following a closed polyline (Curve to Mesh of a cyclic curve with a circle profile). */
   closedTube(points: readonly Vector[], radius: number, segments: number): void {
     const count = points.length;
-    let normal = basis(normalize(subtract(points[1]!, points[0]!)))[0];
+    let normal = basis(normalizeOrDown(subtract(points[1]!, points[0]!)))[0];
     const rings = points.map((point, index) => {
-      const back = normalize(subtract(point, points[(index - 1 + count) % count]!));
-      const ahead = normalize(subtract(points[(index + 1) % count]!, point));
-      const tangent = normalize(add(back, ahead));
-      normal = normalize(subtract(normal, scale(tangent, dot(normal, tangent))));
+      const back = normalizeOrDown(subtract(point, points[(index - 1 + count) % count]!));
+      const ahead = normalizeOrDown(subtract(points[(index + 1) % count]!, point));
+      const tangent = normalizeOrDown(add(back, ahead));
+      normal = normalizeOrDown(subtract(normal, scale(tangent, dot(normal, tangent))));
       const binormal = cross(tangent, normal);
       return Array.from({ length: segments }, (_, step) => {
         const angle = (step / segments) * Math.PI * 2;
@@ -979,13 +981,13 @@ class MeshBuilder {
   tube(nodes: readonly CurveNode[], segments: number, profile?: readonly Point2[]): void {
     const path = nodes.filter((node, index) => index === 0 || Math.hypot(...subtract(node.point, nodes[index - 1]!.point)) > MIN_LENGTH);
     if (path.length < 2) return;
-    let normal = basis(normalize(subtract(path[1]!.point, path[0]!.point)))[0];
+    let normal = basis(normalizeOrDown(subtract(path[1]!.point, path[0]!.point)))[0];
     const rings = path.map((node, index) => {
-      const back = index > 0 ? normalize(subtract(node.point, path[index - 1]!.point)) : undefined;
-      const ahead = index < path.length - 1 ? normalize(subtract(path[index + 1]!.point, node.point)) : undefined;
-      const tangent = normalize(back && ahead ? add(back, ahead) : (back ?? ahead)!);
+      const back = index > 0 ? normalizeOrDown(subtract(node.point, path[index - 1]!.point)) : undefined;
+      const ahead = index < path.length - 1 ? normalizeOrDown(subtract(path[index + 1]!.point, node.point)) : undefined;
+      const tangent = normalizeOrDown(back && ahead ? add(back, ahead) : (back ?? ahead)!);
       // Parallel transport keeps the profile from twisting along the curve.
-      normal = normalize(subtract(normal, scale(tangent, dot(normal, tangent))));
+      normal = normalizeOrDown(subtract(normal, scale(tangent, dot(normal, tangent))));
       const binormal = cross(tangent, normal);
       if (profile) return profile.map(([a, b]) => add(node.point, add(scale(normal, a * node.radius), scale(binormal, b * node.radius))));
       return Array.from({ length: segments }, (_, step) => {
@@ -1108,7 +1110,7 @@ function earClip(polygon: readonly Point2[]): [number, number, number][] {
 
 function basis(axis: Vector): [Vector, Vector] {
   const helper: Vector = Math.abs(axis[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
-  const u = normalize(cross(helper, axis));
+  const u = normalizeOrDown(cross(helper, axis));
   return [u, cross(axis, u)];
 }
 
@@ -1117,12 +1119,3 @@ function centroid(points: readonly Vector[]): Vector {
   return scale(sum, 1 / points.length);
 }
 
-function add(a: Vector, b: Vector): Vector { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
-function subtract(a: Vector, b: Vector): Vector { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
-function scale(vector: Vector, amount: number): Vector { return [vector[0] * amount, vector[1] * amount, vector[2] * amount]; }
-function dot(a: Vector, b: Vector): number { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
-function cross(a: Vector, b: Vector): Vector { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
-function normalize(vector: Vector): Vector {
-  const length = Math.hypot(...vector);
-  return length === 0 ? [0, -1, 0] : [vector[0] / length, vector[1] / length, vector[2] / length];
-}

@@ -1,7 +1,6 @@
 import { faceOverhangLimit } from './mesh';
 import type { ProgressCallback, TriangleMesh } from './types';
-
-type Vector = [number, number, number];
+import { distance, type Vector } from '../vec3';
 
 /** A spot that would print without support: a new island, or overhang area far from contacts. */
 export interface SupportProblem {
@@ -182,9 +181,6 @@ export function checkSupports(mesh: TriangleMesh, contacts: readonly Vector[], s
   return problems;
 }
 
-function distance(a: Vector, b: Vector): number {
-  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-}
 
 function faceNormal(p: ArrayLike<number>, a: number, b: number, c: number): Vector {
   const ux = p[b * 3]! - p[a * 3]!, uy = p[b * 3 + 1]! - p[a * 3 + 1]!, uz = p[b * 3 + 2]! - p[a * 3 + 2]!;

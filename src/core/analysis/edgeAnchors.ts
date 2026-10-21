@@ -1,6 +1,5 @@
 import type { TriangleMesh } from './types';
-
-type Vector = [number, number, number];
+import { add, cross, dot, normalize, scale, subtract, type Vector } from '../vec3';
 
 export interface EdgeAnchor {
   position: Vector;
@@ -165,12 +164,3 @@ function faceBasis(normal: Vector): [Vector, Vector] {
 }
 
 function angleBetween(a: Vector, b: Vector): number { return Math.acos(Math.max(-1, Math.min(1, dot(a, b)))); }
-function add(a: Vector, b: Vector): Vector { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
-function subtract(a: Vector, b: Vector): Vector { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
-function scale(v: Vector, s: number): Vector { return [v[0] * s, v[1] * s, v[2] * s]; }
-function dot(a: Vector, b: Vector): number { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
-function cross(a: Vector, b: Vector): Vector { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
-function normalize(v: Vector): Vector {
-  const length = Math.hypot(...v);
-  return length === 0 ? [0, 0, 0] : [v[0] / length, v[1] / length, v[2] / length];
-}

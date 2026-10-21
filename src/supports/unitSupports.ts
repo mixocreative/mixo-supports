@@ -1,13 +1,13 @@
-import { labelForIndex } from '../analysis/mesh';
-import type { ProgressCallback, SupportPoint } from '../analysis/types';
-import { composeContacts, hidingRemovals } from '../analysis/placement';
+import { labelForIndex } from '../core/analysis/mesh';
+import type { ProgressCallback, SupportPoint } from '../core/analysis/types';
+import { composeContacts, hidingRemovals } from '../core/analysis/placement';
 import type { PrintUnit, SupportSettings } from '../state/project';
 import { applyTransform, inverseTransformMesh, transformDirection, transformPoint, type ModelTransform } from '../state/transform';
-import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from './mesh';
-import { raftOutline } from './raft';
-import { RemeshTarget } from './remesh';
-import { defaultSupportSettings, type LiveSupportSettings } from './settings';
-import { zonedAt } from './zones';
+import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from '../core/supports/mesh';
+import { raftOutline } from '../core/supports/raft';
+import { RemeshTarget } from '../core/supports/remesh';
+import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
+import { zonedAt } from '../core/supports/zones';
 
 /** SLASG point class of each placement source (manual points are untagged face points). */
 const CONTACT_KIND: Record<SupportPoint['source'], NonNullable<SupportContact['kind']>> = {

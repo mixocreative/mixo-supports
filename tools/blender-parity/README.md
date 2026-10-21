@@ -7,7 +7,7 @@ The goal: the same settings give the same supports in Resin UV (Blender) and in 
    - the support piece each contact grows (foot centre and radius, column top)
    - the raft profile
 2. The output is committed as `reference.json`.
-3. `src/supports/blenderCases.test.ts` feeds each case's contacts (with their true surface normals) and settings through the web generator, then compares every number. It runs in `npm test` and does not need Blender.
+3. `src/core/supports/blenderCases.test.ts` feeds each case's contacts (with their true surface normals) and settings through the web generator, then compares every number. It runs in `npm test` and does not need Blender.
 
 Regenerate after changing the add-on:
 

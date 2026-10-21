@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { BoxGeometry, BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import stages from '../../tools/blender-parity/minima_stages.json';
-import { blenderVertexNormals } from '../analysis/blenderBvh';
-import { minimaStages } from '../analysis/placement';
+import { blenderVertexNormals } from '../core/analysis/blenderBvh';
+import { minimaStages } from '../core/analysis/placement';
 import { geometryToMesh } from '../state/import';
-import { RemeshTarget } from './remesh';
+import { RemeshTarget } from '../core/supports/remesh';
 
 type Vector = [number, number, number];
 

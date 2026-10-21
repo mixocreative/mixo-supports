@@ -1,7 +1,7 @@
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../core/analysis/types';
 import type { PrintUnit } from '../state/project';
 import type { ExportFilePlan } from '../supports/export';
-import type { GeneratedSupportMesh } from '../supports/mesh';
+import type { GeneratedSupportMesh } from '../core/supports/mesh';
 
 export type MeshMode = 'preview' | 'export';
 

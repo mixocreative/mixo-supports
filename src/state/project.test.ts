@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Object3D } from 'three';
-import type { SupportPoint, TriangleMesh } from '../analysis/types';
-import type { ZoneStamp } from '../supports/zones';
+import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
+import type { ZoneStamp } from '../core/supports/zones';
 import { deserializeScene, emptyScene, identityTransform, reduceScene, serializeScene, type PrintScene, type PrintUnit } from './project';
 
 const source: TriangleMesh = {

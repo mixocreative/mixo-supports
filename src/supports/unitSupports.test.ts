@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { SupportPoint, TriangleMesh } from '../analysis/types';
+import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import { identityTransform, type PrintUnit } from '../state/project';
 import { applyTransform } from '../state/transform';
-import { meshBounds } from './mesh';
-import { defaultSupportSettings } from './settings';
+import { meshBounds } from '../core/supports/mesh';
+import { defaultSupportSettings } from '../core/supports/settings';
 import { resolveSettings, unitContacts, unitRemovedCount, unitSupportMesh } from './unitSupports';
 
 // A closed 10 mm cube: its underside (y = -5) is where the contacts sit.

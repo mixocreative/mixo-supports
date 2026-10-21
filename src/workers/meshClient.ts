@@ -1,7 +1,7 @@
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../core/analysis/types';
 import type { PrintUnit } from '../state/project';
 import type { ExportFilePlan } from '../supports/export';
-import type { GeneratedSupportMesh } from '../supports/mesh';
+import type { GeneratedSupportMesh } from '../core/supports/mesh';
 import type { BuildRequest, ExportedFile, ExportRequest, MeshMode, MeshWorkerResponse, MeshWorkerUnit, UnitPayload } from './meshProtocol';
 
 export interface MeshProgress {

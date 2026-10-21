@@ -1,13 +1,13 @@
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { importStlUnit } from '../state/import';
 import { describe, expect, it } from 'vitest';
-import type { SupportPoint, TriangleMesh } from '../analysis/types';
+import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import { emptyScene, type PrintScene, type PrintUnit } from '../state/project';
 import { encodeStl, planExport, uniqueFileNames, type ExportPart } from './export';
-import { meshBounds } from './mesh';
+import { meshBounds } from '../core/supports/mesh';
 import { applyTransform } from '../state/transform';
 import { unitSupportMesh } from './unitSupports';
-import { defaultSupportSettings } from './settings';
+import { defaultSupportSettings } from '../core/supports/settings';
 
 const cube: TriangleMesh = {
   positions: new Float32Array([-2, -2, -2, 2, -2, -2, 2, -2, 2, -2, -2, 2, -2, 2, -2, 2, 2, -2, 2, 2, 2, -2, 2, 2]),

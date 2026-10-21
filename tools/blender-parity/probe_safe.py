@@ -6,7 +6,7 @@ The model is a C profile (x, z) extruded along y: a lower arm, a back wall and a
 that reaches 3 mm further than the lower one, so contacts under the upper arm sit above the
 lower arm's top (no branch) or just beyond its end (Safe Distance decides). The output holds
 the model triangles (before the lift), the contacts and the scatter graph per case;
-`src/supports/blenderSafe.test.ts` replays them.
+`src/core/supports/blenderSafe.test.ts` replays them.
 """
 import json
 import sys

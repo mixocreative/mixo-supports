@@ -1,7 +1,6 @@
 import type { LiveSupportSettings } from './settings';
 import { cornerBisectors } from './raft';
-
-type Vector = [number, number, number];
+import { distance, type Vector } from '../vec3';
 type Point2 = [number, number];
 
 /** A solid as a polygon swept along a vector (plates, slab) or a closed band (ring walls). */
@@ -184,7 +183,6 @@ function sampleClosed(loop: readonly Vector[], length: number, at: number): Vect
   void length;
 }
 
-function distance(a: Vector, b: Vector): number { return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }
 function normalize2([x, y]: Point2): Point2 {
   const length = Math.hypot(x, y);
   return length === 0 ? [0, 0] : [x / length, y / length];

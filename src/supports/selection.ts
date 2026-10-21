@@ -1,6 +1,7 @@
 import type { PrintUnit, SceneCommand } from '../state/project';
-import type { SupportContact, Vector } from './mesh';
-import { stampsAlong } from './zones';
+import type { SupportContact } from '../core/supports/mesh';
+import { dot, type Vector } from '../core/vec3';
+import { stampsAlong } from '../core/supports/zones';
 
 export type BrushMode = 'select' | 'unselect';
 
@@ -80,6 +81,3 @@ export function deleteCommands(unit: PrintUnit, ids: readonly string[]): SceneCo
   return commands;
 }
 
-function dot(a: Vector, b: Vector): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}

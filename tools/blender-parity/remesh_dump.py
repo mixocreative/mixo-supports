@@ -4,7 +4,7 @@ Usage:
   blender --background --factory-startup --python remesh_dump.py -- <out.json> <voxel> <adaptivity>
 
 remesh_spike.json holds the unique vertices for voxel 0.8, adaptivity 0 (the mesh that
-src/supports/remesh.ts reproduces vertex for vertex).
+src/core/supports/remesh.ts reproduces vertex for vertex).
 """
 import json
 import sys

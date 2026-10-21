@@ -84,8 +84,9 @@ Every push to `main` is deployed to GitHub Pages.
 
 | Path | What lives there |
 |---|---|
-| `src/supports/` | Settings and presets, support mesh, tree topology, raft, STL export |
-| `src/analysis/` | Placement (downward faces, islands, edges), Blender BVH and normals ports, support check |
+| `src/core/` | Portable support core (no React/three/DOM): `supports/` settings and presets, support mesh, tree topology, raft; `analysis/` placement (downward faces, islands, edges), Blender BVH and normals ports, support check; shared `vec3` and conventions. See [src/core/README.md](src/core/README.md) |
+| `src/editing/` | Portable editing rules (keys, view framing) |
+| `src/supports/` | App glue on top of the core: per-unit supports, selection commands, STL export |
 | `src/workers/` | Mesh (preview and export), analysis pool and import workers, each with a typed client |
 | `src/components/` | Viewport, settings panel, progress bar |
 | `tools/blender-parity/` | Headless Blender scripts that record the reference data the tests compare against |

@@ -1,5 +1,5 @@
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../core/analysis/types';
 import { importStlUnit } from '../state/import';
 
 type Vector = [number, number, number];
@@ -187,6 +187,6 @@ export const GOLDEN_FIXTURES: readonly GoldenFixture[] = [
     },
     // ridge-30 keeps its anchors (52 > 30 degrees) and stays identical.
     notes: 'reinforce-off-* pin the legacy SDF ridge points (Reinforce overhang edges off), which follow Ridge angle '
-      + 'and join the island minima; checked stage by stage against Blender in src/supports/blenderRidges.test.ts.',
+      + 'and join the island minima; checked stage by stage against Blender in src/core/supports/blenderRidges.test.ts.',
   },
 ];

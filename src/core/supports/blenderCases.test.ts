@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import reference from '../../tools/blender-parity/reference.json';
+import reference from '../../../tools/blender-parity/reference.json';
 import { edgeAnchors } from '../analysis/edgeAnchors';
 import type { TriangleMesh } from '../analysis/types';
 import { buildSupportMesh, columnChain, trussSegments, type Column, type GeneratedSupportMesh, type SupportContact } from './mesh';
@@ -254,7 +254,7 @@ describe.each(Object.entries(CASES))('Blender case %s', (name, blender) => {
     const raft = bounds(mesh, 'raft');
     expect(raft.max[1]).toBeCloseTo(blender.raft.z_max, 2);
     // Reach along the X axis at the plate and at the rim top.
-    // The voxel-contour emulation (src/supports/raft.ts) lands within 0.02 mm at 32+ voxels
+    // The voxel-contour emulation (src/core/supports/raft.ts) lands within 0.02 mm at 32+ voxels
     // and 0.08 mm at 16, where the resample start point is the remaining difference.
     const tolerance = settings.voxelResolution >= 32 ? 0.02 : 0.08;
     const reach = (y: number) => {

@@ -1,4 +1,4 @@
-import type { Vector } from './mesh';
+import type { Vector } from '../vec3';
 
 /** One brush dab of a no-support zone, in unit-local space. */
 export interface ZoneStamp {

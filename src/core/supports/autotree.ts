@@ -1,8 +1,7 @@
 import type { TriangleMesh } from '../analysis/types';
 import { RemeshTarget, type Polygon } from './remesh';
 import type { LiveSupportSettings } from './settings';
-
-type Vector = [number, number, number];
+import { add, cross, distance, dot, normalize, scale, subtract, type Vector } from '../vec3';
 
 export interface TreeContact {
   position: Vector;
@@ -112,14 +111,14 @@ function blockerFaces(model: TriangleMesh, limit: number): BlockerFace[] {
       return [model.positions[i]!, model.positions[i + 1]!, model.positions[i + 2]!] as Vector;
     }) as [Vector, Vector, Vector];
     const ids = points.map((p) => p.map((v) => Math.round(v * 1e5)).join('|')) as [string, string, string];
-    const normal = normalize(cross(sub(points[1], points[0]), sub(points[2], points[0])));
+    const normal = normalize(cross(subtract(points[1], points[0]), subtract(points[2], points[0])));
     if (Math.acos(Math.max(-1, Math.min(1, -normal[1]))) > limit) kept.push({ ids, points, normal });
   }
   const sums = new Map<string, Vector>();
   for (const { ids, points, normal } of kept) {
     ids.forEach((id, k) => {
-      const a = sub(points[(k + 2) % 3]!, points[k]!);
-      const b = sub(points[(k + 1) % 3]!, points[k]!);
+      const a = subtract(points[(k + 2) % 3]!, points[k]!);
+      const b = subtract(points[(k + 1) % 3]!, points[k]!);
       const la = Math.hypot(...a);
       const lb = Math.hypot(...b);
       if (la === 0 || lb === 0) return;
@@ -167,7 +166,7 @@ function triangles(model: TriangleMesh): Face[] {
       const i = model.indices[face * 3 + k]! * 3;
       return [model.positions[i]!, model.positions[i + 1]!, model.positions[i + 2]!] as Vector;
     }) as [Vector, Vector, Vector];
-    out.push({ a, b, c, normal: normalize(cross(sub(b, a), sub(c, a))) });
+    out.push({ a, b, c, normal: normalize(cross(subtract(b, a), subtract(c, a))) });
   }
   return out;
 }
@@ -202,40 +201,30 @@ export function closestOnMesh(faces: readonly Face[], point: Vector): Vector {
 
 function closestOnTriangle(p: Vector, a: Vector, b: Vector, c: Vector): Vector {
   // Ericson, Real-Time Collision Detection 5.1.5.
-  const ab = sub(b, a);
-  const ac = sub(c, a);
-  const ap = sub(p, a);
+  const ab = subtract(b, a);
+  const ac = subtract(c, a);
+  const ap = subtract(p, a);
   const d1 = dot(ab, ap);
   const d2 = dot(ac, ap);
   if (d1 <= 0 && d2 <= 0) return a;
-  const bp = sub(p, b);
+  const bp = subtract(p, b);
   const d3 = dot(ab, bp);
   const d4 = dot(ac, bp);
   if (d3 >= 0 && d4 <= d3) return b;
   const vc = d1 * d4 - d3 * d2;
   if (vc <= 0 && d1 >= 0 && d3 <= 0) return add(a, scale(ab, d1 / (d1 - d3)));
-  const cp = sub(p, c);
+  const cp = subtract(p, c);
   const d5 = dot(ab, cp);
   const d6 = dot(ac, cp);
   if (d6 >= 0 && d5 <= d6) return c;
   const vb = d5 * d2 - d1 * d6;
   if (vb <= 0 && d2 >= 0 && d6 <= 0) return add(a, scale(ac, d2 / (d2 - d6)));
   const va = d3 * d6 - d5 * d4;
-  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return add(b, scale(sub(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6))));
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return add(b, scale(subtract(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6))));
   const denominator = 1 / (va + vb + vc);
   return add(a, add(scale(ab, vb * denominator), scale(ac, vc * denominator)));
 }
 
-function add(a: Vector, b: Vector): Vector { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
-function sub(a: Vector, b: Vector): Vector { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
-function scale(v: Vector, s: number): Vector { return [v[0] * s, v[1] * s, v[2] * s]; }
-function dot(a: Vector, b: Vector): number { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
-function cross(a: Vector, b: Vector): Vector { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
 function mean(points: readonly Vector[]): Vector {
   return points.reduce<Vector>((sum, p) => add(sum, p), [0, 0, 0]).map((value) => value / points.length) as Vector;
-}
-function distance(a: Vector, b: Vector): number { return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }
-function normalize(v: Vector): Vector {
-  const length = Math.hypot(...v);
-  return length === 0 ? [0, 0, 0] : [v[0] / length, v[1] / length, v[2] / length];
 }

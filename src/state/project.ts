@@ -1,5 +1,5 @@
-import type { PlacementResult, Region, SupportPoint, TriangleMesh } from '../analysis/types';
-import type { ZoneStamp } from '../supports/zones';
+import type { PlacementResult, Region, SupportPoint, TriangleMesh } from '../core/analysis/types';
+import type { ZoneStamp } from '../core/supports/zones';
 import type { ModelTransform } from './transform';
 
 export { identityTransform } from './transform';

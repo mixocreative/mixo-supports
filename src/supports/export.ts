@@ -1,4 +1,4 @@
-import type { ProgressCallback, TriangleMesh } from '../analysis/types';
+import type { ProgressCallback, TriangleMesh } from '../core/analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
 import { transformPoint, type ModelTransform } from '../state/transform';
 

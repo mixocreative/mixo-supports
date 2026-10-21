@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { composeContacts, generatePlacement, hidingRemovals } from './placement';
 import type { PlacementSettings, TriangleMesh } from './types';
-import { GOLDEN_FIXTURES } from '../goldens/fixtures';
+import { GOLDEN_FIXTURES } from '../../goldens/fixtures';
 
 const squareOverhang: TriangleMesh = {
   positions: new Float32Array([
