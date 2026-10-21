@@ -41,7 +41,7 @@ Language = saved choice (localStorage `mixo-supports.lang`), else browser langua
 switch in the header. Chinese terms follow the Blender add-on's zh_HANT dictionary. `i18n.test.ts`
 fails when a UI literal, setting label or stage lacks a translation or a placeholder differs.
 
-## Contact tip shapes (web done; Blender add-on in progress)
+## Contact tip shapes (web and Blender add-on done; add-on b82ad6b, not pushed)
 
 Settings `contactShape` (NONE default / SPHERE), `pointDiameter` (0.2 mm, the tip end at the model
 when NONE), `tipSection` (ROUND / SQUARE / CROSS, Lychee tip types) and `tipProfile` (TAPERED /
