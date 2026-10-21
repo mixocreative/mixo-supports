@@ -19,11 +19,13 @@ conventions converts at its boundary.
 | `analysis/types.ts` | `TriangleMesh`, placement settings and results |
 | `analysis/mesh.ts` | Downward-face classification, overhang limits, regions, labels |
 | `analysis/placement.ts` | Automatic contact placement (remesh minima, islands, edge anchors) |
-| `analysis/edgeAnchors.ts`, `analysis/legacyRidges.ts` | Edge and ridge contacts |
+| `analysis/edgeAnchors.ts`, `analysis/legacyRidges.ts` | Edge contacts and legacy ridge points (edges in first-use order, signed dihedral angle) |
 | `analysis/supportCheck.ts` | Unsupported-region check |
-| `analysis/blenderBvh.ts`, `analysis/kdtree.ts` | Blender-behaviour point BVH (nearest point) and merge-by-distance |
+| `analysis/nearestPoint.ts` | Exact nearest-point search (single precision, 2^-23-padded boxes) |
+| `analysis/mergeByDistance.ts` | Merge by Distance in index order |
 | `analysis/vertexNormals.ts` | Angle-weighted vertex normals in single precision (Blender true normals, bit for bit) |
 | `analysis/random.ts` | lookup3 pair hash and drand48 generator for the per-triangle scatter |
+| `analysis/parity.testkit.ts` | Tie-aware comparisons with Resin UV's stage dumps (tests only) |
 | `supports/settings.ts` | Live support settings, presets, limits |
 | `supports/mesh.ts` | Support mesh builder (contacts, columns, trees, braces, raft, label) and picking helpers |
 | `supports/remesh.ts`, `supports/openvdbTables.ts` | Voxel remesh used as the placement and tree surface |
@@ -47,26 +49,33 @@ Kept outside `src/core` because they import app modules or three.js:
 three's STL loader; the core test passes the scan (it imports no forbidden module itself) but pulls
 three in transitively.
 
+## Defined tie rules
+
+The island-minima stream follows Resin UV's stages but defines its own answers where Blender's
+depend on its internal tree layouts:
+
+- Nearest point (`NearestPoint`): exact single-precision minimum; an exact distance tie goes to
+  the lowest point index.
+- Merge by Distance: points exactly Spacing apart merge (`distance² <= Spacing²` in single
+  precision, for every pair).
+- Legacy ridge edges: first-use order (faces in order, each loop from its closing edge); an
+  edge's convexity is judged by face 2's centroid against face 1's plane.
+
+The Blender parity tests (`blenderMinima`, `blenderRidges`, `blenderParity`) check these
+stages against Resin UV's dumps. A result may differ from Blender's only where it is an equally
+valid answer under these rules: an exact distance tie, a pair exactly Spacing apart, a
+nearest-vertex tie, or a quad whose convexity is ambiguous. Everything else must match bit for bit.
+
 ## Licence
 
-Independent implementations (Task 10, written from a behavioural spec and public algorithm
-descriptions, not from Blender source):
+`src/core` is independent code. It was written from behavioural specs and public algorithm
+descriptions, not from Blender source (Task 10 replaced the earlier GPL-derived BVH, k-d tree,
+hash, RNG, vertex normals and legacy ridge code). The public sources used are Bob Jenkins'
+lookup3 (public domain), POSIX `drand48`, Newell normals, angle-weighted vertex normals, and
+standard branch-and-bound nearest search.
 
-- `analysis/vertexNormals.ts`: Newell face normals and angle-weighted vertex normals.
-- `analysis/random.ts`: Bob Jenkins' lookup3 `hashword` (public domain) and the POSIX
-  `drand48` generator.
+The one exception is attribution: `supports/remesh.ts` ports OpenVDB's `VolumeToMesh` and
+`meshToVolume` band handling, and `supports/openvdbTables.ts` holds OpenVDB lookup tables
+(Apache-2.0, Copyright Contributors to the OpenVDB Project). Keep that notice.
 
-Still translations of Blender C source (GPL-2.0-or-later), pending the owner's decision:
-
-- `analysis/blenderBvh.ts` (`BLI_kdopbvh` point tree) and `analysis/kdtree.ts` (`BLI_kdtree`
-  merge by distance). Generic replacements change placement: their tie-breaks (equidistant
-  nearest points, points exactly Spacing apart) depend on Blender's exact tree layout, so the
-  Blender parity tests and nine goldens move. See the Task 10 report.
-- `analysis/legacyRidges.ts` follows named Blender functions (edge order, face normal, quad
-  split, angle between normals); not yet reviewed for replacement.
-
-`supports/remesh.ts` ports OpenVDB's `VolumeToMesh` and `meshToVolume` band handling;
-`openvdbTables.ts` holds OpenVDB lookup tables (Apache-2.0, Copyright Contributors to the
-OpenVDB Project; attribution kept there). Its Blender-specific parts are behaviour of how
-Blender calls OpenVDB (voxel size and adaptivity in single precision, grid not tagged as a level
-set, triangles before quads, quads split 0-2) and textbook formulas, not translated Blender code.
+The licence of the Bfont outline data (`supports/bfont.json`) is a separate check.

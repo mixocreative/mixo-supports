@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { BoxGeometry, BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import mushroomContacts from '../../tools/blender-parity/mushroom_contacts.json';
-import { generatePlacement } from '../core/analysis/placement';
+import { generatePlacement, minimaStages } from '../core/analysis/placement';
+import { RemeshTarget } from '../core/supports/remesh';
 import { geometryToMesh } from '../state/import';
 import { buildSupportMesh } from '../core/supports/mesh';
 import { defaultSupportSettings, toPlacementSettings } from '../core/supports/settings';
@@ -22,6 +23,9 @@ const BLENDER = {
   raft: { bottom: 12.368, wallTop: 13.232 },
   triangles: 41649,
 };
+
+/** Web island minima on the mushroom and how many of Blender's 38 they contain exactly. */
+const MINIMA = { web: 36, matched: 28 };
 
 function mushroom() {
   const stem = new BoxGeometry(4, 10, 4).translate(0, 10, 0).toNonIndexed();
@@ -56,10 +60,18 @@ describe('Blender parity (mushroom fixture)', () => {
     const poisson = ours(['interior']);
     expect(poisson.length).toBe(BLENDER.classes.poisson);
     for (const point of theirs('face')) expect(Math.min(...poisson.map((p) => near(p, point)))).toBeLessThan(0.02);
-    // Minima: bit for bit (see blenderMinima.test.ts): the same 38 points.
+    // Minima: Blender's 38 differ only by defined ties (pairs exactly Spacing apart merge, the
+    // lowest index wins an exact distance tie), checked stage by stage in blenderMinima.test.ts.
+    // Pinned: the web keeps MINIMA.web points; MINIMA.matched of Blender's are among them.
     const minima = ours(['island']);
-    expect(minima).toHaveLength(BLENDER.classes.minima);
-    for (const point of theirs('vertical')) expect(Math.min(...minima.map((p) => near(p, point)))).toBeLessThan(1e-4);
+    expect(theirs('vertical')).toHaveLength(BLENDER.classes.minima);
+    const matched = theirs('vertical').filter((point) => Math.min(...minima.map((p) => near(p, point))) < 1e-4).length;
+    expect({ web: minima.length, matched }).toEqual(MINIMA);
+    // The stream is the stage pipeline that blenderMinima.test.ts checks against Blender (up to
+    // the placement's double-precision round trip).
+    const stages = minimaStages(new RemeshTarget(model, 0, 0.5).fullMesh(), { spacing: 2, overhangAngleDegrees: 45 } as never);
+    expect(minima).toHaveLength(stages.kept.length);
+    minima.forEach((point, k) => expect(near(point, stages.kept[k]!)).toBeLessThan(1e-9));
   });
 
   it('matches the raft footprint and outward-leaning rim', () => {
