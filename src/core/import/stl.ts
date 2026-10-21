@@ -12,9 +12,14 @@ const FACET_BYTES = 50;
 
 export type StlKind = 'binary' | 'ascii';
 
-/** A damaged file (truncated, wrong record size, nothing in it). */
+/** A damaged file (truncated, wrong record size, too short to be an STL). */
 export class StlFormatError extends Error {
   readonly code = 'bad-stl';
+}
+
+/** A well-formed STL with no triangles in it: no mesh, not damaged. */
+export class StlEmptyError extends Error {
+  readonly code = 'no-mesh';
 }
 
 /**
@@ -110,12 +115,12 @@ export class StlWelder {
   finish(): TriangleMesh {
     if (this.kind === 'ascii') {
       this.pushAscii(this.decoder!.decode(), true);
-      if (this.corner === 0) throw new StlFormatError('the STL file contains no triangles');
+      if (this.corner === 0) throw new StlEmptyError('the STL file contains no triangles');
       if (this.corner % 3 !== 0) throw new StlFormatError('the STL file is truncated or damaged (a facet has fewer than three vertices)');
       return { positions: this.welder.finish(), indices: Uint32Array.from(this.ascii) };
     }
     if (this.corner < this.triangles * 3) throw new StlFormatError('the STL file is truncated or damaged (fewer triangles than its header says)');
-    if (this.triangles === 0) throw new StlFormatError('the STL file contains no triangles');
+    if (this.triangles === 0) throw new StlEmptyError('the STL file contains no triangles');
     return { positions: this.welder.finish(), indices: this.indices! };
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { binaryStlTriangles, parseStl, StlFormatError } from './stl';
+import { binaryStlTriangles, parseStl, StlEmptyError, StlFormatError } from './stl';
 
 /** A binary STL head claiming `header` triangles. */
 function head(header: number): Uint8Array {
@@ -37,5 +37,20 @@ describe('binary STL triangle count (STLLoader rule, capped by the file size)', 
   it('rejects an ASCII STL cut off inside a facet', () => {
     const text = 'solid x\n facet normal 0 0 1\n  outer loop\n   vertex 0 0 0\n   vertex 1 0 0\n';
     expect(() => parseStl(new TextEncoder().encode(text).buffer as ArrayBuffer)).toThrow(StlFormatError);
+  });
+
+  it('an STL with no triangles has no mesh (no-mesh), it is not damaged (bad-stl)', () => {
+    const zero = new ArrayBuffer(84); // a valid header counting 0 triangles
+    const ascii = new TextEncoder().encode('solid x\nendsolid x\n').buffer as ArrayBuffer;
+    for (const file of [zero, ascii]) {
+      expect(() => parseStl(file)).toThrow(StlEmptyError);
+      try {
+        parseStl(file);
+      } catch (error) {
+        expect((error as { code?: string }).code).toBe('no-mesh');
+      }
+    }
+    // An empty (0-byte) file is too short to be an STL at all: damaged.
+    expect(() => parseStl(new ArrayBuffer(0))).toThrow(StlFormatError);
   });
 });
