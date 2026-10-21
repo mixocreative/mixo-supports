@@ -6,9 +6,11 @@ type Vector = [number, number, number];
 
 /**
  * Settings a golden runs with: defaults, Auto Tree, Roof, Low-poly preview (preview and export
- * meshes differ), and Ridge angle 30 / 60 degrees.
+ * meshes differ), Ridge angle 30 / 60 degrees, and Reinforce overhang edges off at Ridge angle
+ * 30 / 45 / 60 degrees (the legacy SDF ridge points).
  */
-export type GoldenVariant = 'default' | 'tree' | 'roof' | 'low-poly' | 'ridge-30' | 'ridge-60';
+export type GoldenVariant = 'default' | 'tree' | 'roof' | 'low-poly' | 'ridge-30' | 'ridge-60'
+  | 'reinforce-off-30' | 'reinforce-off-45' | 'reinforce-off-60';
 
 /** A golden model: unit-local mesh (as import produces it) and the rotation the unit is given. */
 export interface GoldenFixture {
@@ -178,11 +180,13 @@ export const GOLDEN_FIXTURES: readonly GoldenFixture[] = [
       + 'COVER_FACTOR x Spacing (3 mm) on this 288 mm² flat underside. Both follow their definitions; not a bug.',
   },
   {
-    name: 'v-ridge', mesh: vRidge(), rotation: [0, 0, 0], variants: ['default', 'ridge-30', 'ridge-60'],
-    // Both ridge variants run with Reinforce overhang edges on (the default): the add-on then forces
-    // its legacy SDF ridge compare to pi, and edge anchors use the fixed 45 degrees, so Ridge angle
-    // has no effect on them.
-    notes: 'ridge-30 / ridge-60 pin that Ridge angle changes nothing while Reinforce overhang edges is on '
-      + '(add-on parity): Ridge angle only feeds the legacy SDF ridge branch of the add-on, which runs with reinforcement off.',
+    name: 'v-ridge', mesh: vRidge(), rotation: [0, 0, 0],
+    variants: ['default', 'ridge-30', 'ridge-60', 'reinforce-off-30', 'reinforce-off-45', 'reinforce-off-60'],
+    expectedChanges: {
+      'ridge-60': 'Task 2 (Ridge angle drives the edge-anchor crease test): loses its sharp-ridge anchors (52 < 60 degrees)',
+    },
+    // ridge-30 keeps its anchors (52 > 30 degrees) and stays identical.
+    notes: 'reinforce-off-* pin the legacy SDF ridge points (Reinforce overhang edges off), which follow Ridge angle '
+      + 'and join the island minima; checked stage by stage against Blender in src/supports/blenderRidges.test.ts.',
   },
 ];

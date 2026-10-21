@@ -15,20 +15,16 @@ export interface EdgeAnchorSettings {
   /** Contact Ø/2 + EDGE_INSET_MARGIN (0.05 mm). */
   radius: number;
   facingDown: boolean;
+  /** Ridge Angle: internal creases sharper than this get anchors; defaults to 45°. */
+  ridgeAngleDegrees?: number;
 }
 
-/**
- * Blender `EDGE_SHARP_ANGLE`: ridges between overhang faces sharper than 45° get anchors. The
- * fixed 45° matches the add-on's edge-anchor pass (slasg_assets.py); Ridge Angle is the setting
- * of the add-on's legacy SDF ridge branch, not of this pass.
- */
-const SHARP_ANGLE = Math.PI / 4;
 const MARGIN = 0.05;
 
 /**
  * Exact port of Resin UV `rebuild_edge_candidates` (mixo3d/helpers/slasg_assets.py): safe
- * inset anchors along the physical boundaries and sharp internal ridges of each connected
- * overhang region, sampled every `spacing` including both edge ends, inset perpendicular into
+ * inset anchors along the physical boundaries and the internal ridges sharper than Ridge Angle
+ * of each connected overhang region, sampled every `spacing` including both edge ends, inset perpendicular into
  * the first legal incident face by `radius`, and deduplicated within 0.9 x spacing in order.
  */
 export function edgeAnchors(mesh: TriangleMesh, settings: EdgeAnchorSettings): EdgeAnchor[] {
@@ -42,6 +38,8 @@ export function edgeAnchors(mesh: TriangleMesh, settings: EdgeAnchorSettings): E
   }
   const radius = settings.radius;
   const spacing = Math.max(0.2, settings.spacing);
+  // Resin UV rounds Ridge Angle to 1e-4 degree, so 45 is exactly pi / 4 in both.
+  const sharpAngle = (settings.ridgeAngleDegrees ?? 45) * Math.PI / 180;
   const threshold = -Math.cos(settings.overhangAngleDegrees * Math.PI / 180);
   const eligible = new Set<number>();
   if (settings.facingDown) for (let face = 0; face < faceCount; face += 1) if (normals[face]![1] < threshold) eligible.add(face);
@@ -123,7 +121,7 @@ export function edgeAnchors(mesh: TriangleMesh, settings: EdgeAnchorSettings): E
       const inside = faces.filter((face) => region.has(face));
       if (inside.length === 0) continue;
       const boundary = inside.length === 1;
-      const ridge = faces.length === 2 && inside.length === 2 && angleBetween(normals[faces[0]!]!, normals[faces[1]!]!) > SHARP_ANGLE;
+      const ridge = faces.length === 2 && inside.length === 2 && angleBetween(normals[faces[0]!]!, normals[faces[1]!]!) > sharpAngle;
       if (!(boundary || ridge)) continue;
       const a = vertex(key[0]);
       const b = vertex(key[1]);

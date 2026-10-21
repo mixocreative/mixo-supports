@@ -25,6 +25,8 @@ function variantSettings(variant: GoldenVariant): LiveSupportSettings {
   if (variant === 'low-poly') return updateSetting(base, 'lowPolyMode', true);
   if (variant === 'ridge-30') return updateSetting(base, 'scatterRidgeAngle', 30);
   if (variant === 'ridge-60') return updateSetting(base, 'scatterRidgeAngle', 60);
+  const reinforceOff = /^reinforce-off-(\d+)$/.exec(variant);
+  if (reinforceOff) return updateSetting(updateSetting(base, 'reinforceOverhangEdges', false), 'scatterRidgeAngle', Number(reinforceOff[1]));
   return base;
 }
 

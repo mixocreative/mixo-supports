@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { composeContacts, generatePlacement, hidingRemovals } from './placement';
 import type { PlacementSettings, TriangleMesh } from './types';
+import { GOLDEN_FIXTURES } from '../goldens/fixtures';
 
 const squareOverhang: TriangleMesh = {
   positions: new Float32Array([
@@ -229,5 +230,35 @@ describe('hidingRemovals', () => {
 
   it('hides nothing without automatic contacts', () => {
     expect(hidingRemovals([], [], ['auto-0_100_0'], 1.5, ['auto-100_100_0'], 1).size).toBe(0);
+  });
+});
+
+describe('Ridge angle', () => {
+  // Two overhang faces 40 degrees either side of straight down meet at an 80 degree ridge.
+  const sharpFold: TriangleMesh = {
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0.84, 1, 0, 0.84, -1]),
+    indices: new Uint32Array([0, 1, 2, 0, 3, 1]),
+  };
+  const ridgeAnchors = (degrees: number) => generatePlacement(sharpFold, { ...settings, sharpEdgeAngleDegrees: degrees })
+    .points.filter((point) => point.source === 'sharp-ridge');
+
+  it('decides which creases inside an overhang get edge anchors (strictly sharper than it)', () => {
+    expect(ridgeAnchors(70).length).toBeGreaterThan(0);
+    expect(ridgeAnchors(85)).toEqual([]);
+  });
+
+  const keel = GOLDEN_FIXTURES.find((fixture) => fixture.name === 'v-ridge')!.mesh;
+  const keelSettings: PlacementSettings = { overhangAngleDegrees: 50, spacing: 2, edgeInset: 0.15, sharpEdgeAngleDegrees: 45, includeIslands: true, includeDownward: false };
+  const keelPoints = (degrees: number, reinforceEdges: boolean) => generatePlacement(keel, { ...keelSettings, sharpEdgeAngleDegrees: degrees, reinforceEdges }).points;
+
+  it('drives the legacy ridge points while Reinforce overhang edges is off', () => {
+    const at30 = keelPoints(30, false);
+    expect(at30.some((point) => point.source === 'sharp-ridge')).toBe(true);
+    expect(at30).not.toEqual(keelPoints(60, false));
+  });
+
+  it('leaves the island stream alone while Reinforce overhang edges is on', () => {
+    const islands = (degrees: number) => keelPoints(degrees, true).filter((point) => point.source === 'island');
+    expect(islands(30)).toEqual(islands(60));
   });
 });

@@ -2,6 +2,7 @@ import { RemeshTarget, SurfaceQuery } from '../supports/remesh';
 import { edgeAnchors } from './edgeAnchors';
 import { BlenderPointBvh, blenderVertexNormals } from './blenderBvh';
 import { mergeByDistance } from './kdtree';
+import { legacyRidgeMidpoints } from './legacyRidges';
 import { classifyDownwardFaces, faceOverhangLimit, partitionRegions } from './mesh';
 import type {
   PlacementResult,
@@ -26,8 +27,10 @@ interface Candidate {
  * cross-class de-duplication:
  * 1. Poisson points on overhang faces (Distribute Points on Faces, POISSON: Distance Min =
  *    Spacing, Density Max = (1/Spacing)^4, seed 0);
- * 2. island minima (local-minimum vertices, merged within Spacing), which get vertical necks;
- * 3. Resin UV edge anchors (exact port of `rebuild_edge_candidates`).
+ * 2. island minima (local-minimum vertices, merged within Spacing), which get vertical necks,
+ *    joined before the merge by the legacy SDF ridge points while Reinforce overhang edges is off;
+ * 3. Resin UV edge anchors (exact port of `rebuild_edge_candidates`, creases sharper than Ridge
+ *    angle) while it is on.
  * Blender samples the Poisson field and minima on an OpenVDB remesh of the model; the web uses
  * the exact model, so those two streams match Blender statistically, not point for point.
  */
@@ -61,6 +64,7 @@ export function generatePlacement(mesh: TriangleMesh, settings: PlacementSetting
       spacing: settings.spacing,
       radius: settings.edgeInset,
       facingDown: settings.includeDownward !== false,
+      ridgeAngleDegrees: settings.sharpEdgeAngleDegrees,
     })) {
       candidates.push({ regionId: -1, position: anchor.position, normal: anchor.normal, source: anchor.source });
     }
@@ -288,8 +292,22 @@ function poissonOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate
  * its nearest candidate and samples the nearest R vertex, both through Blender's point BVH;
  * the point is dropped when acos(-normal.z) of that vertex's single-precision true normal
  * exceeds Overhang angle.
+ *
+ * With Reinforce overhang edges off, Resin UV's scatter also feeds the legacy SDF ridge points
+ * (`legacyRidgeMidpoints`, driven by Ridge angle; checked against
+ * tools/blender-parity/ridge_stages.json) into the same stream after the minima, so they are
+ * merged, snapped and filtered with them. A kept point whose cluster holds a minimum is vertical
+ * (SLASG_Line: Vertical wins over Edge); the others are edge contacts.
  */
-export function minimaStages(remesh: Remesh, settings: PlacementSettings): { candidates: number[]; merged: Vector[]; snapped: Vector[]; kept: Vector[] } {
+export function minimaStages(remesh: Remesh, settings: PlacementSettings): {
+  candidates: number[];
+  ridgeMidpoints: Vector[];
+  candidatePoints: Vector[];
+  merged: Vector[];
+  snapped: Vector[];
+  kept: Vector[];
+  keptVertical: boolean[];
+} {
   const f = Math.fround;
   const count = remesh.vertices.length;
   const lowest = new Float64Array(count).fill(Infinity);
@@ -307,9 +325,14 @@ export function minimaStages(remesh: Remesh, settings: PlacementSettings): { can
   // 0, 1, 2 as Blender's do on its X, Y, Z, so equidistant ties fall the same way.
   const toBlender = ([x, y, z]: Vector): Vector => [x, -z, y];
   const blender = remesh.vertices.map(toBlender);
-  const points = candidates.map((v) => blender[v]!);
+  const normals = blenderVertexNormals(blender, remesh.faces);
+  const ridgeMidpoints = settings.reinforceEdges === false
+    ? legacyRidgeMidpoints(blender, remesh.faces, normals, settings.sharpEdgeAngleDegrees, settings.overhangAngleDegrees)
+    : [];
+  const points = [...candidates.map((v) => blender[v]!), ...ridgeMidpoints];
   // Mixed like attribute_math mix_indices: each member times 1 / n, summed in index order.
-  const merged = mergeByDistance(points, settings.spacing).map((cluster) => {
+  const clusters = mergeByDistance(points, settings.spacing);
+  const merged = clusters.map((cluster) => {
     const weight = f(1 / cluster.length);
     const sum: Vector = [0, 0, 0];
     for (const k of [...cluster].sort((p, q) => p - q)) for (let axis = 0; axis < 3; axis += 1) sum[axis] = f(sum[axis]! + f(points[k]![axis]! * weight));
@@ -320,20 +343,33 @@ export function minimaStages(remesh: Remesh, settings: PlacementSettings): { can
   const candidateTree = new BlenderPointBvh(points);
   const snapped = merged.map((centre) => candidateTree.nearestHit(centre).co);
   const vertexTree = new BlenderPointBvh(blender);
-  const normals = blenderVertexNormals(blender, remesh.faces);
   const limit = f(settings.overhangAngleDegrees * Math.PI / 180);
-  const kept = snapped.filter((point) => {
+  const keep = snapped.map((point) => {
     const normal = normals[vertexTree.nearest(point)]!;
     const down = f(-normal[2]);
     const angle = down <= -1 ? f(Math.PI) : down >= 1 ? 0 : f(Math.acos(down));
     return !(angle > limit);
   });
+  const kept = snapped.filter((_, k) => keep[k]);
+  const keptVertical = clusters.filter((_, k) => keep[k]).map((cluster) => cluster.some((index) => index < candidates.length));
   const toWeb = ([x, y, z]: Vector): Vector => [x, z, -y];
-  return { candidates, merged: merged.map(toWeb), snapped: snapped.map(toWeb), kept: kept.map(toWeb) };
+  return {
+    candidates,
+    ridgeMidpoints: ridgeMidpoints.map(toWeb),
+    candidatePoints: points.map(toWeb),
+    merged: merged.map(toWeb),
+    snapped: snapped.map(toWeb),
+    kept: kept.map(toWeb),
+    keptVertical,
+  };
 }
 
+/** Island minima (vertical contacts) and, with Reinforce overhang edges off, legacy ridge points (edge contacts). */
 function minimaOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate[] {
-  return minimaStages(remesh, settings).kept.map((position) => ({ regionId: -1, position, normal: [0, -1, 0], source: 'island' }));
+  const stages = minimaStages(remesh, settings);
+  return stages.kept.map((position, k) => (stages.keptVertical[k]
+    ? { regionId: -1, position, normal: [0, -1, 0], source: 'island' }
+    : { regionId: -1, position, normal: [0, -1, 0], source: 'sharp-ridge' }));
 }
 
 /**

@@ -26,7 +26,7 @@ interface Group {
 }
 
 const mm = (key: NumberKey, label: string, step = 0.1, hint?: string): Field => ({ kind: 'number', key, label, unit: 'mm', step, ...(hint ? { hint } : {}) });
-const deg = (key: NumberKey, label: string): Field => ({ kind: 'number', key, label, unit: '°', step: 1 });
+const deg = (key: NumberKey, label: string, hint?: string): Field => ({ kind: 'number', key, label, unit: '°', step: 1, ...(hint ? { hint } : {}) });
 const int = (key: NumberKey, label: string): Field => ({ kind: 'number', key, label, step: 1 });
 const bool = (key: BooleanKey, label: string, hint?: string): Field => ({ kind: 'boolean', key, label, ...(hint ? { hint } : {}) });
 const sphere = (settings: LiveSupportSettings) => settings.contactShape === 'SPHERE';
@@ -40,7 +40,7 @@ export const SETTING_GROUPS: Group[] = [
       bool('scatterFacingDown', 'Downward faces'),
       bool('scatterIslands', 'Islands'),
       bool('reinforceOverhangEdges', 'Reinforce overhang edges'),
-      deg('scatterRidgeAngle', 'Ridge angle'),
+      deg('scatterRidgeAngle', 'Ridge angle', 'Creases inside an overhang that bend more than this get a line of supports. Lower means more creases are supported. With Reinforce overhang edges off, it picks the ridge points instead'),
       bool('scatterAutoTree', 'Tree supports'),
     ],
   },
