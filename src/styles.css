@@ -90,7 +90,8 @@ h1 { margin: 0; font-size: 16px; font-weight: 500; letter-spacing: .08em; }
 
 h2 { font-size: 14px; font-weight: 500; letter-spacing: .04em; margin: 0 0 14px; }
 h2 small { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 6px; }
-h3 { font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: .06em; margin: 0 0 10px; }
+/* Group headings read as headings, not body: ink on a sunken band, tracked, bold. */
+h3 { display: flex; align-items: center; min-height: 26px; margin: 0 0 10px; padding: 0 8px; background: var(--sunken); border-radius: var(--radius); font-size: 12px; font-weight: 700; color: var(--ink); letter-spacing: .06em; }
 
 .drop {
   position: relative;
@@ -308,20 +309,39 @@ kbd {
 .number input:hover, .field-row .text:hover { border-bottom-color: var(--ink); }
 .number input:focus-visible, .field-row .text:focus-visible { outline: 0; border-bottom: 1px solid var(--red); }
 .number small { width: 16px; color: var(--muted); font-size: 11px; }
-.settings details { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 4px; }
+.settings details { margin-top: 10px; }
+/* Collapsible group: the same heading band plus a chevron that turns when open. */
 .settings summary {
-  padding: 8px 0;
-  font-size: 12.5px;
-  font-weight: 500;
-  letter-spacing: .04em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 0 8px;
+  background: var(--sunken);
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--ink);
   cursor: pointer;
   list-style: none;
-  display: flex;
-  justify-content: space-between;
+  user-select: none;
 }
+.settings summary:hover { background: var(--line); }
 .settings summary::-webkit-details-marker { display: none; }
-.settings summary::after { content: '+'; color: var(--muted); font-weight: 400; }
-.settings details[open] > summary::after { content: '−'; }
+.settings summary::before {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin: 0 2px 0 1px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--dur, .15s);
+}
+.settings details[open] > summary::before { transform: rotate(45deg); }
+.settings details[open] > summary { margin-bottom: 6px; }
 .check { display: flex; gap: 9px; align-items: center; margin: 10px 0; font-size: 12.5px; cursor: pointer; }
 .check input { accent-color: var(--ink); width: 14px; height: 14px; margin: 0; }
 
