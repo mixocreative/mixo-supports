@@ -69,9 +69,10 @@ Long calls take an optional `onProgress(fraction, stage)` (`ProgressCallback`, f
 
 `buildSupportMesh` with `mode: 'export'` ignores the preview options (`previewMode`
 `ONLY_TIP`, `lowPolyMode`) and builds full geometry; `tipsOf` is a view of a built mesh and does
-not rebuild. Today the app adapter `src/supports/unitSupports.ts` (`unitSupportMesh`) turns a
-`PrintUnit` into these calls: contacts and model into plate space at the generation transform,
-build, then back into the object's local space.
+not rebuild. The app adapter `src/supports/unitSupports.ts` (`supportJobOf`) turns a `PrintUnit`
+into a `SupportJob`, and `src/supports/jobRunner.ts` (`runSupportJob`, in the workers) runs it:
+contacts and model into plate space at the generation transform, build, then back into the
+object's local space.
 
 The editing rules (mode, keys, picks, strokes, selection, status, camera) are in
 `src/editing/` and specified in `docs/superpowers/specs/2026-10-21-support-editing-ui-spec.md`.
@@ -80,31 +81,45 @@ How mixomesh uses both: `docs/migration/README.md`.
 ## Worker contract
 
 The core never spawns workers; the host runs the slow calls (placement, support mesh, check,
-export) off the main thread. The app's workers under `src/workers/` show the contract a host
-keeps:
+export, import) off the main thread. The app does it with `src/workers/WorkerTask.ts` (client)
+and `src/workers/serveTask.ts` (worker side), a port of mixomesh's `WorkerTask`/`serveTask`, so
+the workers move to mixomesh unchanged. "Jobs and workers" below has the app's pools and caches.
 
-- **Messages.** Each request carries a `jobId`. The worker answers with `progress` messages
-  (`fraction`, `stage`; the analysis and mesh workers send at most one per 60 ms, plus the final
-  1) and then exactly one of a result or `{ kind: 'error', message }`. Protocols: `analysisProtocol.ts` (`place` → `placed`,
-  `check` → `checked`), `meshProtocol.ts` (`build` → `result`, `export` → `exported`, plus
-  `started`, `dropped`, `need-source`, and `forget` to free a unit).
-- **Big buffers move once.** Analysis requests transfer the model (`positions.buffer`,
-  `indices.buffer`; the sender keeps no copy) and placement results come back transferred. The mesh
-  client copies each unit's model to the worker once, keyed by `sourceToken`; later builds send
-  settings only, which keeps the worker's remesh caches warm. A worker without the model (after
-  a restart) answers `need-source` and the client sends it again. Built meshes and STL buffers
-  come back transferred.
-- **Latest wins.** A new job with the same key (analysis: `place:<unit>`, `check:<unit>`; mesh:
-  unit and mode) replaces a queued one, which resolves `undefined` (`dropped`). A running
-  analysis job is stopped by replacing its worker at once; a running build only once it has
-  run 800 ms (`RESTART_AFTER_MS`), so short builds finish and keep the caches.
-- **Pool.** Analysis: `analysisPoolSize()` workers, max(1, min(3, ⌊cores / 2⌋)), one job per
-  worker. Mesh: one worker.
-- **Failures never die silently.** A worker crash (`onerror`) rejects its jobs ("The analysis
-  worker stopped.", "Support building failed in the background worker.", "The import worker
-  stopped.") and the next request starts a fresh worker; `editing/errors.ts`
-  (`errorCode`, `errorStatus`) turns any failure into a coded, translated status line that says
-  what to do next (`worker-stopped`, `timeout`, …).
+- **Messages** (`WorkerTask.ts` header). Request `{ id, type: 'run', payload, revision? }`.
+  Replies: any number of `{ id, type: 'progress', ...fields }` (the app's workers send
+  `{ fraction, stage }`, at most one per 60 ms plus the final one), then exactly one of
+  `{ id, type: 'done', result, revision? }` or `{ id, type: 'error', message, code?, vars? }`.
+  `serveTask` copies a thrown error's string `code` and its `vars` into the error reply (an
+  extension of mixomesh's contract), so the client can explain it in any language.
+- **Payloads and results.** `analysisProtocol.ts`: `{ kind: 'place', job: PlacementJob }` →
+  `{ kind: 'placed', result }`, `{ kind: 'check', job: CheckJob }` → `{ kind: 'checked', problems }`.
+  `meshProtocol.ts`: `{ kind: 'build', unit }` → `{ kind: 'mesh', mesh }`, `{ kind: 'export',
+  units, files }` → `{ kind: 'files', files }`, `{ kind: 'forget', unitId }` → `{ kind: 'forgotten' }`;
+  a build or export can also answer `{ kind: 'need-source', unitIds }`. `importProtocol.ts`:
+  `{ kind: 'stl', name, file, runtime }` and `{ kind: 'weld', meshes, runtime }` → `PreparedMesh[]`.
+- **Big buffers move once.** Analysis requests transfer a copy of the model (`positions.buffer`,
+  `indices.buffer`) made when the job starts, and the result comes back transferred. The mesh
+  client sends each unit's model to its persistent worker once, keyed by `sourceToken`; later
+  builds send settings only, which keeps the worker's remesh caches warm. A worker without the
+  model (new, or evicted from its cache) answers `need-source` and the client sends it again.
+  Built meshes and STL buffers come back transferred (`transferable(result, buffers)`).
+- **Latest wins.** Analysis jobs are keyed (`place:<unit>`, `check:<unit>`): a new job replaces a
+  queued one and stops a running one at once (its worker is replaced); the replaced job resolves
+  `undefined`. Mesh builds are keyed by unit and mode: a newer build replaces a queued one
+  (`undefined`), and a running one only once it has run 800 ms (`RESTART_AFTER_MS`), so short
+  builds finish and keep the caches. The app joins a second check of an unchanged unit to the
+  running one (`editing/check.ts` `joinRun`) and counts a replaced check as not finished, never
+  as clean.
+- **Admission.** Placements, builds and exports pass a `TriangleGate` (`core/jobGate.ts`) as
+  `admit`; the job shows as "Queued" until admitted. See "Budgets & heavy meshes".
+- **Failures never die silently.** A job that runs past its timeout fails with
+  `WorkerTaskError` code `timeout`; a worker crash (`onerror`) fails with code `crashed`
+  (message "`<name>` crashed") and the other jobs of that persistent worker with `restarted`; no
+  Web Worker gives `unavailable`, and a reply for another revision `stale`. The next run starts a
+  fresh worker. `workers/jobErrors.ts` (`codedJobError`) maps these and the budget refusals onto
+  the error codes of `editing/errors.ts` (`timeout`, `worker-stopped`, `too-large`,
+  `out-of-memory`, `plate-full`, …), and `errorStatus` turns them into a translated status line
+  that says what to do next. The job activity list shows the same message.
 
 ## Budgets & heavy meshes
 
@@ -129,7 +144,8 @@ Mode and zones off with a plain message; supports and export always use the full
   `too-large`; checked again on the parsed mesh in the import worker;
 - import memory: about 56 B per triangle against the browser's heap limit / half the device memory /
   1 GiB → `out-of-memory`;
-- plate: the plate's triangles plus the new file's over 6M → `plate-full`;
+- plate: the plate's triangles, plus what imports still reading hold (`plateLedger.ts`, so two
+  imports started together cannot both pass), plus the new file's over 6M → `plate-full`;
 - Generate: the triangles that can run at once (at most 6M, see the gate) x 850 MiB/M over half of
   `navigator.deviceMemory`, only when it reports less than 8 GB (it is clamped at 8, so 8 or missing
   means unknown or large and the 6M gate alone applies) → `out-of-memory`.
@@ -157,7 +173,7 @@ Kept outside `src/core` because they import app modules or three.js:
 | `src/supports/unitSupports.ts` | App glue: the only `PrintUnit` → `SupportJob` / `PlacementJob` / `CheckJob` adapter, plus the per-unit caches the UI reads. |
 | `src/supports/jobRunner.ts` | Runs the core jobs (any thread). Uses `state/transform` (three-free since Task 7); can move into the core by switching to `core/transform.ts`. |
 | `src/supports/selection.ts` | `deleteCommands` returns `SceneCommand`s for `PrintUnit` (state/project). The pure selection rules (toggle, paint, prune, brush) live in `src/editing/selection.ts`. |
-| `src/supports/export.ts` | `PrintScene`/`PrintUnit` and `state/transform` (three). |
+| `src/supports/export.ts` | `PrintScene`/`PrintUnit` (state/project), `state/transform` (three-free since Task 7) and `unitContacts` from the app adapter. |
 | `src/supports/zones.test.ts` | Tests core `zones.ts` but builds orientations with `state/transform` (app module; three-free since Task 7). Could move by switching it to `core/transform.ts`. |
 | `src/supports/blenderMinima.test.ts`, `src/supports/blenderParity.test.ts` | Build meshes with three `BoxGeometry` and `state/import`. |
 

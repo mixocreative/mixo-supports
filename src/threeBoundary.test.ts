@@ -7,8 +7,8 @@ declare global {
 }
 
 // three.js stays in the view layer (src/components) so the rules and the core port to a Babylon.js
-// host. Model loaders are the exception until the import path is isolated behind a pure
-// TriangleMesh result (lane B, Task 9); tests may use three as a reference.
+// host. The glTF loader and the pick index are the listed exceptions (STL is read and welded without
+// three, src/core/import); tests may use three as a reference.
 const SOURCES = import.meta.glob<string>(['./**/*.ts', './**/*.tsx', '!./**/*.test.ts', '!./**/*.test.tsx'], { query: '?raw', import: 'default', eager: true });
 const VIEW_LAYER = /^\.\/components\//;
 const LOADER_EXCEPTIONS: Record<string, string> = {

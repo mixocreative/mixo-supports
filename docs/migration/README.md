@@ -20,7 +20,7 @@ When this page and the code disagree, the code and its tests win.
 | `src/core/**` | As is (copy, or a package) | Pure TypeScript: placement, support mesh, check, zones, transforms, handedness. No React, three.js, DOM, `import.meta`, i18n or app state (`src/core/imports.test.ts`). |
 | `src/editing/**` | As is | Framework-free editing rules: `reduceSession`, `keyAction`, `pickAction` / `missAction`, `createStroke`, selection, `sessionStatus`, `frameView` / `spotView`, `errorStatus`, `undoToast`, number fields. Same import rules. |
 | `src/workers/**` | Re-implement from the contract | Worker plumbing is host-specific (bundler, pool size, transfer). Keep the message contract in `src/core/README.md` ("Worker contract"). |
-| `src/supports/unitSupports.ts`, `selection.ts`, `export.ts` | Re-implement as mixomesh glue | Bound to this app's `PrintUnit` / `PrintScene` and history commands. `unitSupportMesh` is the reference for the adapter (section 3). |
+| `src/supports/unitSupports.ts`, `selection.ts`, `export.ts` | Re-implement as mixomesh glue | Bound to this app's `PrintUnit` / `PrintScene` and history commands. `supportJobOf` / `placementJobOf` / `checkJobOf` are the reference for the adapter, and `src/supports/jobRunner.ts` (`runSupportJob`) for running a job with its caches (section 3). |
 | `src/components/**`, `App.tsx`, `src/state/**` | No | React / three.js / app state. The recipes in section 5 replace the viewport. |
 | `src/i18n.ts` | Copy the strings | Status lines and errors are i18n keys (`StatusMessage.key`); mixomesh supplies the en / zh-Hant / ja text from here. |
 
@@ -76,8 +76,10 @@ settings are millimetres on a rigid frame).
    normal)` (manual ones stay). This is `unitContacts` in `src/supports/unitSupports.ts`.
 4. **Build** (worker): contacts and model into plate space at the transform the supports were
    generated at, `buildSupportMesh(contacts, settings, { mode, model, labelText:
-   labelForIndex(index), onProgress })`, then back into object-local space. Reference:
-   `unitSupportMesh`, including its caches (remesh per model + frame + Middle Ø, raft outline).
+   labelForIndex(index), onProgress })`, then back into object-local space. Reference: the
+   `SupportJob` that `supportJobOf` (`src/supports/unitSupports.ts`) builds, run by
+   `runSupportJob` (`src/supports/jobRunner.ts`), which holds the caches (remesh per model +
+   frame + Middle Ø, raft outline).
 5. **Draw**: `toLeftHanded(supportMesh)` under the object's node (section 5.1).
 6. **Check** (worker): `checkSupports(plateModel, contactPositions, { overhangAngleDegrees:
    settings.scatterAngle, spacing: settings.scatterSpacing }, onProgress)`; findings come back
@@ -89,13 +91,14 @@ settings are millimetres on a rigid frame).
 
 Four jobs, all pure calls on transferable typed arrays: `place` (`generatePlacement`), `check`
 (`checkSupports`), `build` (`buildSupportMesh` via the adapter) and `export` (full-resolution
-build plus file encoding). Keep the contract in `src/core/README.md`: `jobId` per request,
-throttled `progress`, exactly one result or error, latest request per key wins, models sent
+build plus file encoding). Keep the contract in `src/core/README.md` ("Worker contract", the
+WorkerTask protocol): `{ id, type: 'run', payload }` per request, throttled `progress`, exactly
+one `done` or `error` (with `code` and `vars`), latest request per key wins, models sent
 once per object and dropped on delete, and every failure turned into a coded status line with
 `errorStatus(context, error)` (contexts `import`, `place`, `build`, `check`, `export`). mixomesh
 already has a worker pool and progress UI; route these jobs through it rather than copying
 `src/workers/`. Budgets and the progress UI follow the shared heavy-mesh spec; this app's side
-is written up in `src/core/README.md` once lane B lands.
+is in `src/core/README.md`, "Budgets & heavy meshes" and "Jobs and workers".
 
 ## 5. Babylon render recipes
 
@@ -224,8 +227,8 @@ The cross-app contract (budgets per tier, warn at 1×, refuse above 4× before p
 format allows, memory model, progress for every worker) is the shared spec in mixomesh:
 `S:\ai\mixomesh\docs\superpowers\specs\2026-10-21-heavy-mesh-handling.md` on branch
 `feat/heavy-mesh`. Its numbers live in mixomesh's `capabilities.js`; do not copy them here.
-This app's side (its budgets, refusals and progress UI) is filled in `src/core/README.md`,
-"Budgets & heavy meshes", after lane B merges. In the core today, two caps bound work on big
+This app's side (its budgets, refusals, job gate and progress UI) is in `src/core/README.md`,
+"Budgets & heavy meshes". In the core, two caps bound work on big
 models: the zone overlay refines to at most 1 500 000 triangles, and the support check samples
 at most 200 000 overhang points (`analysis/supportCheck.ts`).
 
@@ -234,5 +237,5 @@ at most 200 000 overhang points (`analysis/supportCheck.ts`).
 - Euler XYZ ↔ matrix: the core reads placements as `position` + Euler XYZ (`Placement`) but has
   no matrix → Euler helper. Hosts that keep matrices can call `transformPositions` /
   `applyToPoint` with a matrix directly; a stored placement needs the conversion.
-- Worker protocol: lane B is reworking workers and progress; take the protocol from the merged
-  code, not from this release's `src/workers/`.
+- Worker protocol: take it from `src/core/README.md` ("Worker contract") and
+  `src/workers/WorkerTask.ts` / `serveTask.ts`, a port of mixomesh's own `WorkerTask`.

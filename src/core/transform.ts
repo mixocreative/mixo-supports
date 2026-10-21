@@ -2,7 +2,9 @@ import type { Vector } from './vec3';
 
 /**
  * Rigid placement of an object: translation in mm, then rotation as Euler angles in radians,
- * order 'XYZ' (see conventions.ts). The matrix is `T · R`, R = Rx · Ry · Rz.
+ * order 'XYZ' (see conventions.ts). The matrix is `T · R`, R = Rx · Ry · Rz. Rigid only, no
+ * scale: `applyToDirection` uses the linear part as is (not the inverse transpose), which is right
+ * only for rotation matrices; a scaled matrix would give wrong normals.
  */
 export interface Placement {
   position: Vector;
@@ -91,7 +93,7 @@ export function applyToPoint(e: Matrix4, x: number, y: number, z: number): Vecto
   ];
 }
 
-/** A direction through a matrix's linear part, normalised (a zero vector stays zero). */
+/** A direction through a matrix's linear part, normalised (a zero vector stays zero). Rigid matrices only (no scale). */
 export function applyToDirection(e: Matrix4, x: number, y: number, z: number): Vector {
   const dx = e[0]! * x + e[4]! * y + e[8]! * z;
   const dy = e[1]! * x + e[5]! * y + e[9]! * z;

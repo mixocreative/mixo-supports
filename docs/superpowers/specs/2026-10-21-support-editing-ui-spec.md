@@ -203,7 +203,9 @@ Note for the glossary (Task 12): ja counts supports with both 本 and 個.
 `src/core/conventions.ts`: +Y up, millimetres, right-handed, counter-clockwise outward triangles,
 Euler `XYZ` in radians. Placement matrix `T · Rx · Ry · Rz` (`core/transform.ts`), column-major
 (element `[col·4 + row]`), points use the projective divide, directions use the linear part and
-are normalised. These match three.js exactly (bit for bit on 50 seeded transforms,
+are normalised. Placements are rigid only, no scale: directions through the linear part are right
+only for rotations (a scaled matrix would need the inverse transpose for normals), so a host that
+scales objects must bake the scale into the mesh first. These match three.js exactly (bit for bit on 50 seeded transforms,
 `state/transformParity.test.ts`).
 
 Babylon.js is left-handed by default. Two options, pick one per app:
@@ -224,14 +226,18 @@ Picking in Babylon must reproduce: nearest hit first, `pass` falls through to th
 ## 10. three.js boundary
 
 `src/threeBoundary.test.ts` fails when a non-test module outside `src/components/` imports
-three.js (or @react-three, three-mesh-bvh, three-stdlib). Exceptions, for now:
+three.js (or @react-three, three-mesh-bvh, three-stdlib), and when a listed exception no longer
+does. The three exceptions (`LOADER_EXCEPTIONS` in that test):
 
-| Module | Why | Plan |
-|---|---|---|
-| `src/state/import.ts` | STL/glTF parsing and the `mergeVertices` weld | Lane B (Task 9): typed-array weld, loaders isolated behind a pure `TriangleMesh` result |
-| `src/workers/importWorker.ts` | hosts the STL loader off the main thread | same |
-| `src/App.tsx` | GLTFLoader parse on the main thread before the worker welds | same |
-| `src/goldens/fixtures.ts` | test fixtures read back through the STL import | test support |
+| Module | Why |
+|---|---|
+| `src/state/import.ts` | walks the GLTFLoader scene graph (`gltfRawMeshes`) and takes BufferGeometry inputs in tests (`geometryToMesh`); the weld itself is typed-array (`src/core/import`) |
+| `src/workers/prepareImport.ts` | builds the pick index (three-mesh-bvh on a BufferGeometry) in the import worker |
+| `src/App.tsx` | parses glTF with GLTFLoader on the main thread before the import worker welds it |
+
+The typed-array weld and the import worker (lane B, Task 9) are done: STL is read and welded
+without three (`src/core/import/stl.ts`, `weld.ts`). `src/goldens/fixtures.ts` reaches three only
+through `state/import`.
 
 Everything else, including `src/state/transform.ts`, `src/core/**` and `src/editing/**`, is
 three-free (`src/core/imports.test.ts` enforces core/editing).
@@ -257,9 +263,15 @@ hairline, 2 px radius, no shadow, 12 px text, Undo as a plain button (≥ 24 px 
 **Error messages** (`editing/errors.ts`): every failure says what happened, then what to do next.
 Errors carry a code (`CodedError`; the import module's English messages, the worker crash and
 timeouts are recognised by `errorCode`) so the line is translated; the raw message is shown only
-inside the generic message of an unknown error. Codes: `non-finite`, `no-mesh`, `file-type`,
-`too-large` (with `{n}` and `{limit}`, for lane B's budget refusal), `timeout`, `worker-stopped` (a crashed worker is replaced on the next request, so the next step is to retry, never to reload the page, which would lose the unsaved scene),
-`unknown`; jobs: import, place, build, check, export. Example: "Export failed ({error}). Nothing
+inside the generic message of an unknown error. Codes (`ERROR_CODES`, `editing/errors.ts`):
+`non-finite`, `no-mesh` (also a well-formed STL with no triangles), `file-type`, `bad-stl` (a
+damaged STL: truncated, or its size does not match its triangles), `too-large` and
+`out-of-memory` (with `{n}` and `{limit}`: the import budget refusals of `core/budget.ts`),
+`plate-full` (with `{n}` and `{limit}`: the plate would pass the refusal limit), `timeout`,
+`worker-stopped` (a crashed, restarted or unavailable worker; a crashed worker is replaced on the
+next request, so the next step is to retry, never to reload the page, which would lose the
+unsaved scene), `unknown`; jobs (`ERROR_CONTEXTS`): import, place, build, check, export. Worker
+failures reach these codes through `workers/jobErrors.ts` (`codedJobError`). Example: "Export failed ({error}). Nothing
 was saved; try again, or export one object at a time."
 
 **Forgiving number fields** (`editing/numberInput.ts`): full-width input is folded (NFKC); "2", "2.5", "2mm", "2 mm", "2,5" (decimal

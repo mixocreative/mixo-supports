@@ -76,7 +76,8 @@ grow the page); tablet viewport on top + two panel columns; phone one column. Cr
 
 `src/i18n.ts`: English, Traditional Chinese (Taiwan) and Japanese. English text is the key;
 `t(key, vars)`, `plural(n, one, other)`; status lines are stored as `Message` (key + vars) so they
-re-translate on switch; worker progress stages are keys (`STAGE_KEYS`) translated in ProgressBar.
+re-translate on switch; worker progress stages are keys (`STAGE_KEYS`) translated in the job activity list
+(`components/JobActivity.tsx`; ProgressBar was removed in Release 2).
 Language = saved choice (localStorage `mixo-supports.lang`), else browser language, else English;
 switch in the header. Chinese terms follow the Blender add-on's zh_HANT dictionary. `i18n.test.ts`
 fails when a UI literal, setting label or stage lacks a translation or a placeholder differs.

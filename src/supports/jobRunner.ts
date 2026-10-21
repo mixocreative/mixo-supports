@@ -10,8 +10,9 @@ import { applyTransform, inverseTransformMesh, transformDirection, transformPoin
 
 /*
  * Runs support core jobs (src/core/jobs.ts) on whatever thread calls it: the workers, and the main
- * thread for tests and goldens. Outside src/core only because the transform math still comes from
- * three.js (state/transform); it moves into the core with a three-free transform module.
+ * thread for tests and goldens. Outside src/core only because it takes its transform math from the
+ * app module state/transform (three-free since Task 7); it could move into the core by switching to
+ * core/transform.ts.
  */
 
 type Outline = ReturnType<typeof raftOutline>;

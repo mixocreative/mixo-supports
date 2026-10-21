@@ -6,7 +6,7 @@
  *   request  { id, type: 'run', payload, revision? }
  *   replies  { id, type: 'progress', ...fields }
  *            { id, type: 'done', result, revision? }
- *            { id, type: 'error', message }
+ *            { id, type: 'error', message, code?, vars? }   (code/vars: serveTask's extension)
  *
  * Each client is handed its own `create` factory (Vite needs the literal
  * `new Worker(new URL('./x.ts', import.meta.url), { type: 'module' })` at the call site; those
