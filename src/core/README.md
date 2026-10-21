@@ -21,7 +21,9 @@ conventions converts at its boundary.
 | `analysis/placement.ts` | Automatic contact placement (remesh minima, islands, edge anchors) |
 | `analysis/edgeAnchors.ts`, `analysis/legacyRidges.ts` | Edge and ridge contacts |
 | `analysis/supportCheck.ts` | Unsupported-region check |
-| `analysis/blenderBvh.ts`, `analysis/kdtree.ts` | Blender-behaviour BVH and merge-by-distance |
+| `analysis/blenderBvh.ts`, `analysis/kdtree.ts` | Blender-behaviour point BVH (nearest point) and merge-by-distance |
+| `analysis/vertexNormals.ts` | Angle-weighted vertex normals in single precision (Blender true normals, bit for bit) |
+| `analysis/random.ts` | lookup3 pair hash and drand48 generator for the per-triangle scatter |
 | `supports/settings.ts` | Live support settings, presets, limits |
 | `supports/mesh.ts` | Support mesh builder (contacts, columns, trees, braces, raft, label) and picking helpers |
 | `supports/remesh.ts`, `supports/openvdbTables.ts` | Voxel remesh used as the placement and tree surface |
@@ -47,6 +49,24 @@ three in transitively.
 
 ## Licence
 
-`blenderBvh.ts`, `kdtree.ts`, the Blender hash in `placement.ts` and the Blender-behaviour parts of
-`remesh.ts` are translations of Blender C source (GPL-2.0-or-later); Task 10 replaces them.
-`openvdbTables.ts` is OpenVDB-derived (attribution).
+Independent implementations (Task 10, written from a behavioural spec and public algorithm
+descriptions, not from Blender source):
+
+- `analysis/vertexNormals.ts`: Newell face normals and angle-weighted vertex normals.
+- `analysis/random.ts`: Bob Jenkins' lookup3 `hashword` (public domain) and the POSIX
+  `drand48` generator.
+
+Still translations of Blender C source (GPL-2.0-or-later), pending the owner's decision:
+
+- `analysis/blenderBvh.ts` (`BLI_kdopbvh` point tree) and `analysis/kdtree.ts` (`BLI_kdtree`
+  merge by distance). Generic replacements change placement: their tie-breaks (equidistant
+  nearest points, points exactly Spacing apart) depend on Blender's exact tree layout, so the
+  Blender parity tests and nine goldens move. See the Task 10 report.
+- `analysis/legacyRidges.ts` follows named Blender functions (edge order, face normal, quad
+  split, angle between normals); not yet reviewed for replacement.
+
+`supports/remesh.ts` ports OpenVDB's `VolumeToMesh` and `meshToVolume` band handling;
+`openvdbTables.ts` holds OpenVDB lookup tables (Apache-2.0, Copyright Contributors to the
+OpenVDB Project; attribution kept there). Its Blender-specific parts are behaviour of how
+Blender calls OpenVDB (voxel size and adaptivity in single precision, grid not tagged as a level
+set, triangles before quads, quads split 0-2) and textbook formulas, not translated Blender code.

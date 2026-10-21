@@ -1,7 +1,9 @@
 import { RemeshTarget, SurfaceQuery } from '../supports/remesh';
 import { edgeAnchors } from './edgeAnchors';
-import { BlenderPointBvh, blenderVertexNormals } from './blenderBvh';
+import { BlenderPointBvh } from './blenderBvh';
 import { mergeByDistance } from './kdtree';
+import { Drand48, hashPair } from './random';
+import { vertexNormals } from './vertexNormals';
 import { legacyRidgeMidpoints } from './legacyRidges';
 import { classifyDownwardFaces, faceOverhangLimit, partitionRegions } from './mesh';
 import type {
@@ -250,13 +252,13 @@ function poissonOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate
     for (let k = 1; k < face.length - 1; k += 1) {
       const [a, b, c] = [face[0]!, face[k]!, face[k + 1]!].map((v) => remesh.vertices[v]!) as [Vector, Vector, Vector];
       const area = Math.hypot(...cross(subtract(b, a), subtract(c, a))) / 2;
-      const rng = new BlenderRng(blenderHash(triangle, 0));
+      const rng = new Drand48(hashPair(triangle, 0));
       triangle += 1;
       const amount = area * density;
-      const count = Math.floor(amount) + ((amount - Math.floor(amount)) > rng.float() ? 1 : 0);
+      const count = Math.floor(amount) + ((amount - Math.floor(amount)) > rng.next() ? 1 : 0);
       for (let point = 0; point < count; point += 1) {
-        let r1 = rng.float();
-        let r2 = rng.float();
+        let r1 = rng.next();
+        let r2 = rng.next();
         if (r1 + r2 > 1) {
           r1 = 1 - r1;
           r2 = 1 - r2;
@@ -324,7 +326,7 @@ export function minimaStages(remesh: Remesh, settings: PlacementSettings): {
   // 0, 1, 2 as Blender's do on its X, Y, Z, so equidistant ties fall the same way.
   const toBlender = ([x, y, z]: Vector): Vector => [x, -z, y];
   const blender = remesh.vertices.map(toBlender);
-  const normals = blenderVertexNormals(blender, remesh.faces);
+  const normals = vertexNormals(blender, remesh.faces);
   const ridgeMidpoints = settings.reinforceEdges === false
     ? legacyRidgeMidpoints(blender, remesh.faces, normals, settings.sharpEdgeAngleDegrees, settings.overhangAngleDegrees)
     : [];
@@ -369,39 +371,6 @@ function minimaOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate[
   return stages.kept.map((position, k) => (stages.keptVertical[k]
     ? { regionId: -1, position, normal: [0, -1, 0], source: 'island' }
     : { regionId: -1, position, normal: [0, -1, 0], source: 'sharp-ridge' }));
-}
-
-/**
- * Blender `RandomNumberGenerator` (drand48-style LCG) seeded per triangle, as used by
- * `Distribute Points on Faces`.
- */
-class BlenderRng {
-  private state: bigint;
-  constructor(seed: number) {
-    this.state = (BigInt(seed >>> 0) << 16n) | 0x330En;
-  }
-  float(): number {
-    this.state = (0x5DEECE66Dn * this.state + 0xBn) & 0xFFFFFFFFFFFFn;
-    return Number(this.state >> 17n) / 0x80000000;
-  }
-}
-
-/** Blender `noise::hash(kx, ky)`: Jenkins lookup3 final mix. */
-function blenderHash(kx: number, ky: number): number {
-  const rot = (x: number, k: number) => ((x << k) | (x >>> (32 - k))) >>> 0;
-  let a = (0xdeadbeef + (2 << 2) + 13) >>> 0;
-  let b = a;
-  let c = a;
-  b = (b + ky) >>> 0;
-  a = (a + kx) >>> 0;
-  c = ((c ^ b) - rot(b, 14)) >>> 0;
-  a = ((a ^ c) - rot(c, 11)) >>> 0;
-  b = ((b ^ a) - rot(a, 25)) >>> 0;
-  c = ((c ^ b) - rot(b, 16)) >>> 0;
-  a = ((a ^ c) - rot(c, 4)) >>> 0;
-  b = ((b ^ a) - rot(a, 14)) >>> 0;
-  c = ((c ^ b) - rot(b, 24)) >>> 0;
-  return c;
 }
 
 class SpatialHash {

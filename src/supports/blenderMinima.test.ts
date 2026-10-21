@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BoxGeometry, BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import stages from '../../tools/blender-parity/minima_stages.json';
-import { blenderVertexNormals } from '../core/analysis/blenderBvh';
+import { vertexNormals } from '../core/analysis/vertexNormals';
 import { minimaStages } from '../core/analysis/placement';
 import { geometryToMesh } from '../state/import';
 import { RemeshTarget } from '../core/supports/remesh';
@@ -27,7 +27,7 @@ describe('Blender island minima (mushroom, stage by stage)', () => {
 
   it('builds the same R (vertices) and true vertex normals', () => {
     expect(clean(remesh.vertices.map(toBlender))).toEqual(clean(stages.R));
-    expect(clean(blenderVertexNormals(stages.R as Vector[], stages.R_faces))).toEqual(clean(stages.R_normals));
+    expect(clean(vertexNormals(stages.R as Vector[], stages.R_faces))).toEqual(clean(stages.R_normals));
   });
 
   it('finds the same candidates, merges and snaps them the same way, and keeps the same minima', () => {

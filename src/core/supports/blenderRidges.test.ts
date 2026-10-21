@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import stages from '../../../tools/blender-parity/ridge_stages.json';
-import { blenderVertexNormals } from '../analysis/blenderBvh';
+import { vertexNormals } from '../analysis/vertexNormals';
 import { blenderEdges, legacyRidgeMidpoints } from '../analysis/legacyRidges';
 import { minimaStages } from '../analysis/placement';
 
@@ -15,7 +15,7 @@ type Vector = [number, number, number];
 describe('Blender legacy ridges (v-ridge, stage by stage)', () => {
   const R = stages.R as Vector[];
   const faces = stages.R_faces;
-  const normals = blenderVertexNormals(R, faces);
+  const normals = vertexNormals(R, faces);
   const toWeb = ([x, y, z]: Vector): Vector => [x, z, -y];
   const toBlender = ([x, y, z]: Vector): Vector => [x, -z, y];
   const remesh = { vertices: R.map(toWeb), faces, normals: faces.map(() => null) };
