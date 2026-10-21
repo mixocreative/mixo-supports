@@ -117,6 +117,12 @@ describe('reduceScene', () => {
     expect(scene.units[0]!.zones).toEqual([]);
   });
 
+  it('normalizes a unit saved before manual edits existed (no manual or suppressed lists)', () => {
+    const { manual: _manual, suppressed: _suppressed, deleted: _deleted, zones: _zones, ...legacy } = unitA;
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: legacy as PrintUnit });
+    expect(scene.units[0]).toMatchObject({ manual: [], suppressed: [], deleted: [], zones: [] });
+  });
+
   it('rejects runtime objects from settings and support payloads while retaining JSON-safe scenes', () => {
     const scene = reduceScene(emptyScene, { type: 'unit/add', unit: { ...unitA, supports: undefined, placement: undefined } });
 

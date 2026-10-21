@@ -188,8 +188,8 @@ function normalizeUnit(unit: PrintUnit, copyMesh = true): PrintUnit {
     settings: normalizeJsonObject(unit.settings) as SupportSettings,
     ...(unit.supports === undefined ? {} : { supports: normalizeSupportMesh(unit.supports) }),
     ...(unit.placement === undefined ? {} : { placement: normalizePlacement(unit.placement) }),
-    manual: cloneJsonValue(unit.manual) as unknown as SupportPoint[],
-    suppressed: cloneJsonValue(unit.suppressed) as string[],
+    manual: cloneJsonValue(unit.manual ?? []) as unknown as SupportPoint[],
+    suppressed: cloneJsonValue(unit.suppressed ?? []) as string[],
     deleted: cloneJsonValue(unit.deleted ?? []) as string[],
     zones: cloneJsonValue(unit.zones ?? []) as unknown as ZoneStamp[],
   };
