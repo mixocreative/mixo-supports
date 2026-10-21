@@ -11,7 +11,7 @@ import { transformFromObject, type ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../supports/mesh';
 import { contactsInBrush, type BrushMode } from '../supports/selection';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
-import type { ZoneStamp } from '../supports/zones';
+import { nextStamp, stampVertices, zonedVertices, type ZoneStamp } from '../supports/zones';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
 /**
@@ -76,12 +76,16 @@ export interface ObjectViewportProps {
   onBelowPlate: (below: boolean) => void;
 }
 
-/** Colours of the edit preview and check markers (the app's red, kraft and an amber). */
-const PREVIEW = { add: '#b59f78', remove: '#7f0019', ring: '#3b3631', island: '#b3261e', overhang: '#d97706' };
+/** Colours of the edit preview and check markers (the app's red, kraft, blue and an amber). */
+const PREVIEW = { add: '#b59f78', remove: '#7f0019', ring: '#3b3631', zone: '#1d3461', island: '#b3261e', overhang: '#d97706' };
+/** Opacity of the no-support zone layer in zones mode (`full`) and in Support Edit Mode (`faint`). */
+const ZONE_OPACITY = { full: 0.55, faint: 0.25 } as const;
 /** Opacity of a support body previewed (not yet selected) in red. */
 const SEE_THROUGH = 0.45;
-/** Drag over cursor over the active object: a brush icon (tip at the hot spot), crosshair where unsupported. */
-const BRUSH_CURSOR = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1f1b17" stroke-width="1.6" stroke-linejoin="round"><path d="M20.5 3.5 11 13l-1.9-1.9 9.5-9.5z" fill="#fbfaf7"/><path d="M9.1 11.1 11 13c0 3-2.4 5.6-7.5 7.5 0-4.6 1.8-8.6 5.6-9.4z" fill="#7f0019"/></svg>')}") 3 21, crosshair`;
+/** Brush cursor over the active object: a brush icon (tip at the hot spot), crosshair where unsupported. */
+const brushCursor = (tip: string) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1f1b17" stroke-width="1.6" stroke-linejoin="round"><path d="M20.5 3.5 11 13l-1.9-1.9 9.5-9.5z" fill="#fbfaf7"/><path d="M9.1 11.1 11 13c0 3-2.4 5.6-7.5 7.5 0-4.6 1.8-8.6 5.6-9.4z" fill="${tip}"/></svg>`)}") 3 21, crosshair`;
+/** Drag over (red tip), Paint zones (blue) and Erase zones (grey). */
+const BRUSH_CURSOR = { select: brushCursor(PREVIEW.remove), paint: brushCursor(PREVIEW.zone), erase: brushCursor(PREVIEW.ring) };
 
 function toGeometry(mesh: TriangleMesh): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
@@ -131,10 +135,10 @@ function toVector(vector: THREE.Vector3): Vector {
 
 /**
  * Support Edit Mode preview at the pointer: a ghost tip where a click adds a support, the
- * Erase radius ring with the contacts a click would remove highlighted, or (Drag over) the
- * selection ring alone.
+ * Erase radius ring with the contacts a click would remove highlighted, or (Drag over, zone
+ * brush) the brush ring alone in its colour.
  */
-function EditPreview({ hover, unit, brush }: { hover: Hover; unit: PrintUnit; brush?: { radius: number; mode: BrushMode } }) {
+function EditPreview({ hover, unit, brush }: { hover: Hover; unit: PrintUnit; brush?: { radius: number; color: string } }) {
   const settings = useMemo(() => resolveSettings(unit.settings), [unit.settings]);
   const contacts = useMemo(() => unitContacts(unit).map((contact) => new THREE.Vector3(...contact.position)), [unit]);
   const ringTurn = useMemo(() => new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), hover.normal), [hover.normal]);
@@ -142,11 +146,11 @@ function EditPreview({ hover, unit, brush }: { hover: Hover; unit: PrintUnit; br
   const radius = brush ? brush.radius : settings.eraseRadius;
   const doomed = hover.remove && !brush ? contacts.filter((contact) => contact.distanceTo(hover.point) <= radius) : [];
   const length = settings.neckLength;
-  const red = brush ? brush.mode === 'select' : hover.remove;
+  const color = brush ? brush.color : hover.remove ? PREVIEW.remove : PREVIEW.ring;
   return <group>
     <mesh position={hover.point} quaternion={ringTurn} renderOrder={20}>
       <torusGeometry args={[radius, Math.max(0.03, radius * 0.025), 6, 48]} />
-      <meshBasicMaterial color={red ? PREVIEW.remove : PREVIEW.ring} depthTest={false} transparent opacity={0.85} />
+      <meshBasicMaterial color={color} depthTest={false} transparent opacity={0.85} />
     </mesh>
     {!hover.remove && !brush && <mesh position={hover.point.clone().addScaledVector(hover.normal, length / 2)} quaternion={tipTurn} renderOrder={19}>
       <coneGeometry args={[settings.pillarDiameter / 2, length, 16]} />
@@ -199,6 +203,54 @@ function SupportBodies({ supports, geometry, ids, opacity, color = PREVIEW.remov
   // Drawn over the support it covers (polygon offset) and never pickable.
   return <mesh geometry={bodies} raycast={() => undefined} renderOrder={seeThrough ? 18 : 17}>
     <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.35} metalness={0} roughness={0.8} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} transparent={seeThrough} opacity={opacity} depthWrite={!seeThrough} />
+  </mesh>;
+}
+
+/**
+ * The no-support zones on the model surface, see-through blue over the model it covers. Shares
+ * the model's vertices; its own colour attribute carries alpha 1 on zoned vertices, 0 elsewhere.
+ * A `zones` list that only adds stamps to the last one (a stroke in progress) lays just the new
+ * stamps; any other change recomputes every vertex.
+ */
+function ZoneLayer({ geometry, zones, opacity }: { geometry: THREE.BufferGeometry; zones: readonly ZoneStamp[]; opacity: number }) {
+  // Built in the effect for the same reason as `SupportBodies`: the cleanup strips shared attributes.
+  const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute; zoned: Uint8Array; applied: readonly ZoneStamp[] }>();
+  useEffect(() => {
+    const count = geometry.getAttribute('position').count;
+    const sub = new THREE.BufferGeometry();
+    sub.setAttribute('position', geometry.getAttribute('position'));
+    sub.setAttribute('normal', geometry.getAttribute('normal'));
+    sub.setIndex(geometry.getIndex());
+    // White RGB (the material sets the blue); alpha per vertex.
+    const colors = new THREE.BufferAttribute(new Uint8Array(count * 4).fill(255), 4, true);
+    sub.setAttribute('color', colors);
+    setLayer({ geometry: sub, colors, zoned: new Uint8Array(count), applied: [] });
+    return () => {
+      sub.deleteAttribute('position');
+      sub.deleteAttribute('normal');
+      sub.setIndex(null);
+      sub.dispose();
+    };
+  }, [geometry]);
+  useEffect(() => {
+    if (!layer) return;
+    const positions = geometry.getAttribute('position').array as Float32Array;
+    const normals = geometry.getAttribute('normal').array as Float32Array;
+    const done = layer.applied;
+    if (done.length <= zones.length && done.every((stamp, index) => zones[index] === stamp)) {
+      for (let index = done.length; index < zones.length; index++) stampVertices(zones[index]!, positions, normals, layer.zoned);
+    } else {
+      zonedVertices(zones, positions, normals, layer.zoned);
+    }
+    layer.applied = zones;
+    const rgba = layer.colors.array as Uint8Array;
+    for (let v = 0; v < layer.zoned.length; v++) rgba[v * 4 + 3] = layer.zoned[v] ? 255 : 0;
+    layer.colors.needsUpdate = true;
+  }, [layer, zones, geometry]);
+  if (!layer) return null;
+  // Drawn over the model (polygon offset), never pickable.
+  return <mesh geometry={layer.geometry} raycast={() => undefined} renderOrder={16}>
+    <meshBasicMaterial color={PREVIEW.zone} vertexColors transparent opacity={opacity} depthWrite={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
   </mesh>;
 }
 
@@ -301,12 +353,20 @@ function UnitObject(props: UnitObjectProps) {
   const tips = useMemo(() => (props.tipsView && props.supports ? tipsOf(props.supports) : undefined), [props.tipsView, props.supports]);
   const supports = tips ?? props.supports;
   const model = useGeometry(unit.source, true);
-  const supportGeometry = useGeometry(supports, editing);
+  // Painting zones: supports are drawn but take no pointer events (presses reach the model).
+  const zoning = editing && editMode === 'zones';
+  const supportGeometry = useGeometry(supports, editing && !zoning);
   // Select supports: Click picks one support at a time; Drag over (the brush) owns the left button.
   const selecting = props.editTool === 'select';
   const clickSelecting = selecting && !props.brush;
   /** Drag over settings, only while this object is the one edited. */
   const brush = editing ? props.brush : undefined;
+  /** Zone brush settings, only while this object's zones are painted. */
+  const zoneBrush = zoning ? props.zoneBrush : undefined;
+  /** Stamps of the zone stroke in progress (the ref is what the stroke end hands on). */
+  const strokeStamps = useRef<ZoneStamp[]>([]);
+  const [stroke, setStroke] = useState<readonly ZoneStamp[]>([]);
+  const zones = useMemo(() => (stroke.length ? [...unit.zones, ...stroke] : unit.zones), [unit.zones, stroke]);
   const contacts = useMemo(() => unitContacts(unit), [unit]);
   const [hover, setHover] = useState<Hover | null>(null);
   /** Select supports → Click: the contact whose support is under the pointer. */
@@ -315,7 +375,7 @@ function UnitObject(props: UnitObjectProps) {
     setHover(null);
     setPointed(null);
   };
-  useEffect(leave, [editing, selecting, clickSelecting]);
+  useEffect(leave, [editing, zoning, selecting, clickSelecting]);
   const doomed = useDoomed(unit, editing && hover?.remove ? hover.point : undefined);
   const selectedIds = useMemo(() => [...props.selection], [props.selection]);
   const brushed = useMemo(() => (brush && hover?.facing ? contactsInBrush(contacts, toVector(hover.point), brush.radius, toVector(hover.facing)) : []), [brush, hover, contacts]);
@@ -325,17 +385,18 @@ function UnitObject(props: UnitObjectProps) {
   const turningBack = useMemo(() => (unselecting ? brushed.filter((id) => props.selection.has(id)) : []), [unselecting, brushed, props.selection]);
   const solidIds = useMemo(() => (turningBack.length ? selectedIds.filter((id) => !turningBack.includes(id)) : selectedIds), [selectedIds, turningBack]);
 
-  // Drag over: the canvas shows the brush cursor while the pointer is over this object.
+  // Drag over and the zone brush: the canvas shows the brush cursor while the pointer is over this object.
   const gl = useThree((state) => state.gl);
-  const overBrush = Boolean(brush && hover);
+  const cursor = hover ? (zoneBrush ? BRUSH_CURSOR[zoneBrush.kind] : brush ? BRUSH_CURSOR.select : undefined) : undefined;
   useEffect(() => {
-    if (!overBrush) return;
+    if (!cursor) return;
     const canvas = gl.domElement;
-    canvas.style.cursor = BRUSH_CURSOR;
+    canvas.style.cursor = cursor;
     return () => { canvas.style.cursor = ''; };
-  }, [overBrush, gl]);
+  }, [cursor, gl]);
 
-  // A Drag over stroke: from a left press on this object until the button is released anywhere.
+  // A brush stroke (Drag over, or the zone brush): from a left press on this object until the
+  // button is released anywhere. A zone stroke is handed on once, when it ends.
   // The orbit is off for the stroke (the r3f canvas listener runs before the OrbitControls one,
   // so the press that starts a stroke never starts a rotation).
   const controls = useThree((state) => state.controls) as unknown as { enabled: boolean } | null;
@@ -348,15 +409,21 @@ function UnitObject(props: UnitObjectProps) {
     return { point, normal: event.face?.normal.clone() ?? new THREE.Vector3(0, -1, 0), remove: false, facing };
   };
   const paint = (event: ThreeEvent<PointerEvent>) => {
-    if (!brush) return;
+    if (!brush && !zoneBrush) return;
     const at = brushHover(event);
     setHover(at);
     // A release the window never saw (focus lost, cancelled pointer) ends the stroke here.
     if (endStroke.current && (event.buttons & 1) === 0) endStroke.current();
-    if (endStroke.current) props.onPaint(unit.id, toVector(at.point), toVector(at.facing), brush.mode);
+    if (!endStroke.current) return;
+    if (brush) return props.onPaint(unit.id, toVector(at.point), toVector(at.facing), brush.mode);
+    if (!zoneBrush) return;
+    const center = toVector(at.point);
+    if (!nextStamp(strokeStamps.current.at(-1)?.center, center, zoneBrush.radius)) return;
+    strokeStamps.current = [...strokeStamps.current, { center, radius: zoneBrush.radius, normal: toVector(at.normal.clone().normalize()), kind: zoneBrush.kind }];
+    setStroke(strokeStamps.current);
   };
   const startStroke = (event: ThreeEvent<PointerEvent>) => {
-    if (!brush || event.button !== 0) return;
+    if ((!brush && !zoneBrush) || event.button !== 0) return;
     event.stopPropagation();
     if (controls) controls.enabled = false;
     const end = () => {
@@ -365,6 +432,11 @@ function UnitObject(props: UnitObjectProps) {
       window.removeEventListener('blur', end);
       endStroke.current = null;
       if (controls) controls.enabled = true;
+      const stamps = strokeStamps.current;
+      if (stamps.length === 0) return;
+      strokeStamps.current = [];
+      props.onZoneStroke(unit.id, stamps);
+      setStroke([]);
     };
     endStroke.current?.();
     endStroke.current = end;
@@ -377,7 +449,8 @@ function UnitObject(props: UnitObjectProps) {
   const hoverModel = (event: ThreeEvent<PointerEvent>) => {
     if (!editing) return;
     event.stopPropagation();
-    if (brush) return paint(event);
+    if (brush || zoneBrush) return paint(event);
+    if (zoning) return leave();
     // Selecting previews supports only: the model under the pointer shows nothing.
     if (selecting) return leave();
     setHover({
@@ -410,6 +483,8 @@ function UnitObject(props: UnitObjectProps) {
     const point: Vector = [event.point.x, event.point.y, event.point.z];
     if (editMode === 'off') return remove ? undefined : props.onSelect(unit.id, event.shiftKey);
     if (!props.active) return props.onSelect(unit.id, false);
+    // Painting zones: the zone brush owns the model; clicks never add or remove supports.
+    if (zoning) return;
     if (remove) return props.onErase(unit.id, point);
     // Selecting never adds: Click says to click a support; Drag over owns the left button.
     if (selecting) return clickSelecting ? props.onEditMiss() : undefined;
@@ -419,7 +494,7 @@ function UnitObject(props: UnitObjectProps) {
 
   /** Right-click removes within Erase radius in every tool; a left click selects (Click) or, with Ctrl, removes (Add). */
   const clickSupport = (event: ThreeEvent<MouseEvent>, right: boolean) => {
-    if (event.delta > CLICK_TOLERANCE || editMode === 'off' || !props.active || !supports || event.faceIndex == null) return;
+    if (event.delta > CLICK_TOLERANCE || editMode !== 'edit' || !props.active || !supports || event.faceIndex == null) return;
     const toggle = !right && clickSelecting;
     // A plain left click in Add (or any left click in Drag over) passes through to the model behind.
     if (!right && !toggle && (selecting || (!event.ctrlKey && !event.metaKey))) return;
@@ -451,11 +526,14 @@ function UnitObject(props: UnitObjectProps) {
         wireframe={props.wireframe}
       />
     </mesh>}
+    {model && editing && props.showZones !== 'off' && zones.length > 0 && <group visible={props.modelVisible}>
+      <ZoneLayer geometry={model} zones={zones} opacity={ZONE_OPACITY[props.showZones]} />
+    </group>}
     {supportGeometry && <mesh
       geometry={supportGeometry}
-      raycast={acceleratedRaycast}
-      // Supports take pointer events only while edited, so they cost no raycasts otherwise.
-      {...(editing ? {
+      raycast={zoning ? () => undefined : acceleratedRaycast}
+      // Supports take pointer events only while edited (not while painting zones), so they cost no raycasts otherwise.
+      {...(editing && !zoning ? {
         onClick: (event: ThreeEvent<MouseEvent>) => clickSupport(event, false),
         onContextMenu: (event: ThreeEvent<MouseEvent>) => clickSupport(event, true),
         onPointerDown: startStroke,
@@ -465,8 +543,10 @@ function UnitObject(props: UnitObjectProps) {
     >
       <meshStandardMaterial color={props.selected ? '#b59f78' : '#c8b896'} metalness={0} roughness={0.9} />
     </mesh>}
-    {editing && hover && <EditPreview hover={hover} unit={unit} {...(brush ? { brush } : {})} />}
-    {editing && supports && supportGeometry && <>
+    {editing && hover && <EditPreview hover={hover} unit={unit} {...(zoneBrush
+      ? { brush: { radius: zoneBrush.radius, color: zoneBrush.kind === 'paint' ? PREVIEW.zone : PREVIEW.ring } }
+      : brush ? { brush: { radius: brush.radius, color: brush.mode === 'select' ? PREVIEW.remove : PREVIEW.ring } } : {})} />}
+    {editing && !zoning && supports && supportGeometry && <>
       <SupportBodies supports={supports} geometry={supportGeometry} ids={solidIds} opacity={1} />
       <SupportBodies supports={supports} geometry={supportGeometry} ids={doomed} opacity={1} />
       {pointed && <SupportBodies supports={supports} geometry={supportGeometry} ids={[pointed]} opacity={SEE_THROUGH} />}

@@ -27,3 +27,26 @@ export function zonedAt(zones: readonly ZoneStamp[], point: Vector, normal?: Vec
 export function nextStamp(last: Vector | undefined, point: Vector, radius: number): boolean {
   return !last || Math.hypot(point[0] - last[0], point[1] - last[1], point[2] - last[2]) >= radius / 2;
 }
+
+/**
+ * Lays one stamp on a vertex list (xyz triples): `out[v]` becomes 1 (paint) or 0 (erase) for every
+ * vertex the stamp covers on its side of the surface, as `zonedAt` decides; others keep their value.
+ */
+export function stampVertices(stamp: ZoneStamp, positions: Float32Array, normals: Float32Array, out: Uint8Array): Uint8Array {
+  const [cx, cy, cz] = stamp.center;
+  const [nx, ny, nz] = stamp.normal;
+  const value = stamp.kind === 'paint' ? 1 : 0;
+  for (let v = 0, i = 0; v < out.length; v++, i += 3) {
+    if (Math.hypot(positions[i]! - cx, positions[i + 1]! - cy, positions[i + 2]! - cz) > stamp.radius) continue;
+    if (normals[i]! * nx + normals[i + 1]! * ny + normals[i + 2]! * nz <= 0) continue;
+    out[v] = value;
+  }
+  return out;
+}
+
+/** Per vertex 1 where `zonedAt(zones, vertex, vertexNormal)` holds, else 0 (`out` is cleared first). */
+export function zonedVertices(zones: readonly ZoneStamp[], positions: Float32Array, normals: Float32Array, out: Uint8Array = new Uint8Array(positions.length / 3)): Uint8Array {
+  out.fill(0);
+  for (const stamp of zones) stampVertices(stamp, positions, normals, out);
+  return out;
+}
