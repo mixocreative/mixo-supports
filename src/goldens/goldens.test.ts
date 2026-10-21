@@ -7,7 +7,6 @@ const STORED = import.meta.glob<string>(['./__snapshots__/*.json'], { query: '?r
 
 describe('golden fixtures', () => {
   for (const fixture of GOLDEN_FIXTURES) {
-    // thin-slab: its check spots with every contact are correct behaviour, see the fixture notes.
     for (const variant of fixture.variants) {
       const name = goldenName(fixture, variant);
       const change = fixture.expectedChanges?.[variant];

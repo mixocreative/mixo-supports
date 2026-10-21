@@ -171,6 +171,7 @@ export const GOLDEN_FIXTURES: readonly GoldenFixture[] = [
   // Tilted on two axes so placement, support and check run through the unit transform.
   { name: 'knot', mesh: torusKnot(), rotation: [0.4, 0, 0.25], variants: STANDARD },
   {
+    // Its check spots with every contact are correct behaviour, see the notes.
     name: 'thin-slab', mesh: thinWallSlab(), rotation: [0, 0, 0], variants: STANDARD,
     notes: 'The check reports overhang spots even with every contact: the Blender-faithful Poisson scatter '
       + '(Density Max = (1/Spacing)^4, 1/16 per mm² at Spacing 2) leaves gaps wider than the check\'s '

@@ -129,7 +129,7 @@ export function buildSupportMesh(
   const columns: Column[] = [];
   const footprints: Point2[] = [];
   const anchors: { id: string; position: Vector }[] = [];
-  const ray = options.model ? lineTarget(options.model, settings, options.remesh) : undefined;
+  const ray = options.model ? lineTarget(options.model, settings, options.remesh, exporting) : undefined;
   const progress = options.onProgress;
   const total = Math.max(contacts.length, 1);
   if (ray) {
@@ -429,8 +429,8 @@ export function columnChain(contact: SupportContact, settings: Readonly<LiveSupp
 
 /**
  * The target SLASG_Line samples neck normals from and casts landing rays against: the model
- * remeshed at voxel max(diagonal / 2000, Middle Ø), or the exact model in Low Poly Mode
- * ("Exact Shape"). Landing rays find the exact surface first and scan the remesh only from
+ * remeshed at voxel max(diagonal / 2000, Middle Ø), or the exact model in a Low Poly Mode
+ * preview ("Exact Shape"). Landing rays find the exact surface first and scan the remesh only from
  * two voxels above it, as the remesh stays within a voxel of the model.
  */
 class LineTarget {
@@ -452,8 +452,10 @@ class LineTarget {
   }
 }
 
-function lineTarget(model: TriangleMesh, settings: Readonly<LiveSupportSettings>, remesh?: RemeshTarget): LineTarget {
-  return new LineTarget(new DownRaycaster(model), settings.lowPolyMode ? undefined : remesh ?? new RemeshTarget(model, settings.pillarDiameter));
+function lineTarget(model: TriangleMesh, settings: Readonly<LiveSupportSettings>, remesh?: RemeshTarget, exporting = false): LineTarget {
+  // Low Poly Mode is a preview setting: export always samples the remesh, as without it.
+  const exact = settings.lowPolyMode && !exporting;
+  return new LineTarget(new DownRaycaster(model), exact ? undefined : remesh ?? new RemeshTarget(model, settings.pillarDiameter));
 }
 
 /** Up-facing counterpart of `neckDirection`, used for inverted necks landing on the model. */

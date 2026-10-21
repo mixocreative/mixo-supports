@@ -692,13 +692,13 @@
     ]
   },
   "exportMesh": {
-    "vertices": 7470,
-    "triangles": 13768,
-    "hash": "3ca6efbc"
+    "vertices": 8876,
+    "triangles": 16552,
+    "hash": "80d2485a"
   },
   "stl": {
-    "bytes": 689684,
-    "hash": "c74eddf5"
+    "bytes": 828884,
+    "hash": "ee5f25b3"
   },
   "check": {
     "allContacts": [],
