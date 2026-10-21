@@ -9,7 +9,7 @@ describe('hashPair (lookup3 hashword, initval 13)', () => {
 });
 
 describe('Drand48', () => {
-  it('follows POSIX srand48/drand48: seed 0 starts at 0.170828...', () => {
+  it('follows the POSIX srand48 LCG: seed 0 starts at 0.170828... (lrand48 / 2^31)', () => {
     expect(new Drand48(0).next()).toBeCloseTo(0.170828036, 8);
   });
 

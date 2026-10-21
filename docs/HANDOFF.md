@@ -42,6 +42,10 @@ snap and normal sample use a port of Blender's point BVH (`analysis/blenderBvh.t
 build + nearest, leaves padded by FLT_EPSILON, the snap returns the closest point on the padded
 box); vertex normals are Blender's single-precision `normals_calc_verts` (bit-exact on all 1071
 vertices). Placement time unchanged (knot 77k tris: 4.3 s, in the analysis worker).
+Superseded by Release 2 Task 10 (licence-clean core): the BVH, KD-tree, legacy ridges and the
+polynomial arccos were replaced by independent code (`analysis/nearestPoint.ts`,
+`mergeByDistance.ts`, `legacyRidges.ts`, `core/acosf.ts`) with defined tie rules; the stage
+tests are now tie-aware (src/core/README.md "Defined tie rules").
 Not done, by decision: OpenVDB's concave-corner sign tracing (MeshToVolume.h sweeps, seed fills,
 ComputeIntersectingVoxelSign; ~1.5k lines) for <= 0.05 mm at inner corners.
 
@@ -110,7 +114,7 @@ STL is Z-up; the editor is Y-up. `importStlUnit` rotates -90° about X (web = ST
 ## Previous step (placement on the remesh)
 
 - Requirement: "Everything reasonably differ is fine. Fix all": the interior Poisson contacts and island minima came from the exact model while Blender scatters on its remesh.
-- Changed: `RemeshTarget.fullMesh` (whole remesh in Blender's vertex and face order, verified identical on the probe pyramid and the mushroom), `SurfaceQuery` (BVH nearest surface point), `src/analysis/kdtree.ts` (Blender Merge by Distance via its KD-tree), `placement.ts` (Poisson and minima on the remesh, ManualPoints snap, exact-mesh fallback for open meshes; the old plateau emulation is gone), `blenderParity.test.ts` (point-for-point Poisson against `tools/blender-parity/mushroom_contacts.json`).
+- Changed: `RemeshTarget.fullMesh` (whole remesh in Blender's vertex and face order, verified identical on the probe pyramid and the mushroom), `SurfaceQuery` (BVH nearest surface point), `src/analysis/kdtree.ts` (Blender Merge by Distance via its KD-tree; replaced in Release 2 Task 10 by `core/analysis/mergeByDistance.ts`), `placement.ts` (Poisson and minima on the remesh, ManualPoints snap, exact-mesh fallback for open meshes; the old plateau emulation is gone), `blenderParity.test.ts` (point-for-point Poisson against `tools/blender-parity/mushroom_contacts.json`).
 - Results: Poisson 22/22 on the mushroom match Blender within 0.01 mm; minima merge clusters identical to Blender (99/99); final minima differ only by float-rounding ties on grid-aligned geometry (every Blender minimum within 1 mm). `npm test` 18 files / 299 tests and `npm run build` pass; production build checked in the browser (77k triangles: about 5 s total, longest frame 17 ms, no console errors).
 - Next step: optional, emulate Blender's float32 vertex normals and BVH tie order if exact minima on grid-aligned models ever matter.
 

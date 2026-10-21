@@ -22,7 +22,10 @@ export function hashPair(first: number, second: number): number {
 
 const MASK_48 = (1n << 48n) - 1n;
 
-/** POSIX drand48 generator: srand48 seeding, 48-bit LCG, 31-bit draws scaled to [0, 1). */
+/**
+ * The POSIX drand48 family's 48-bit LCG with srand48 seeding; each draw is the top 31 bits
+ * scaled to [0, 1) (lrand48() / 2^31, not drand48's full 48-bit fraction), as the scatter uses it.
+ */
 export class Drand48 {
   private x: bigint;
 

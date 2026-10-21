@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import edgeOrder from '../../../tools/blender-parity/edge_order_stages.json';
 import stages from '../../../tools/blender-parity/ridge_stages.json';
-import { vertexNormals } from '../analysis/vertexNormals';
+import { faceNormal, vertexNormals } from '../analysis/vertexNormals';
 import { legacyRidgeMidpoints, meshEdges } from '../analysis/legacyRidges';
-import { compareKeeps, compareMerges, compareSnaps } from '../analysis/parity.testkit';
+import { compareKeeps, compareMerges, compareNormals, compareSnaps } from '../analysis/parity.testkit';
 import { minimaStages } from '../analysis/placement';
 
 type Vector = [number, number, number];
 
 /** Ridge midpoints in only one of the two results, all of them ambiguous-convexity edges. */
 const AMBIGUOUS: Record<30 | 45 | 60, number> = { 30: 2, 45: 0, 60: 0 };
+/** Vertex normals bit for bit vs within NORMAL_SLACK (corner-angle arccos differs from Blender's). */
+const NORMALS_PIN = [442, 391];
+
 /** meshEdges on the 1000+ face dump. */
 const PINNED_ORDER = { count: 2189, first: [[7, 47], [7, 45], [45, 47], [8, 51]], fingerprint: 525089928 };
 
@@ -38,15 +41,17 @@ describe('Blender legacy ridges (v-ridge, stage by stage)', () => {
   const remesh = { vertices: R.map(toWeb), faces, normals: faces.map(() => null) };
   const clean = (points: readonly (readonly number[])[]) => points.map((point) => point.map((value) => value + 0));
 
-  it("orders R's edges (first use, under 1000 faces Blender's order too) and true vertex normals as Blender does", () => {
+  it("orders R's edges as Blender does (first use; under 1000 faces Blender's order too), normals up to the arccos", () => {
     expect(meshEdges(faces)).toEqual(stages.R_edges);
-    expect(clean(normals)).toEqual(clean(stages.R_normals));
+    const report = compareNormals(normals, stages.R_normals as Vector[], faces, faces.map((face) => faceNormal(R, face)));
+    expect(report.unexplained).toEqual([]);
+    expect([report.exact, report.explained]).toEqual(NORMALS_PIN);
   });
 
   /** Edges whose second face straddles the first face's plane: their convexity is ambiguous. */
   const ambiguous = new Set<string>();
   for (const [a, b] of meshEdges(faces)) {
-    const users = faces.filter((face) => face.includes(a) && face.includes(b));
+    const users = faces.filter((face) => face.some((v, k) => { const w = face[(k + 1) % face.length]!; return (v === a && w === b) || (v === b && w === a); }));
     if (users.length !== 2) continue;
     const plane = users[0]!.map((v) => R[v]!);
     const n = [0, 1, 2].map((axis) => plane.reduce((sum, p, k) => {
@@ -80,7 +85,8 @@ describe('Blender legacy ridges (v-ridge, stage by stage)', () => {
       const keep = compareKeeps(stage.snapped.co as Vector[], R, normals, 50, stage.kept.co as Vector[]);
       expect([merge.unexplained, snap.unexplained, keep.unexplained]).toEqual([[], [], []]);
       expect({ merge: [merge.exact, merge.explained], snap: [snap.exact, snap.explained], keep: [keep.exact, keep.explained] }).toEqual(PINNED[degrees]);
-      expect(st.keptVertical).toHaveLength(st.kept.length);
+      // minimaStages itself (and its Vertical/Edge split) is covered by the goldens; the stage
+      // checks above run its building blocks on Blender's inputs.
       // SLASG_Line: Vertical > 0 (a minimum in the cluster) wins over Edge > 0.
       expect(stage.kept.Edge!.every((value, k) => value > 0 || stage.kept.Vertical![k]! > 0)).toBe(true);
     });

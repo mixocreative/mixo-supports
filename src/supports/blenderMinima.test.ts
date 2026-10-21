@@ -2,15 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { BoxGeometry, BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import stages from '../../tools/blender-parity/minima_stages.json';
-import { vertexNormals } from '../core/analysis/vertexNormals';
+import { faceNormal, vertexNormals } from '../core/analysis/vertexNormals';
 import { minimaStages } from '../core/analysis/placement';
-import { compareKeeps, compareMerges, compareSnaps } from '../core/analysis/parity.testkit';
+import { compareKeeps, compareMerges, compareNormals, compareSnaps } from '../core/analysis/parity.testkit';
 import { geometryToMesh } from '../state/import';
 import { RemeshTarget } from '../core/supports/remesh';
 
 type Vector = [number, number, number];
 
-const PINNED = { merge: [52, 47], snap: [84, 15], keep: [99, 0] };
+/** Vertex normals bit for bit vs within NORMAL_SLACK (corner-angle arccos differs from Blender's). */
+const NORMALS_PIN = [851, 220];
+const PINNED = { merge: [52, 47], snap: [84, 15], keep: [81, 18] };
 
 /**
  * Island minima against SLASG_VertexScatter itself, stage by stage
@@ -33,13 +35,18 @@ describe('Blender island minima (mushroom, stage by stage)', () => {
 
   it('builds the same R (vertices) and true vertex normals', () => {
     expect(clean(remesh.vertices.map(toBlender))).toEqual(clean(stages.R));
-    expect(clean(vertexNormals(stages.R as Vector[], stages.R_faces))).toEqual(clean(stages.R_normals));
+    const R = stages.R as Vector[];
+    const normals = compareNormals(vertexNormals(R, stages.R_faces), stages.R_normals as Vector[], stages.R_faces, stages.R_faces.map((face) => faceNormal(R, face)));
+    expect(normals.unexplained).toEqual([]);
+    expect([normals.exact, normals.explained]).toEqual(NORMALS_PIN);
   });
 
   it('finds the same candidates bit for bit', () => {
     expect(at(st.candidates)).toEqual(clean(stages.candidates));
   });
 
+  // The stage checks run minimaStages' building blocks on Blender's own inputs; the wiring of
+  // minimaStages is covered by the goldens and blenderParity's MINIMA pin.
   it('merges, snaps and keeps like Blender up to defined ties', () => {
     const candidates = stages.candidates as Vector[];
     const merge = compareMerges(candidates, 2, stages.merged as Vector[]);

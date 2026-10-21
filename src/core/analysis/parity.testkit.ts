@@ -28,6 +28,37 @@ function boxDistanceSq(q: readonly number[], v: readonly number[]): number {
   return distanceSq(q, clamp);
 }
 
+/**
+ * Largest angle (radians, 2^-15) between a web vertex normal and Blender's. The web weights
+ * corners by a single-precision arccos (`acosf`), Blender by a polynomial approximation; the
+ * normals differ by about 1.3e-5 rad at most on the dumps.
+ */
+export const NORMAL_SLACK = 2 ** -15;
+
+/**
+ * Vertex normals: bit for bit where every face around the vertex has the same normal (the
+ * corner weights cannot matter there), else within NORMAL_SLACK of Blender's.
+ */
+export function compareNormals(ours: readonly Vector[], blender: readonly Vector[], faces: readonly (readonly number[])[], faceNormals: readonly Vector[]): StageReport {
+  const around = ours.map(() => new Set<string>());
+  faces.forEach((face, k) => face.forEach((v) => around[v]!.add(key(faceNormals[k]!))));
+  const report: StageReport = { exact: 0, explained: 0, unexplained: [] };
+  ours.forEach((normal, v) => {
+    const theirs = blender[v]!;
+    if (same(normal, theirs)) {
+      report.exact += 1;
+      return;
+    }
+    // atan2 of |a x b| and a . b stays accurate for nearly parallel vectors (acos does not).
+    const [a, b] = [normal, theirs];
+    const crossLength = Math.hypot(a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]);
+    const angle = Math.atan2(crossLength, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
+    if (around[v]!.size > 1 && angle <= NORMAL_SLACK) report.explained += 1;
+    else report.unexplained.push(`normal ${v}: ${key(normal)} vs ${key(theirs)}`);
+  });
+  return report;
+}
+
 export interface StageReport {
   exact: number;
   explained: number;
@@ -45,7 +76,7 @@ export function compareSnaps(points: readonly Vector[], merged: readonly Vector[
     const ours = index.nearestHit(centre).co;
     const theirs = blenderSnapped[k]!;
     if (same(ours, theirs)) report.exact += 1;
-    else if (distanceSq(centre, ours) === distanceSq(centre, theirs)) report.explained += 1;
+    else if (distanceSq(centre, ours) === distanceSq(centre, theirs) && points.some((p) => boxDistanceSq(theirs, p) === 0)) report.explained += 1;
     else report.unexplained.push(`snap ${k}: ${key(ours)} vs ${key(theirs)}`);
   });
   return report;
@@ -137,7 +168,12 @@ export function compareKeeps(snapped: readonly Vector[], vertices: readonly Vect
     const best = Math.min(...distances);
     const tied = vertices.map((_, v) => v).filter((v) => distances[v] === best);
     const verdicts = new Set(tied.map((v) => downwardMask([vertices[v]!], [vertices[v]!], [normals[v]!], overhangAngleDegrees)[0]));
-    if (verdicts.size > 1) report.explained += 1;
+    // Or a knife edge: the normal sits within NORMAL_SLACK of Overhang angle (a box edge at
+    // exactly 45 degrees, say), where Blender's approximate corner angles tip it the other way.
+    const normal = normals[Math.min(...tied)]!;
+    const angle = Math.acos(Math.max(-1, Math.min(1, -normal[2])));
+    const knifeEdge = Math.abs(angle - overhangAngleDegrees * Math.PI / 180) <= NORMAL_SLACK;
+    if (verdicts.size > 1 || knifeEdge) report.explained += 1;
     else report.unexplained.push(`keep ${k}: web ${ours[k]} vs Blender ${expected[k]}`);
   });
   return report;

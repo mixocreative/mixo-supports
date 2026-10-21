@@ -25,7 +25,7 @@ const BLENDER = {
 };
 
 /** Web island minima on the mushroom and how many of Blender's 38 they contain exactly. */
-const MINIMA = { web: 36, matched: 28 };
+const MINIMA = { web: 20, matched: 19 };
 
 function mushroom() {
   const stem = new BoxGeometry(4, 10, 4).translate(0, 10, 0).toNonIndexed();

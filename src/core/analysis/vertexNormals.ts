@@ -1,15 +1,17 @@
+import { acosf } from '../acosf';
+
 type Vector = [number, number, number];
 
 const f = Math.fround;
 /** Squared lengths at or below this normalise to zero. */
 const TINY = 1e-35;
-const PI = f(Math.PI);
 
 /**
- * Angle-weighted vertex normals in single precision, matching Blender's true normals bit for
- * bit: Newell face normals; each vertex sums, over its faces in face order, the face normal
- * times the corner angle (a polynomial arccos approximation). A vertex in no face takes its
- * own position direction. Positions are Blender axes (X, Y, Z).
+ * Angle-weighted vertex normals in single precision (Blender's "true normals" up to the corner
+ * angle: Blender uses a polynomial arccos approximation, the web a correctly rounded-ish
+ * `acosf`): Newell face normals; each vertex sums, over its faces in face order, the face
+ * normal times the corner angle. A vertex in no face takes its own position direction.
+ * Positions are Blender axes (X, Y, Z).
  */
 export function vertexNormals(positions: readonly Vector[], faces: readonly (readonly number[])[]): Vector[] {
   const sums: Vector[] = positions.map(() => [0, 0, 0]);
@@ -22,7 +24,7 @@ export function vertexNormals(positions: readonly Vector[], faces: readonly (rea
       const here = positions[vertex]!;
       const toPrev = divideByLength(difference(positions[face[(corner + n - 1) % n]!]!, here));
       const toNext = divideByLength(difference(positions[face[(corner + 1) % n]!]!, here));
-      const weight = acosApprox(dot(toPrev, toNext));
+      const weight = acosf(dot(toPrev, toNext));
       const sum = sums[vertex]!;
       for (let axis = 0; axis < 3; axis += 1) sum[axis] = f(sum[axis]! + f(normal[axis]! * weight));
       used[vertex] = 1;
@@ -32,7 +34,7 @@ export function vertexNormals(positions: readonly Vector[], faces: readonly (rea
 }
 
 /** Newell's method from the closing edge (last corner to first); +Z when degenerate. */
-function faceNormal(positions: readonly Vector[], face: readonly number[]): Vector {
+export function faceNormal(positions: readonly Vector[], face: readonly number[]): Vector {
   let nx = 0;
   let ny = 0;
   let nz = 0;
@@ -64,18 +66,4 @@ function divideByLength(v: Vector): Vector {
   if (!(lengthSq > TINY)) return [0, 0, 0];
   const length = f(Math.sqrt(lengthSq));
   return [f(v[0] / length), f(v[1] / length), f(v[2] / length)];
-}
-
-/** arccos via sqrt(1 - |x|) times a cubic in |x|, mirrored for negative x; single precision. */
-function acosApprox(x: number): number {
-  const ax = Math.abs(x);
-  const m = ax < 1 ? f(1 - f(1 - ax)) : 1;
-  let p = f(m * f(-0.02164095));
-  p = f(f(0.077980478) + p);
-  p = f(m * p);
-  p = f(f(-0.213300989) + p);
-  p = f(m * p);
-  p = f(f(1.5707963267) + p);
-  const angle = f(f(Math.sqrt(f(1 - m))) * p);
-  return x < 0 ? f(PI - angle) : angle;
 }

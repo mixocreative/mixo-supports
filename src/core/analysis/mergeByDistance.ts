@@ -17,7 +17,7 @@ export function mergeByDistance(points: readonly Vector[], range: number): numbe
     co[index * 3 + 1] = point[1];
     co[index * 3 + 2] = point[2];
   });
-  const r = f(range);
+  const r = f(Math.max(0, range));
   const rangeSq = f(r * r);
   // Cells at least as large as the range (a little over, for rounding), so neighbours lie in
   // the 3x3x3 block around a point's cell.

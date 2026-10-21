@@ -366,7 +366,9 @@ export function downwardMask(points: readonly Vector[], vertices: readonly Vecto
   const vertexIndex = new NearestPoint(vertices);
   const limit = f(overhangAngleDegrees * Math.PI / 180);
   return points.map((point) => {
-    const down = f(-normals[vertexIndex.nearest(point)]![2]);
+    const nearest = vertexIndex.nearest(point);
+    if (nearest < 0) return false; // no vertices, or a NaN point
+    const down = f(-normals[nearest]![2]);
     const angle = down <= -1 ? f(Math.PI) : down >= 1 ? 0 : f(Math.acos(down));
     return !(angle > limit);
   });
