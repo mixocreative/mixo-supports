@@ -2,11 +2,14 @@ import type { SupportProblem } from '../core/analysis/supportCheck';
 import type { PlacementResult, TriangleMesh } from '../core/analysis/types';
 import type { CheckJob, PlacementJob } from '../core/jobs';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
-import { WorkerTask, type WorkerLike } from './WorkerTask';
+import type { JobLabel } from './jobActivity';
+import { REPLACED, WorkerTask, type WorkerLike } from './WorkerTask';
 
 interface Job {
   key: string;
   task: AnalysisTask;
+  label: JobLabel;
+  /** Aborted (reason REPLACED) when a newer job with the key replaces this one. */
   controller: AbortController;
   settle: (result: AnalysisResult | undefined, error?: unknown) => void;
 }
@@ -34,7 +37,7 @@ function transferableCopy(mesh: TriangleMesh): TriangleMesh {
  * per worker at a time; each job carries its own copy of the model, so no worker keeps one).
  * Jobs are keyed (`place:<unit>`, `check:<unit>`): a new job replaces a queued one with the same
  * key, and a running one is stopped at once (its worker is replaced). Replaced jobs resolve
- * `undefined`.
+ * `undefined`; a job the user cancels (activity Cancel) rejects with AbortError.
  */
 export class AnalysisClient {
   private readonly slots: Slot[] = [];
@@ -42,23 +45,23 @@ export class AnalysisClient {
 
   constructor(
     private readonly create: (() => WorkerLike) | null,
-    private readonly onProgress: (key: string, fraction: number, stage: string) => void,
+    private readonly onProgress: (key: string, fraction: number, stage: string) => void = () => {},
     private readonly size = analysisPoolSize(),
   ) {}
 
-  place(key: string, job: PlacementJob): Promise<PlacementResult | undefined> {
-    return this.submit(key, { kind: 'place', job }).then((result) => (result?.kind === 'placed' ? result.result : undefined));
+  place(key: string, job: PlacementJob, label: JobLabel): Promise<PlacementResult | undefined> {
+    return this.submit(key, { kind: 'place', job }, label).then((result) => (result?.kind === 'placed' ? result.result : undefined));
   }
 
-  check(key: string, job: CheckJob): Promise<SupportProblem[] | undefined> {
-    return this.submit(key, { kind: 'check', job }).then((result) => (result?.kind === 'checked' ? result.problems : undefined));
+  check(key: string, job: CheckJob, label: JobLabel): Promise<SupportProblem[] | undefined> {
+    return this.submit(key, { kind: 'check', job }, label).then((result) => (result?.kind === 'checked' ? result.problems : undefined));
   }
 
   /** Stop and forget the job with this key, queued or running. */
   cancel(key: string): void {
     const queued = this.queue.findIndex((job) => job.key === key);
     if (queued >= 0) this.queue.splice(queued, 1)[0]!.settle(undefined);
-    this.slots.find((slot) => slot.job?.key === key)?.job!.controller.abort();
+    this.slots.find((slot) => slot.job?.key === key)?.job!.controller.abort(REPLACED);
   }
 
   /** Keys of jobs that are queued or running. */
@@ -71,10 +74,10 @@ export class AnalysisClient {
     this.slots.length = 0;
   }
 
-  private submit(key: string, task: AnalysisTask): Promise<AnalysisResult | undefined> {
+  private submit(key: string, task: AnalysisTask, label: JobLabel): Promise<AnalysisResult | undefined> {
     this.cancel(key);
     return new Promise((resolve, reject) => {
-      this.queue.push({ key, task, controller: new AbortController(), settle: (result, error) => (error ? reject(error) : resolve(result)) });
+      this.queue.push({ key, task, label, controller: new AbortController(), settle: (result, error) => (error ? reject(error) : resolve(result)) });
       this.pump();
     });
   }
@@ -100,12 +103,14 @@ export class AnalysisClient {
     slot.runner.run(task, {
       transfer: [mesh.positions.buffer, mesh.indices.buffer],
       signal: job.controller.signal,
+      label: job.label,
       onProgress: (fields) => {
         if (typeof fields.fraction === 'number' && typeof fields.stage === 'string') this.onProgress(job.key, fields.fraction, fields.stage);
       },
     }).then(
       (result) => job.settle(result),
-      (error: unknown) => (error instanceof Error && error.name === 'AbortError' ? job.settle(undefined) : job.settle(undefined, error)),
+      // Replaced: undefined; cancelled by the user or failed: the error.
+      (error: unknown) => (job.controller.signal.aborted ? job.settle(undefined) : job.settle(undefined, error)),
     ).finally(() => {
       slot.job = undefined;
       this.pump();

@@ -17,6 +17,11 @@ conventions converts at its boundary.
 | `vec3.ts` | Shared vector helpers (`add`, `subtract`, `scale`, `dot`, `cross`, `length`, `lengthSq`, `distance`, `distanceSq`, `normalize`) |
 | `conventions.ts` | Coordinate convention constants |
 | `jobs.ts` | `SupportJob`, `PlacementJob`, `CheckJob`: plain job inputs (unit-local mesh, transform, settings, contact edits, label), and `jobContacts` (final contacts from the edits) |
+| `budget.ts` | Heavy-mesh budgets (warn 1x, refuse 4x per runtime), tiers (full / large / heavy), `assertTriangleCapacity`, memory estimate and cap |
+| `decimate.ts` | Deterministic vertex-clustering simplification, for the display copy of a heavy mesh only |
+| `import/stl.ts` | Chunked binary/ASCII STL straight into a welded Y-up mesh (identical to three's STLLoader + rotateX + mergeVertices) |
+| `import/weld.ts` | Typed-array vertex weld (open addressing, no string keys), bit-identical to `mergeVertices(geometry, 1e-4)` |
+| `import/estimate.ts` | Triangle count before parsing: binary STL exact from size, ASCII STL sampled, glTF/GLB from the JSON |
 | `analysis/types.ts` | `TriangleMesh`, placement settings and results |
 | `analysis/mesh.ts` | Downward-face classification, overhang limits, regions, labels |
 | `analysis/placement.ts` | Automatic contact placement (remesh minima, islands, edge anchors) |

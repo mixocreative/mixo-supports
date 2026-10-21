@@ -68,8 +68,13 @@ export function edgeAnchors(mesh: TriangleMesh, settings: EdgeAnchorSettings): E
   // CPython pops small-int sets in ascending order; regions follow their smallest face index.
   const regions: Set<number>[] = [];
   const unseen = new Set(eligible);
+  // The smallest unseen face, by a cursor over the sorted faces (Math.min(...unseen) overflows the
+  // stack on a heavy mesh and rescans every region).
+  const ascending = [...eligible].sort((a, b) => a - b);
+  let cursor = 0;
   while (unseen.size > 0) {
-    const start = Math.min(...unseen);
+    while (!unseen.has(ascending[cursor]!)) cursor += 1;
+    const start = ascending[cursor]!;
     unseen.delete(start);
     const region = new Set([start]);
     const todo = [start];
@@ -114,11 +119,23 @@ export function edgeAnchors(mesh: TriangleMesh, settings: EdgeAnchorSettings): E
     return false;
   };
 
-  for (const region of regions) {
-    for (const { key, faces } of allEdges.values()) {
-      if (faces.length !== 1 && faces.length !== 2) continue;
+  // Each region's edges in edge order, gathered in one pass (not every edge once per region).
+  const regionOf = new Map<number, number>();
+  regions.forEach((region, index) => region.forEach((face) => regionOf.set(face, index)));
+  const regionEdges: { key: [number, number]; faces: number[] }[][] = regions.map(() => []);
+  for (const edge of allEdges.values()) {
+    if (edge.faces.length !== 1 && edge.faces.length !== 2) continue;
+    const touched = new Set<number>();
+    for (const face of edge.faces) {
+      const index = regionOf.get(face);
+      if (index !== undefined) touched.add(index);
+    }
+    touched.forEach((index) => regionEdges[index]!.push(edge));
+  }
+
+  for (const [index, region] of regions.entries()) {
+    for (const { key, faces } of regionEdges[index]!) {
       const inside = faces.filter((face) => region.has(face));
-      if (inside.length === 0) continue;
       const boundary = inside.length === 1;
       const ridge = faces.length === 2 && inside.length === 2 && angleBetween(normals[faces[0]!]!, normals[faces[1]!]!) > sharpAngle;
       if (!(boundary || ridge)) continue;

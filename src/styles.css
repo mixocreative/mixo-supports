@@ -282,32 +282,44 @@ kbd {
 }
 
 /* ---- Background work ----------------------------------------------------- */
-.progress {
-  position: absolute;
-  inset: 0 0 auto 0;
-  z-index: 3;
-  pointer-events: none;
-}
-.progress-track { height: 2px; background: var(--line); overflow: hidden; }
-.progress-fill { height: 100%; background: var(--red); transition: width .25s ease-out; }
-.progress-caption {
+/* One list of every running job, bottom left of the viewport; red only for the fill. */
+.job-activity {
   position: absolute;
   left: 18px;
-  top: 38px;
+  bottom: 14px;
+  z-index: 5;
+  width: min(420px, calc(100% - 36px));
   margin: 0;
-  display: flex;
-  gap: 12px;
-  align-items: baseline;
-  padding: 6px 10px;
+  padding: 0;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   font-size: 12px;
   letter-spacing: .02em;
 }
-.progress-stage { color: var(--muted); }
-.progress-percent { font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
-@media (prefers-reduced-motion: reduce) { .progress-fill { transition: none; } }
+.job-activity[hidden] { display: none; }
+.job-activity ul { list-style: none; margin: 0; padding: 0; }
+.job-row { padding: 6px 10px 7px; }
+.job-row + .job-row { border-top: 1px solid var(--line); }
+.job-head { display: flex; gap: 10px; align-items: center; min-height: 22px; }
+.job-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-row[data-state='failed'] .job-label { white-space: normal; overflow-wrap: anywhere; color: var(--danger); }
+.job-row[data-state='cancelled'] .job-label { color: var(--muted); }
+.job-meta { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.job-head button { flex: none; } /* the app's own button size */
+.job-row .progress-track { margin-top: 5px; }
+.progress-track { height: 2px; background: var(--line); overflow: hidden; }
+.progress-fill { height: 100%; background: var(--red); transition: width .25s ease-out; }
+/* No percent known: a short segment travels the track; still and full-width when motion is reduced. */
+.progress-track--indeterminate .progress-fill { width: 30%; animation: job-travel 1.2s ease-in-out infinite; }
+@keyframes job-travel { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+/* An import changes what is edited: the viewport takes no input while it shows (Cancel stays reachable). */
+.job-veil { position: absolute; inset: 0; z-index: 4; background: rgb(244 242 237 / .55); cursor: progress; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill { transition: none; }
+  .progress-track--indeterminate .progress-fill { animation: none; width: 100%; opacity: .45; }
+}
 
 /* ---- Settings ------------------------------------------------------------ */
 .settings { border: 0; margin: 0; padding: 0; min-width: 0; }

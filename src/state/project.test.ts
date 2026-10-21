@@ -51,6 +51,13 @@ describe('reduceScene', () => {
     expect(Array.from(scene.units[0].source.indices)).toEqual([0, 1, 2]);
   });
 
+  it('keeps a handed-over (owned) mesh as is, so heavy imports are not copied', () => {
+    const imported: TriangleMesh = { positions: new Float32Array(source.positions), indices: new Uint32Array(source.indices) };
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: { ...unitA, source: imported }, owned: true });
+    expect(scene.units[0].source).toBe(imported);
+    expect(() => reduceScene(emptyScene, { type: 'unit/add', unit: { ...unitA, source: { positions: [0] as never, indices: new Uint32Array(0) } }, owned: true })).toThrow(TypeError);
+  });
+
   it('removes only derived supports and preserves the source model', () => {
     const scene: PrintScene = { ...emptyScene, units: [unitA] };
     const next = reduceScene(scene, { type: 'supports/remove', unitId: 'unit-a' });

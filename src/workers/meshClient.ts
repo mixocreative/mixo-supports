@@ -3,7 +3,8 @@ import type { JobTransform, SupportJob } from '../core/jobs';
 import type { GeneratedSupportMesh } from '../core/supports/mesh';
 import type { ExportFilePlan } from '../supports/export';
 import type { ExportedFile, ExportUnitPayload, MeshMode, MeshTask, MeshTaskResult, SupportJobPayload } from './meshProtocol';
-import { WorkerTask, WorkerTaskError, type WorkerLike } from './WorkerTask';
+import type { JobLabel } from './jobActivity';
+import { REPLACED, WorkerTask, WorkerTaskError, type WorkerLike } from './WorkerTask';
 
 export interface MeshProgress {
   unitId: string;
@@ -27,7 +28,11 @@ interface Pending {
   task: MeshTask;
   sources: Map<string, TriangleMesh>;
   onProgress?: (fraction: number, stage: string) => void;
+  label: JobLabel;
+  /** The caller's signal (exports). */
   signal?: AbortSignal;
+  /** Offer Cancel in the activity list (exports; a preview build is replaced, never cancelled). */
+  cancellable: boolean;
   timeoutMs: number;
   settle: (result: MeshTaskResult | undefined, error?: unknown) => void;
   started?: number;
@@ -47,8 +52,8 @@ export interface SupportMeshClientOptions {
    * rebuilds stay fast. 'per-job' (export): a worker per job that ends with it, so nothing stays.
    */
   mode?: 'persistent' | 'per-job';
-  onProgress: (progress: MeshProgress) => void;
-  onIdle: (mode: MeshMode, unitId: string) => void;
+  onProgress?: (progress: MeshProgress) => void;
+  onIdle?: (mode: MeshMode, unitId: string) => void;
 }
 
 /**
@@ -76,7 +81,7 @@ export class SupportMeshClient {
     this.runner = new WorkerTask({ create: options.create, mode: options.mode ?? 'persistent', name: 'Support building' });
   }
 
-  build(unitId: string, job: SupportJob): Promise<GeneratedSupportMesh | undefined> {
+  build(unitId: string, job: SupportJob, label: JobLabel): Promise<GeneratedSupportMesh | undefined> {
     const key = `${unitId}|${job.mode}`;
     const queued = this.queue.findIndex((pending) => pending.key === key);
     if (queued >= 0) this.queue.splice(queued, 1)[0]!.settle(undefined);
@@ -87,14 +92,16 @@ export class SupportMeshClient {
         build: { unitId, mode: job.mode },
         task: { kind: 'build', unit: this.payload(unitId, job) },
         sources: new Map([[unitId, job.mesh]]),
-        onProgress: (fraction, stage) => this.options.onProgress({ unitId, mode: job.mode, fraction, stage }),
+        onProgress: (fraction, stage) => this.options.onProgress?.({ unitId, mode: job.mode, fraction, stage }),
+        label,
+        cancellable: false,
         timeoutMs: BUILD_TIMEOUT_MS,
         settle: (result, error) => (error ? reject(error) : resolve(result)),
       });
     }).then((result) => (result?.kind === 'mesh' ? result.mesh : undefined));
   }
 
-  exportFiles(units: readonly ExportUnit[], files: ExportFilePlan[], onProgress: (fraction: number, stage: string) => void, signal?: AbortSignal): Promise<ExportedFile[]> {
+  exportFiles(units: readonly ExportUnit[], files: ExportFilePlan[], label: JobLabel, onProgress: (fraction: number, stage: string) => void, signal?: AbortSignal): Promise<ExportedFile[]> {
     const payloads: ExportUnitPayload[] = units.map(({ unitId, job, transform }) => ({ ...this.payload(unitId, job), transform }));
     return new Promise<MeshTaskResult | undefined>((resolve, reject) => {
       this.enqueue({
@@ -102,7 +109,9 @@ export class SupportMeshClient {
         task: { kind: 'export', units: payloads, files },
         sources: new Map(units.map(({ unitId, job }) => [unitId, job.mesh])),
         onProgress,
+        label,
         ...(signal ? { signal } : {}),
+        cancellable: true,
         timeoutMs: EXPORT_TIMEOUT_MS,
         settle: (result, error) => (error ? reject(error) : resolve(result)),
       });
@@ -124,7 +133,7 @@ export class SupportMeshClient {
     if (this.running?.build?.unitId === unitId) this.cutShort();
     else if (this.sent.delete(unitId)) {
       // Ahead of every other job; nothing waits for the answer.
-      this.queue.unshift({ key: `forget|${this.nextKey++}`, task: { kind: 'forget', unitId }, sources: new Map(), timeoutMs: BUILD_TIMEOUT_MS, settle: () => {} });
+      this.queue.unshift({ key: `forget|${this.nextKey++}`, task: { kind: 'forget', unitId }, sources: new Map(), label: { key: 'Freeing memory' }, cancellable: false, timeoutMs: BUILD_TIMEOUT_MS, settle: () => {} });
     }
     this.pump();
   }
@@ -151,7 +160,7 @@ export class SupportMeshClient {
   /** Stop the running job (its worker is replaced); it resolves undefined. */
   private cutShort(): void {
     this.running!.cut = true;
-    this.runningAbort?.abort();
+    this.runningAbort?.abort(REPLACED);
   }
 
   /** The task with every model the worker lacks (a per-job worker lacks them all). */
@@ -180,6 +189,8 @@ export class SupportMeshClient {
     this.runner.run(this.withSources(pending), {
       timeoutMs: pending.timeoutMs,
       signal: controller.signal,
+      label: pending.label,
+      cancellable: pending.cancellable,
       onProgress: (fields) => {
         if (typeof fields.fraction === 'number' && typeof fields.stage === 'string') pending.onProgress?.(fields.fraction, fields.stage);
       },
@@ -206,6 +217,6 @@ export class SupportMeshClient {
   private finish(pending: Pending, result: MeshTaskResult | undefined, error?: unknown): void {
     pending.settle(result, error);
     if (!pending.build) return;
-    if (!this.queue.some((other) => other.key === pending.key)) this.options.onIdle(pending.build.mode, pending.build.unitId);
+    if (!this.queue.some((other) => other.key === pending.key)) this.options.onIdle?.(pending.build.mode, pending.build.unitId);
   }
 }

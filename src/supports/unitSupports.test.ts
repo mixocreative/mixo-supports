@@ -83,3 +83,14 @@ describe('unit supports', () => {
     expect(meshBounds(unitSupportMesh(manualOnly, 0)).min[1]).toBeCloseTo(0);
   });
 });
+
+describe('unitLowestY', () => {
+  it('equals the lowest point of the transformed copy, bit for bit', async () => {
+    const { meshBounds } = await import('../core/supports/mesh');
+    const { applyTransform } = await import('../state/transform');
+    const { unitLowestY } = await import('./unitSupports');
+    const positions = new Float32Array(300).map((_, k) => Math.sin(k * 12.9898) * 20.123);
+    const unit = { source: { positions, indices: new Uint32Array([0, 1, 2]) }, transform: { position: [3.3, 7.77, -1.5] as [number, number, number], rotation: [0.4, -1.1, 0.25] as [number, number, number] } } as never;
+    expect(unitLowestY(unit)).toBe(meshBounds(applyTransform((unit as { source: never }).source, (unit as { transform: never }).transform)).min[1]);
+  });
+});

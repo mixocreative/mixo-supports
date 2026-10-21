@@ -1,3 +1,4 @@
+import { Euler, Matrix4, Quaternion, Vector3 } from 'three';
 import { labelForIndex } from '../core/analysis/mesh';
 import type { ProgressCallback } from '../core/analysis/types';
 import { hidingRemovals } from '../core/analysis/placement';
@@ -101,4 +102,25 @@ export function checkJobOf(unit: PrintUnit): CheckJob {
 /** Live support mesh for a unit in its local space, ready to render under the unit's parent group. */
 export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'preview' | 'export' = 'preview', onProgress?: ProgressCallback): GeneratedSupportMesh {
   return runSupportJob(supportJobOf(unit, unitIndex, mode), onProgress);
+}
+
+/**
+ * Lowest plate-space y of the unit's model: exactly `meshBounds(applyTransform(unit.source,
+ * unit.transform)).min[1]` (same matrix, same float32 rounding) without copying the model, so
+ * Generate costs no full-mesh copy on the main thread.
+ */
+export function unitLowestY(unit: PrintUnit): number {
+  const { position, rotation } = unit.transform;
+  const e = new Matrix4().compose(new Vector3(...position), new Quaternion().setFromEuler(new Euler(...rotation)), new Vector3(1, 1, 1)).elements;
+  const positions = unit.source.positions;
+  let lowest = Infinity;
+  for (let o = 0; o < positions.length; o += 3) {
+    const x = positions[o]!;
+    const y = positions[o + 1]!;
+    const z = positions[o + 2]!;
+    const w = 1 / (e[3]! * x + e[7]! * y + e[11]! * z + e[15]!);
+    const value = Math.fround((e[1]! * x + e[5]! * y + e[9]! * z + e[13]!) * w);
+    if (value < lowest) lowest = value;
+  }
+  return lowest;
 }

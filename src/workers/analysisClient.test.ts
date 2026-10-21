@@ -35,6 +35,7 @@ function pool() {
 const mesh = (): TriangleMesh => ({ positions: new Float32Array(9), indices: new Uint32Array([0, 1, 2]) });
 const job = (model = mesh()): PlacementJob => ({ mesh: model, orientation: { position: [0, 0, 0], rotation: [0, 0, 0] }, settings: {} as PlacementSettings });
 const placed = { kind: 'placed', result: { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() } };
+const label = { key: 'Placing contacts on {name}', vars: { name: 'A' } };
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('analysis client', () => {
@@ -47,7 +48,7 @@ describe('analysis client', () => {
   it('runs one job per worker and queues the rest', async () => {
     const { workers, create } = pool();
     const client = new AnalysisClient(create, () => {}, 2);
-    const results = ['a', 'b', 'c'].map((unit) => client.place(`place:${unit}`, job()));
+    const results = ['a', 'b', 'c'].map((unit) => client.place(`place:${unit}`, job(), label));
     expect(workers).toHaveLength(2);
     expect(client.busy().sort()).toEqual(['place:a', 'place:b', 'place:c']);
     workers[0]!.done(0, placed);
@@ -61,7 +62,7 @@ describe('analysis client', () => {
     const { workers, create } = pool();
     const client = new AnalysisClient(create, () => {}, 1);
     const model = mesh();
-    void client.place('place:a', job(model));
+    void client.place('place:a', job(model), label);
     const sent = workers[0]!.received[0]!.payload.job.mesh;
     expect(sent.positions).not.toBe(model.positions);
     expect(sent.positions).toEqual(model.positions);
@@ -72,14 +73,14 @@ describe('analysis client', () => {
     const { workers, create } = pool();
     const progress: string[] = [];
     const client = new AnalysisClient(create, (key, _fraction, stage) => progress.push(`${key} ${stage}`), 1);
-    const first = client.place('place:a', job());
-    const queued = client.place('place:b', job());
-    const newer = client.place('place:b', job());
+    const first = client.place('place:a', job(), label);
+    const queued = client.place('place:b', job(), label);
+    const newer = client.place('place:b', job(), label);
     await expect(queued).resolves.toBeUndefined();
     const worker = workers[0]!;
     worker.reply({ id: worker.received[0]!.id, type: 'progress', fraction: 0.5, stage: 'Scattering contacts' });
     expect(progress).toEqual(['place:a Scattering contacts']);
-    const again = client.place('place:a', job());
+    const again = client.place('place:a', job(), label);
     await expect(first).resolves.toBeUndefined();
     expect(worker.terminated).toBe(true);
     await tick();
@@ -92,10 +93,22 @@ describe('analysis client', () => {
     await expect(again).resolves.toBeDefined();
   });
 
+  it('a job the user cancels in the activity list rejects with AbortError', async () => {
+    const { workers, create } = pool();
+    const client = new AnalysisClient(create, () => {}, 1);
+    const job = client.place('place:a', { mesh: mesh(), orientation: { position: [0, 0, 0], rotation: [0, 0, 0] }, settings: {} as PlacementSettings }, label);
+    const { jobActivity } = await import('./jobActivity');
+    const row = jobActivity.view(Date.now() + 1000).filter((candidate) => candidate.label === label && candidate.cancellable).pop();
+    expect(row?.cancellable).toBe(true);
+    jobActivity.cancel(row!.id);
+    await expect(job).rejects.toSatisfy((error) => (error as Error).name === 'AbortError');
+    expect(workers[0]!.terminated).toBe(true);
+  });
+
   it('rejects with the worker error message', async () => {
     const { workers, create } = pool();
     const client = new AnalysisClient(create, () => {}, 1);
-    const check = client.check('check:a', { mesh: mesh(), orientation: { position: [0, 0, 0], rotation: [0, 0, 0] }, contacts: [], settings: { overhangAngleDegrees: 45, spacing: 2 } });
+    const check = client.check('check:a', { mesh: mesh(), orientation: { position: [0, 0, 0], rotation: [0, 0, 0] }, contacts: [], settings: { overhangAngleDegrees: 45, spacing: 2 } }, label);
     workers[0]!.reply({ id: workers[0]!.received[0]!.id, type: 'error', message: 'boom' });
     await expect(check).rejects.toThrow('boom');
   });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { WorkerTask, type WorkerLike } from './WorkerTask';
+import { JobActivity } from './jobActivity';
+import { REPLACED, WorkerTask, type WorkerLike } from './WorkerTask';
 import { serveTask, transferable } from './serveTask';
 
 /** Stand-in for a browser Worker: records posts; the test answers with reply() or crash(). */
@@ -252,5 +253,57 @@ describe('serveTask (worker side)', () => {
     await target.onmessage!({ data: { type: 'other' } });
     await target.onmessage!({ data: { id: 1, type: 'run', payload: {} } });
     expect(posted).toEqual([{ message: { id: 1, type: 'error', message: 'no model' }, transfer: undefined }]);
+  });
+});
+
+describe('WorkerTask progress reporting', () => {
+  const later = () => new Promise((resolve) => setTimeout(resolve, 0));
+  function setup() {
+    let now = 0;
+    const activity = new JobActivity(() => now);
+    const task = new WorkerTask({ create: fresh(), activity, name: 'Import', label: { key: 'Working' } });
+    return { activity, task, advance: (ms: number) => { now += ms; } };
+  }
+
+  it('reports each job under its label with the worker progress, and ends it', async () => {
+    const { activity, task, advance } = setup();
+    const job = task.run({}, { label: { key: 'Importing {name}', vars: { name: 'a.stl' } } });
+    const worker = FakeWorker.all[0]!;
+    worker.reply({ id: worker.last.id, type: 'progress', fraction: 0.25, stage: 'Welding vertices' });
+    advance(500);
+    expect(activity.view()).toMatchObject([{ label: { key: 'Importing {name}' }, state: 'determinate', percent: 25, stage: 'Welding vertices', cancellable: false }]);
+    worker.reply({ id: worker.last.id, type: 'done', result: 1 });
+    await job;
+    await later();
+    expect(activity.view()).toMatchObject([{ state: 'done' }]);
+  });
+
+  it('a cancellable job can be stopped from the activity list (AbortError)', async () => {
+    const { activity, task, advance } = setup();
+    const job = task.run({}, { cancellable: true });
+    advance(500);
+    activity.cancel(activity.view()[0]!.id);
+    await expect(job).rejects.toSatisfy(isAbort);
+    expect(FakeWorker.all[0]!.terminated).toBe(true);
+  });
+
+  it('a job replaced by its caller ends quietly, not as cancelled', async () => {
+    const { activity, task, advance } = setup();
+    const controller = new AbortController();
+    const job = task.run({}, { signal: controller.signal });
+    advance(500);
+    activity.view();
+    controller.abort(REPLACED);
+    await expect(job).rejects.toSatisfy(isAbort);
+    await later();
+    expect(activity.view()[0]?.state).toBe('done');
+  });
+
+  it('a failure is reported with its code', async () => {
+    const { activity, task } = setup();
+    const job = task.run({}, { timeoutMs: 5 });
+    await expect(job).rejects.toThrow();
+    await later();
+    expect(activity.view()).toMatchObject([{ state: 'failed', error: { code: 'timeout' } }]);
   });
 });

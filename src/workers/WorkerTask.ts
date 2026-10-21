@@ -19,9 +19,18 @@
  * rejects with its own reason, the other running jobs reject with code 'restarted' (a crash: all
  * get the crash message), and the next run() starts a fresh worker. Aborting the only job of a
  * persistent worker also replaces the worker, so leftover work never delays the next job.
+ *
+ * Progress UX (shared heavy-mesh spec §5): every job is reported to a JobActivity registry (the app's
+ * `jobActivity` unless another is given) under its label, with the worker's progress forwarded. A
+ * job run with a `signal` or `cancellable: true` gets a Cancel in the activity UI, which rejects it
+ * with AbortError exactly like the caller's own signal would.
  */
+import { jobActivity, type JobActivity, type JobLabel } from './jobActivity';
 
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+/** Abort reason for a job a newer one replaced: `controller.abort(REPLACED)`. */
+export const REPLACED = 'replaced';
 
 /** What WorkerTask needs of a Worker (a real one, or a stand-in in tests). */
 export interface WorkerLike {
@@ -48,6 +57,10 @@ export interface WorkerTaskOptions<P, R> {
   fallback?: (payload: P) => R | Promise<R>;
   /** Used in error messages. */
   name?: string;
+  /** Default label in the activity UI (an i18n key); falls back to `name`. */
+  label?: JobLabel;
+  /** Registry the jobs are reported to (tests pass their own). */
+  activity?: JobActivity;
 }
 
 export interface RunOptions {
@@ -56,6 +69,12 @@ export interface RunOptions {
   timeoutMs?: number;
   onProgress?: (fields: ProgressFields) => void;
   revision?: number;
+  /** This job's label in the activity UI. */
+  label?: JobLabel;
+  /** Offer Cancel in the activity UI (default: when the caller passes a signal). */
+  cancellable?: boolean;
+  /** The job replaces what the user would be editing (the UI blocks edits while it shows). */
+  blocking?: boolean;
 }
 
 interface Job {
@@ -88,13 +107,17 @@ export class WorkerTask<P = unknown, R = unknown> {
   private readonly timeoutMs: number;
   private readonly fallback: ((payload: P) => R | Promise<R>) | undefined;
   readonly name: string;
+  private readonly label: JobLabel;
+  private readonly activity: JobActivity;
   private worker: WorkerLike | null = null;
   /** Running jobs of the persistent worker, by id. */
   private readonly jobs = new Map<number, Job>();
   private seq = 0;
   private chain: Promise<unknown> = Promise.resolve();
 
-  constructor({ create, mode = 'persistent', concurrency = 'parallel', timeoutMs = DEFAULT_TIMEOUT_MS, fallback, name = 'worker task' }: WorkerTaskOptions<P, R>) {
+  constructor({ create, mode = 'persistent', concurrency = 'parallel', timeoutMs = DEFAULT_TIMEOUT_MS, fallback, name = 'worker task', label, activity = jobActivity }: WorkerTaskOptions<P, R>) {
+    this.label = label ?? { key: name };
+    this.activity = activity;
     this.create = create;
     this.mode = mode;
     this.serial = concurrency === 'serial';
@@ -106,10 +129,34 @@ export class WorkerTask<P = unknown, R = unknown> {
   /** Run one job; resolves with the worker's `result`. */
   run(payload: P, opts: RunOptions = {}): Promise<R> {
     if (opts.signal?.aborted) return Promise.reject(abortError(this.name));
-    if (!this.serial) return this.start(payload, opts);
-    const next = this.chain.then(() => this.start(payload, opts));
-    this.chain = next.catch(() => undefined);
-    return next;
+    // One controller per job: the caller's signal and the activity Cancel both feed it.
+    const controller = new AbortController();
+    const outer = opts.signal;
+    const onOuter = () => controller.abort();
+    outer?.addEventListener('abort', onOuter, { once: true });
+    const activity = this.activity.begin({
+      label: opts.label ?? this.label,
+      cancel: opts.cancellable ?? Boolean(outer) ? () => controller.abort() : null,
+      blocking: opts.blocking ?? false,
+    });
+    const inner: RunOptions = {
+      ...opts,
+      signal: controller.signal,
+      onProgress: (fields) => {
+        activity.progress(fields);
+        opts.onProgress?.(fields);
+      },
+    };
+    let job: Promise<R>;
+    if (!this.serial) {
+      job = this.start(payload, inner);
+    } else {
+      job = this.chain.then(() => this.start(payload, inner));
+      this.chain = job.catch(() => undefined);
+    }
+    // A job its caller replaced with a newer one (abort reason REPLACED) leaves quietly, not as "cancelled".
+    job.then(() => activity.end(), (error: unknown) => activity.end(outer?.reason === REPLACED ? undefined : error)).finally(() => outer?.removeEventListener('abort', onOuter));
+    return job;
   }
 
   /** Terminate the persistent worker (running jobs reject 'restarted'). */
