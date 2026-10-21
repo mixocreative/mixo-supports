@@ -62,5 +62,6 @@ crash isolation, fallback); worker factories live only in `src/workers/factories
 Model copies: placement and check jobs carry a copy of the model that is transferred to the worker
 and dropped with the job. The preview support-mesh worker keeps one model per unit in a token cache
 (`src/workers/sourceCache.ts`) so rebuilds keep their remesh caches warm; entries are freed when the
-unit is removed (`forget`) and the cache is capped at 512 MiB (least recently used first; an
-evicted model is sent again on demand). Exports run in a per-job worker that ends with the export.
+unit is removed (`forget`, which also drops that unit's queued builds) and the cache caps model
+bytes at 512 MiB (least recently used first; an evicted model is sent again on demand). The remesh
+and raft caches derived from a model are not counted; they go with the evicted model. Exports run in a per-job worker that ends with the export.

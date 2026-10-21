@@ -133,6 +133,50 @@ describe('support mesh client', () => {
     expect(unitOf(worker.received[2]!.payload)?.source).toBe(model);
   });
 
+  it('forget drops a queued build of the removed unit: it never runs and its model never reaches the worker', async () => {
+    const { client, workers, idle } = setup();
+    const running = client.build('b', job({ positions: new Float32Array(9), indices: new Uint32Array([0, 1, 2]) }));
+    const queued = client.build('a', job());
+    client.forget('a');
+    await expect(queued).resolves.toBeUndefined();
+    expect(idle).toContain('a preview');
+    workers[0]!.done(0, built);
+    await expect(running).resolves.toBeDefined();
+    await tick();
+    expect(workers[0]!.received.map(({ payload }) => unitOf(payload)?.unitId ?? payload.kind)).toEqual(['b']);
+  });
+
+  it('forget stops a running build of the removed unit (worker replaced, so no model stays)', async () => {
+    const { client, workers } = setup();
+    const running = client.build('a', job());
+    client.forget('a');
+    await expect(running).resolves.toBeUndefined();
+    expect(workers[0]!.terminated).toBe(true);
+    await tick();
+    void client.build('b', job());
+    expect(workers[1]!.received.map(({ payload }) => payload.kind)).toEqual(['build']);
+  });
+
+  it('a worker crash rejects the build and the next build sends the model again', async () => {
+    const { client, workers } = setup();
+    const first = client.build('a', job());
+    workers[0]!.onerror?.({ message: 'out of memory' });
+    await expect(first).rejects.toThrow('out of memory');
+    await tick();
+    void client.build('a', job());
+    expect(unitOf(workers[1]!.received[0]!.payload)?.source).toBe(model);
+  });
+
+  it('dispose settles queued jobs and stops the running one', async () => {
+    const { client, workers } = setup();
+    const running = client.build('a', job());
+    const queued = client.build('b', job());
+    client.dispose();
+    await expect(queued).resolves.toBeUndefined();
+    await expect(running).resolves.toBeUndefined();
+    expect(workers[0]!.terminated).toBe(true);
+  });
+
   it('per-job export: every model goes with the job and the worker ends with it', async () => {
     const { client, workers } = setup('per-job');
     const files = client.exportFiles([{ unitId: 'a', job: { ...job(), mode: 'export' }, transform: { position: [1, 2, 3], rotation: [0, 0, 0] } }], [], () => {});

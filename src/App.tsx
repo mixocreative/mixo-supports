@@ -23,7 +23,7 @@ import type { Vector } from './core/vec3';
 import { problemInZone, type ZoneStamp } from './core/supports/zones';
 import { contactsInBrush, deleteCommands, paintSelection, pruneSelection, toggleSelection, type BrushMode } from './supports/selection';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
-import { checkJobOf, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './supports/unitSupports';
+import { checkJobOf, orientationOf, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './supports/unitSupports';
 import { enterActsOn } from './editing/keys';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
@@ -59,11 +59,6 @@ export interface UnitProblem extends SupportProblem {
   unitId: string;
   /** The spot lies inside a no-support zone, which is why it has no support. */
   inZone: boolean;
-}
-
-/** Unit rotation without translation: the frame placement and checks analyse a unit in. */
-function orientationOf(unit: PrintUnit): ModelTransform {
-  return { position: [0, 0, 0], rotation: [...unit.transform.rotation] };
 }
 
 export default function App() {

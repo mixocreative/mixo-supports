@@ -64,8 +64,8 @@ export function generationTransform(unit: PrintUnit): ModelTransform {
   return stored && Array.isArray(stored.position) && Array.isArray(stored.rotation) ? stored : unit.transform;
 }
 
-/** Rotation without translation: the frame placement and checks analyse a unit in. */
-function orientationOf(unit: PrintUnit): JobTransform {
+/** Rotation without translation: the frame placement and checks analyse a unit in (map their results back with it). */
+export function orientationOf(unit: PrintUnit): JobTransform {
   return { position: [0, 0, 0], rotation: [...unit.transform.rotation] };
 }
 
