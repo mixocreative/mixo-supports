@@ -40,10 +40,10 @@ const BUILD_DELAY_MS = 120;
 
 // Labels are i18n keys, translated where shown.
 const EXPORTS: { kind: ExportKind; label: string }[] = [
-  { kind: 'active-printable', label: 'Active unit with model' },
-  { kind: 'active-supports', label: 'Active unit, supports only' },
-  { kind: 'separate-printable', label: 'Each unit with model' },
-  { kind: 'separate-supports', label: 'Each unit, supports only' },
+  { kind: 'active-printable', label: 'Active object with model' },
+  { kind: 'active-supports', label: 'Active object, supports only' },
+  { kind: 'separate-printable', label: 'Each object with model' },
+  { kind: 'separate-supports', label: 'Each object, supports only' },
   { kind: 'whole-printable', label: 'Whole plate in one file' },
 ];
 
@@ -70,7 +70,7 @@ export default function App() {
     setLanguage(next, true);
     setLang(next);
   };
-  const [status, setStatusMessage] = useState<Message>({ key: 'Drop STL, GLB or glTF files to begin. Every mesh becomes a print unit.' });
+  const [status, setStatusMessage] = useState<Message>({ key: 'Drop STL, GLB or glTF files to begin. Every mesh becomes an object.' });
   const setStatus = useCallback((key: string, vars?: Message['vars'], other?: string) => setStatusMessage({ key, ...(vars ? { vars } : {}), ...(other ? { other } : {}) }), []);
   const [editMode, setEditMode] = useState<EditMode>('off');
   const editModeRef = useRef(editMode);
@@ -260,7 +260,7 @@ export default function App() {
       });
     }
     setPendingCount(placing.current.size);
-    setStatus('Analysing overhangs for 1 unit.', { n: units.length }, 'Analysing overhangs for {n} units.');
+    setStatus('Analysing overhangs for 1 object.', { n: units.length }, 'Analysing overhangs for {n} objects.');
   }, [analysis, dispatch, setStatus, setTask, targets, unitName]);
 
   // ---- Support check -------------------------------------------------------------------
@@ -310,7 +310,7 @@ export default function App() {
   const checkSupports = useCallback(() => {
     const units = targets(sceneRef.current).filter((unit) => unit.supports);
     if (units.length === 0) return setStatus('Generate supports before checking them.');
-    setStatus('Checking supports on 1 unit.', { n: units.length }, 'Checking supports on {n} units.');
+    setStatus('Checking supports on 1 object.', { n: units.length }, 'Checking supports on {n} objects.');
     runCheck(units).then(
       (count) => (count === 0 ? setStatus('No unsupported spots found.') : setStatus('1 spot may print unsupported: see Check supports.', { n: count }, '{n} spots may print unsupported: see Check supports.')),
       (error: Error) => setStatus('Support check failed: {error}', { error: error.message }),
@@ -364,7 +364,7 @@ export default function App() {
         ...added.map((unit) => ({ type: 'unit/add' as const, unit })),
         { type: 'selection/set', unitIds: added.map((unit) => unit.id), activeUnitId: added[0]!.id },
       ] });
-      setStatus('Imported 1 print unit. Generate to place supports.', { n: added.length }, 'Imported {n} print units. Generate to place supports.');
+      setStatus('Imported 1 object. Generate to place supports.', { n: added.length }, 'Imported {n} objects. Generate to place supports.');
     } catch (error) {
       setStatus('Import error: {error}', { error: error instanceof Error ? error.message : t('unsupported model') });
     } finally {
@@ -392,7 +392,7 @@ export default function App() {
   const removeSupports = () => {
     setEditMode('off');
     const count = forTargets((unit) => (unit.supports ? { type: 'supports/remove', unitId: unit.id } : undefined));
-    if (count) setStatus('Removed supports from 1 unit; models untouched, manual edits kept for regeneration.', { n: count }, 'Removed supports from {n} units; models untouched, manual edits kept for regeneration.');
+    if (count) setStatus('Removed supports from 1 object; models untouched, manual edits kept for regeneration.', { n: count }, 'Removed supports from {n} objects; models untouched, manual edits kept for regeneration.');
     else setStatus('No supports to remove.');
   };
   const clearManual = () => {
@@ -403,14 +403,14 @@ export default function App() {
     const ids = sceneRef.current.selectedUnitIds;
     if (ids.length === 0) return;
     dispatch({ type: 'batch', commands: ids.map((unitId) => ({ type: 'unit/remove' as const, unitId })) });
-    setStatus('Deleted 1 unit (undo restores).', { n: ids.length }, 'Deleted {n} units (undo restores).');
+    setStatus('Deleted 1 object (undo restores).', { n: ids.length }, 'Deleted {n} objects (undo restores).');
   }, [dispatch]);
   const toggleEditMode = useCallback(() => {
     if (editModeRef.current !== 'off') {
       setEditMode('off');
       return setStatus('Support edits kept.');
     }
-    if (!sceneRef.current.activeUnitId) return setStatus('Select a unit to edit its supports.');
+    if (!sceneRef.current.activeUnitId) return setStatus('Select an object to edit its supports.');
     undoFloor.current = historyRef.current.past.length;
     setEditMode('edit');
     setStatus('Support Edit Mode: click the model to add, right-click a support to remove.');
@@ -446,7 +446,7 @@ export default function App() {
 
   const onTransform = useCallback((unitId: string, transform: ModelTransform) => {
     dispatch({ type: 'transform/set', unitId, transform });
-    setStatus('Unit moved with its supports. Regenerate to re-plant supports after a rotation.');
+    setStatus('Object moved with its supports. Regenerate to re-plant supports after a rotation.');
   }, [dispatch]);
 
   const onAddContact = useCallback((unitId: string, point: [number, number, number], normal: [number, number, number]) => {
@@ -498,7 +498,7 @@ export default function App() {
   const runExport = async (kind: ExportKind) => {
     const current = sceneRef.current;
     const files = planExport(current, kind);
-    if (files.length === 0) return setStatus(kind.startsWith('active') && !current.activeUnitId ? 'Select a unit to export.' : 'Nothing to export for this mode.');
+    if (files.length === 0) return setStatus(kind.startsWith('active') && !current.activeUnitId ? 'Select an object to export.' : 'Nothing to export for this mode.');
     const used = new Set(files.flatMap((file) => file.parts.map((part) => part.unitId)));
     const units = exportUnits(current, kind).filter(([unit]) => used.has(unit.id));
     setExporting(true);
@@ -578,7 +578,7 @@ export default function App() {
 
   return <main>
     <header>
-      <div className="brand"><h1><BrandLogo product="Supports" /></h1><small>{t('Resin Support Studio')}</small></div>
+      <div className="brand"><h1><BrandLogo /></h1><small>{t('Resin Support Studio')}</small></div>
       <div className="header-actions">
         <div className="segmented lang" role="group" aria-label={t('Language')}>
           {LANGS.map((entry) => <button key={entry.lang} lang={entry.lang} className={lang === entry.lang ? 'active' : ''} aria-pressed={lang === entry.lang} onClick={() => chooseLanguage(entry.lang)}>{entry.label}</button>)}
@@ -602,15 +602,16 @@ export default function App() {
           <small>{t('STL, GLB or glTF. Files stay on this device.')}</small>
         </label>
         <section>
-          <h3>{t('Print units')}</h3>
-          {scene.units.length === 0 ? <p className="help">{t('Each STL, and each mesh inside a glTF, becomes its own unit.')}</p> : <ul className="units">
+          <h3>{t('Objects')}{scene.units.length > 0 && <small className="count">{scene.units.length}</small>}</h3>
+          {scene.units.length === 0 ? <p className="help">{t('Each STL, and each mesh inside a glTF, becomes its own object.')}</p> : <ul className="units">
             {scene.units.map((unit, index) => {
               const selected = scene.selectedUnitIds.includes(unit.id);
               return <li key={unit.id}>
                 <button className={`unit${selected ? ' selected' : ''}${unit.id === scene.activeUnitId ? ' active' : ''}`} onClick={(event) => onSelect(unit.id, event.shiftKey || event.ctrlKey || event.metaKey)}>
                   <b>{resolveSettings(unit.settings).labelText || labelForIndex(index)}</b>
-                  <span>{unit.name}</span>
-                  <small>{unit.supports ? plural(unitContacts(unit).length, '1 support', '{n} supports') : t('No supports yet')}</small>
+                  <span title={unit.name}>{unit.name}</span>
+                  {/* Compact row: the support count alone, spelled out on hover. */}
+                  <small title={unit.supports ? plural(unitContacts(unit).length, '1 support', '{n} supports') : t('No supports yet')}>{unit.supports ? unitContacts(unit).length : '–'}</small>
                 </button>
               </li>;
             })}
@@ -621,7 +622,7 @@ export default function App() {
           </div>
         </section>
         <section>
-          <h3>{t('Object')}</h3>
+          <h3>{t('Transform')}</h3>
           <div className="segmented">
             {(['none', 'translate', 'rotate'] as const).map((mode) => <button key={mode} className={gizmoMode === mode ? 'active' : ''} aria-pressed={gizmoMode === mode} onClick={() => setGizmoMode(mode)} disabled={editMode !== 'off'}>{t(mode === 'none' ? 'Select' : mode === 'translate' ? 'Move' : 'Rotate')}</button>)}
           </div>
@@ -631,7 +632,7 @@ export default function App() {
           <button className={editMode === 'off' ? '' : 'primary'} aria-pressed={editMode !== 'off'} onClick={toggleEditMode} disabled={editMode === 'off' && !activeUnit}>
             {editMode === 'off' ? t('Enter Support Edit Mode') : t('Done editing')}
           </button>
-          <p className="help">{activeUnit ? t('Add or remove supports by clicking the model. Tab toggles.') : t('Select a unit first.')}</p>
+          <p className="help">{activeUnit ? t('Add or remove supports by clicking the model. Tab toggles.') : t('Select an object first.')}</p>
         </section>
         <section>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
@@ -684,7 +685,7 @@ export default function App() {
         <ProgressBar tasks={[...tasks.values()]} />
         {editMode === 'off' ? <>
           <div className="viewport-object-status">{activeUnit ? activeUnit.name : t('Nothing selected')}</div>
-          <button className="viewport-edit-toggle" onClick={toggleEditMode} disabled={!activeUnit} title={activeUnit ? t('Add or remove supports by clicking (Tab)') : t('Select a unit first.')}>
+          <button className="viewport-edit-toggle" onClick={toggleEditMode} disabled={!activeUnit} title={activeUnit ? t('Add or remove supports by clicking (Tab)') : t('Select an object first.')}>
             {t('Edit supports')}
           </button>
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
@@ -705,7 +706,7 @@ export default function App() {
       </section>
       <aside className="panel right">
         <h2>{t('Support settings')}{activeUnit ? <small>{activeUnit.name}{selectedCount > 1 ? ` ${t('and {n} more', { n: selectedCount - 1 })}` : ''}</small> : null}</h2>
-        {!activeUnit && <p className="help">{t('Select a unit to edit its settings. Changes apply to every selected unit.')}</p>}
+        {!activeUnit && <p className="help">{t('Select an object to edit its settings. Changes apply to every selected object.')}</p>}
         <SettingsPanel
           settings={activeSettings}
           autoLabel={activeIndex >= 0 ? labelForIndex(activeIndex) : 'A'}
@@ -722,7 +723,7 @@ export default function App() {
       </aside>
     </section>
     <footer>
-      <span>{plural(scene.units.length, '1 unit', '{n} units')}</span>
+      <span>{plural(scene.units.length, '1 object', '{n} objects')}</span>
       {activeUnit && <span>{t('{n} triangles', { n: (activeUnit.source.indices.length / 3).toLocaleString() })}</span>}
       {contactCounts && <span>{t('{auto} automatic, {manual} manual, {removed} removed', contactCounts)}</span>}
       <strong>{translateMessage(status)}</strong>

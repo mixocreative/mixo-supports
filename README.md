@@ -29,8 +29,8 @@ English · [繁體中文](README.zh-Hant.md) · [日本語](README.ja.md)
 - One click places supports on **downward faces**, **islands** (lowest points that would print in mid-air) and **overhang edges**.
 - **Light, Middle and Heavy presets**, or full custom control of spacing, overhang angle (50° by default), ridge angle, lift height, pillar diameter and more.
 - **Tree supports** that branch and merge to save resin and peel force.
-- A **raft** that follows the model outline, with flared walls and a unit letter. **Roof** and **Cage** modes are also available.
-- Several models on one plate. Each model is its own print unit with supports that move and rotate with it.
+- A **raft** that follows the model outline, with flared walls and an object letter. **Roof** and **Cage** modes are also available.
+- Several models on one plate. Each model is its own object, with supports that move and rotate with it.
 
 ### Contact tips that print well and snap off clean
 - **Cone point by default**: a 0.2 mm tip that widens to the pillar, so contact marks stay small.
@@ -49,7 +49,7 @@ Scans the model for islands and overhangs that no support reaches and lists each
 
 ### Import and export
 - Import **STL**, **GLB** and **glTF**. STL is read Z-up, the same as your slicer.
-- Export **STL**: the active unit or each unit, with or without the model, or the whole plate in one file.
+- Export **STL**: the active object or each object, with or without the model, or the whole plate in one file.
 - The exported file loads straight into Chitubox, Lychee, PrusaSlicer, UVtools and other resin slicers.
 
 ### Phone, tablet and three languages

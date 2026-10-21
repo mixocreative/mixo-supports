@@ -66,11 +66,11 @@ describe('i18n', () => {
 
   it('fills placeholders, picks plurals and falls back to English', () => {
     expect(t('{n} triangles', { n: 12 })).toBe('12 triangles');
-    expect(plural(1, '1 unit', '{n} units')).toBe('1 unit');
-    expect(plural(3, '1 unit', '{n} units')).toBe('3 units');
+    expect(plural(1, '1 object', '{n} objects')).toBe('1 object');
+    expect(plural(3, '1 object', '{n} objects')).toBe('3 objects');
     setLanguage('ja');
-    expect(t('{n} units', { n: 3 })).toBe('3 ユニット');
-    expect(translateMessage({ key: 'Deleted 1 unit (undo restores).', vars: { n: 2 }, other: 'Deleted {n} units (undo restores).' })).toBe('2 ユニットを削除しました（元に戻せます）。');
+    expect(t('{n} objects', { n: 3 })).toBe('3 個のオブジェクト');
+    expect(translateMessage({ key: 'Deleted 1 object (undo restores).', vars: { n: 2 }, other: 'Deleted {n} objects (undo restores).' })).toBe('2 個のオブジェクトを削除しました（元に戻せます）。');
     expect(t('Not a key')).toBe('Not a key');
     setLanguage('zh-Hant');
     expect(t('Support Edit Mode')).toBe('支撐編輯模式');
