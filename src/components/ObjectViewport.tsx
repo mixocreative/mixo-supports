@@ -11,7 +11,7 @@ import { transformFromObject, type ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../supports/mesh';
 import { contactsInBrush, type BrushMode } from '../supports/selection';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
-import { nextStamp, stampVertices, zonedVertices, type ZoneStamp } from '../supports/zones';
+import { nextStamp, sameStamp, stampVertices, zonedVertices, type ZoneStamp } from '../supports/zones';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
 /**
@@ -209,8 +209,9 @@ function SupportBodies({ supports, geometry, ids, opacity, color = PREVIEW.remov
 /**
  * The no-support zones on the model surface, see-through blue over the model it covers. Shares
  * the model's vertices; its own colour attribute carries alpha 1 on zoned vertices, 0 elsewhere.
- * A `zones` list that only adds stamps to the last one (a stroke in progress) lays just the new
- * stamps; any other change recomputes every vertex.
+ * A `zones` list that starts with the stamps already laid (a stroke in progress, or the stroke
+ * just committed as saved copies) lays just the new stamps; any other change (undo, erase all, a
+ * new model) recomputes every vertex.
  */
 function ZoneLayer({ geometry, zones, opacity }: { geometry: THREE.BufferGeometry; zones: readonly ZoneStamp[]; opacity: number }) {
   // Built in the effect for the same reason as `SupportBodies`: the cleanup strips shared attributes.
@@ -233,11 +234,12 @@ function ZoneLayer({ geometry, zones, opacity }: { geometry: THREE.BufferGeometr
     };
   }, [geometry]);
   useEffect(() => {
-    if (!layer) return;
     const positions = geometry.getAttribute('position').array as Float32Array;
     const normals = geometry.getAttribute('normal').array as Float32Array;
+    // A new model geometry runs this once on the old layer before the rebuilt one arrives: skip it.
+    if (!layer || layer.zoned.length !== positions.length / 3) return;
     const done = layer.applied;
-    if (done.length <= zones.length && done.every((stamp, index) => zones[index] === stamp)) {
+    if (done.length <= zones.length && done.every((stamp, index) => sameStamp(zones[index]!, stamp))) {
       for (let index = done.length; index < zones.length; index++) stampVertices(zones[index]!, positions, normals, layer.zoned);
     } else {
       zonedVertices(zones, positions, normals, layer.zoned);
@@ -482,9 +484,9 @@ function UnitObject(props: UnitObjectProps) {
     event.stopPropagation();
     const point: Vector = [event.point.x, event.point.y, event.point.z];
     if (editMode === 'off') return remove ? undefined : props.onSelect(unit.id, event.shiftKey);
+    // Painting zones: the zone brush owns the active model; clicks never select, add or remove.
+    if (editMode === 'zones') return;
     if (!props.active) return props.onSelect(unit.id, false);
-    // Painting zones: the zone brush owns the model; clicks never add or remove supports.
-    if (zoning) return;
     if (remove) return props.onErase(unit.id, point);
     // Selecting never adds: Click says to click a support; Drag over owns the left button.
     if (selecting) return clickSelecting ? props.onEditMiss() : undefined;
@@ -511,7 +513,8 @@ function UnitObject(props: UnitObjectProps) {
     {model && <mesh
       geometry={model}
       visible={props.modelVisible}
-      raycast={acceleratedRaycast}
+      // Painting zones: other objects take no pointer events (a press passes through to the active one).
+      raycast={editMode === 'zones' && !props.active ? () => undefined : acceleratedRaycast}
       onClick={(event) => clickModel(event, false)}
       onContextMenu={(event) => clickModel(event, true)}
       {...(editing ? { onPointerDown: startStroke, onPointerMove: hoverModel, onPointerOut: leave } : {})}

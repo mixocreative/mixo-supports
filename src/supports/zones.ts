@@ -50,3 +50,10 @@ export function zonedVertices(zones: readonly ZoneStamp[], positions: Float32Arr
   for (const stamp of zones) stampVertices(stamp, positions, normals, out);
   return out;
 }
+
+/** Whether two stamps are the same dab by value (a saved copy of a stamp matches the original). */
+export function sameStamp(a: ZoneStamp, b: ZoneStamp): boolean {
+  return a === b || (a.kind === b.kind && a.radius === b.radius
+    && a.center[0] === b.center[0] && a.center[1] === b.center[1] && a.center[2] === b.center[2]
+    && a.normal[0] === b.normal[0] && a.normal[1] === b.normal[1] && a.normal[2] === b.normal[2]);
+}

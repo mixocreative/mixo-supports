@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextStamp, stampVertices, zonedAt, zonedVertices, type ZoneStamp } from './zones';
+import { nextStamp, sameStamp, stampVertices, zonedAt, zonedVertices, type ZoneStamp } from './zones';
 
 const stamp = (kind: ZoneStamp['kind'], normal: ZoneStamp['normal'] = [0, -1, 0]): ZoneStamp => ({ center: [0, 0, 0], radius: 2, normal, kind });
 
@@ -71,5 +71,18 @@ describe('stampVertices', () => {
     for (const stamp of zones) stampVertices(stamp, positions, normals, out);
     expect([...out]).toEqual([...zonedVertices(zones, positions, normals)]);
     expect([...out]).toEqual([0, 1, 1]);
+  });
+});
+
+describe('sameStamp', () => {
+  const a: ZoneStamp = { center: [1, 2, 3], radius: 2, normal: [0, -1, 0], kind: 'paint' };
+  it('matches a copy by value', () => {
+    expect(sameStamp(a, JSON.parse(JSON.stringify(a)) as ZoneStamp)).toBe(true);
+  });
+  it('tells apart any differing field', () => {
+    expect(sameStamp(a, { ...a, center: [1, 2, 3.5] })).toBe(false);
+    expect(sameStamp(a, { ...a, radius: 3 })).toBe(false);
+    expect(sameStamp(a, { ...a, normal: [0, 1, 0] })).toBe(false);
+    expect(sameStamp(a, { ...a, kind: 'erase' })).toBe(false);
   });
 });
