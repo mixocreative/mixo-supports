@@ -115,7 +115,7 @@ How Resin UV builds live supports. This was read node by node from the Geometry 
 ## 7. Label: MIXO_Label
 
 1. **Anchor**: from the support vertices with z ≤ Pad Height + 0.01, take the one nearest the bbox corner (max x, min y).
-2. **Letters**: `String to Curves` in Blender's Bfont (Size, align Left / Top Baseline), filled. W and H are the letters' bbox plus 2 × Margin.
+2. **Letters**: `String to Curves` in Inter Regular (the add-on's bundled static Inter 4.1; Size, align Left / Top Baseline), filled as triangles. W and H are the letters' bbox plus 2 × Margin.
 3. **Pad**: a frustum from z = 0 to Pad Height (= raft Wall Height). The bottom is W × H; the top is wider by Pad Height × tan(Wall Angle) on each side.
 4. Placement: the pad is centred on anchor + (Offset X, Offset Y); the letters are extruded Height upward from the pad top and centred on the same point.
 
@@ -135,11 +135,11 @@ Points → SLASG_Line → SLASG_Truss2 (when Bracing is on) → SLASG_Realizer, 
 | Raft floor flare, rim inset, gapped wall runs | implemented as Blender |
 | Edge anchors (`rebuild_edge_candidates`) | exact: point for point, same order |
 | Poisson interior | on R (the remesh, built and ordered exactly like Blender's: every triangle, then every quad, leaf by leaf) with Blender's RNG: point for point on the mushroom (22 of 22 within 0.01 mm) |
-| Island minima | on R, bit for bit with SLASG_VertexScatter at every stage (`blenderMinima.test.ts` against `tools/blender-parity/minima_stages.json`): candidates by the lowest-edge-midpoint rule; Merge by Distance through Blender's KD-tree on Blender axes, positions mixed in single precision (each member × 1/n, summed in index order); snap and normal sample through a port of Blender's point BVH (`analysis/blenderBvh.ts`: padded leaves, implicit binary tree, depth-first nearest; the snap lands on the leaf box, up to FLT_EPSILON from the vertex); single-precision true vertex normals (Newell faces, approximate corner angles) and acos compare |
+| Island minima | on R, following SLASG_VertexScatter stage by stage (`blenderMinima.test.ts` against `tools/blender-parity/minima_stages.json`, tie-aware since Release 2 Task 10): candidates by the lowest-edge-midpoint rule (bit for bit); Merge by Distance on Blender axes (`analysis/mergeByDistance.ts`, points exactly Spacing apart merge), positions mixed in single precision (each member × 1/n, summed in index order); snap and normal sample through an exact nearest search (`analysis/nearestPoint.ts`: 2^-23-padded boxes, lowest index wins exact ties; the snap lands on the box, up to FLT_EPSILON from the vertex); single-precision angle-weighted vertex normals (Newell faces, `acosf` corner angles; Blender uses an approximate arccos, so normals agree to about 1e-5 rad and knife-edge normals at exactly Overhang angle may resolve the other way) and acos compare |
 | ManualPoints snap | Poisson and minima points snap to the model surface |
 | Open or broken meshes | not remeshed (a signed distance needs a closed surface); the same Poisson and minima rules run on the model itself |
 | Erase-radius suppression | implemented |
-| Label (Bfont glyphs, Size / 0.686, pad frustum, anchor) | sizes exact; position within 0.4 mm |
+| Label (Inter glyphs, Size / 0.50871, pad frustum, anchor) | sizes exact; position within 0.4 mm |
 | Remesh (Mesh to SDF Grid, Grid to Mesh at adaptivity 0.1) | OpenVDB port, evaluated per 8³ leaf around queried points: vertex for vertex and face for face with Blender on the probe pyramid at adaptivity 0 and 0.1 (`remesh.test.ts`); on a ledge model shifted off the grid, 41 of 754 vertices differ by up to ~0.05 mm, all next to concave corners (OpenVDB sign tracing) |
 | Neck normals: face (nearest polygon), edge (mean vertex normal), vertical | 472 of 476 probe contacts within 0.02 mm, total 0.10 mm (`blenderNecks.test.ts`); the four others are 0.022 mm off |
 | Roof / Cage (Ceiling plates, brace bands, cage rings) | ported: columns, cross bars, slab, plates and rings match per case (`blenderRoof.test.ts`) |
