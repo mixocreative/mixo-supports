@@ -35,15 +35,17 @@ function headerCount(head: Uint8Array): number {
 }
 
 /**
- * Exact triangle count of a binary STL from its size, checked against the header: the header
- * count when it matches, else the size's count when the records fit exactly (some exporters write
- * 0 or garbage there), else a format error.
+ * Exact triangle count of a binary STL, as STLLoader reads it but capped by the file size: the
+ * header count when its records fit in the file (trailing bytes are ignored, as STLLoader does),
+ * else the size's count when the records are whole (exporters that write 0 or garbage there), else
+ * a format error. Never more triangles than the file holds, so a lying header cannot get past the
+ * size refusal.
  */
 export function binaryStlTriangles(head: Uint8Array, size: number): number {
   if (size < HEADER_BYTES) throw new StlFormatError('the STL file is too short to hold any triangle');
-  const fromSize = (size - HEADER_BYTES) / FACET_BYTES;
   const header = headerCount(head);
-  if (header === fromSize) return header;
+  if (header > 0 && HEADER_BYTES + header * FACET_BYTES <= size) return header;
+  const fromSize = (size - HEADER_BYTES) / FACET_BYTES;
   if (Number.isInteger(fromSize)) return fromSize;
   throw new StlFormatError('the STL file is truncated or damaged (its size does not match whole triangles)');
 }
@@ -109,6 +111,7 @@ export class StlWelder {
     if (this.kind === 'ascii') {
       this.pushAscii(this.decoder!.decode(), true);
       if (this.corner === 0) throw new StlFormatError('the STL file contains no triangles');
+      if (this.corner % 3 !== 0) throw new StlFormatError('the STL file is truncated or damaged (a facet has fewer than three vertices)');
       return { positions: this.welder.finish(), indices: Uint32Array.from(this.ascii) };
     }
     if (this.corner < this.triangles * 3) throw new StlFormatError('the STL file is truncated or damaged (fewer triangles than its header says)');

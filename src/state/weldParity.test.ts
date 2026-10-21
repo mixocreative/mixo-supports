@@ -81,6 +81,28 @@ describe('typed-array weld matches three mergeVertices', () => {
     expectSame(welder.finish(), threeStl(buffer));
   });
 
+  it('binary STL with trailing padding (header count read, tail ignored, as STLLoader)', () => {
+    const exact = new Uint8Array(binaryStl(soupOf(new TorusKnotGeometry(10, 3, 32, 6), 0)));
+    const padded = new Uint8Array(exact.length + 13);
+    padded.set(exact);
+    expectSame(parseStl(padded.buffer), threeStl(padded.buffer));
+  });
+
+  it('edge cases: signed zeros, tiny negatives, duplicate and degenerate triangles, int32 wrap, table growth', () => {
+    const next = random(5);
+    const triangles: number[][] = [
+      [0, 0, 0, -0, 0, 1, 1, -0, 0],
+      [-0.00004, 0, 0, 0, -0.00009, 1, 1, 0, -0.00001],
+      [0, 0, 0, -0, 0, 1, 1, -0, 0], // duplicate
+      [2, 2, 2, 2, 2, 2, 3, 3, 3], // degenerate (two equal corners)
+      [214_748.4, 1, 1, 214_749, 1, 1, -300_000, 5, 5], // ~~ wraps past int32 the same way in both
+    ];
+    // Many distinct vertices: the weld table grows past its first size.
+    for (let t = 0; t < 4000; t += 1) triangles.push(Array.from({ length: 9 }, () => (next() - 0.5) * 100));
+    const buffer = binaryStl(new Float32Array(triangles.flat()));
+    expectSame(parseStl(buffer), threeStl(buffer));
+  });
+
   it('ASCII STL', () => {
     const buffer = asciiStl(soupOf(new TorusKnotGeometry(10, 3, 40, 8), 2e-4, 3));
     expectSame(parseStl(buffer), threeStl(buffer));
