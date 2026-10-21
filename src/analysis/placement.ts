@@ -105,13 +105,12 @@ export function composeContacts(
   const markers = suppressed.map(positionFromId).filter((point): point is Vector => point !== undefined);
   const erased = (point: SupportPoint) => hidden.has(point.id)
     || (eraseRadius > 0 && markers.some((marker) => distance(marker, point.position) < eraseRadius));
-  let remainingAuto = auto.filter((point) => !erased(point));
+  const autoIds = new Set(auto.map((point) => point.id));
+  const exact = new Set(deleted.filter((id) => autoIds.has(id)));
+  let remainingAuto = auto.filter((point) => !erased(point) && !exact.has(point.id));
+  // Deleted IDs absent from `auto` are from before the spots moved: drop the nearest one each.
   for (const id of deleted) {
-    if (remainingAuto.some((point) => point.id === id)) {
-      remainingAuto = remainingAuto.filter((point) => point.id !== id);
-      continue;
-    }
-    const target = positionFromId(id);
+    const target = exact.has(id) ? undefined : positionFromId(id);
     if (!target) continue;
     let nearest: SupportPoint | undefined;
     let nearestDistance = matchRadius;

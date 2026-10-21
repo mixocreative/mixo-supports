@@ -179,6 +179,11 @@ describe('exact deletions', () => {
       .toEqual(['auto-60_100_0', 'auto-300_100_0']);
     expect(composeContacts([point(2)], [], [], 0, ['auto-0_100_0'], 1).map((p) => p.id)).toEqual(['auto-200_100_0']);
   });
+
+  it('a contact both erased by a marker and deleted never takes a neighbour with it', () => {
+    const auto = [point(0), point(0.6)];
+    expect(composeContacts(auto, [], ['auto-0_100_0'], 0.5, ['auto-0_100_0'], 1).map((p) => p.id)).toEqual(['auto-60_100_0']);
+  });
 });
 
 describe('placement toggles', () => {
