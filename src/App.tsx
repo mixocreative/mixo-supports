@@ -18,7 +18,7 @@ import { emptyScene, type PrintScene, type PrintUnit, type SceneCommand, type Su
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
 import { exportUnits, planExport, type ExportKind } from './supports/export';
 import { meshBounds, type GeneratedSupportMesh, type Vector } from './supports/mesh';
-import { zonedAt, type ZoneStamp } from './supports/zones';
+import { problemInZone, type ZoneStamp } from './supports/zones';
 import { contactsInBrush, deleteCommands, paintSelection, pruneSelection, toggleSelection, type BrushMode } from './supports/selection';
 import { applyPreset, defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings, type SettingKey } from './supports/settings';
 import { resolveSettings, unitContacts, unitSupportMesh } from './supports/unitSupports';
@@ -289,8 +289,8 @@ export default function App() {
   }, [analysis, dispatch, setStatus, setTask, targets, unitName]);
 
   // ---- Support check -------------------------------------------------------------------
-  /** Checks the units' current contacts; resolves with the number of spots found. */
-  const runCheck = useCallback(async (units: readonly PrintUnit[]): Promise<number> => {
+  /** Checks the units' current contacts; resolves with the spots found outside and inside no-support zones. */
+  const runCheck = useCallback(async (units: readonly PrintUnit[]): Promise<{ spots: number; inZone: number }> => {
     const checked = await Promise.all(units.filter((unit) => unit.supports).map(async (unit) => {
       const settings = resolveSettings(unit.settings);
       const orientation = orientationOf(unit);
@@ -303,16 +303,19 @@ export default function App() {
           unitContacts(unit).map((contact) => transformPoint(orientation, contact.position)),
           { overhangAngleDegrees: settings.scatterAngle, spacing: settings.scatterSpacing },
         );
-        if (!found) return 0;
+        if (!found) return { spots: 0, inZone: 0 };
+        // Spots face down on the plate: plate down in unit-local space keeps a zone on the far side of a thin floor out.
+        const down = inverseTransformDirection(orientation, [0, -1, 0]);
         const items = found.map((problem) => ({ ...problem, unitId: unit.id, position: inverseTransformPoint(orientation, problem.position) }))
-          .map((problem) => ({ ...problem, inZone: zonedAt(unit.zones, problem.position) }));
+          .map((problem) => ({ ...problem, inZone: problemInZone(unit.zones, problem.position, down) }));
         setProblems((current) => new Map(current).set(unit.id, { unit, items }));
-        return items.length;
+        const inZone = items.filter((problem) => problem.inZone).length;
+        return { spots: items.length - inZone, inZone };
       } finally {
         setTask(key, undefined);
       }
     }));
-    return checked.reduce((sum, count) => sum + count, 0);
+    return checked.reduce((sum, count) => ({ spots: sum.spots + count.spots, inZone: sum.inZone + count.inZone }), { spots: 0, inZone: 0 });
   }, [analysis, setTask, unitName]);
 
   /** Findings for units unchanged since their check (an edited unit is re-checked shortly). */
@@ -338,7 +341,7 @@ export default function App() {
     if (units.length === 0) return setStatus('Generate supports before checking them.');
     setStatus('Checking supports on 1 object.', { n: units.length }, 'Checking supports on {n} objects.');
     runCheck(units).then(
-      (count) => (count === 0 ? setStatus('No unsupported spots found.') : setStatus('1 spot may print unsupported: see Check supports.', { n: count }, '{n} spots may print unsupported: see Check supports.')),
+      ({ spots, inZone }) => (spots + inZone === 0 ? setStatus('No unsupported spots found.') : setStatus('1 spot may print unsupported: see Check supports.', { n: spots + inZone }, '{n} spots may print unsupported: see Check supports.')),
       (error: Error) => setStatus('Support check failed: {error}', { error: error.message }),
     );
   }, [runCheck, setStatus, targets]);
@@ -478,11 +481,12 @@ export default function App() {
 
   const fixProblem = useCallback((problem: UnitProblem) => {
     showProblem(problem);
+    if (editModeRef.current === 'zones') return setStatus('Finish painting zones first: press Esc or Done.');
     if (editModeRef.current !== 'off' && sceneRef.current.activeUnitId === problem.unitId) return;
     setEditMode('off');
     dispatch({ type: 'selection/set', unitIds: [problem.unitId], activeUnitId: problem.unitId });
     setEditTarget(problem.unitId);
-  }, [dispatch, showProblem]);
+  }, [dispatch, setStatus, showProblem]);
   useEffect(() => {
     if (!editTarget || scene.activeUnitId !== editTarget) return;
     setEditTarget(undefined);
@@ -599,7 +603,7 @@ export default function App() {
     setExporting(true);
     setStatus('Preparing export at full resolution.');
     // The check runs alongside, on the analysis workers, so the export can warn about gaps.
-    const checking = runCheck(units.map(([unit]) => unit)).catch(() => 0);
+    const checking = runCheck(units.map(([unit]) => unit)).catch(() => ({ spots: 0, inZone: 0 }));
     const label = { key: files.length === 1 ? 'Exporting {name}' : 'Exporting {n} files', vars: { name: files[0]!.fileName, n: files.length } };
     try {
       const written = await exporter().exportFiles(units, files, (fraction, stage) => setTask('export', { label, stage, fraction }));
@@ -612,8 +616,11 @@ export default function App() {
         window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
       const names = written.map((file) => file.fileName).join(', ');
-      const spots = await checking;
-      if (spots > 0) setStatus('Exported {files}. 1 spot may print unsupported: see Check supports.', { files: names, n: spots }, 'Exported {files}. {n} spots may print unsupported: see Check supports.');
+      // Spots inside no-support zones are left unsupported on purpose: not counted, only mentioned.
+      const { spots, inZone } = await checking;
+      if (spots > 0 && inZone > 0) setStatus('Exported {files}. 1 spot may print unsupported ({m} more inside no-support zones): see Check supports.', { files: names, n: spots, m: inZone }, 'Exported {files}. {n} spots may print unsupported ({m} more inside no-support zones): see Check supports.');
+      else if (spots > 0) setStatus('Exported {files}. 1 spot may print unsupported: see Check supports.', { files: names, n: spots }, 'Exported {files}. {n} spots may print unsupported: see Check supports.');
+      else if (inZone > 0) setStatus('Exported {files}. 1 unsupported spot is inside a no-support zone.', { files: names, n: inZone }, 'Exported {files}. {n} unsupported spots are inside no-support zones.');
       else setStatus('Exported {files}.', { files: names });
     } catch (error) {
       setStatus('Export failed: {error}', { error: error instanceof Error ? error.message : t('support building error') });
@@ -742,7 +749,7 @@ export default function App() {
           <h3>{t('No-support zones')}{activeUnit && <small className="count">{activeUnit.zones.length ? t('Painted') : t('None')}</small>}</h3>
           <div className="row">
             <button onClick={() => openZones(editMode === 'edit' ? 'edit' : 'off')} disabled={!activeUnit || editMode === 'zones'}>{t('Paint zones')}</button>
-            <button className="danger" onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length}>{t('Clear')}</button>
+            <button className="danger" aria-label={t('Clear all zones')} onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length}>{t('Clear')}</button>
           </div>
           <p className="help">{t('Paint where supports must not grow. Manual supports stay.')}</p>
         </section>

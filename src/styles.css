@@ -406,7 +406,7 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 }
 .problems button { padding: 4px 8px; font-size: 12px; white-space: nowrap; }
 .problem-text { display: grid; min-width: 0; }
-.problem-text small { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.problem-text small { color: var(--muted); font-size: 11px; white-space: normal; overflow-wrap: anywhere; }
 .problem-kind { width: 10px; height: 10px; border-radius: 50%; }
 .problem-kind.island { background: #b3261e; }
 .problem-kind.overhang { background: #d97706; }
