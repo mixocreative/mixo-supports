@@ -18,7 +18,7 @@ import { emptyScene, type PrintScene, type PrintUnit, type SceneCommand, type Su
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
 import { exportUnits, planExport, type ExportKind } from './supports/export';
 import { meshBounds, type GeneratedSupportMesh, type Vector } from './supports/mesh';
-import type { ZoneStamp } from './supports/zones';
+import { zonedAt, type ZoneStamp } from './supports/zones';
 import { contactsInBrush, deleteCommands, paintSelection, pruneSelection, toggleSelection, type BrushMode } from './supports/selection';
 import { applyPreset, defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings, type SettingKey } from './supports/settings';
 import { resolveSettings, unitContacts, unitSupportMesh } from './supports/unitSupports';
@@ -54,6 +54,8 @@ const EXPORTS: { kind: ExportKind; label: string }[] = [
 /** A support check finding, its position in the unit's local frame. */
 export interface UnitProblem extends SupportProblem {
   unitId: string;
+  /** The spot lies inside a no-support zone, which is why it has no support. */
+  inZone: boolean;
 }
 
 /** Unit rotation without translation: the frame placement and checks analyse a unit in. */
@@ -302,7 +304,8 @@ export default function App() {
           { overhangAngleDegrees: settings.scatterAngle, spacing: settings.scatterSpacing },
         );
         if (!found) return 0;
-        const items = found.map((problem) => ({ ...problem, unitId: unit.id, position: inverseTransformPoint(orientation, problem.position) }));
+        const items = found.map((problem) => ({ ...problem, unitId: unit.id, position: inverseTransformPoint(orientation, problem.position) }))
+          .map((problem) => ({ ...problem, inZone: zonedAt(unit.zones, problem.position) }));
         setProblems((current) => new Map(current).set(unit.id, { unit, items }));
         return items.length;
       } finally {
@@ -757,7 +760,7 @@ export default function App() {
               <span className={`problem-kind ${problem.kind}`} aria-hidden="true" />
               <span className="problem-text">
                 {problem.kind === 'island' ? t('Island') : t('Uncovered overhang')}
-                <small>{unitName(problem.unitId)}{problem.kind === 'overhang' ? ` · ${t('{n} mm²', { n: Math.round(problem.area) })}` : ''}</small>
+                <small>{unitName(problem.unitId)}{problem.kind === 'overhang' ? ` · ${t('{n} mm²', { n: Math.round(problem.area) })}` : ''}{problem.inZone ? ` · ${t('in a no-support zone')}` : ''}</small>
               </span>
               <button onClick={() => showProblem(problem)}>{t('Show')}</button>
               <button className="primary" onClick={() => fixProblem(problem)}>{t('Fix')}</button>
