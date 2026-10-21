@@ -135,12 +135,14 @@ quoted here are the ones the code uses.
 
 ### 5.3 Selection bodies
 
-- A selected support is drawn whole (tip, pillar, foot): every `components` entry whose
-  `contactId` is selected. Concatenate their `indices.subarray(start, start + count)` into one
-  index buffer over the same positions and draw that as a second mesh.
-- Solid: red `#7f0019` with emissive 0.35, `zOffset = -2` (this app's polygon offset −2) so it
-  sits over the support, `isPickable = false`.
-- See-through previews (Click hover, Drag over under the brush): the same build at alpha 0.45
+- A selected support is drawn whole (tip, pillar, foot) by per-vertex colour on the support mesh
+  itself: `contactVertexRuns(mesh)` gives each contact's vertex ranges, `selectionDelta` what
+  turned on or off; rewrite and upload only those ranges (Babylon: `updateVerticesData` on the
+  colour kind, or a partial update of the colour buffer). Selected `#a8243c`, others the support
+  colour, material colour white with vertex colours on.
+- See-through previews (Click hover, Drag over under the brush): concatenate the previewed
+  components' `indices.subarray(start, start + count)` into one index buffer over the same
+  positions, at alpha 0.45
   with `disableDepthWrite`; Drag over → Unselect previews the selected ones under the brush in
   grey `#3b3631` and takes them off the solid red. A remove click's targets show solid red.
 - Which ids: `session.selection`, `brushHits(bodySegments(shown), projectBodies(...), from, to, radiusPx, isVisible, want)` for the

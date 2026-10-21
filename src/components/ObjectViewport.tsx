@@ -12,6 +12,7 @@ import type { PrintScene, PrintUnit } from '../state/project';
 import type { ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../core/supports/mesh';
 import { notSelected } from '../editing/selection';
+import { contactVertexRuns, createHitBatch, frameBudget, selectionDelta } from '../editing/selectionPaint';
 import { bodySegments, brushHitsFrom, cachedVisibility, hiddenByModel, projectBodies, type BodySegments } from '../editing/screenBrush';
 import type { BrushMode, EditMode, EditTool, SelectStyle, ZoneKind } from '../editing/types';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
@@ -378,8 +379,6 @@ interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMe
   onGroup?: (group: THREE.Group | null) => void;
 }
 
-/** Most ms of Drag over hit tests per animation frame; the rest waits for the next frame. */
-const FRAME_BUDGET = 8;
 /** Models hide supports from Drag over; supports never hide each other. */
 const OCCLUDER = { occluder: true };
 
@@ -486,13 +485,21 @@ function useScreenBrush(options: {
     /** Ids this stroke already painted: never tested again, though the selection prop lags a render. */
     const strokePainted = new Set<string>();
     let frame = 0;
+    /** Stroke hits of this frame, committed to the selection once at the end of the frame. */
+    const batch = createHitBatch();
+    /** When the last frame's hit tests ended, and the smoothed render time between frames (ms). */
+    let lastEnd = 0;
+    let renderMs = 8;
     const flush = () => {
       if (frame) cancelAnimationFrame(frame);
       frame = 0;
       const { brush, selection } = live.current;
       if (!brush || (steps.length === 0 && !hover)) return;
       const started = performance.now();
-      const stop = () => performance.now() - started > FRAME_BUDGET;
+      // Time since the hit tests of the last frame is what rendering took (when frames run back to back).
+      if (lastEnd > 0 && started - lastEnd < 1000) renderMs = renderMs * 0.7 + (started - lastEnd) * 0.3;
+      const budget = frameBudget(renderMs);
+      const stop = () => performance.now() - started > budget;
       const projected = project(size.width, size.height);
       if (projected) {
         occluders = visibleOccluders();
@@ -500,21 +507,20 @@ function useScreenBrush(options: {
         const want = (id: string) => selection.has(id) !== adding;
         if (steps.length > 0) {
           // A stroke: the circle sweeps every queued step; painted ids are the preview too.
-          const painted: string[] = [];
+
           while (steps.length > 0) {
             const step = steps[0]!;
             const part = brushHitsFrom(step.next, bodies, projected, step.from, step.to, brush.radius, visibility.isVisible, (id) => !strokePainted.has(id) && want(id), stop);
-            for (const id of part.hits) {
-              painted.push(id);
-              strokePainted.add(id);
-            }
+            batch.add(part.hits);
+            for (const id of part.hits) strokePainted.add(id);
             if (part.next < bodies.ids.length) {
               step.next = part.next;
               break;
             }
             steps.shift();
           }
-          if (painted.length > 0) live.current.onPaint(painted, brush.mode);
+          // One selection commit per frame, however many steps were tested in it.
+          if (batch.size > 0) live.current.onPaint(batch.take(), brush.mode);
         } else if (hover) {
           const part = brushHitsFrom(hover.next, bodies, projected, undefined, hover.at, brush.radius, visibility.isVisible, want, stop);
           hover.found.push(...part.hits);
@@ -525,6 +531,7 @@ function useScreenBrush(options: {
       }
       // Dev builds time each frame of hit tests (read with performance.getEntriesByName('mixo-brush-frame')).
       if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) performance.measure('mixo-brush-frame', { start: started });
+      lastEnd = performance.now();
       if (steps.length > 0 || hover) schedule();
     };
     const schedule = () => {
@@ -587,6 +594,64 @@ function useScreenBrush(options: {
     };
   }, [active, bodies, gl, camera, scene]);
   return active ? brushed : [];
+}
+
+/** Selected supports' colour in the vertex-colour highlight (stands in for red plus its glow). */
+const SELECTED_COLOR = '#a8243c';
+/** Above this many changed ranges a whole re-upload is cheaper than many small ones. */
+const MAX_RANGES = 512;
+
+/** Linear 8-bit RGB of a CSS colour (vertex colours are in the linear working space). */
+function linearBytes(css: string): [number, number, number] {
+  const color = new THREE.Color(css);
+  return [Math.round(color.r * 255), Math.round(color.g * 255), Math.round(color.b * 255)];
+}
+
+/**
+ * The selection highlight as per-vertex colour on the support mesh itself: each change recolours
+ * only the vertex ranges of supports that turned on or off (`selectionDelta`, `contactVertexRuns`)
+ * and uploads just those ranges, instead of building a mesh of the selected bodies per paint.
+ * Returns whether the mesh is coloured this way (Support Edit Mode, outside zones).
+ */
+function useSelectionColors(geometry: THREE.BufferGeometry | undefined, supports: GeneratedSupportMesh | undefined, on: boolean, solidIds: readonly string[], baseColor: string): boolean {
+  const runs = useMemo(() => (on && supports ? contactVertexRuns(supports) : undefined), [on, supports]);
+  const drawn = useRef<{ geometry?: THREE.BufferGeometry; base: string; ids: ReadonlySet<string> }>({ base: '', ids: new Set() });
+  useLayoutEffect(() => {
+    if (!geometry || !runs) return;
+    const solid = new Set(solidIds);
+    const count = geometry.getAttribute('position').count;
+    let colors = geometry.getAttribute('color') as THREE.BufferAttribute | undefined;
+    const fresh = !colors || colors.count !== count;
+    if (!colors || fresh) {
+      colors = new THREE.BufferAttribute(new Uint8Array(count * 3), 3, true);
+      geometry.setAttribute('color', colors);
+    }
+    const array = colors.array as Uint8Array;
+    const base = linearBytes(baseColor);
+    const red = linearBytes(SELECTED_COLOR);
+    const paint = (id: string, rgb: [number, number, number], ranges?: [number, number][]) => {
+      for (const [start, end] of runs.get(id) ?? []) {
+        for (let v = start; v < end; v++) array.set(rgb, v * 3);
+        ranges?.push([start, end]);
+      }
+    };
+    const last = drawn.current;
+    const delta = fresh || last.geometry !== geometry || last.base !== baseColor ? undefined : selectionDelta(last.ids, solid);
+    if (delta && delta.on.length === 0 && delta.off.length === 0) return;
+    const ranges: [number, number][] = [];
+    if (delta) {
+      for (const id of delta.off) paint(id, base, ranges);
+      for (const id of delta.on) paint(id, red, ranges);
+    } else {
+      for (let v = 0; v < count; v++) array.set(base, v * 3);
+      for (const id of solid) paint(id, red);
+    }
+    colors.clearUpdateRanges();
+    if (delta && ranges.length <= MAX_RANGES) for (const [start, end] of ranges) colors.addUpdateRange(start * 3, (end - start) * 3);
+    colors.needsUpdate = true;
+    drawn.current = { geometry, base: baseColor, ids: solid };
+  }, [geometry, runs, solidIds, baseColor]);
+  return Boolean(geometry && runs);
 }
 
 function UnitObject(props: UnitObjectProps) {
@@ -664,6 +729,7 @@ function UnitObject(props: UnitObjectProps) {
   };
   const groupRef = useRef<THREE.Group | null>(null);
   const { onGroup } = props;
+  const supportColor = props.selected ? '#b59f78' : '#c8b896';
   const setGroup = useCallback((group: THREE.Group | null) => {
     groupRef.current = group;
     onGroup?.(group);
@@ -684,6 +750,7 @@ function UnitObject(props: UnitObjectProps) {
   // Drag over → Select previews only the supports it would add: a selected one keeps its solid red.
   const brushedUnselected = useMemo(() => notSelected(brushed, props.selection), [brushed, props.selection]);
   const solidIds = useMemo(() => (turningBack.length ? selectedIds.filter((id) => !turningBack.includes(id)) : selectedIds), [selectedIds, turningBack]);
+  const selectionColored = useSelectionColors(supportGeometry, supports, editing && !zoning, solidIds, supportColor);
   // The brush going away mid-stroke (tool or mode changed, another object made active) ends the
   // stroke at once, so the orbit is back without waiting for the release.
   const brushing = Boolean(brush || zoneBrush);
@@ -823,13 +890,14 @@ function UnitObject(props: UnitObjectProps) {
         onPointerOut: leave,
       } : {})}
     >
-      <meshStandardMaterial color={props.selected ? '#b59f78' : '#c8b896'} metalness={0} roughness={0.9} />
+      {/* Edited: per-vertex colour carries the selection (`useSelectionColors`); white lets it through. */}
+      {/* Keyed: three compiles vertex colours into the shader, so turning them on needs a new material. */}
+      <meshStandardMaterial key={selectionColored ? 'selection' : 'plain'} color={selectionColored ? '#ffffff' : supportColor} vertexColors={selectionColored} metalness={0} roughness={0.9} />
     </mesh>}
     {editing && hover && !brush && <EditPreview hover={hover} unit={unit} {...(zoneBrush
       ? { brush: { radius: zoneBrush.radius, color: zoneBrush.kind === 'paint' ? PREVIEW.zone : PREVIEW.ring } }
       : {})} />}
     {editing && !zoning && supports && supportGeometry && <>
-      <SupportBodies supports={supports} geometry={supportGeometry} ids={solidIds} opacity={1} />
       <SupportBodies supports={supports} geometry={supportGeometry} ids={doomed} opacity={1} />
       {pointed && !props.selection.has(pointed) && <SupportBodies supports={supports} geometry={supportGeometry} ids={[pointed]} opacity={SEE_THROUGH} />}
       {unselecting
