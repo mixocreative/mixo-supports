@@ -24,7 +24,7 @@ one; the add-on's Japanese **オーバーハングの縁を補強** is the label
 | Support Edit Mode | Support Edit Mode | 支撐編輯模式 | サポート編集モード | |
 | Generate | generate, regenerate | 產生 | 生成 | |
 | Import | import | 匯入 | 読み込み (読み込) | |
-| Export | export | 輸出 | 書き出し (書き出) | zh 匯出, ja エクスポート |
+| Export | export | 匯出 | 書き出し (書き出) | zh 輸出, ja エクスポート |
 | Delete | delete (exactly the selected) | 刪除 | 削除 | |
 | Remove (supports) | remove (within Remove radius, or all supports) | 移除 | 削除 | |
 | Paint (zones only) | paint | 塗刷 | 塗る (塗り, 塗装, 塗ります) | en: only for no-support zones |

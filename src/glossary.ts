@@ -33,7 +33,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   { concept: 'Support Edit Mode', en: /\bsupport edit mode\b/i, zh: ['支撐編輯模式'], ja: ['サポート編集モード'] },
   { concept: 'Generate', en: /\b(re)?generat/i, zh: ['產生'], ja: ['生成'] },
   { concept: 'Import', en: /\bimport/i, zh: ['匯入'], ja: ['読み込'] },
-  { concept: 'Export', en: /\bexport/i, zh: ['輸出'], ja: ['書き出'], avoid: { zh: ['匯出'], ja: ['エクスポート'] } },
+  { concept: 'Export', en: /\bexport/i, zh: ['匯出'], ja: ['書き出'], avoid: { zh: ['輸出'], ja: ['エクスポート'] } },
   { concept: 'Delete', en: /\bdelet/i, zh: ['刪除'], ja: ['削除'] },
   { concept: 'Remove (supports)', en: /\bremov/i, zh: ['移除'], ja: ['削除'] },
   { concept: 'Paint (zones only)', en: /\bpaint/i, zh: ['塗刷'], ja: ['塗る', '塗り', '塗装', '塗ります'] },
