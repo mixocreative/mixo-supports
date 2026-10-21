@@ -1,4 +1,4 @@
-type Vector = [number, number, number];
+import type { Vector } from '../core/vec3';
 
 /** Viewing direction used when the camera sits on its target (the app's start view). */
 const START_DIRECTION: Vector = [70, 60, 90];
@@ -23,4 +23,61 @@ export function fitDirection(direction: Vector): Vector {
     length = Math.hypot(y, z);
   }
   return [x / length, y / length, z / length];
+}
+
+/** Framing margin: the framed sphere fills the view up to 1 / 1.15 of its height. */
+export const FRAME_MARGIN = 1.15;
+/** Smallest framed radius (mm), so a tiny object is not framed from inside its own tips. */
+const MIN_FRAME_RADIUS = 1;
+/** Smallest radius (mm) Show me frames around a check finding. */
+export const MIN_SPOT_RADIUS = 5;
+
+/** Orbit camera placement: camera position and the point it orbits around (looks at). */
+export interface CameraView {
+  position: Vector;
+  target: Vector;
+}
+
+/** The bounding sphere of a box (its centre and half its diagonal), as the view frames it. */
+export function boundsSphere(box: { min: Vector; max: Vector }): { center: Vector; radius: number } {
+  const { min, max } = box;
+  const [sx, sy, sz] = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+  return {
+    center: [(min[0] + max[0]) * 0.5, (min[1] + max[1]) * 0.5, (min[2] + max[2]) * 0.5],
+    radius: Math.sqrt(sx * sx + sy * sy + sz * sz) * 0.5,
+  };
+}
+
+/**
+ * Frames a sphere (the selection, or every object) for a perspective camera with vertical field
+ * of view `fovDeg`: `bottom` looks straight up at it from below (a hair off vertical keeps the
+ * orbit's up axis defined, front of the plate at the bottom); `fit` keeps the current viewing
+ * direction (see `fitDirection`).
+ */
+export function frameView(bounds: { center: Vector; radius: number }, fovDeg: number, kind: 'bottom' | 'fit', current?: CameraView): CameraView {
+  const { center } = bounds;
+  const distance = Math.max(bounds.radius, MIN_FRAME_RADIUS) / Math.sin(fovDeg * (Math.PI / 180) / 2) * FRAME_MARGIN;
+  if (kind === 'bottom') return { position: [center[0], center[1] - distance, center[2] + distance * MIN_HORIZONTAL], target: [...center] };
+  const from = current ?? { position: START_DIRECTION, target: [0, 0, 0] };
+  const [x, y, z] = fitDirection([from.position[0] - from.target[0], from.position[1] - from.target[1], from.position[2] - from.target[2]]);
+  return { position: [center[0] + x * distance, center[1] + y * distance, center[2] + z * distance], target: [...center] };
+}
+
+/**
+ * Show me on a support check finding: frames the spot from the current direction, as Fit view
+ * frames objects. The spot counts as a sphere of radius √area (mm), at least 5 mm (an island has no
+ * area), so a large uncovered overhang is framed whole.
+ */
+export function spotView(point: Vector, area: number, fovDeg: number, current: CameraView): CameraView {
+  return frameView({ center: point, radius: Math.max(MIN_SPOT_RADIUS, Math.sqrt(Math.max(area, 0))) }, fovDeg, 'fit', current);
+}
+
+/** The camera is below the build plate (y = 0). */
+export function belowPlate(cameraY: number): boolean {
+  return cameraY < 0;
+}
+
+/** Only contact tips show: the Tips only toggle, or the camera below the plate. */
+export function tipsView(tipsOnly: boolean, below: boolean): boolean {
+  return tipsOnly || below;
 }
