@@ -98,3 +98,22 @@
 - [ ] **Step 2: Run** `npx tsc --noEmit -p . && npx vitest run` — Expected: clean, all pass.
 - [ ] **Step 3: Browser check:** paint a zone over an island-prone area of knot.stl, Check for unsupported spots → item shows the zone label. Screenshot `.playwright-mcp/zones-check.png`.
 - [ ] **Step 4: Commit** `git commit -m "feat: support check marks spots inside no-support zones"`.
+
+---
+
+### Task 5: Module split for the mixomesh port (no behaviour change)
+
+Owner: support generation, the support edit UI and the tips-only preview will be ported to mixomesh, so they must be clean, modular and well structured.
+
+**Files:**
+- Create: `src/components/viewport/SupportBodies.tsx`, `src/components/viewport/EditPreview.tsx`, `src/components/viewport/useSurfaceStroke.ts`, `src/components/viewport/ViewCamera.tsx` (with `PlateSide`), `src/components/viewport/ZoneLayer.tsx` (if Task 3 left it inline), plus a short `src/components/viewport/README.md` listing each module's props and what it depends on
+- Modify: `src/components/ObjectViewport.tsx` (imports instead of inline definitions)
+
+**Interfaces:**
+- Produces: the same components/hooks with explicit props; `useSurfaceStroke({ enabled, onSample, onEnd })` owns pointer-down/move/up + window `pointerup`/`pointercancel`/`blur` + OrbitControls disable/enable + cursor, shared by Drag over select and zone painting (no duplicated stroke code).
+- No module imports App, scene commands or i18n; colours come in as props or a small exported constant.
+
+- [ ] **Step 1:** Move each piece; keep behaviour identical. `ObjectViewport.tsx` should shrink to scene setup + `UnitObject` wiring.
+- [ ] **Step 2: Run** `npx tsc --noEmit -p . && npx vitest run && npm run build` — Expected: clean, all pass.
+- [ ] **Step 3: Browser smoke** (dev server 5199; stop after): Drag over selects and Delete works; zone paint/erase works; Tips only, Fit view, Bottom view work.
+- [ ] **Step 4: Commit** `git commit -m "refactor: support edit viewport pieces into modules for the mixomesh port"`.
