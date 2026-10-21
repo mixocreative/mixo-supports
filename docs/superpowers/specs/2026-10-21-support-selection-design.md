@@ -38,7 +38,9 @@ that overrides a few settings for the selection only.
 - **Select supports → Click**: click a support to select it, click again to unselect. Clicking
   more supports adds them; no Shift needed. Shift/Ctrl+click behave the same.
 - **Select supports → Brush**: drag from the model paints. *Select* adds what the brush touches;
-  *Unselect* removes it. Brush size slider 0.5–10 mm, step 0.5, default 2 mm (view state, not a
+  *Unselect* removes it. The brush reaches only supports on the side facing the camera, never
+  through a thin wall to the far side (PrusaSlicer's sphere brush painting hidden faces is a known
+  complaint). Brush size slider 0.5–10 mm, step 0.5, default 2 mm (view state, not a
   support setting, so the add-on's Erase radius is untouched).
 - **{n} selected / Delete / Clear selection** show only while something is selected and work in
   every tool, brush on or off.
