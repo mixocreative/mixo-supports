@@ -7,6 +7,7 @@ tests) win. Numbers are millimetres, pixels or radians as stated.
 | Rule | Module | Tests |
 |---|---|---|
 | Mode / tool / selection state | `src/editing/session.ts` | `session.test.ts` |
+| Left-panel mode buttons (enter / exit) | `src/editing/modeButtons.ts` | `modeButtons.test.ts` |
 | Keyboard | `src/editing/keys.ts` | `keys.test.ts` (row table) |
 | Pointer clicks | `src/editing/pick.ts` | `pick.test.ts` (row table) |
 | Brush strokes | `src/editing/stroke.ts` | `stroke.test.ts` |
@@ -39,8 +40,22 @@ Session state (`EditSession`): `mode` (`off` | `edit` | `zones`), `zonesReturn` 
       │  └──── openZones(from: off) (Paint zones), needs an active object ─────▶│
       └──────────── closeZones when zonesReturn=off ─────────────────────────────┘
    leave (import, Remove supports, a check's Fix) and "active object gone" → off from any mode.
-   toggleEdit is ignored in zones (zones leaves through Done/Esc/Enter only).
+   toggleEdit is ignored in zones (zones leaves through Done/Esc/Enter or its Exit button only).
 ```
+
+Left-panel mode buttons (`editModeButton`, `zonesButton`): each mode's entry button turns into that
+mode's exit in the same spot and size while the mode is on: pressed (`aria-pressed="true"`, ink fill +
+paper text like any pressed toggle), never red, so the red **Done** `Esc` in the viewport bar stays the one
+primary. Clicking an Exit button sends the same event as Done, return rules included.
+
+| Mode | Edit supports button | No-support zones button |
+|---|---|---|
+| off | **Enter Support Edit Mode** (toggleEdit; needs an editable active object) | **Paint zones** (openZones from off; same need) |
+| edit | **Exit Support Edit Mode**, pressed (toggleEdit → off) | **Paint zones** (openZones from edit) |
+| zones | Enter Support Edit Mode, disabled | **Exit no-support zones**, pressed (closeZones → zonesReturn, like Done) |
+
+Terms: en Exit Support Edit Mode / Exit no-support zones; zh-Hant 離開支撐編輯模式 / 離開免支撐區;
+ja サポート編集モードを終了 / サポート禁止エリアの編集を終了. Hints are the existing Done hints.
 
 Lifetime rules:
 - The selection empties on every mode change and whenever the active object changes.

@@ -15,6 +15,7 @@ import ObjectViewport, { acceptModelFile, type GizmoMode, type ViewRequest } fro
 import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
 import { hint } from './components/hint';
+import { editModeButton, zonesButton, type ModeButton } from './editing/modeButtons';
 import { canUndo as historyCanUndo, createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
 import { gltfRawMeshes, placeImportedUnits } from './state/import';
 import { setDisplayMesh, setPrebuiltBvh } from './state/meshExtras';
@@ -540,6 +541,12 @@ export default function App() {
     if (!refuseHeavy()) send({ type: 'openZones', from, activeUnitId: sceneRef.current.activeUnitId });
   }, [refuseHeavy, send]);
   const closeZones = useCallback(() => send({ type: 'closeZones' }), [send]);
+  /** A left-panel mode button: enters its mode, or exits it exactly like Done. */
+  const pressModeButton = useCallback(({ event }: ModeButton) => {
+    if (event.type === 'openZones') openZones(event.from);
+    else if (event.type === 'closeZones') closeZones();
+    else toggleEditMode();
+  }, [closeZones, openZones, toggleEditMode]);
   /** One stroke is one undo step, on the active object only. */
   const onZoneStroke = useCallback((unitId: string, stamps: ZoneStamp[]) => {
     if (sessionRef.current.mode !== 'zones' || unitId !== sceneRef.current.activeUnitId || stamps.length === 0) return;
@@ -785,6 +792,8 @@ export default function App() {
   // Once every unit in scope has supports, the one generate action becomes Regenerate.
   const scopeUnits = targets(scene);
   const scopeGenerated = scopeUnits.length > 0 && scopeUnits.every((unit) => unit.supports);
+  const editButton = editModeButton(editMode, Boolean(activeUnit) && !activeHeavy);
+  const zonesModeButton = zonesButton(editMode, Boolean(activeUnit) && !activeHeavy);
 
   return <main>
     <header>
@@ -839,15 +848,13 @@ export default function App() {
         </section>
         <section>
           <h3>{t('Edit supports')}</h3>
-          <button className={editMode === 'edit' ? 'primary' : ''} aria-pressed={editMode === 'edit'} onClick={toggleEditMode} disabled={editMode === 'zones' || (editMode === 'off' && (!activeUnit || activeHeavy))} {...hint(editMode === 'edit' ? 'Finish editing supports (Esc or Tab)' : 'Add or remove supports by clicking (Tab)')}>
-            {editMode === 'edit' ? t('Done editing') : t('Enter Support Edit Mode')}
-          </button>
+          <button aria-pressed={editButton.pressed} onClick={() => pressModeButton(editButton)} disabled={editButton.disabled} {...hint(editButton.hint)}>{t(editButton.label)}</button>
           <p className="help">{heavyHint ?? (activeUnit ? t('Add or remove supports by clicking the model. Tab toggles.') : t('Select an object first.'))}</p>
         </section>
         <section>
           <h3>{t('No-support zones')}{activeUnit && <small className="count">{activeUnit.zones.length ? t('Painted') : t('None')}</small>}</h3>
           <div className="row">
-            <button onClick={() => openZones(editMode === 'edit' ? 'edit' : 'off')} disabled={!activeUnit || activeHeavy || editMode === 'zones'} {...hint('Paint areas of the model where automatic supports must not grow')}>{t('Paint zones')}</button>
+            <button aria-pressed={zonesModeButton.pressed} onClick={() => pressModeButton(zonesModeButton)} disabled={zonesModeButton.disabled} {...hint(zonesModeButton.hint)}>{t(zonesModeButton.label)}</button>
             <button className="danger" aria-label={t('Clear all zones')} onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear')}</button>
           </div>
           <p className="help">{t('Paint where supports must not grow. Manual supports stay.')}</p>
