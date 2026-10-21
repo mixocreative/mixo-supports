@@ -171,7 +171,63 @@ h3 { font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: .06
   color: var(--ink);
   pointer-events: none;
 }
-.viewport-object-status.editing { color: var(--red); }
+
+/* ---- Support Edit Mode (Blender mixo.support_place: frame, badge, key bar) ---- */
+.viewport-edit-toggle {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 2;
+}
+.viewport--editing canvas { cursor: crosshair; }
+.edit-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 3px solid var(--red);
+  pointer-events: none;
+}
+.edit-badge {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  z-index: 3;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 10px;
+  background: var(--red);
+  color: var(--surface);
+  font-size: 12px;
+  letter-spacing: .06em;
+  pointer-events: none;
+}
+.edit-badge span { opacity: .8; letter-spacing: .02em; }
+.edit-bar {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 3;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 6px 6px 6px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  font-size: 12px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.edit-bar button { padding: 6px 12px; }
+kbd {
+  font: inherit;
+  font-size: 11px;
+  padding: 1px 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--sunken);
+}
+.edit-bar button kbd { margin-left: 6px; background: transparent; border-color: currentColor; opacity: .75; }
 .viewport-note {
   position: absolute;
   right: 18px;

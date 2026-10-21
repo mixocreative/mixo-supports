@@ -32,7 +32,16 @@ After every implementation task, record: the completed requirement; changed file
 - Results: `npm test` 14 files, 132 tests pass. All 19 cases match on every compared dimension; 3-6 of 17 supports per 45-degree case are turned/shortened by SLASG pillar repulsion (0 at 30 degrees) and are counted, not compared.
 - Next step: read SLASG's neck/pillar node group in Blender to replicate pillar repulsion, then tighten the test to compare every support.
 
-## Latest completed step (STL axis)
+## Latest completed step (Support Edit Mode)
+
+Port of Blender `mixo.support_place`: one toggle (viewport "Edit supports" button, sidebar
+button, Tab); Esc / Enter / Done exit. Red frame, "Support Edit Mode · unit" badge and key bar
+in the viewport; crosshair cursor. Click model = add; right-click or Ctrl+click a support or the
+model = remove every contact within Erase Radius (Blender `remove_manual_near`); braces and raft
+pass the pick through. Selection, gizmo and G/R/Delete are locked; undo stops at the scene the
+mode was entered with. The mode ends when the active unit goes, on import and on Remove supports.
+
+## Previous step (STL axis)
 
 STL is Z-up; the editor is Y-up. `importStlUnit` rotates -90° about X (web = STL (x, z, -y)) and
 `encodeStl` writes STL (x, -z, y), so files open upright in slicers and round-trip unchanged

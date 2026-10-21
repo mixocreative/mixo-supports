@@ -57,6 +57,17 @@ export default function App() {
 
   const [status, setStatus] = useState('Drop STL, GLB or glTF files to begin. Every mesh becomes a print unit.');
   const [editMode, setEditMode] = useState<EditMode>('off');
+  const editModeRef = useRef(editMode);
+  editModeRef.current = editMode;
+  // Like Blender's Support Edit Mode, undo inside the mode stops at the scene it was entered with.
+  const historyRef = useRef(history);
+  historyRef.current = history;
+  const undoFloor = useRef(0);
+  const canUndo = history.past.length > (editMode === 'off' ? 0 : undoFloor.current);
+  const undo = useCallback(() => {
+    const floor = editModeRef.current === 'off' ? 0 : undoFloor.current;
+    if (historyRef.current.past.length > floor) dispatchHistory({ type: 'undo' });
+  }, []);
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>('translate');
   const [modelVisible, setModelVisible] = useState(true);
   const [wireframe, setWireframe] = useState(false);
@@ -65,6 +76,10 @@ export default function App() {
 
   const activeUnit = scene.units.find((unit) => unit.id === scene.activeUnitId);
   const activeIndex = activeUnit ? scene.units.indexOf(activeUnit) : -1;
+  // Support Edit Mode belongs to the active unit: it ends when that unit goes (delete, undo).
+  useEffect(() => {
+    if (editMode !== 'off' && !activeUnit) setEditMode('off');
+  }, [activeUnit, editMode]);
   const activeSettings = useMemo(() => resolveSettings(activeUnit?.settings), [activeUnit?.settings]);
   const targets = useCallback((current: PrintScene) => {
     const selected = current.units.filter((unit) => current.selectedUnitIds.includes(unit.id));
@@ -232,6 +247,7 @@ export default function App() {
   const importFiles = useCallback(async (files: readonly File[]) => {
     const accepted = files.filter(acceptModelFile);
     if (accepted.length === 0) return setStatus('Import error: choose STL, GLB or glTF files.');
+    setEditMode('off');
     try {
       const imported: ImportedMesh[][] = [];
       for (const file of accepted) {
@@ -279,6 +295,7 @@ export default function App() {
   }, [changeSettings]);
 
   const removeSupports = () => {
+    setEditMode('off');
     const count = forTargets((unit) => (unit.supports ? { type: 'supports/remove', unitId: unit.id } : undefined));
     setStatus(count ? `Removed supports from ${count} unit${count === 1 ? '' : 's'}; models untouched, manual edits kept for regeneration.` : 'No supports to remove.');
   };
@@ -292,9 +309,23 @@ export default function App() {
     dispatch({ type: 'batch', commands: ids.map((unitId) => ({ type: 'unit/remove' as const, unitId })) });
     setStatus(`Deleted ${ids.length} unit${ids.length === 1 ? '' : 's'} (undo restores).`);
   }, [dispatch]);
+  const toggleEditMode = useCallback(() => {
+    if (editModeRef.current !== 'off') {
+      setEditMode('off');
+      return setStatus('Support edits kept.');
+    }
+    if (!sceneRef.current.activeUnitId) return setStatus('Select a unit to edit its supports.');
+    undoFloor.current = historyRef.current.past.length;
+    setEditMode('edit');
+    setStatus('Support Edit Mode: click the model to add, right-click a support to remove.');
+  }, []);
 
   const onSelect = useCallback((unitId: string | null, additive: boolean) => {
     const current = sceneRef.current;
+    if (editModeRef.current !== 'off') {
+      if (unitId !== current.activeUnitId) setStatus('Finish editing supports first: press Esc or Done.');
+      return;
+    }
     if (unitId === null) return dispatch({ type: 'selection/set', unitIds: [] });
     const ids = additive
       ? (current.selectedUnitIds.includes(unitId) ? current.selectedUnitIds.filter((id) => id !== unitId) : [...current.selectedUnitIds, unitId])
@@ -323,7 +354,7 @@ export default function App() {
       type: 'supports/set', unitId, supports: { kind: 'live', data: { transform: { position: [...unit.transform.position], rotation: [...unit.transform.rotation] } } },
     }];
     dispatch({ type: 'batch', commands: [...commands, { type: 'manual/add', unitId, point: contact }] });
-    setStatus('Manual support added.');
+    setStatus(normal[1] > 0 ? 'Support added on a top face: it grows from below.' : 'Support added.');
   }, [dispatch]);
 
   const removeContact = useCallback((unit: PrintUnit, contactId: string): SceneCommand => (
@@ -332,23 +363,27 @@ export default function App() {
       : { type: 'suppression/add', unitId: unit.id, pointId: contactId }
   ), []);
 
+  // Like Blender's remove_manual_near: every contact within Erase Radius of the pick goes.
+  const eraseNear = useCallback((unit: PrintUnit, local: [number, number, number]) => {
+    const radius = resolveSettings(unit.settings).eraseRadius;
+    const hits = unitContacts(unit).filter((contact) => Math.hypot(...contact.position.map((value, axis) => value - local[axis]!)) <= radius);
+    if (hits.length === 0) return setStatus(`No support here: right-click a support, or the model within ${radius} mm of one.`);
+    dispatch({ type: 'batch', commands: hits.map((contact) => removeContact(unit, contact.id)) });
+    setStatus(`Removed ${hits.length} support${hits.length === 1 ? '' : 's'}; removals persist through regeneration.`);
+  }, [dispatch, removeContact]);
+
   const onRemoveContact = useCallback((unitId: string, contactId: string) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
-    if (!unit) return;
-    dispatch(removeContact(unit, contactId));
-    setStatus('Support removed; the removal persists through regeneration.');
-  }, [dispatch, removeContact]);
+    const contact = unit && unitContacts(unit).find((candidate) => candidate.id === contactId);
+    if (unit && contact) eraseNear(unit, [...contact.position]);
+  }, [eraseNear]);
+
+  const onEditMiss = useCallback(() => setStatus('Nothing under the cursor: click the model to add, right-click a support to remove.'), []);
 
   const onErase = useCallback((unitId: string, point: [number, number, number]) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
-    if (!unit) return;
-    const local = inverseTransformPoint(unit.transform, point);
-    const radius = resolveSettings(unit.settings).eraseRadius;
-    const hits = unitContacts(unit).filter((contact) => Math.hypot(...contact.position.map((value, axis) => value - local[axis]!)) <= radius);
-    if (hits.length === 0) return setStatus(`No support contact within ${radius} mm of the click.`);
-    dispatch({ type: 'batch', commands: hits.map((contact) => removeContact(unit, contact.id)) });
-    setStatus(`Removed ${hits.length} support${hits.length === 1 ? '' : 's'} within ${radius} mm.`);
-  }, [dispatch, removeContact]);
+    if (unit) eraseNear(unit, inverseTransformPoint(unit.transform, point));
+  }, [eraseNear]);
 
   const [exporting, setExporting] = useState(false);
   const runExport = async (kind: ExportKind) => {
@@ -387,15 +422,17 @@ export default function App() {
       const mod = event.ctrlKey || event.metaKey;
       if (mod && event.key.toLowerCase() === 'z') {
         event.preventDefault();
-        dispatchHistory({ type: event.shiftKey ? 'redo' : 'undo' });
+        if (event.shiftKey) dispatchHistory({ type: 'redo' });
+        else undo();
       } else if (mod && event.key.toLowerCase() === 'y') {
         event.preventDefault();
         dispatchHistory({ type: 'redo' });
       } else if (event.key === 'Tab') {
         event.preventDefault();
-        setEditMode((mode) => (mode === 'off' ? 'add' : 'off'));
-      } else if (event.key === 'Escape') {
-        setEditMode('off');
+        toggleEditMode();
+      } else if (editMode !== 'off' && (event.key === 'Escape' || event.key === 'Enter')) {
+        event.preventDefault();
+        toggleEditMode();
       } else if (event.key === 'Delete' && editMode === 'off') {
         deleteUnits();
       } else if (editMode === 'off' && event.key.toLowerCase() === 'g') {
@@ -406,7 +443,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [deleteUnits, editMode]);
+  }, [deleteUnits, editMode, toggleEditMode, undo]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -427,7 +464,7 @@ export default function App() {
       <div className="brand"><h1>Resin Support Studio</h1><small>Mixo supports</small></div>
       <div className="header-actions">
         <div className="toolbar-group">
-          <button onClick={() => dispatchHistory({ type: 'undo' })} disabled={history.past.length === 0} title="Undo (Ctrl+Z)">Undo</button>
+          <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">Undo</button>
           <button onClick={() => dispatchHistory({ type: 'redo' })} disabled={history.future.length === 0} title="Redo (Ctrl+Shift+Z)">Redo</button>
         </div>
         <div className="toolbar-group">
@@ -466,19 +503,15 @@ export default function App() {
         <section>
           <h3>Object</h3>
           <div className="segmented">
-            {(['none', 'translate', 'rotate'] as const).map((mode) => <button key={mode} className={gizmoMode === mode ? 'active' : ''} aria-pressed={gizmoMode === mode} onClick={() => { setGizmoMode(mode); setEditMode('off'); }}>{mode === 'none' ? 'select' : mode === 'translate' ? 'move' : 'rotate'}</button>)}
+            {(['none', 'translate', 'rotate'] as const).map((mode) => <button key={mode} className={gizmoMode === mode ? 'active' : ''} aria-pressed={gizmoMode === mode} onClick={() => setGizmoMode(mode)} disabled={editMode !== 'off'}>{mode === 'none' ? 'select' : mode === 'translate' ? 'move' : 'rotate'}</button>)}
           </div>
         </section>
         <section>
           <h3>Edit supports</h3>
-          <div className="segmented">
-            {(['off', 'add', 'remove'] as const).map((mode) => <button key={mode} className={editMode === mode ? 'active' : ''} aria-pressed={editMode === mode} onClick={() => setEditMode(mode)} disabled={mode !== 'off' && !activeUnit}>{mode}</button>)}
-          </div>
-          <p className="help">{editMode === 'off'
-            ? 'Press Tab to edit the active unit. Shift-click adds units to the selection.'
-            : editMode === 'add'
-              ? 'Click the model to add a support. Right-click or Ctrl-click a support to remove it. Ctrl-click the model to erase nearby supports. Esc when done.'
-              : 'Click a support, or the model near one, to remove it. Esc when done.'}</p>
+          <button className={editMode === 'off' ? '' : 'primary'} aria-pressed={editMode !== 'off'} onClick={toggleEditMode} disabled={editMode === 'off' && !activeUnit}>
+            {editMode === 'off' ? 'Enter Support Edit Mode' : 'Done editing'}
+          </button>
+          <p className="help">{activeUnit ? 'Add or remove supports by clicking the model. Tab toggles.' : 'Select a unit first.'}</p>
         </section>
         <section>
           <h3>Supports for {scopeLabel}</h3>
@@ -488,7 +521,7 @@ export default function App() {
         </section>
       </aside>
       <section
-        className={isDraggingOver ? 'viewport viewport--dropping' : 'viewport'}
+        className={`viewport${isDraggingOver ? ' viewport--dropping' : ''}${editMode === 'off' ? '' : ' viewport--editing'}`}
         onDragOver={(event) => { event.preventDefault(); setIsDraggingOver(true); }}
         onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDraggingOver(false); }}
         onDrop={dropImport}
@@ -505,13 +538,26 @@ export default function App() {
           onAddContact={onAddContact}
           onRemoveContact={onRemoveContact}
           onErase={onErase}
+          onEditMiss={onEditMiss}
         />
         {isDraggingOver && <div className="viewport-drop-overlay">Drop to import</div>}
         <ProgressBar tasks={[...tasks.values()]} />
-        <div className={`viewport-object-status${editMode === 'off' ? '' : ' editing'}`}>
-          {editMode === 'off' ? (activeUnit ? activeUnit.name : 'Nothing selected') : `Editing supports on ${activeUnit?.name ?? 'unit'}`}
-        </div>
-        <div className="viewport-note">Millimetres. Build plate at zero.</div>
+        {editMode === 'off' ? <>
+          <div className="viewport-object-status">{activeUnit ? activeUnit.name : 'Nothing selected'}</div>
+          <button className="viewport-edit-toggle" onClick={toggleEditMode} disabled={!activeUnit} title={activeUnit ? 'Add or remove supports by clicking (Tab)' : 'Select a unit first'}>
+            Edit supports
+          </button>
+          <div className="viewport-note">Millimetres. Build plate at zero.</div>
+        </> : <>
+          <div className="edit-frame" aria-hidden="true" />
+          <div className="edit-badge" role="status">Support Edit Mode<span>{activeUnit?.name}</span></div>
+          <div className="edit-bar">
+            <span><kbd>Click</kbd> add</span>
+            <span><kbd>Right-click</kbd> / <kbd>Ctrl</kbd>+<kbd>Click</kbd> remove</span>
+            <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</span>
+            <button className="primary" onClick={toggleEditMode}>Done <kbd>Esc</kbd></button>
+          </div>
+        </>}
       </section>
       <aside className="panel right">
         <h2>Support settings{activeUnit ? <small>{activeUnit.name}{selectedCount > 1 ? ` and ${selectedCount - 1} more` : ''}</small> : null}</h2>

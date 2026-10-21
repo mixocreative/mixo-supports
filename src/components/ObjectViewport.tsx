@@ -9,8 +9,11 @@ import { transformFromObject, type ModelTransform } from '../state/transform';
 import { contactAtTriangle, type GeneratedSupportMesh } from '../supports/mesh';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
-/** Support edit mode: `add` places contacts (Ctrl/right-click removes); `remove` deletes on click. */
-export type EditMode = 'off' | 'add' | 'remove';
+/**
+ * Support Edit Mode (Blender `mixo.support_place`): click the model to add a contact;
+ * right-click or Ctrl+click a support, or the model near one, to remove it.
+ */
+export type EditMode = 'off' | 'edit';
 
 type Vector = [number, number, number];
 
@@ -37,6 +40,8 @@ export interface ObjectViewportProps {
   onAddContact: (unitId: string, point: Vector, normal: Vector) => void;
   onRemoveContact: (unitId: string, contactId: string) => void;
   onErase: (unitId: string, point: Vector) => void;
+  /** A Support Edit Mode click that hit neither the model nor a support. */
+  onEditMiss: () => void;
 }
 
 function toGeometry(mesh: TriangleMesh): THREE.BufferGeometry {
@@ -54,7 +59,7 @@ function useGeometry(mesh: TriangleMesh | undefined): THREE.BufferGeometry | und
   return geometry;
 }
 
-interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMeshes' | 'gizmoMode' | 'onTransform'> {
+interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMeshes' | 'gizmoMode' | 'onTransform' | 'onEditMiss'> {
   unit: PrintUnit;
   supports?: GeneratedSupportMesh;
   selected: boolean;
@@ -71,27 +76,30 @@ function UnitObject(props: UnitObjectProps) {
     return [normal.x, normal.y, normal.z];
   };
 
-  const clickModel = (event: ThreeEvent<MouseEvent>) => {
+  const clickModel = (event: ThreeEvent<MouseEvent>, remove: boolean) => {
     if (event.delta > CLICK_TOLERANCE) return;
     event.stopPropagation();
     const point: Vector = [event.point.x, event.point.y, event.point.z];
-    if (editMode === 'off') return props.onSelect(unit.id, event.shiftKey);
+    if (editMode === 'off') return remove ? undefined : props.onSelect(unit.id, event.shiftKey);
     if (!props.active) return props.onSelect(unit.id, false);
-    if (editMode === 'remove' || event.ctrlKey || event.metaKey) return props.onErase(unit.id, point);
+    if (remove || event.ctrlKey || event.metaKey) return props.onErase(unit.id, point);
     props.onAddContact(unit.id, point, surfaceNormal(event));
   };
 
   const removeSupport = (event: ThreeEvent<MouseEvent>, force: boolean) => {
-    if (event.delta > CLICK_TOLERANCE || editMode === 'off' || !supports || event.faceIndex == null) return;
-    if (!force && editMode !== 'remove' && !event.ctrlKey && !event.metaKey) return;
+    if (event.delta > CLICK_TOLERANCE || editMode === 'off' || !props.active || !supports || event.faceIndex == null) return;
+    // A plain left click passes through the support to add on the model behind it.
+    if (!force && !event.ctrlKey && !event.metaKey) return;
+    // Braces, raft and labels belong to no contact: the pick continues behind them.
+    const contactId = contactAtTriangle(supports, event.faceIndex);
+    if (!contactId) return;
     event.stopPropagation();
     event.nativeEvent.preventDefault?.();
-    const contactId = contactAtTriangle(supports, event.faceIndex);
-    if (contactId) props.onRemoveContact(unit.id, contactId);
+    props.onRemoveContact(unit.id, contactId);
   };
 
   return <group ref={props.onGroup} position={unit.transform.position} rotation={unit.transform.rotation} name={unit.id}>
-    {model && <mesh geometry={model} visible={props.modelVisible} onClick={clickModel}>
+    {model && <mesh geometry={model} visible={props.modelVisible} onClick={(event) => clickModel(event, false)} onContextMenu={(event) => clickModel(event, true)}>
       <meshStandardMaterial
         color={props.active ? '#f6f3ec' : props.selected ? '#e6e1d7' : '#cdc8bf'}
         emissive={props.active ? '#7f0019' : '#000000'}
@@ -142,7 +150,11 @@ export default function ObjectViewport(props: ObjectViewportProps) {
 
   return <Canvas
     camera={{ position: [70, 60, 90], fov: 40, near: 0.5, far: 4000 }}
-    onPointerMissed={(event) => { if (props.editMode === 'off' && event.button === 0 && !dragging) props.onSelect(null, false); }}
+    onPointerMissed={(event) => {
+      if (dragging) return;
+      if (props.editMode !== 'off') props.onEditMiss();
+      else if (event.button === 0) props.onSelect(null, false);
+    }}
     onContextMenu={(event) => event.preventDefault()}
   >
     <color attach="background" args={['#e9e6df']} />
