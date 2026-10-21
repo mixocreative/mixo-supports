@@ -32,5 +32,5 @@ one; the add-on's Japanese **オーバーハングの縁を補強** is the label
 | Undo | undo | 復原 | 元に戻す (元に戻) | |
 
 Tool words (mixo-app-style): **Paint / Erase / Brush** mark no-support zones on the surface;
-**Select / Drag over / Size** pick supports. The support setting formerly called "Erase radius"
+**Select / Drag over / Circle size** pick supports. The support setting formerly called "Erase radius"
 is **Remove radius** in English (zh 移除半徑, ja 削除半径 already said remove).

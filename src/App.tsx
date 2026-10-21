@@ -163,6 +163,15 @@ export default function App() {
   const [viewRequest, setViewRequest] = useState<ViewRequest>();
   const requestView = useCallback((kind: ViewRequest['kind']) => setViewRequest((current) => ({ kind, seq: (current?.seq ?? 0) + 1 })), []);
   // Contact tips view (Blender: Only Tip + Ctrl+Numpad 7): view only, settings and export untouched.
+  /** Drag over → Circle size: the circle shows in the view while its slider moves, and 800 ms after. */
+  const [circlePreview, setCirclePreview] = useState(false);
+  const circleTimer = useRef<ReturnType<typeof setTimeout>>();
+  const previewCircle = useCallback((moving: boolean) => {
+    clearTimeout(circleTimer.current);
+    if (moving) setCirclePreview(true);
+    else circleTimer.current = setTimeout(() => setCirclePreview(false), 800);
+  }, []);
+  useEffect(() => () => clearTimeout(circleTimer.current), []);
   /** Tips only: the user's choice, else on by itself below the plate (editing/view). */
   const [tips, setTips] = useState(TIPS_START);
   const onBelowPlate = useCallback((below: boolean) => setTips((state) => tipsCamera(state, below)), []);
@@ -913,6 +922,8 @@ export default function App() {
           <button onClick={() => requestView('fit')} disabled={scene.units.length === 0} {...hint('Frame the selection from the current angle')}>{t('Fit view')}</button>
           <button onClick={() => requestView('bottom')} disabled={scene.units.length === 0} {...hint('Look straight up at the selection to check contact points')}>{t('Bottom view')}</button>
         </div>
+        {/* Circle size preview while its slider moves (centre of the view), gone 800 ms after release. */}
+        {circlePreview && editMode === 'edit' && editTool === 'select' && selectStyle === 'brush' && <div className="brush-circle brush-circle--preview" data-mode={brushMode} style={{ width: brushRadius * 2, height: brushRadius * 2 }} aria-hidden="true" />}
         {isDraggingOver && <div className="viewport-drop-overlay">{t('Drop to import')}</div>}
         <JobActivityPanel />
         <div className="undo-toast-region" role="status" aria-live="polite">
@@ -962,24 +973,34 @@ export default function App() {
               </div>
               {editTool === 'select' && <div className="tool-choice" role="group" aria-label={t('How to select')}>
                 <button aria-pressed={selectStyle === 'click'} onClick={() => send({ type: 'setSelectStyle', style: 'click' })} {...hint('Click supports one at a time to select them')}><PointerIcon />{t('Click')}</button>
-                <button aria-pressed={selectStyle === 'brush'} onClick={() => send({ type: 'setSelectStyle', style: 'brush' })} {...hint('Drag over supports to select many at once, starting anywhere in the view')}><BrushIcon />{t('Drag over')}</button>
+                <div className="tool-stack">
+                  <button aria-pressed={selectStyle === 'brush'} onClick={() => send({ type: 'setSelectStyle', style: 'brush' })} {...hint('Drag over supports to select many at once, starting anywhere in the view')}><BrushIcon />{t('Drag over')}</button>
+                  {/* The tool's own size, under it: shown only while Drag over is the way to select. */}
+                  {selectStyle === 'brush' && <label className="tool-option">
+                    <span className="tool-option-head">{t('Circle size')}<output>{t('{n} px', { n: brushRadius })}</output></span>
+                    <input
+                      type="range" min={8} max={80} step={4} value={brushRadius}
+                      onChange={(event) => { send({ type: 'setBrushRadius', radius: Number(event.target.value) }); previewCircle(true); }}
+                      onPointerDown={() => previewCircle(true)}
+                      onPointerUp={() => previewCircle(false)}
+                      onKeyUp={() => previewCircle(false)}
+                      onBlur={() => previewCircle(false)}
+                      {...hint('Radius of the circle around the pointer, in screen pixels: supports it passes over are selected')}
+                    />
+                  </label>}
+                </div>
               </div>}
               {editTool === 'select' && selectStyle === 'brush' && <>
                 <div className="segmented" role="group" aria-label={t('Dragging over supports')}>
                   <button aria-pressed={brushMode === 'select'} onClick={() => send({ type: 'setBrushMode', mode: 'select' })} {...hint('Dragging adds supports to the selection')}>{t('Select')}</button>
                   <button aria-pressed={brushMode === 'unselect'} onClick={() => send({ type: 'setBrushMode', mode: 'unselect' })} {...hint('Dragging takes supports out of the selection')}>{t('Unselect')}</button>
                 </div>
-                <label className="edit-size">
-                  {t('Size')}
-                  <input type="range" min={8} max={80} step={4} value={brushRadius} onChange={(event) => send({ type: 'setBrushRadius', radius: Number(event.target.value) })} {...hint('Radius of the circle around the pointer, in screen pixels: supports it passes over are selected')} />
-                  <output>{t('{n} px', { n: brushRadius })}</output>
-                </label>
               </>}
+            </div>
+            <div className="edit-row">
               {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
               <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{editTool === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
               <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
-            </div>
-            <div className="edit-row">
               <button onClick={() => openZones('edit')} {...hint('Switch to painting no-support zones; Done comes back here')}>{t('Edit no-support zones →')}</button>
               {selection.size > 0 && <>
                 <span className="edit-count">{t('{n} selected', { n: selection.size })}</span>
