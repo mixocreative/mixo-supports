@@ -180,3 +180,18 @@ it('records exact deletions once and clears them with manual edits', () => {
 - [ ] **Step 2: Browser check**: zoom in until the model fills the viewport, press Fit view → whole selection visible, same angle. Bottom view still works.
 - [ ] **Step 3: Run** `npx tsc --noEmit -p . && npx vitest run && npm run build` — Expected: clean, all pass, build succeeds.
 - [ ] **Step 4: Commit** `git commit -m "feat: Fit view button"`; update memory handoff.
+
+---
+
+### Task 7: Style pass against mixo-app-style
+
+Owner asked the UI follow the skill (`~/.claude/skills/mixo-app-style/SKILL.md`, commit bbf53ee, section "3D viewport tools and modes" and "Colour roles").
+
+**Files:**
+- Modify: `src/styles.css`, `src/App.tsx` (class names only), `src/components/ObjectViewport.tsx` (mark colours only if off)
+
+- [ ] **Step 1: Audit** every control added or moved on this branch (Edit Mode bar, badge, frame, `.viewport-view` group, Tips only/Bottom view/Fit view, Delete/Clear/Done, Size slider) against the skill: red only for the one primary per view, pressed toggle and chosen segment = ink fill, destructive = `.danger` outline, 22px rows, 11.5px text, 2px radius, no shadows, words not icons. Write the findings list into the task report.
+- [ ] **Step 2: Fix** each finding with existing tokens (`tokens.css` values only; add a token only if the skill has it).
+- [ ] **Step 3: Browser check** at 1440px, 1000px and 600px widths in Edit Mode (both tools, Drag over on, 3 selected): nothing overlaps or clips in en, zh-Hant, ja. Screenshots `.playwright-mcp/style-*.png`.
+- [ ] **Step 4: Run** `npx tsc --noEmit -p . && npx vitest run` — Expected: clean, all pass.
+- [ ] **Step 5: Commit** `git commit -m "style: Edit Mode and view controls follow mixo-app-style"`.
