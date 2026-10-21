@@ -47,6 +47,10 @@ describe('pruneSelection', () => {
     expect([...pruneSelection(new Set(['a', 'gone']), contacts)]).toEqual(['a']);
   });
 
+  it('empties when the contacts are gone (undo after Delete leaves no stale selection)', () => {
+    expect(pruneSelection(new Set(['auto-x']), []).size).toBe(0);
+  });
+
   it('keeps identity when none are missing', () => {
     const selected = new Set(['a', 'b']);
     expect(pruneSelection(selected, contacts)).toBe(selected);

@@ -232,14 +232,17 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
   pointer-events: none;
 }
 .edit-badge span { opacity: .8; letter-spacing: .02em; }
+.edit-badge b { font-weight: 600; letter-spacing: .02em; }
 .edit-bar {
   position: absolute;
   top: 12px;
   right: 14px;
   z-index: 3;
   display: flex;
-  gap: 16px;
-  align-items: center;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  max-width: calc(100% - 28px);
   padding: 6px 6px 6px 14px;
   background: var(--surface);
   border: 1px solid var(--line-strong);
@@ -247,6 +250,7 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
   color: var(--ink);
   white-space: nowrap;
 }
+.edit-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 16px; align-items: center; }
 .edit-bar button { padding: 6px 12px; }
 kbd {
   font: inherit;
@@ -397,8 +401,14 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 .problem-kind.island { background: #b3261e; }
 .problem-kind.overhang { background: #d97706; }
 
-/* ---- Edit bar click action ---------------------------------------------- */
+/* ---- Edit bar tools and selection ---------------------------------------- */
 .edit-bar .segmented button { padding: 5px 10px; }
+.edit-size { display: flex; gap: 8px; align-items: center; }
+.edit-size input { width: 96px; accent-color: var(--ink); }
+.edit-size output { min-width: 3.5em; font-variant-numeric: tabular-nums; }
+.edit-count { font-variant-numeric: tabular-nums; }
+/* The wide edit bar takes the top right; the view buttons move to the bottom right meanwhile. */
+.viewport--editing .viewport-view { top: auto; bottom: 14px; }
 
 /* ---- Tablet and phone: viewport on top, panels below, the page scrolls ---- */
 @media (max-width: 1100px) {
@@ -408,7 +418,9 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
   .viewport { grid-area: view; border-bottom: 1px solid var(--line); }
   .left { grid-area: left; overflow: visible; }
   .right { grid-area: right; overflow: visible; }
-  .edit-bar { left: 14px; right: 14px; top: auto; bottom: 12px; justify-content: space-between; flex-wrap: wrap; white-space: normal; }
+  .edit-bar { left: 14px; right: 14px; top: auto; bottom: 12px; max-width: none; align-items: stretch; white-space: normal; }
+  .edit-row { justify-content: space-between; }
+  .viewport--editing .viewport-view { top: 56px; bottom: auto; }
   footer { height: auto; min-height: 32px; flex-wrap: wrap; gap: 6px 18px; padding: 8px 16px; }
   footer strong { margin-left: 0; flex-basis: 100%; }
 }

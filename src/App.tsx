@@ -9,7 +9,7 @@ import { AnalysisClient } from './workers/analysisClient';
 import { ImportClient } from './workers/importClient';
 import { SupportMeshClient, type MeshProgress } from './workers/meshClient';
 import type { MeshMode } from './workers/meshProtocol';
-import ObjectViewport, { acceptModelFile, type EditMode, type GizmoMode } from './components/ObjectViewport';
+import ObjectViewport, { acceptModelFile, type EditMode, type EditTool, type GizmoMode } from './components/ObjectViewport';
 import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
 import { createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
@@ -17,7 +17,8 @@ import { gltfRawMeshes, placeImportedUnits, type ImportedMesh } from './state/im
 import { emptyScene, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
 import { exportUnits, planExport, type ExportKind } from './supports/export';
-import { meshBounds, type GeneratedSupportMesh } from './supports/mesh';
+import { meshBounds, type GeneratedSupportMesh, type Vector } from './supports/mesh';
+import { contactsInBrush, deleteCommands, paintSelection, pruneSelection, toggleSelection, type BrushMode } from './supports/selection';
 import { applyPreset, defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings, type SettingKey } from './supports/settings';
 import { resolveSettings, unitContacts, unitSupportMesh } from './supports/unitSupports';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
@@ -37,6 +38,8 @@ const PLACEMENT_KEYS: ReadonlySet<SettingKey> = new Set<SettingKey>([
 const REGENERATE_DELAY_MS = 350;
 /** Settings edits come in bursts (typing a value); a unit's preview rebuild waits this long. */
 const BUILD_DELAY_MS = 120;
+
+const NO_SELECTION: ReadonlySet<string> = new Set();
 
 // Labels are i18n keys, translated where shown.
 const EXPORTS: { kind: ExportKind; label: string }[] = [
@@ -85,8 +88,13 @@ export default function App() {
     if (historyRef.current.past.length > floor) dispatchHistory({ type: 'undo' });
   }, []);
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>('translate');
-  /** Support Edit Mode click action; Remove makes a tap remove (touch screens have no right-click). */
-  const [tapRemoves, setTapRemoves] = useState(false);
+  // Support Edit Mode tool and selection: view state of the active object, never in history.
+  const [editTool, setEditTool] = useState<EditTool>('add');
+  const [selectStyle, setSelectStyle] = useState<'click' | 'brush'>('click');
+  const [brushMode, setBrushMode] = useState<BrushMode>('select');
+  /** Drag-over reach in mm: a view setting, so the object's Erase radius stays untouched. */
+  const [brushRadius, setBrushRadius] = useState(2);
+  const [selection, setSelection] = useState<ReadonlySet<string>>(NO_SELECTION);
   const [focus, setFocus] = useState<{ point: [number, number, number]; seq: number }>();
   const [bottomView, setBottomView] = useState<{ seq: number }>();
   // Contact tips view (Blender: Only Tip + Ctrl+Numpad 7): view only, settings and export untouched.
@@ -105,6 +113,11 @@ export default function App() {
   useEffect(() => {
     if (editMode !== 'off' && !activeUnit) setEditMode('off');
   }, [activeUnit, editMode]);
+  // The selection empties on leaving Edit Mode or changing the active object; ids that no
+  // longer exist (undo, regeneration) drop out.
+  useEffect(() => setSelection(NO_SELECTION), [editMode, scene.activeUnitId]);
+  const activeContacts = useMemo(() => (activeUnit ? unitContacts(activeUnit) : []), [activeUnit]);
+  useEffect(() => setSelection((current) => pruneSelection(current, activeContacts)), [activeContacts]);
   const activeSettings = useMemo(() => resolveSettings(activeUnit?.settings), [activeUnit?.settings]);
   const targets = useCallback((current: PrintScene) => {
     const selected = current.units.filter((unit) => current.selectedUnitIds.includes(unit.id));
@@ -498,6 +511,27 @@ export default function App() {
     if (unit) eraseNear(unit, inverseTransformPoint(unit.transform, point));
   }, [eraseNear]);
 
+  const onToggleContact = useCallback((unitId: string, contactId: string) => {
+    if (unitId !== sceneRef.current.activeUnitId) return;
+    setSelection((current) => toggleSelection(current, contactId));
+  }, []);
+
+  const onPaint = useCallback((unitId: string, center: Vector, facing: Vector, mode: BrushMode) => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
+    if (!unit || unit.id !== sceneRef.current.activeUnitId) return;
+    const ids = contactsInBrush(unitContacts(unit), center, brushRadius, facing);
+    setSelection((current) => paintSelection(current, ids, mode));
+  }, [brushRadius]);
+
+  // Exactly the selected supports go, in one undo step; the tool stays as it was.
+  const deleteSelected = useCallback(() => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+    if (!unit || selection.size === 0) return;
+    dispatch({ type: 'batch', commands: deleteCommands(unit, [...selection]) });
+    setSelection(NO_SELECTION);
+    setStatus('Deleted 1 support.', { n: selection.size }, 'Deleted {n} supports.');
+  }, [dispatch, selection, setStatus]);
+
   const [exporting, setExporting] = useState(false);
   const runExport = async (kind: ExportKind) => {
     const current = sceneRef.current;
@@ -548,6 +582,12 @@ export default function App() {
       } else if (event.key === 'Tab') {
         event.preventDefault();
         toggleEditMode();
+      } else if (editMode !== 'off' && selection.size > 0 && (event.key === 'Delete' || event.key === 'Backspace')) {
+        event.preventDefault();
+        deleteSelected();
+      } else if (editMode !== 'off' && selection.size > 0 && event.key === 'Escape') {
+        event.preventDefault();
+        setSelection(NO_SELECTION);
       } else if (editMode !== 'off' && (event.key === 'Escape' || event.key === 'Enter')) {
         event.preventDefault();
         toggleEditMode();
@@ -561,7 +601,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [deleteUnits, editMode, toggleEditMode, undo]);
+  }, [deleteSelected, deleteUnits, editMode, selection, toggleEditMode, undo]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -681,7 +721,11 @@ export default function App() {
           onRemoveContact={onRemoveContact}
           onErase={onErase}
           onEditMiss={onEditMiss}
-          tapRemoves={tapRemoves}
+          editTool={editTool}
+          {...(editTool === 'select' && selectStyle === 'brush' ? { brush: { radius: brushRadius, mode: brushMode } } : {})}
+          selection={selection}
+          onToggleContact={onToggleContact}
+          onPaint={onPaint}
           problems={currentProblems}
           {...(focus ? { focus } : {})}
           {...(bottomView ? { bottomView } : {})}
@@ -708,16 +752,42 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : <>
           <div className="edit-frame" aria-hidden="true" />
-          <div className="edit-badge" role="status">{t('Support Edit Mode')}<span>{activeUnit?.name}</span></div>
+          <div className="edit-badge" role="status">
+            {t('Support Edit Mode')}<span>{activeUnit?.name}</span>
+            {editTool === 'select' && <b>{t(selectStyle === 'brush' ? 'Drag over supports to select' : 'Click supports to select')}</b>}
+          </div>
           <div className="edit-bar">
-            <div className="segmented" role="group" aria-label={t('Click action')}>
-              <button aria-pressed={!tapRemoves} className={tapRemoves ? '' : 'active'} onClick={() => setTapRemoves(false)}>{t('Add')}</button>
-              <button aria-pressed={tapRemoves} className={tapRemoves ? 'active' : ''} onClick={() => setTapRemoves(true)}>{t('Remove')}</button>
+            <div className="edit-row">
+              <div className="segmented" role="group" aria-label={t('Edit tool')}>
+                <button aria-pressed={editTool === 'add'} onClick={() => setEditTool('add')}>{t('Add supports')}</button>
+                <button aria-pressed={editTool === 'select'} onClick={() => setEditTool('select')}>{t('Select supports')}</button>
+              </div>
+              {editTool === 'select' && <div className="segmented" role="group" aria-label={t('How to select')}>
+                <button aria-pressed={selectStyle === 'click'} onClick={() => setSelectStyle('click')}>{t('Click')}</button>
+                <button aria-pressed={selectStyle === 'brush'} onClick={() => setSelectStyle('brush')}>{t('Drag over')}</button>
+              </div>}
+              {editTool === 'select' && selectStyle === 'brush' && <>
+                <div className="segmented" role="group" aria-label={t('Dragging over supports')}>
+                  <button aria-pressed={brushMode === 'select'} onClick={() => setBrushMode('select')}>{t('Select')}</button>
+                  <button aria-pressed={brushMode === 'unselect'} onClick={() => setBrushMode('unselect')}>{t('Unselect')}</button>
+                </div>
+                <label className="edit-size">
+                  {t('Size')}
+                  <input type="range" min={0.5} max={10} step={0.5} value={brushRadius} onChange={(event) => setBrushRadius(Number(event.target.value))} />
+                  <output>{t('{n} mm', { n: brushRadius })}</output>
+                </label>
+              </>}
+              <span className="edit-hint"><kbd>{t('Right-click')}</kbd> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd> {t('remove')}</span>
+              <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
             </div>
-            <span className="edit-hint"><kbd>{t('Click')}</kbd> {tapRemoves ? t('remove') : t('add')}</span>
-            <span className="edit-hint"><kbd>{t('Right-click')}</kbd> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd> {t('remove')}</span>
-            <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
-            <button className="primary" onClick={toggleEditMode}>{t('Done')} <kbd>Esc</kbd></button>
+            <div className="edit-row">
+              {selection.size > 0 && <>
+                <span className="edit-count">{t('{n} selected', { n: selection.size })}</span>
+                <button className="primary" onClick={deleteSelected}>{t('Delete')}</button>
+                <button onClick={() => setSelection(NO_SELECTION)}>{t('Clear selection')}</button>
+              </>}
+              <button className="primary edit-done" onClick={toggleEditMode}>{t('Done')} <kbd>Esc</kbd></button>
+            </div>
           </div>
         </>}
       </section>

@@ -9,6 +9,7 @@ import type { TriangleMesh } from '../analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
 import { transformFromObject, type ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../supports/mesh';
+import type { BrushMode } from '../supports/selection';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
@@ -17,6 +18,8 @@ export type GizmoMode = 'none' | 'translate' | 'rotate';
  * right-click or Ctrl+click a support, or the model near one, to remove it.
  */
 export type EditMode = 'off' | 'edit';
+/** Support Edit Mode tool: Add supports clicks the model to add; Select supports picks supports to act on. */
+export type EditTool = 'add' | 'select';
 
 type Vector = [number, number, number];
 
@@ -45,8 +48,14 @@ export interface ObjectViewportProps {
   onErase: (unitId: string, point: Vector) => void;
   /** A Support Edit Mode click that hit neither the model nor a support. */
   onEditMiss: () => void;
-  /** Support Edit Mode on a touch screen: a tap removes instead of adding. */
-  tapRemoves: boolean;
+  editTool: EditTool;
+  /** Present only while Select supports drags over supports (radius in mm). */
+  brush?: { radius: number; mode: BrushMode };
+  /** Selected contact ids of the active object. */
+  selection: ReadonlySet<string>;
+  onToggleContact: (unitId: string, contactId: string) => void;
+  /** `center` in unit-local space; `facing` is the unit-local unit vector from `center` toward the camera. */
+  onPaint: (unitId: string, center: Vector, facing: Vector, mode: BrushMode) => void;
   /** Support check findings to mark, positions in their unit's local frame. */
   problems: readonly (SupportProblem & { unitId: string })[];
   /** Point (plate space) the camera should turn to; a new `seq` repeats the move. */
@@ -255,7 +264,7 @@ function UnitObject(props: UnitObjectProps) {
     setHover({
       point: event.object.worldToLocal(event.point.clone()),
       normal: event.face?.normal.clone() ?? new THREE.Vector3(0, -1, 0),
-      remove: props.tapRemoves || event.ctrlKey || event.metaKey,
+      remove: event.ctrlKey || event.metaKey,
     });
   };
   const hoverSupport = (event: ThreeEvent<PointerEvent>) => {
@@ -277,14 +286,14 @@ function UnitObject(props: UnitObjectProps) {
     const point: Vector = [event.point.x, event.point.y, event.point.z];
     if (editMode === 'off') return remove ? undefined : props.onSelect(unit.id, event.shiftKey);
     if (!props.active) return props.onSelect(unit.id, false);
-    if (remove || props.tapRemoves || event.ctrlKey || event.metaKey) return props.onErase(unit.id, point);
+    if (remove || event.ctrlKey || event.metaKey) return props.onErase(unit.id, point);
     props.onAddContact(unit.id, point, surfaceNormal(event));
   };
 
   const removeSupport = (event: ThreeEvent<MouseEvent>, force: boolean) => {
     if (event.delta > CLICK_TOLERANCE || editMode === 'off' || !props.active || !supports || event.faceIndex == null) return;
     // A plain left click passes through the support to add on the model behind it.
-    if (!force && !props.tapRemoves && !event.ctrlKey && !event.metaKey) return;
+    if (!force && !event.ctrlKey && !event.metaKey) return;
     // Braces, raft and labels belong to no contact: the pick continues behind them.
     const contactId = contactAtTriangle(supports, event.faceIndex);
     if (!contactId) return;
@@ -401,7 +410,11 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       onAddContact={props.onAddContact}
       onRemoveContact={props.onRemoveContact}
       onErase={props.onErase}
-      tapRemoves={props.tapRemoves}
+      editTool={props.editTool}
+      {...(props.brush ? { brush: props.brush } : {})}
+      selection={props.selection}
+      onToggleContact={props.onToggleContact}
+      onPaint={props.onPaint}
       problems={props.problems.filter((problem) => problem.unitId === unit.id)}
       {...(unit.id === activeId ? { onGroup: setActiveGroup } : {})}
     />)}

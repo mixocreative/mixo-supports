@@ -12,7 +12,7 @@ declare global {
 const SOURCES = import.meta.glob<string>(['./**/*.ts', './**/*.tsx', '!./**/*.test.ts', '!./**/*.test.tsx'], { query: '?raw', import: 'default', eager: true });
 const UI_FILES = ['./App.tsx', './components/SettingsPanel.tsx', './components/ProgressBar.tsx', './components/ObjectViewport.tsx'];
 /** Quoted literals in UI files that are not shown to the user. */
-const NOT_UI = new Set(['Tab', 'Escape', 'Enter', 'Delete', 'Unit', 'Mixo supports']);
+const NOT_UI = new Set(['Tab', 'Escape', 'Enter', 'Delete', 'Backspace', 'Unit', 'Mixo supports']);
 
 /** Single-quoted literals that read like UI text: a lowercase letter and a space or capital start. */
 function uiLiterals(code: string): string[] {
