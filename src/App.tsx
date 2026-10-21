@@ -853,10 +853,9 @@ export default function App() {
         </section>
         <section>
           <h3>{t('No-support zones')}{activeUnit && <small className="count">{activeUnit.zones.length ? t('Painted') : t('None')}</small>}</h3>
-          <div className="row">
-            <button aria-pressed={zonesModeButton.pressed} onClick={() => pressModeButton(zonesModeButton)} disabled={zonesModeButton.disabled} {...hint(zonesModeButton.hint)}>{t(zonesModeButton.label)}</button>
-            <button className="danger" aria-label={t('Clear all zones')} onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear')}</button>
-          </div>
+          {/* Stacked full width like Edit supports: the Exit label fits on one line in every language. */}
+          <button aria-pressed={zonesModeButton.pressed} onClick={() => pressModeButton(zonesModeButton)} disabled={zonesModeButton.disabled} {...hint(zonesModeButton.hint)}>{t(zonesModeButton.label)}</button>
+          <button className="danger" aria-label={t('Clear all zones')} onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear')}</button>
           <p className="help">{t('Paint where supports must not grow. Manual supports stay.')}</p>
         </section>
         <section>

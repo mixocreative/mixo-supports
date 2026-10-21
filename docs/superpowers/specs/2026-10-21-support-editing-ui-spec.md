@@ -56,7 +56,9 @@ primary. Clicking an Exit button sends the same event as Done, return rules incl
 | zones | Enter Support Edit Mode, disabled | **Exit no-support zones**, pressed (closeZones → zonesReturn, like Done) |
 
 Terms: en Exit Support Edit Mode / Exit no-support zones; zh-Hant 離開支撐編輯模式 / 離開免支撐區;
-ja サポート編集モードを終了 / サポート禁止エリアの編集を終了. Hints are the existing Done hints.
+ja サポート編集モードを終了 / サポート禁止エリアの塗装を終了. Hints are the existing Done hints. Paint zones
+and Clear stack full width (like the Edit supports button), so the Exit label stays on one line at 1366 px
+in all three languages and the button keeps its size.
 
 Lifetime rules:
 - The selection empties on every mode change and whenever the active object changes.

@@ -571,7 +571,7 @@ const JA: Dictionary = {
   'Edit supports': 'サポート編集',
   'Enter Support Edit Mode': 'サポート編集モードに入る',
   'Exit Support Edit Mode': 'サポート編集モードを終了',
-  'Exit no-support zones': 'サポート禁止エリアの編集を終了',
+  'Exit no-support zones': 'サポート禁止エリアの塗装を終了',
   'Add or remove supports by clicking the model. Tab toggles.': 'モデルをクリックしてサポートを追加・削除します。Tab で切り替え。',
   'Select an object first.': '先にオブジェクトを選択してください。',
   'Supports for {scope}': '{scope}のサポート',
