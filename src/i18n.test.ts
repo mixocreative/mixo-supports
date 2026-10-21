@@ -37,6 +37,7 @@ describe('i18n', () => {
         keys.add(field.label);
         if ('hint' in field && field.hint) keys.add(field.hint);
         if (field.kind === 'text') keys.add(field.placeholder);
+        if (field.kind === 'choice') field.options.forEach((option) => keys.add(option.label));
       }
     }
     expect(keys.size).toBeGreaterThan(150);

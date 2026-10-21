@@ -30,7 +30,8 @@ describe('unit supports', () => {
     const mesh = unitSupportMesh(unit, 0);
     const world = meshBounds(applyTransform(mesh, unit.transform));
     expect(world.min[1]).toBeCloseTo(0);
-    expect(world.max[1]).toBeGreaterThan(5);
+    // The tip reaches the model's underside (y = 5); a Contact Ø sphere would poke above it.
+    expect(world.max[1]).toBeGreaterThanOrEqual(5 - 1e-6);
   });
 
   it('keeps supports rigid with the model when the unit moves afterwards', () => {

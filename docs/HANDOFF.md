@@ -41,9 +41,15 @@ Language = saved choice (localStorage `mixo-supports.lang`), else browser langua
 switch in the header. Chinese terms follow the Blender add-on's zh_HANT dictionary. `i18n.test.ts`
 fails when a UI literal, setting label or stage lacks a translation or a placeholder differs.
 
-Pending, awaiting the owner's go: contact-tip types for web and add-on (see the chat plan:
-Contact shape None/Sphere as in Chitubox; tip shape Cone/Pyramid/Cylinder/Cross/Cube as in
-Chitubox + Lychee).
+## Contact tip shapes (web done; Blender add-on in progress)
+
+Settings `contactShape` (NONE default / SPHERE), `pointDiameter` (0.2 mm, the tip end at the model
+when NONE), `tipSection` (ROUND / SQUARE / CROSS, Lychee tip types) and `tipProfile` (TAPERED /
+STRAIGHT). Defaults = a round cone whose 0.2 mm end touches the model, no sphere (owner's choice).
+`tipRadius()` = Upper Ø/2 with a sphere, else Point Ø/2. Round + Tapered keeps SLASG's exact neck;
+other shapes split the tapered ends (`addTip`, also landings and tree tips) and swap the tube
+profile (`TIP_PROFILES`: square of side Ø, cross of plates Ø long and 0.4 x Ø/2 half-wide).
+Blender parity tests pin `contactShape: 'SPHERE'` (their references were generated with spheres).
 
 ## Previous step (Support Edit Mode)
 

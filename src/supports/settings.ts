@@ -9,10 +9,21 @@ export type PresetName = 'LIGHT' | 'MIDDLE' | 'HEAVY';
 export type SupportPreset = PresetName | 'CUSTOM';
 export type RoofMode = 'OFF' | 'ROOF' | 'CAGE';
 export type PreviewMode = 'FULL' | 'ONLY_TIP';
+/** What touches the model: a Contact Ø sphere (Chitubox Sphere) or the tip itself (Chitubox None). */
+export type ContactShape = 'NONE' | 'SPHERE';
+/** Cross-section of the tip (Lychee tip types): round, square or a "+" of two plates. */
+export type TipSection = 'ROUND' | 'SQUARE' | 'CROSS';
+/** Tapered narrows from Middle Ø to the contact end (cone, pyramid); Straight keeps the end Ø. */
+export type TipProfile = 'TAPERED' | 'STRAIGHT';
 
 export type LiveSupportSettings = {
   preset: SupportPreset;
   // Top / contact
+  contactShape: ContactShape;
+  /** Diameter of the tip end touching the model when Contact shape is None. */
+  pointDiameter: number;
+  tipSection: TipSection;
+  tipProfile: TipProfile;
   touchDiameter: number;
   touchDepth: number;
   neckDiameter: number;
@@ -143,6 +154,10 @@ const ROOF_DEFAULTS: Record<Exclude<RoofMode, 'OFF'>, Partial<LiveSupportSetting
 export const defaultSupportSettings: Readonly<LiveSupportSettings> = {
   preset: 'LIGHT',
   ...presetValues.LIGHT,
+  contactShape: 'NONE',
+  pointDiameter: 0.2,
+  tipSection: 'ROUND',
+  tipProfile: 'TAPERED',
   treeSectionIncrement: 20,
   trussEnabled: true,
   trussAngle: 45,
@@ -198,6 +213,7 @@ const ANGLE_90: NumericLimit = { min: 0, max: 90 };
 
 /** Blender property min/max limits; edits are clamped like Blender's UI. */
 export const settingLimits: Record<NumericKey, NumericLimit> = {
+  pointDiameter: { min: 0.05, max: 1000 },
   touchDiameter: LENGTH,
   touchDepth: { min: -2, max: 1000 },
   neckDiameter: LENGTH,
@@ -267,6 +283,11 @@ export function setRoofMode(settings: Readonly<LiveSupportSettings>, mode: RoofM
   const next = { ...cloneSettings(settings), roofMode: mode };
   if (mode === 'OFF' || next.roofSeededModes.includes(mode)) return next;
   return { ...next, ...ROOF_DEFAULTS[mode], roofSeededModes: [...next.roofSeededModes, mode] };
+}
+
+/** Radius of the tip end at the model: Upper Ø under a contact sphere, else Point Ø. */
+export function tipRadius(settings: Readonly<LiveSupportSettings>): number {
+  return (settings.contactShape === 'SPHERE' ? settings.neckDiameter : settings.pointDiameter) / 2;
 }
 
 export function toPlacementSettings(settings: Readonly<LiveSupportSettings>): PlacementSettings {

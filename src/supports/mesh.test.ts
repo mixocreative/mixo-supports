@@ -3,7 +3,7 @@ import type { TriangleMesh } from '../analysis/types';
 import { buildSupportMesh, contactAtTriangle, meshBounds, type GeneratedSupportMesh, type SupportContact } from './mesh';
 import { defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings } from './settings';
 
-const settings: LiveSupportSettings = { ...defaultSupportSettings, roofSeededModes: [] };
+const settings: LiveSupportSettings = { ...defaultSupportSettings, contactShape: 'SPHERE', roofSeededModes: [] };
 const contact: SupportContact = { id: 'auto-0', position: [0, 10, 0], normal: [0, -1, 0] };
 const neighbour: SupportContact = { id: 'auto-1', position: [4, 10, 0], normal: [0, -1, 0] };
 
@@ -41,6 +41,56 @@ function signedVolume(mesh: GeneratedSupportMesh, component: GeneratedSupportMes
   }
   return volume / 6;
 }
+
+/** Horizontal distances from the contact axis of a neck component's vertices at the contact height. */
+function tipRing(mesh: GeneratedSupportMesh, height: number): number[] {
+  const neck = mesh.components.find((component) => component.part === 'neck')!;
+  const ids = new Set(Array.from(mesh.indices.slice(neck.start, neck.start + neck.count)));
+  return [...ids].filter((id) => Math.abs(mesh.positions[id * 3 + 1]! - height) < 1e-4)
+    .map((id) => Math.hypot(mesh.positions[id * 3]!, mesh.positions[id * 3 + 2]!))
+    .filter((distance) => distance > 1e-6);
+}
+
+describe('contact tip shapes', () => {
+  const tip = (overrides: Partial<LiveSupportSettings>) => buildSupportMesh([contact], { ...defaultSupportSettings, roofSeededModes: [], ...overrides });
+
+  it('defaults to a cone whose 0.2 mm point touches the model, without a sphere', () => {
+    const mesh = tip({});
+    expect(mesh.parts).not.toContain('tip');
+    expect(meshBounds(mesh).max[1]).toBeCloseTo(contact.position[1], 5);
+    const ring = tipRing(mesh, contact.position[1]);
+    expect(ring.length).toBe(defaultSupportSettings.resolution);
+    ring.forEach((distance) => expect(distance).toBeCloseTo(0.1, 5));
+    expect(componentsAreClosed(mesh)).toBe(true);
+  });
+
+  it('adds the Contact Ø sphere over an Upper Ø neck for Contact shape Sphere', () => {
+    const mesh = tip({ contactShape: 'SPHERE' });
+    expect(mesh.parts).toContain('tip');
+    expect(meshBounds(mesh).max[1]).toBeCloseTo(contact.position[1] + defaultSupportSettings.touchDiameter / 2, 3);
+    tipRing(mesh, contact.position[1]).forEach((distance) => expect(distance).toBeCloseTo(defaultSupportSettings.neckDiameter / 2, 5));
+  });
+
+  it('builds square and cross tips with the point Ø across', () => {
+    const square = tipRing(tip({ tipSection: 'SQUARE' }), contact.position[1]);
+    expect(square).toHaveLength(4);
+    square.forEach((distance) => expect(distance).toBeCloseTo(0.1 * Math.SQRT2, 5));
+    const cross = tipRing(tip({ tipSection: 'CROSS' }), contact.position[1]);
+    expect(cross).toHaveLength(12);
+    expect(Math.max(...cross)).toBeCloseTo(0.1 * Math.hypot(1, 0.4), 5);
+    expect(Math.min(...cross)).toBeCloseTo(0.1 * Math.hypot(0.4, 0.4), 5);
+    expect(componentsAreClosed(tip({ tipSection: 'CROSS' }))).toBe(true);
+  });
+
+  it('keeps the point Ø along the whole tip when Straight', () => {
+    const mesh = tip({ tipProfile: 'STRAIGHT' });
+    const neck = mesh.components.find((component) => component.part === 'neck')!;
+    const ids = new Set(Array.from(mesh.indices.slice(neck.start, neck.start + neck.count)));
+    // Every neck vertex lies within the point radius of the straight-down neck axis.
+    for (const id of ids) expect(Math.hypot(mesh.positions[id * 3]!, mesh.positions[id * 3 + 2]!)).toBeLessThan(0.1 + 1e-6);
+    expect(componentsAreClosed(mesh)).toBe(true);
+  });
+});
 
 describe('buildSupportMesh', () => {
   it('builds a single support from the plate up through the contact tip', () => {

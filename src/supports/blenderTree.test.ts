@@ -23,7 +23,7 @@ const toBlender = ([x, y, z]: readonly number[]): Vec3 => [x!, -z!, y!];
 
 describe.each(cases)('Blender %s', (_name, blender) => {
   const settings: LiveSupportSettings = {
-    ...defaultSupportSettings, roofSeededModes: [], scatterAutoTree: true,
+    ...defaultSupportSettings, contactShape: 'SPHERE', roofSeededModes: [], scatterAutoTree: true,
     scatterMergeDistance: blender.settings.scatter_merge_distance as number,
     scatterBranchDescent: blender.settings.scatter_branch_descent as number,
     treeSectionIncrement: blender.settings.tree_section_increment as number,

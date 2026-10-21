@@ -1,6 +1,6 @@
 import type { ProgressCallback, TriangleMesh } from '../analysis/types';
 import { layoutBfont } from './bfont';
-import type { LiveSupportSettings } from './settings';
+import { tipRadius, type LiveSupportSettings, type TipSection } from './settings';
 import { cornerBisectors, raftOutline } from './raft';
 import { buildRoofCage } from './roof';
 import { autoTreeLayout, type AutoTree } from './autotree';
@@ -71,6 +71,34 @@ export interface Column {
 
 const RING_SAMPLES = 48;
 const MIN_LENGTH = 1e-4;
+/** Half-width of a Cross tip's plates, as a fraction of the tip radius. */
+export const CROSS_HALF_WIDTH = 0.4;
+/** Unit tip profiles (radius 1) in the tube's normal / binormal plane, counter-clockwise. */
+export const TIP_PROFILES: Readonly<Record<Exclude<TipSection, 'ROUND'>, readonly Point2[]>> = {
+  SQUARE: [[1, 1], [-1, 1], [-1, -1], [1, -1]],
+  CROSS: (() => {
+    const a = CROSS_HALF_WIDTH;
+    return [[1, a], [a, a], [a, 1], [-a, 1], [-a, a], [-1, a], [-1, -a], [-a, -a], [-a, -1], [a, -1], [a, -a], [1, -a]] as Point2[];
+  })(),
+};
+
+/** True when the tip is not the stock round cone (SLASG's own geometry). */
+function shapedTip(settings: Readonly<LiveSupportSettings>): boolean {
+  return settings.tipSection !== 'ROUND' || settings.tipProfile === 'STRAIGHT';
+}
+
+/** A tip segment (contact end first or last): Straight holds the end radius, Square / Cross swap the profile. */
+function addTip(builder: MeshBuilder, nodes: readonly CurveNode[], settings: Readonly<LiveSupportSettings>, segments: number): void {
+  const radius = tipRadius(settings);
+  const path = settings.tipProfile === 'STRAIGHT' ? nodes.map((node) => ({ ...node, radius })) : nodes;
+  builder.tube(path, segments, settings.tipSection === 'ROUND' ? undefined : TIP_PROFILES[settings.tipSection]);
+}
+
+/** Index of the last node at full pillar radius; the nodes after it taper into a contact on the model. */
+function lastThick(nodes: readonly CurveNode[], radius: number): number {
+  for (let index = nodes.length - 1; index >= 0; index -= 1) if (nodes[index]!.radius >= radius - 1e-9) return index;
+  return -1;
+}
 
 /**
  * Pure, deterministic support geometry shared by the viewport and STL export. Every
@@ -94,8 +122,11 @@ export function buildSupportMesh(
   // neck cone Middle Ø -> Upper Ø of Connection Length along the surface normal (tilted at
   // most Connection Angle from straight down) ending at the contact, plus a
   // Contact Ø sphere centred on the contact (sunk by Contact Depth along the normal).
+  // With Contact shape None there is no sphere and the neck ends at Point Ø instead.
   const footTop = settings.baseHeight;
   const pillarRadius = settings.pillarDiameter / 2;
+  const spheres = settings.contactShape === 'SPHERE';
+  const shaped = shapedTip(settings);
   const columns: Column[] = [];
   const footprints: Point2[] = [];
   const anchors: { id: string; position: Vector }[] = [];
@@ -122,21 +153,32 @@ export function buildSupportMesh(
     if (treeOf.has(index) || layout?.removed.has(index)) return;
     const column = contactColumn(contact, settings, ray, tipOnly);
     if (!column) return;
-    builder.begin('tip', contact.id);
-    builder.sphere(column.tip, settings.touchDiameter / 2, segments);
-    builder.end();
-    if (column.landing) {
+    if (spheres) {
       builder.begin('tip', contact.id);
-      builder.sphere(column.landing, settings.touchDiameter / 2, segments);
+      builder.sphere(column.tip, settings.touchDiameter / 2, segments);
       builder.end();
+      if (column.landing) {
+        builder.begin('tip', contact.id);
+        builder.sphere(column.landing, settings.touchDiameter / 2, segments);
+        builder.end();
+      }
     }
     const neckEnd = column.curve.findIndex((node, i) => i > 0 && node.radius === pillarRadius);
     builder.begin('neck', contact.id);
-    builder.tube(column.curve.slice(0, neckEnd + 1), segments);
+    addTip(builder, column.curve.slice(0, neckEnd + 1), settings, segments);
     builder.end();
     if (tipOnly) return;
+    let pillar = column.curve.slice(neckEnd);
+    if (column.landing && shaped) {
+      // The tip landing on the model below gets the same shape as the top one.
+      const last = lastThick(pillar, pillarRadius);
+      builder.begin('neck', contact.id);
+      addTip(builder, pillar.slice(last), settings, segments);
+      builder.end();
+      pillar = pillar.slice(0, last + 1);
+    }
     builder.begin('pillar', contact.id);
-    builder.tube(column.curve.slice(neckEnd), segments);
+    builder.tube(pillar, segments);
     builder.end();
     if (!column.landing) anchors.push({ id: contact.id, position: column.curve[column.curve.length - 1]!.point });
   });
@@ -187,9 +229,27 @@ function addTree(
     builder.sphere(sphere.centre, sphere.radius, segments);
     builder.end();
   }
+  const pillarRadius = settings.pillarDiameter / 2;
   for (const curve of geometry.curves) {
+    let nodes = curve.nodes;
+    if (curve.part === 'tree-branch' && shapedTip(settings)) {
+      // Split off the tapered ends (contact tips, a landing on the model) and shape them.
+      const first = nodes.findIndex((node) => node.radius >= pillarRadius - 1e-9);
+      const last = lastThick(nodes, pillarRadius);
+      if (first > 0 && last >= first) {
+        builder.begin('neck', curve.id);
+        addTip(builder, nodes.slice(0, first + 1), settings, segments);
+        builder.end();
+        if (last < nodes.length - 1) {
+          builder.begin('neck', curve.id);
+          addTip(builder, nodes.slice(last), settings, segments);
+          builder.end();
+        }
+        nodes = nodes.slice(first, last + 1);
+      }
+    }
     builder.begin(curve.part, curve.id);
-    builder.tube(curve.nodes, segments);
+    builder.tube(nodes, segments);
     builder.end();
   }
   if (geometry.trunk) {
@@ -208,13 +268,14 @@ export interface TreeGeometry {
 export function treeGeometry(tree: AutoTree, contacts: readonly SupportContact[], settings: Readonly<LiveSupportSettings>, ray: LineTarget | undefined): TreeGeometry {
   const out: TreeGeometry = { curves: [], spheres: [] };
   const pillarRadius = settings.pillarDiameter / 2;
-  const neckRadius = settings.neckDiameter / 2;
+  const neckRadius = tipRadius(settings);
+  const spheres = settings.contactShape === 'SPHERE';
   const branches = tree.members.map((member) => {
     const contact = contacts[member]!;
     const normal = normalize(contact.normal);
     const tip = subtract(contact.position, scale(normal, settings.touchDepth));
     const neckEnd = add(contact.position, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength));
-    out.spheres.push({ part: 'tip', id: contact.id, centre: tip, radius: settings.touchDiameter / 2 });
+    if (spheres) out.spheres.push({ part: 'tip', id: contact.id, centre: tip, radius: settings.touchDiameter / 2 });
     return { id: contact.id, nodes: [{ point: tip, radius: neckRadius }, { point: neckEnd, radius: pillarRadius }] as CurveNode[] };
   });
 
@@ -230,7 +291,7 @@ export function treeGeometry(tree: AutoTree, contacts: readonly SupportContact[]
     end = source[1] - hit.point[1] > 2 * settings.neckLength
       ? [{ point: add(hit.point, scale(upDirection(hit.normal, settings.maxNeckAngle), settings.neckLength - settings.touchDepth)), radius: treeRadius }, { point: hit.point, radius: neckRadius }]
       : [{ point: hit.point, radius: neckRadius }];
-    out.spheres.push({ part: 'tip', centre: hit.point, radius: settings.touchDiameter / 2 });
+    if (spheres) out.spheres.push({ part: 'tip', centre: hit.point, radius: settings.touchDiameter / 2 });
   } else {
     junctionRadius = treeRadius;
     end = [{ point: junction, radius: treeRadius }];
@@ -305,7 +366,7 @@ interface ContactColumn {
 function contactColumn(contact: SupportContact, settings: Readonly<LiveSupportSettings>, ray: LineTarget | undefined, tipOnly: boolean): ContactColumn | undefined {
   const raftTop = settings.raftEnabled ? settings.raftFloorThickness : 0;
   const pillarRadius = settings.pillarDiameter / 2;
-  const neckRadius = settings.neckDiameter / 2;
+  const neckRadius = tipRadius(settings);
   const normal = normalize(contact.normal);
   const tip = subtract(contact.position, scale(normal, settings.touchDepth));
   if (tip[1] <= raftTop) return undefined;
@@ -871,8 +932,11 @@ class MeshBuilder {
     this.loft(rings, false);
   }
 
-  /** Closed tube through a polyline with per-node radius (Blender Curve to Tube, flat caps). */
-  tube(nodes: readonly CurveNode[], segments: number): void {
+  /**
+   * Closed tube through a polyline with per-node radius (Blender Curve to Tube, flat caps).
+   * `profile` (unit radius, normal / binormal plane) replaces the round cross-section.
+   */
+  tube(nodes: readonly CurveNode[], segments: number, profile?: readonly Point2[]): void {
     const path = nodes.filter((node, index) => index === 0 || Math.hypot(...subtract(node.point, nodes[index - 1]!.point)) > MIN_LENGTH);
     if (path.length < 2) return;
     let normal = basis(normalize(subtract(path[1]!.point, path[0]!.point)))[0];
@@ -883,6 +947,7 @@ class MeshBuilder {
       // Parallel transport keeps the profile from twisting along the curve.
       normal = normalize(subtract(normal, scale(tangent, dot(normal, tangent))));
       const binormal = cross(tangent, normal);
+      if (profile) return profile.map(([a, b]) => add(node.point, add(scale(normal, a * node.radius), scale(binormal, b * node.radius))));
       return Array.from({ length: segments }, (_, step) => {
         const angle = (step / segments) * Math.PI * 2;
         return add(node.point, add(scale(normal, Math.cos(angle) * node.radius), scale(binormal, Math.sin(angle) * node.radius)));

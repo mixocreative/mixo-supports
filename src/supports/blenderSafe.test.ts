@@ -24,7 +24,7 @@ const TIES: Record<string, number> = { safe_0_8: 2 };
 
 describe.each(Object.entries(data.cases).filter(([, c]) => c.scatter_auto_tree))('Blender %s', (name, blender) => {
   const settings: LiveSupportSettings = {
-    ...defaultSupportSettings, roofSeededModes: [], scatterAutoTree: true,
+    ...defaultSupportSettings, contactShape: 'SPHERE', roofSeededModes: [], scatterAutoTree: true,
     scatterSpacing: data.settings.scatter_spacing!,
     scatterAngle: data.settings.scatter_angle! * 180 / Math.PI,
     scatterMergeDistance: data.settings.scatter_merge_distance!,

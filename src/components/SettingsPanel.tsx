@@ -4,12 +4,18 @@ import { t } from '../i18n';
 
 type NumberKey = keyof typeof settingLimits;
 type BooleanKey = { [K in SettingKey]: LiveSupportSettings[K] extends boolean ? K : never }[SettingKey];
+type ChoiceKey = 'contactShape' | 'tipSection' | 'tipProfile';
 
-type Field =
+type Field = (
   | { kind: 'number'; key: NumberKey; label: string; unit?: 'mm' | '°' | '%'; step?: number; hint?: string }
   | { kind: 'boolean'; key: BooleanKey; label: string; hint?: string }
   | { kind: 'text'; key: 'labelText'; label: string; placeholder: string }
-  | { kind: 'preview'; key: 'previewMode'; label: string };
+  | { kind: 'preview'; key: 'previewMode'; label: string }
+  | { kind: 'choice'; key: ChoiceKey; label: string; options: readonly { value: string; label: string }[]; hint?: string }
+) & {
+  /** Only shown while this predicate holds. */
+  when?: (settings: LiveSupportSettings) => boolean;
+};
 
 interface Group {
   title: string;
@@ -23,6 +29,7 @@ const mm = (key: NumberKey, label: string, step = 0.1, hint?: string): Field => 
 const deg = (key: NumberKey, label: string): Field => ({ kind: 'number', key, label, unit: '°', step: 1 });
 const int = (key: NumberKey, label: string): Field => ({ kind: 'number', key, label, step: 1 });
 const bool = (key: BooleanKey, label: string, hint?: string): Field => ({ kind: 'boolean', key, label, ...(hint ? { hint } : {}) });
+const sphere = (settings: LiveSupportSettings) => settings.contactShape === 'SPHERE';
 
 /** Field layout mirrors the Blender Resin UV "SLA Supports" panel. Titles, labels and hints are i18n keys. */
 export const SETTING_GROUPS: Group[] = [
@@ -38,7 +45,19 @@ export const SETTING_GROUPS: Group[] = [
     ],
   },
   { title: 'Tree supports', when: (settings) => settings.scatterAutoTree, fields: [mm('scatterMergeDistance', 'Merge distance'), mm('scatterBranchDescent', 'Branch descent'), { kind: 'number', key: 'treeSectionIncrement', label: 'Section increment', unit: '%', step: 1 }, mm('scatterSafeDistance', 'Safe distance')] },
-  { title: 'Contact tip', open: true, fields: [mm('touchDiameter', 'Contact Ø', 0.05), mm('touchDepth', 'Contact depth', 0.05), mm('neckDiameter', 'Upper Ø', 0.05), mm('neckLength', 'Connection length'), deg('maxNeckAngle', 'Connection angle')] },
+  {
+    title: 'Contact tip', open: true, fields: [
+      { kind: 'choice', key: 'contactShape', label: 'Contact shape', hint: 'None: the tip itself touches the model. Sphere: a Contact Ø ball at the tip (Chitubox)', options: [{ value: 'NONE', label: 'None' }, { value: 'SPHERE', label: 'Sphere' }] },
+      { kind: 'choice', key: 'tipSection', label: 'Tip section', options: [{ value: 'ROUND', label: 'Round' }, { value: 'SQUARE', label: 'Square' }, { value: 'CROSS', label: 'Cross' }] },
+      { kind: 'choice', key: 'tipProfile', label: 'Tip profile', hint: 'Tapered narrows to the contact (cone, pyramid); Straight keeps the contact Ø along the tip', options: [{ value: 'TAPERED', label: 'Tapered' }, { value: 'STRAIGHT', label: 'Straight' }] },
+      { ...mm('pointDiameter', 'Point Ø', 0.05, 'Diameter of the tip end touching the model'), when: (settings) => !sphere(settings) },
+      { ...mm('touchDiameter', 'Contact Ø', 0.05), when: sphere },
+      mm('touchDepth', 'Contact depth', 0.05),
+      { ...mm('neckDiameter', 'Upper Ø', 0.05), when: sphere },
+      mm('neckLength', 'Connection length'),
+      deg('maxNeckAngle', 'Connection angle'),
+    ],
+  },
   { title: 'Pillar', fields: [mm('pillarDiameter', 'Middle Ø', 0.05)] },
   { title: 'Foot', fields: [mm('baseDiameter', 'Bottom Ø'), mm('baseHeight', 'Bottom thickness')] },
   { title: 'Bracing', fields: [bool('trussEnabled', 'Bracing'), mm('trussDiameter', 'Bracing Ø', 0.05), deg('trussAngle', 'Bracing angle'), mm('trussSpacing', 'Bracing spacing'), mm('trussMinHeight', 'Start height'), mm('trussTopSpacing', 'Top spacing'), mm('trussDistanceLimit', 'Distance limit', 1)] },
@@ -79,7 +98,7 @@ export default function SettingsPanel({ settings, autoLabel, disabled, onChange,
     </div>
     {SETTING_GROUPS.filter((group) => !group.when || group.when(settings)).map((group) => <details key={group.title} open={group.open}>
       <summary>{t(group.title)}</summary>
-      {group.fields.map((field) => {
+      {group.fields.filter((field) => !field.when || field.when(settings)).map((field) => {
         switch (field.kind) {
           case 'number':
             return <NumberField key={field.key} label={t(field.label)} unit={field.unit} step={field.step ?? 0.1} value={settings[field.key]} hint={field.hint && t(field.hint)} onChange={(value) => onChange(field.key, value)} />;
@@ -87,6 +106,10 @@ export default function SettingsPanel({ settings, autoLabel, disabled, onChange,
             return <label key={field.key} className="check" title={field.hint && t(field.hint)}><input type="checkbox" checked={settings[field.key]} onChange={(event) => onChange(field.key, event.target.checked)} /> {t(field.label)}</label>;
           case 'text':
             return <label key={field.key} className="field-row"><span>{t(field.label)}</span><input className="text" maxLength={4} value={settings.labelText} placeholder={`${t(field.placeholder)} (${autoLabel})`} onChange={(event) => onChange('labelText', event.target.value.toUpperCase())} /></label>;
+          case 'choice':
+            return <div key={field.key} className="field-row" title={field.hint && t(field.hint)}><span>{t(field.label)}</span><div className="segmented">
+              {field.options.map((option) => <button key={option.value} type="button" className={settings[field.key] === option.value ? 'active' : ''} aria-pressed={settings[field.key] === option.value} onClick={() => onChange(field.key, option.value as LiveSupportSettings[ChoiceKey])}>{t(option.label)}</button>)}
+            </div></div>;
           case 'preview':
             return <div key={field.key} className="field-row"><span>{t(field.label)}</span><div className="segmented">
               {(['FULL', 'ONLY_TIP'] as const).map((mode) => <button key={mode} type="button" className={settings.previewMode === mode ? 'active' : ''} onClick={() => onChange('previewMode', mode)}>{t(mode === 'FULL' ? 'Full' : 'Only tip')}</button>)}

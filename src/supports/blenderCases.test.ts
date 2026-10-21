@@ -43,7 +43,8 @@ const KEYS: Record<string, keyof LiveSupportSettings> = {
 };
 
 function webSettings(blender: BlenderCase['settings']): LiveSupportSettings {
-  const settings: LiveSupportSettings = { ...defaultSupportSettings, roofSeededModes: [], trussEnabled: false, labelEnabled: false };
+  // The Blender references were generated with SLASG's stock Contact Ø sphere.
+  const settings: LiveSupportSettings = { ...defaultSupportSettings, contactShape: 'SPHERE', roofSeededModes: [], trussEnabled: false, labelEnabled: false };
   for (const [key, value] of Object.entries(blender)) {
     const web = KEYS[key];
     if (web) (settings as Record<string, unknown>)[web] = value;
