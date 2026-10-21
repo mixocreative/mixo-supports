@@ -124,6 +124,8 @@ export default function App() {
   const [session, setSession] = useState(initialSession);
   const sessionRef = useRef(session);
   const { mode: editMode, tool: editTool, selectStyle, brushMode, brushRadius, selection, zoneKind, zoneRadius } = session;
+  /** The tool as it is now, for canvas clicks (the canvas renders a step behind the DOM). */
+  const liveTool = useCallback(() => sessionRef.current, []);
   // Like Blender's Support Edit Mode, undo inside the mode stops at the scene it was entered with.
   const historyRef = useRef(history);
   historyRef.current = history;
@@ -879,6 +881,7 @@ export default function App() {
           onErase={onErase}
           onEditMiss={onEditMiss}
           editTool={editTool}
+          liveTool={liveTool}
           {...(editMode === 'edit' && editTool === 'select' && selectStyle === 'brush' ? { brush: { radius: brushRadius, mode: brushMode } } : {})}
           selection={selection}
           onToggleContact={onToggleContact}

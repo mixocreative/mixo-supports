@@ -12,7 +12,7 @@ import type { PrintScene, PrintUnit } from '../state/project';
 import type { ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../core/supports/mesh';
 import { contactsInBrush, notSelected } from '../editing/selection';
-import type { BrushMode, EditMode, EditTool, ZoneKind } from '../editing/types';
+import type { BrushMode, EditMode, EditTool, SelectStyle, ZoneKind } from '../editing/types';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
 import { zoneOverlay } from '../core/supports/overlayMesh';
 import { belowPlate, boundsSphere, frameView, spotView, tipsView } from '../editing/view';
@@ -54,6 +54,11 @@ export interface ObjectViewportProps {
   /** A Support Edit Mode click that hit neither the model nor a support. */
   onEditMiss: () => void;
   editTool: EditTool;
+  /**
+   * The edit tool as it is now. The canvas renders a step behind the DOM, so a click right after a
+   * tool switch would otherwise act with the previous tool; clicks read this instead of `editTool`.
+   */
+  liveTool?: () => { tool: EditTool; selectStyle: SelectStyle };
   /** Present only while Select supports drags over supports (radius in mm). */
   brush?: { radius: number; mode: BrushMode };
   /** Selected contact ids of the active object. */
@@ -524,18 +529,21 @@ function UnitObject(props: UnitObjectProps) {
   };
 
   /** The click rules (editing/pick) for a hit on this object; `contact` only matters on supports. */
-  const pickFor = (event: ThreeEvent<MouseEvent>, hit: PickInput['hit'], right: boolean, contact: boolean) => pickAction({
-    hit,
-    button: right ? 'right' : 'left',
-    ctrl: event.ctrlKey || event.metaKey,
-    shift: event.shiftKey,
-    travel: event.delta,
-    mode: editMode,
-    tool: props.editTool,
-    selectStyle: props.brush ? 'brush' : 'click',
-    active: props.active,
-    contact,
-  });
+  const pickFor = (event: ThreeEvent<MouseEvent>, hit: PickInput['hit'], right: boolean, contact: boolean) => {
+    const live = props.liveTool?.();
+    return pickAction({
+      hit,
+      button: right ? 'right' : 'left',
+      ctrl: event.ctrlKey || event.metaKey,
+      shift: event.shiftKey,
+      travel: event.delta,
+      mode: editMode,
+      tool: live?.tool ?? props.editTool,
+      selectStyle: live?.selectStyle ?? (props.brush ? 'brush' : 'click'),
+      active: props.active,
+      contact,
+    });
+  };
 
   const clickModel = (event: ThreeEvent<MouseEvent>, right: boolean) => {
     const action = pickFor(event, 'model', right, false);
@@ -685,6 +693,7 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       onErase={props.onErase}
       onEditMiss={props.onEditMiss}
       editTool={props.editTool}
+      {...(props.liveTool ? { liveTool: props.liveTool } : {})}
       {...(props.brush ? { brush: props.brush } : {})}
       selection={props.selection}
       onToggleContact={props.onToggleContact}

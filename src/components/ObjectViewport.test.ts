@@ -31,3 +31,28 @@ describe('transformFromObject', () => {
     });
   });
 });
+
+declare global {
+  interface ImportMeta {
+    glob<T>(patterns: string[], options: { query: string; import: string; eager: true }): Record<string, T>;
+  }
+}
+
+describe('canvas clicks use the live edit tool', () => {
+  // The r3f tree renders a step behind the DOM: a click right after "Select supports" must not act
+  // with the tool the canvas last rendered (it added a support). pickFor reads the session as it is now.
+  const source = import.meta.glob<string>(['./ObjectViewport.tsx'], { query: '?raw', import: 'default', eager: true })['./ObjectViewport.tsx']!;
+  const app = import.meta.glob<string>(['../App.tsx'], { query: '?raw', import: 'default', eager: true })['../App.tsx']!;
+
+  it('pickFor takes tool and select style from liveTool, falling back to props', () => {
+    const pickFor = source.slice(source.indexOf('const pickFor'), source.indexOf('const clickModel'));
+    expect(pickFor).toMatch(/props\.liveTool\?\.\(\)/);
+    expect(pickFor).toMatch(/tool: live\?\.tool \?\? props\.editTool/);
+    expect(pickFor).not.toMatch(/tool: props\.editTool/);
+  });
+
+  it('the app hands the viewport its session ref, set synchronously on every step', () => {
+    expect(app).toMatch(/liveTool=\{liveTool\}/);
+    expect(app).toMatch(/const liveTool = useCallback\(\(\) => sessionRef\.current, \[\]\)/);
+  });
+});
