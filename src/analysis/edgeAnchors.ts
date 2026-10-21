@@ -17,7 +17,11 @@ export interface EdgeAnchorSettings {
   facingDown: boolean;
 }
 
-/** Blender `EDGE_SHARP_ANGLE`: ridges between overhang faces sharper than 45° get anchors. */
+/**
+ * Blender `EDGE_SHARP_ANGLE`: ridges between overhang faces sharper than 45° get anchors. The
+ * fixed 45° matches the add-on's edge-anchor pass (slasg_assets.py); Ridge Angle is the setting
+ * of the add-on's legacy SDF ridge branch, not of this pass.
+ */
 const SHARP_ANGLE = Math.PI / 4;
 const MARGIN = 0.05;
 

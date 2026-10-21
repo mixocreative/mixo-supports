@@ -178,10 +178,10 @@ export const GOLDEN_FIXTURES: readonly GoldenFixture[] = [
   },
   {
     name: 'v-ridge', mesh: vRidge(), rotation: [0, 0, 0], variants: ['default', 'ridge-30', 'ridge-60'],
-    // Ridge anchors ignore Ridge angle today (edgeAnchors SHARP_ANGLE is a fixed 45 degrees).
-    expectedChanges: {
-      'ridge-30': 'Task 2 (Ridge angle bug): may change once Ridge angle reaches the ridge test',
-      'ridge-60': 'Task 2 (Ridge angle bug): expected to lose its sharp-ridge anchors (52 < 60 degrees)',
-    },
+    // Both ridge variants run with Reinforce overhang edges on (the default): the add-on then forces
+    // its legacy SDF ridge compare to pi, and edge anchors use the fixed 45 degrees, so Ridge angle
+    // has no effect on them.
+    notes: 'ridge-30 / ridge-60 pin that Ridge angle changes nothing while Reinforce overhang edges is on '
+      + '(add-on parity): Ridge angle only feeds the legacy SDF ridge branch of the add-on, which runs with reinforcement off.',
   },
 ];
