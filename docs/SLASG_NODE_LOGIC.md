@@ -115,7 +115,7 @@ How Resin UV builds live supports. This was read node by node from the Geometry 
 ## 7. Label: MIXO_Label
 
 1. **Anchor**: from the support vertices with z ≤ Pad Height + 0.01, take the one nearest the bbox corner (max x, min y).
-2. **Letters**: `String to Curves` in Blender's Bfont (Size, align Left / Top Baseline), filled. W and H are the letters' bbox plus 2 × Margin.
+2. **Letters**: `String to Curves` in Inter Regular (the add-on's bundled static Inter 4.1; Size, align Left / Top Baseline), filled as triangles. W and H are the letters' bbox plus 2 × Margin.
 3. **Pad**: a frustum from z = 0 to Pad Height (= raft Wall Height). The bottom is W × H; the top is wider by Pad Height × tan(Wall Angle) on each side.
 4. Placement: the pad is centred on anchor + (Offset X, Offset Y); the letters are extruded Height upward from the pad top and centred on the same point.
 
@@ -139,7 +139,7 @@ Points → SLASG_Line → SLASG_Truss2 (when Bracing is on) → SLASG_Realizer, 
 | ManualPoints snap | Poisson and minima points snap to the model surface |
 | Open or broken meshes | not remeshed (a signed distance needs a closed surface); the same Poisson and minima rules run on the model itself |
 | Erase-radius suppression | implemented |
-| Label (Bfont glyphs, Size / 0.686, pad frustum, anchor) | sizes exact; position within 0.4 mm |
+| Label (Inter glyphs, Size / 0.50871, pad frustum, anchor) | sizes exact; position within 0.4 mm |
 | Remesh (Mesh to SDF Grid, Grid to Mesh at adaptivity 0.1) | OpenVDB port, evaluated per 8³ leaf around queried points: vertex for vertex and face for face with Blender on the probe pyramid at adaptivity 0 and 0.1 (`remesh.test.ts`); on a ledge model shifted off the grid, 41 of 754 vertices differ by up to ~0.05 mm, all next to concave corners (OpenVDB sign tracing) |
 | Neck normals: face (nearest polygon), edge (mean vertex normal), vertical | 472 of 476 probe contacts within 0.02 mm, total 0.10 mm (`blenderNecks.test.ts`); the four others are 0.022 mm off |
 | Roof / Cage (Ceiling plates, brace bands, cage rings) | ported: columns, cross bars, slab, plates and rings match per case (`blenderRoof.test.ts`) |

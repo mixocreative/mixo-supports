@@ -62,7 +62,10 @@ describe('Blender parity (mushroom fixture)', () => {
     for (const point of theirs('face')) expect(Math.min(...poisson.map((p) => near(p, point)))).toBeLessThan(0.02);
     // Minima: Blender's 38 differ only by defined ties (pairs exactly Spacing apart merge, the
     // lowest index wins an exact distance tie), checked stage by stage in blenderMinima.test.ts.
-    // Pinned: the web keeps MINIMA.web points; MINIMA.matched of Blender's are among them.
+    // The mushroom's box-edge minima have normals at exactly 45 degrees (= Overhang angle): the
+    // web's accurate acosf corner weights drop 18 that Blender's approximate arccos keeps (owner
+    // decision: keep acosf; README "Defined tie rules"). Pinned: the web keeps MINIMA.web points;
+    // MINIMA.matched of Blender's are among them.
     const minima = ours(['island']);
     expect(theirs('vertical')).toHaveLength(BLENDER.classes.minima);
     const matched = theirs('vertical').filter((point) => Math.min(...minima.map((p) => near(p, point))) < 1e-4).length;

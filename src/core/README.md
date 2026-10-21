@@ -33,7 +33,7 @@ conventions converts at its boundary.
 | `supports/mesh.ts` | Support mesh builder (contacts, columns, trees, braces, raft, label) and picking helpers |
 | `supports/remesh.ts`, `supports/openvdbTables.ts` | Voxel remesh used as the placement and tree surface |
 | `supports/autotree.ts`, `supports/roof.ts`, `supports/raft.ts` | Tree layout, roof cage, raft outline |
-| `supports/bfont.ts`, `supports/bfont.json` | Label font outlines |
+| `supports/labelFont.ts`, `supports/labelFont.json` | Label letters (Inter Regular, OFL-1.1) |
 | `supports/zones.ts`, `supports/overlayMesh.ts` | No-support zones and their overlay mesh |
 
 ## Not yet portable
@@ -122,9 +122,9 @@ For a stricter process, someone who has not seen the old code can re-implement f
   `supports/openvdbTables.ts` holds OpenVDB lookup tables (Apache-2.0, Copyright Contributors
   to the OpenVDB Project). Keep that notice.
 
-**Unresolved: label font data.** `supports/bfont.json` holds glyph outlines exported by
-`tools/blender-parity/export_font.py` from Blender's built-in "Bfont". That font is a Type 1
-font embedded in `blender.exe` (`%!PS-AdobeFont-1.0: Bfont 001.001`) with no copyright or notice
-fields. It is not Inter or DejaVu: the glyph metrics differ. It has no entry in Blender's
-`license/license.md`. Its licence is therefore unknown and may default to Blender's
-GPL-2.0-or-later. Do not ship it in mixomesh until this is resolved (see the Task 10 report).
+**Label font.** `supports/labelFont.json` holds Inter Regular glyph outlines exported by
+`tools/fonts/export_label_font.py`. The source is the official Inter 4.1 static TTF
+(SIL OFL-1.1, Copyright (c) 2016 The Inter Project Authors). The licence text is in
+`tools/fonts/LICENSE-Inter.txt`; version, hashes and the reason the static file is used are in
+`tools/fonts/README.md`. The add-on's MIXO_Label uses the same file. This replaces Blender's
+built-in "Bfont", whose licence could not be established.

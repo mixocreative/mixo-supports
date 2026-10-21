@@ -200,7 +200,7 @@ describe.each(Object.entries(CASES))('Blender case %s', (name, blender) => {
     });
   });
 
-  it('builds the letter label pad and Bfont letters like MIXO_Label', () => {
+  it('builds the letter label pad and Inter letters like MIXO_Label', () => {
     if (!blender.label || blender.label.length === 0) return;
     const text = (blender.settings.label_text as string) || 'A';
     const labelled = buildSupportMesh(contacts, settings, { mode: 'export', model: spike(settings.liftHeight), labelText: text });
