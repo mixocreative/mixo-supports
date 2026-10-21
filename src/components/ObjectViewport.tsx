@@ -12,7 +12,8 @@ import type { PrintScene, PrintUnit } from '../state/project';
 import type { ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../core/supports/mesh';
 import { notSelected } from '../editing/selection';
-import { contactVertexRuns, createHitBatch, frameBudget, selectionDelta } from '../editing/selectionPaint';
+import { contactVertexRuns, frameBudget, selectionDelta } from '../editing/selectionPaint';
+import { createStrokeQueue, type StrokeQueue } from '../editing/strokeQueue';
 import { bodySegments, brushHitsFrom, cachedVisibility, hiddenByModel, projectBodies, type BodySegments } from '../editing/screenBrush';
 import type { BrushMode, EditMode, EditTool, SelectStyle, ZoneKind } from '../editing/types';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
@@ -404,6 +405,9 @@ function useScreenBrush(options: {
   const live = useRef(options);
   live.current = options;
   const [brushed, setBrushed] = useState<readonly string[]>([]);
+  // Outlives the effect below: a support-mesh rebuild mid-stroke keeps the queued steps.
+  const queueRef = useRef<StrokeQueue | undefined>(undefined);
+  queueRef.current ??= createStrokeQueue();
   const wanted = Boolean(options.brush);
   const bodies = useMemo<BodySegments | undefined>(() => (wanted && options.supports ? bodySegments(options.supports) : undefined), [wanted, options.supports]);
   const active = wanted && Boolean(bodies);
@@ -473,20 +477,16 @@ function useScreenBrush(options: {
       return found;
     };
 
-    // Pointer events only queue work. Each animation frame runs at most FRAME_BUDGET ms of hit tests
-    // and carries the rest over (`brushHitsFrom`), so a dense plate stays smooth; a stroke's queue
-    // is finished in later frames even after the release.
-    let size = { width: 0, height: 0 };
-    /** Stroke steps still to test: path from → to, from support index `next`. */
-    let steps: { from: [number, number] | undefined; to: [number, number]; next: number }[] = [];
-    let last: [number, number] | undefined;
+    // Pointer events only queue work (`StrokeQueue`, each step with the brush it was made with).
+    // Each animation frame runs at most `frameBudget` ms of hit tests and carries the rest over
+    // (`brushHitsFrom`), so a dense plate stays smooth; a stroke's queue is finished in later
+    // frames even after the release, and survives this effect restarting on new supports.
+    const queue = queueRef.current!;
+    queue.rebase();
+    let size = { width: canvas.clientWidth, height: canvas.clientHeight };
     /** The hover circle being tested, the support index reached and what it found so far. */
     let hover: { at: [number, number]; next: number; found: string[] } | undefined;
-    /** Ids this stroke already painted: never tested again, though the selection prop lags a render. */
-    const strokePainted = new Set<string>();
     let frame = 0;
-    /** Stroke hits of this frame, committed to the selection once at the end of the frame. */
-    const batch = createHitBatch();
     /** When the last frame's hit tests ended, and the smoothed render time between frames (ms). */
     let lastEnd = 0;
     let renderMs = 8;
@@ -494,7 +494,7 @@ function useScreenBrush(options: {
       if (frame) cancelAnimationFrame(frame);
       frame = 0;
       const { brush, selection } = live.current;
-      if (!brush || (steps.length === 0 && !hover)) return;
+      if (!brush || (!queue.pending && !hover)) return;
       const started = performance.now();
       // Time since the hit tests of the last frame is what rendering took (when frames run back to back).
       if (lastEnd > 0 && started - lastEnd < 1000) renderMs = renderMs * 0.7 + (started - lastEnd) * 0.3;
@@ -503,26 +503,16 @@ function useScreenBrush(options: {
       const projected = project(size.width, size.height);
       if (projected) {
         occluders = visibleOccluders();
-        const adding = brush.mode === 'select';
-        const want = (id: string) => selection.has(id) !== adding;
-        if (steps.length > 0) {
-          // A stroke: the circle sweeps every queued step; painted ids are the preview too.
-
-          while (steps.length > 0) {
-            const step = steps[0]!;
-            const part = brushHitsFrom(step.next, bodies, projected, step.from, step.to, brush.radius, visibility.isVisible, (id) => !strokePainted.has(id) && want(id), stop);
-            batch.add(part.hits);
-            for (const id of part.hits) strokePainted.add(id);
-            if (part.next < bodies.ids.length) {
-              step.next = part.next;
-              break;
-            }
-            steps.shift();
-          }
-          // One selection commit per frame, however many steps were tested in it.
-          if (batch.size > 0) live.current.onPaint(batch.take(), brush.mode);
+        if (queue.pending) {
+          // A stroke: the circle sweeps every queued step; painted ids are the preview too. One
+          // selection commit per frame (per brush mode), however many steps were tested in it.
+          queue.drain(bodies.ids.length, (step) => {
+            const adding = step.mode === 'select';
+            return brushHitsFrom(step.next, bodies, projected, step.from, step.to, step.radius, visibility.isVisible, (id) => !queue.painted.has(id) && selection.has(id) !== adding, stop);
+          }, (ids, mode) => live.current.onPaint(ids, mode));
         } else if (hover) {
-          const part = brushHitsFrom(hover.next, bodies, projected, undefined, hover.at, brush.radius, visibility.isVisible, want, stop);
+          const adding = brush.mode === 'select';
+          const part = brushHitsFrom(hover.next, bodies, projected, undefined, hover.at, brush.radius, visibility.isVisible, (id) => selection.has(id) !== adding, stop);
           hover.found.push(...part.hits);
           hover.next = part.next;
           show([...hover.found]);
@@ -532,7 +522,7 @@ function useScreenBrush(options: {
       // Dev builds time each frame of hit tests (read with performance.getEntriesByName('mixo-brush-frame')).
       if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) performance.measure('mixo-brush-frame', { start: started });
       lastEnd = performance.now();
-      if (steps.length > 0 || hover) schedule();
+      if (queue.pending || hover) schedule();
     };
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(flush);
@@ -557,10 +547,8 @@ function useScreenBrush(options: {
       circle.style.width = circle.style.height = `${brush.radius * 2}px`;
       circle.style.transform = `translate(${x - brush.radius}px, ${y - brush.radius}px)`;
       const state = pressed ? 'sample' : stroke.move((event.buttons & 1) !== 0);
-      if (state === 'sample') {
-        steps.push({ from: last, to: [x, y], next: 0 });
-        last = [x, y];
-      } else if (state === 'idle') {
+      if (state === 'sample') queue.push([x, y], brush.mode, brush.radius);
+      else if (state === 'idle') {
         hover = { at: [x, y], next: 0, found: [] };
       }
       schedule();
@@ -570,9 +558,8 @@ function useScreenBrush(options: {
       const { brush, stroke } = live.current;
       if (!brush || !stroke.begin(event.button)) return;
       live.current.beginStroke();
-      last = undefined;
+      queue.begin();
       hover = undefined;
-      strokePainted.clear();
       show([]);
       handle(event, true);
     };
@@ -583,8 +570,12 @@ function useScreenBrush(options: {
     canvas.addEventListener('pointerdown', down, { capture: true });
     canvas.addEventListener('pointerleave', leave);
     window.addEventListener('pointermove', move);
+    // Steps queued before new supports were drawn go on over them.
+    if (queue.pending) schedule();
     return () => {
       if (frame) cancelAnimationFrame(frame);
+      // New supports keep the queue (the next run rebases it); the brush going away drops it.
+      if (!live.current.brush) queue.clear();
       canvas.removeEventListener('pointerdown', down, { capture: true });
       canvas.removeEventListener('pointerleave', leave);
       window.removeEventListener('pointermove', move);
