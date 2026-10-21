@@ -33,9 +33,10 @@ export function undoToast(id: number, action: UndoAction): UndoToast {
 /**
  * Whether the toast's Undo still undoes its action: a history clear while the scene is still the
  * one it produced (any later step would make Undo undo something else); a selection clear while
- * the same object is still in Support Edit Mode. A toast that is not alive closes.
+ * the same object is still in Support Edit Mode with nothing selected since (Undo would otherwise
+ * replace the newer selection). A toast that is not alive closes.
  */
-export function toastAlive(toast: UndoToast, now: { scene: unknown; mode: EditMode; activeUnitId: string | undefined }): boolean {
-  if (toast.action.kind === 'clearSelection') return now.mode === 'edit' && now.activeUnitId === toast.action.unitId;
+export function toastAlive(toast: UndoToast, now: { scene: unknown; mode: EditMode; activeUnitId: string | undefined; selectionSize: number }): boolean {
+  if (toast.action.kind === 'clearSelection') return now.mode === 'edit' && now.activeUnitId === toast.action.unitId && now.selectionSize === 0;
   return toast.scene === undefined || toast.scene === now.scene;
 }

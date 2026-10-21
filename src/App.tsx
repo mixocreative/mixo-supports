@@ -596,10 +596,10 @@ export default function App() {
   // The toast goes once its Undo would undo something else (a later edit, undo, leaving the mode).
   useEffect(() => {
     if (!toast) return;
-    const now = { scene: history.present, mode: editMode, activeUnitId: activeUnit?.id };
+    const now = { scene: history.present, mode: editMode, activeUnitId: activeUnit?.id, selectionSize: selection.size };
     if (!toastAlive(toast, now)) setToast(undefined);
     else if (toast.action.kind !== 'clearSelection' && toast.scene === undefined) setToast({ ...toast, scene: history.present });
-  }, [activeUnit?.id, editMode, history.present, toast]);
+  }, [activeUnit?.id, editMode, history.present, selection.size, toast]);
 
   // Exactly the selected supports go, in one undo step; the tool stays as it was.
   const deleteSelected = useCallback(() => {
@@ -716,8 +716,8 @@ export default function App() {
     </header>
     <section className="workspace">
       <aside className="panel left">
-        <label className="drop" {...hint('Choose STL, GLB or glTF files, or drop them on the viewport')}>
-          <input type="file" multiple accept=".stl,.glb,.gltf" onChange={(event) => { void importFiles([...(event.target.files ?? [])]); event.target.value = ''; }} />
+        <label className="drop" title={t('Choose STL, GLB or glTF files, or drop them on the viewport')}>
+          <input type="file" aria-description={t('Choose STL, GLB or glTF files, or drop them on the viewport')} multiple accept=".stl,.glb,.gltf" onChange={(event) => { void importFiles([...(event.target.files ?? [])]); event.target.value = ''; }} />
           <strong>{t('Import models')}</strong>
           <small>{t('STL, GLB or glTF. Files stay on this device.')}</small>
         </label>
@@ -900,7 +900,7 @@ export default function App() {
               {selection.size > 0 && <>
                 <span className="edit-count">{t('{n} selected', { n: selection.size })}</span>
                 <button className="danger" onClick={deleteSelected} {...hint('Delete the selected supports (Delete key). Undo brings them back')}>{t('Delete')}</button>
-                <button onClick={clearSelection} {...hint('Unselect every support at once (Esc). Undo brings the selection back')}>{t('Clear selection')}</button>
+                <button onClick={clearSelection} {...hint('Unselect every support at once (Esc). Undo on the notice brings the selection back')}>{t('Clear selection')}</button>
               </>}
               <button className="primary edit-done" onClick={toggleEditMode} {...hint('Finish editing supports (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
             </div>
@@ -929,7 +929,8 @@ export default function App() {
       <span>{plural(scene.units.length, '1 object', '{n} objects')}</span>
       {activeUnit && <span>{t('{n} triangles', { n: (activeUnit.source.indices.length / 3).toLocaleString() })}</span>}
       {contactCounts && <span>{t('{auto} automatic, {manual} manual, {removed} removed', contactCounts)}</span>}
-      <strong>{translateMessage(status)}</strong>
+      {/* Announced to screen readers, so errors and step results are heard too. */}
+      <strong role="status" aria-live="polite">{translateMessage(status)}</strong>
     </footer>
   </main>;
 }

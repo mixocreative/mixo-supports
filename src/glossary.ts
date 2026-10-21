@@ -19,7 +19,7 @@ export interface GlossaryEntry {
 export const GLOSSARY: readonly GlossaryEntry[] = [
   { concept: 'Support', en: /\bsupports?\b/i, zh: ['支撐'], ja: ['サポート'], avoid: { ja: ['個のサポート', 'サポートを 1 個'] } },
   { concept: 'Contact (point)', en: /\bcontacts?\b/i, zh: ['接觸'], ja: ['接触'] },
-  { concept: 'Tip', en: /\btips?\b/i, zh: ['頭'], ja: ['先端'], avoid: { zh: ['僅頂端', '接觸頂端'] } },
+  { concept: 'Tip', en: /\btips?\b/i, zh: ['支撐頭', '接觸頭'], ja: ['先端'], avoid: { zh: ['僅頂端', '接觸頂端'] } },
   { concept: 'Pillar', en: /\bpillars?\b/i, zh: ['支撐柱'], ja: ['支柱'] },
   { concept: 'Bracing', en: /\bbrac(e|es|ing)\b/i, zh: ['加強'], ja: ['補強'], avoid: { zh: ['支撐架'], ja: ['ブレース'] } },
   { concept: 'Raft', en: /\braft\b/i, zh: ['底筏'], ja: ['ラフト'] },
@@ -36,8 +36,8 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   { concept: 'Export', en: /\bexport/i, zh: ['輸出'], ja: ['書き出'], avoid: { zh: ['匯出'], ja: ['エクスポート'] } },
   { concept: 'Delete', en: /\bdelet/i, zh: ['刪除'], ja: ['削除'] },
   { concept: 'Remove (supports)', en: /\bremov/i, zh: ['移除'], ja: ['削除'] },
-  { concept: 'Paint (zones only)', en: /\bpaint/i, zh: ['塗'], ja: ['塗'] },
-  { concept: 'Erase (zones only)', en: /\berase/i, zh: ['擦除'], ja: ['消'] },
+  { concept: 'Paint (zones only)', en: /\bpaint/i, zh: ['塗刷'], ja: ['塗る', '塗り', '塗装', '塗ります'] },
+  { concept: 'Erase (zones only)', en: /\berase/i, zh: ['擦除'], ja: ['消す', '消し', '消去'] },
   { concept: 'Undo', en: /\bundo\b/i, zh: ['復原'], ja: ['元に戻'] },
 ];
 

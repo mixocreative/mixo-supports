@@ -242,7 +242,7 @@ and Clear selection (with a selection) run at once — no confirm dialog — and
 mode's bar is at the bottom). The countdown pauses while hovered or focused. Undo restores in one
 step: a history clear undoes that history step; a selection clear puts the ids back. The toast
 closes as soon as its Undo would undo something else (`toastAlive`: the scene moved on, or the
-mode / object changed for a selection). Style: surface background, 1 px `--line-strong`
+mode / object changed, or something was selected again, for a selection). The status line is a polite live region too (`role="status"`). Style: surface background, 1 px `--line-strong`
 hairline, 2 px radius, no shadow, 12 px text, Undo as a plain button (≥ 24 px tall).
 
 | Action | Toast (en) | zh-Hant | ja |
@@ -255,14 +255,14 @@ hairline, 2 px radius, no shadow, 12 px text, Undo as a plain button (≥ 24 px 
 Errors carry a code (`CodedError`; the import module's English messages, the worker crash and
 timeouts are recognised by `errorCode`) so the line is translated; the raw message is shown only
 inside the generic message of an unknown error. Codes: `non-finite`, `no-mesh`, `file-type`,
-`too-large` (with `{n}` and `{limit}`, for lane B's budget refusal), `timeout`, `worker-stopped`,
+`too-large` (with `{n}` and `{limit}`, for lane B's budget refusal), `timeout`, `worker-stopped` (a crashed worker is replaced on the next request, so the next step is to retry, never to reload the page, which would lose the unsaved scene),
 `unknown`; jobs: import, place, build, check, export. Example: "Export failed ({error}). Nothing
 was saved; try again, or export one object at a time."
 
-**Forgiving number fields** (`editing/numberInput.ts`): "2", "2.5", "2mm", "2 mm", "2,5" (decimal
+**Forgiving number fields** (`editing/numberInput.ts`): full-width input is folded (NFKC); "2", "2.5", "2mm", "2 mm", "2,5" (decimal
 comma), "45°", "30 %" are read as numbers; values outside a setting's limits are clamped, never
 rejected; text that is not a number leaves the value as it was. A value inside the limits applies
-as it is typed; blur or Enter applies the clamped value and tidies the text; Esc restores it;
+as it is typed; blur or Enter applies the clamped value and tidies the text; Esc puts back the value the field had on focus;
 Arrow Up / Down step by the field's step.
 
 **Hover hints**: every tool button, slider and setting has a hint shown on hover (`title`) and read

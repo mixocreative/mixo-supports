@@ -10,7 +10,7 @@ one; the add-on's Japanese **オーバーハングの縁を補強** is the label
 |---|---|---|---|---|
 | Support | support | 支撐 | サポート (counted with 本) | ja 個のサポート |
 | Contact (point) | contact | 接觸點 (接觸) | 接触点 (接触) | |
-| Tip | tip | 支撐頭 (頭) | 先端 | zh 頂端 for a tip (僅頂端, 接觸頂端) |
+| Tip | tip | 支撐頭 (接觸頭 for the contact tip) | 先端 | zh 頂端 for a tip (僅頂端, 接觸頂端) |
 | Pillar | pillar | 支撐柱 | 支柱 | |
 | Bracing | bracing, brace | 加強桿 (加強) | 補強材 (補強) | zh 支撐架, ja ブレース |
 | Raft | raft | 底筏 | ラフト | |
@@ -27,8 +27,8 @@ one; the add-on's Japanese **オーバーハングの縁を補強** is the label
 | Export | export | 輸出 | 書き出し (書き出) | zh 匯出, ja エクスポート |
 | Delete | delete (exactly the selected) | 刪除 | 削除 | |
 | Remove (supports) | remove (within Remove radius, or all supports) | 移除 | 削除 | |
-| Paint (zones only) | paint | 塗刷 (塗) | 塗る (塗) | en: only for no-support zones |
-| Erase (zones only) | erase | 擦除 | 消す (消) | en: only for no-support zones |
+| Paint (zones only) | paint | 塗刷 | 塗る (塗り, 塗装, 塗ります) | en: only for no-support zones |
+| Erase (zones only) | erase | 擦除 | 消す (消し, 消去) | en: only for no-support zones |
 | Undo | undo | 復原 | 元に戻す (元に戻) | |
 
 Tool words (mixo-app-style): **Paint / Erase / Brush** mark no-support zones on the surface;

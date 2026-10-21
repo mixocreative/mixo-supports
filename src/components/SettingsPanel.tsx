@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { LiveSupportSettings, PresetName, RoofMode, SettingKey } from '../core/supports/settings';
 import { settingLimits } from '../core/supports/settings';
-import { formatNumber, readNumberInput, stepNumber, type NumberLimits } from '../editing/numberInput';
+import { escapeValue, formatNumber, readNumberInput, stepNumber, type NumberLimits } from '../editing/numberInput';
 import { t } from '../i18n';
 import { hint } from './hint';
 
@@ -212,10 +212,12 @@ export default function SettingsPanel({ settings, autoLabel, disabled, onChange,
  * A forgiving number field (editing/numberInput): "2mm", "2 mm" and "2,5" are read as numbers, and
  * values outside the setting's limits are clamped instead of rejected. A value inside the limits
  * applies as it is typed; leaving the field (or Enter) applies the clamped value and tidies the
- * text; Esc restores it; Arrow Up / Down step.
+ * text; Esc puts back the value the field had on focus; Arrow Up / Down step. Full-width digits are read too.
  */
 function NumberField({ label, unit, step, value, limits, hint, onChange }: { label: string; unit?: string; step: number; value: number; limits: NumberLimits; hint?: string; onChange: (value: number) => void }) {
   const [text, setText] = useState<string>();
+  /** The value when the field got focus: what Esc puts back. */
+  const onFocus = useRef<number>();
   const shown = text ?? formatNumber(value);
   const commit = () => {
     if (text === undefined) return;
@@ -237,10 +239,15 @@ function NumberField({ label, unit, step, value, limits, hint, onChange }: { lab
           const read = readNumberInput(event.target.value, limits);
           if (read && !read.clamped && read.value !== value) onChange(read.value);
         }}
+        onFocus={() => { onFocus.current = value; }}
         onBlur={commit}
         onKeyDown={(event) => {
           if (event.key === 'Enter') commit();
-          else if (event.key === 'Escape') setText(undefined);
+          else if (event.key === 'Escape') {
+            const original = escapeValue(onFocus.current, value);
+            if (original !== undefined) onChange(original);
+            setText(undefined);
+          }
           else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
             event.preventDefault();
             const current = readNumberInput(shown, limits)?.value ?? value;

@@ -26,7 +26,8 @@ export function errorCode(error: unknown): ErrorCode {
   if (error.name === 'TimeoutError' || /\btimed? ?out\b/i.test(error.message)) return 'timeout';
   if (/vertex coordinates that are not finite/i.test(error.message)) return 'non-finite';
   if (/contains no mesh/i.test(error.message)) return 'no-mesh';
-  if (/worker stopped/i.test(error.message)) return 'worker-stopped';
+  // A worker crash: "The import worker stopped.", "The analysis worker stopped.", "… failed in the background worker."
+  if (/\bworker (stopped|failed)\b|failed in the background worker/i.test(error.message)) return 'worker-stopped';
   return 'unknown';
 }
 
@@ -35,9 +36,9 @@ const IMPORT: Record<ErrorCode, string> = {
   'non-finite': '{name} has broken vertex positions (not numbers). Repair the model or export it again, then import it.',
   'no-mesh': '{name} contains no mesh. Export it again with the mesh included, then import it.',
   'file-type': 'Only STL, GLB and glTF files can be imported. Choose a file of one of these types.',
-  'too-large': '{name} is too large to edit here: {n} triangles, the limit is {limit}. Simplify the model, or use the desktop app.',
+  'too-large': '{name} is too large to edit here: {n} triangles, the limit is {limit}. Simplify the model, then import it again.',
   timeout: 'Importing {name} took too long and was stopped. Try again; if it happens again, simplify the model.',
-  'worker-stopped': 'The import stopped unexpectedly while reading {name}. Reload the page, then import it again.',
+  'worker-stopped': 'The import stopped unexpectedly while reading {name}. Import it again; if it stops again, the file may be too large or damaged: simplify it or export it again.',
   unknown: 'Could not read {name} as STL, GLB or glTF ({error}). Check the file or export it again, then import it.',
 };
 const TIMEOUT: Record<Exclude<ErrorContext, 'import'>, string> = {
@@ -45,6 +46,14 @@ const TIMEOUT: Record<Exclude<ErrorContext, 'import'>, string> = {
   build: 'Building supports took too long and was stopped. Change a setting or generate again to retry.',
   check: 'The support check took too long and was stopped. Supports are unchanged; run the check again.',
   export: 'Export took too long and was stopped. Nothing was saved; try again, or export one object at a time.',
+};
+// A crashed worker is replaced by a fresh one on the next request, so the next step is to retry
+// (never to reload the page, which would lose the unsaved scene).
+const STOPPED: Record<Exclude<ErrorContext, 'import'>, string> = {
+  place: 'The support worker stopped unexpectedly. Supports are unchanged; generate again.',
+  build: 'The support worker stopped unexpectedly. Change a setting or generate again to rebuild the supports.',
+  check: 'The support worker stopped unexpectedly. Supports are unchanged; run the check again.',
+  export: 'The export worker stopped unexpectedly. Nothing was saved; export again.',
 };
 const FAILED: Record<Exclude<ErrorContext, 'import'>, string> = {
   place: 'Placing contacts failed ({error}). Adjust the model or settings, then generate again.',
@@ -60,7 +69,7 @@ export function errorStatus(context: ErrorContext, error: unknown, vars: { name?
   const raw = error instanceof Error ? error.message : String(error);
   let key: string;
   if (context === 'import') key = IMPORT[code];
-  else key = code === 'timeout' ? TIMEOUT[context] : FAILED[context];
+  else key = code === 'timeout' ? TIMEOUT[context] : code === 'worker-stopped' ? STOPPED[context] : FAILED[context];
   const filled: Record<string, string | number> = { ...(vars.name !== undefined ? { name: vars.name } : {}), ...coded };
   // The raw message only fills a message that asks for it (errors the app does not know yet).
   if (key.includes('{error}')) filled.error = raw;

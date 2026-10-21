@@ -489,7 +489,7 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 /* Touch screens: no keyboard hints, roomier tap targets. */
 @media (pointer: coarse) {
   .edit-hint { display: none; }
-  button, .segmented button, .panel .segmented button { min-height: 40px; }
+  button, .segmented button, .panel .segmented button, .undo-toast button { min-height: 40px; }
   .problems button { min-height: 36px; }
 }
 

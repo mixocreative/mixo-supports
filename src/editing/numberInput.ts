@@ -11,10 +11,11 @@ const NUMBER = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*(?:mm|°|deg|%)?$/i;
 
 /**
  * A number typed the forgiving way: "2", "2.5", "2mm", "2 mm", "2,5" (decimal comma), "45°",
- * "30 %". Undefined for anything else, including NaN and infinity.
+ * "30 %", also typed full width. Undefined for anything else, including NaN and infinity.
  */
 export function parseNumber(text: string): number | undefined {
-  let trimmed = text.trim();
+  // NFKC folds full-width digits and punctuation from Japanese / Chinese input methods ("２，５ｍｍ").
+  let trimmed = text.normalize('NFKC').trim();
   // One comma and no point is a decimal comma ("2,5"); anything else with a comma is unclear.
   if (trimmed.includes(',')) {
     if (trimmed.includes('.') || trimmed.indexOf(',') !== trimmed.lastIndexOf(',')) return undefined;
@@ -47,4 +48,12 @@ export function stepNumber(value: number, step: number, direction: 1 | -1, limit
 /** How a value shows in its field: at most four decimals, no trailing zeros. */
 export function formatNumber(value: number): string {
   return String(Number(value.toFixed(4)));
+}
+
+/**
+ * Esc in a number field: the value it had when the field got focus. Values inside the limits
+ * apply while typing, so Esc must put that one back; undefined when nothing changed.
+ */
+export function escapeValue(onFocus: number | undefined, current: number): number | undefined {
+  return onFocus !== undefined && onFocus !== current ? onFocus : undefined;
 }

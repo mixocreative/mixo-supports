@@ -17,7 +17,7 @@ describe('undoToast', () => {
 
 describe('toastAlive', () => {
   const scene = {};
-  const now = { scene, mode: 'edit' as const, activeUnitId: 'u1' };
+  const now = { scene, mode: 'edit' as const, activeUnitId: 'u1', selectionSize: 0 };
 
   it('a history clear stays undoable while the scene is the one it left', () => {
     const toast = undoToast(1, { kind: 'clearZones' });
@@ -34,5 +34,7 @@ describe('toastAlive', () => {
     expect(toastAlive(toast, { ...now, mode: 'off' })).toBe(false);
     expect(toastAlive(toast, { ...now, mode: 'zones' })).toBe(false);
     expect(toastAlive(toast, { ...now, activeUnitId: 'u2' })).toBe(false);
+    // A new selection since: Undo would replace it, so the toast goes.
+    expect(toastAlive(toast, { ...now, selectionSize: 1 })).toBe(false);
   });
 });
