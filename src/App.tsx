@@ -179,7 +179,8 @@ export default function App() {
   const heavyHint = activeHeavy ? t(HEAVY_EDIT, { n: triangleCount(activeUnit!).toLocaleString() }) : undefined;
   /** A large model on the plate keeps the tips view on above the plate too (to stay smooth), until switched off. */
   const largeTips = useMemo(() => scene.units.some((unit) => meshTier(triangleCount(unit), RUNTIME) === 'large'), [scene.units]);
-  const tipsOn = tipsShown(tips, largeTips);
+  // Painting zones shows the tips at both ends of every support over the blue layer (editing/view).
+  const tipsOn = tipsShown(tips, largeTips, editMode === 'zones');
   // Support Edit Mode belongs to the active unit: it ends when that unit goes (delete, undo).
   // The selection empties on leaving a mode or changing the active object; ids that no longer
   // exist (undo, regeneration) drop out.
@@ -904,7 +905,8 @@ export default function App() {
             className={tipsOn ? 'active' : ''}
             aria-pressed={tipsOn}
             onClick={() => setTips((state) => tipsToggle(state, largeTips))}
-            {...hint(tipsOn ? 'Only contact tips show. Turns on by itself below the plate; click to switch off. Export stays full.' : 'Show only the contact tips: no pillars, braces or raft. Turns on by itself below the plate. Export stays full.')}
+            disabled={editMode === 'zones'}
+            {...hint(editMode === 'zones' ? 'While painting no-support zones only the contact tips show, so the surface stays visible.' : tipsOn ? 'Only contact tips show. Turns on by itself below the plate; click to switch off. Export stays full.' : 'Show only the contact tips: no pillars, braces or raft. Turns on by itself below the plate. Export stays full.')}
           >{t('Tips only')}</button>
           <button onClick={() => requestView('fit')} disabled={scene.units.length === 0} {...hint('Frame the selection from the current angle')}>{t('Fit view')}</button>
           <button onClick={() => requestView('bottom')} disabled={scene.units.length === 0} {...hint('Look straight up at the selection to check contact points')}>{t('Bottom view')}</button>
@@ -938,6 +940,7 @@ export default function App() {
               </label>
               <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
             </div>
+            {!tips.below && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
             <div className="edit-row">
               <button className="danger" onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear all zones')}</button>
               <button className="primary edit-done" onClick={closeZones} {...hint('Finish painting zones (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>

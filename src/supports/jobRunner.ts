@@ -61,7 +61,7 @@ function cachedRemesh(source: object, frame: JobTransform, model: ReturnType<typ
 export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): GeneratedSupportMesh {
   const { frame, settings } = job;
   if (frame === null) return buildSupportMesh([], defaultSupportSettings);
-  const contacts = jobContacts(job.contacts, settings).map((contact) => ({
+  const contacts = jobContacts(job.contacts, settings, { model: job.mesh, frame }).map((contact) => ({
     id: contact.id,
     position: transformPoint(frame, contact.position),
     normal: transformDirection(frame, contact.normal),

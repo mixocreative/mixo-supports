@@ -262,6 +262,8 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
   white-space: nowrap;
 }
 .edit-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 16px; align-items: center; }
+/* One-line guidance inside the edit bar (zones above the plate). */
+.edit-note { margin: 0; max-width: 100%; white-space: normal; text-align: right; color: var(--muted); }
 kbd {
   font: inherit;
   font-size: 11px;

@@ -40,6 +40,11 @@ export interface SupportComponent {
   /** First index into `indices`, and the number of indices (a multiple of 3). */
   start: number;
   count: number;
+  /**
+   * A pillar that lands on the model with its landing tip built into the tube (round tapered tip,
+   * no sphere): its last `landingReach` mm, around the tube's end, show in the tips view.
+   */
+  landingReach?: number;
 }
 
 export interface GeneratedSupportMesh extends TriangleMesh {
@@ -178,7 +183,7 @@ export function buildSupportMesh(
       builder.end();
       pillar = pillar.slice(0, last + 1);
     }
-    builder.begin('pillar', contact.id);
+    builder.begin('pillar', contact.id, column.landing && !shaped ? settings.neckLength : undefined);
     builder.tube(pillar, segments);
     builder.end();
     if (!column.landing) anchors.push({ id: contact.id, position: column.curve[column.curve.length - 1]!.point });
@@ -348,17 +353,36 @@ export function meshBounds(mesh: TriangleMesh): { min: Vector; max: Vector } {
  * points without pillars, braces or raft. Shares the vertices; contacts still pick.
  */
 export function tipsOf(mesh: GeneratedSupportMesh): GeneratedSupportMesh {
-  const kept = mesh.components.filter((component) => component.part === 'tip' || component.part === 'neck');
-  const indices = new Uint32Array(kept.reduce((total, component) => total + component.count, 0));
+  const kept: { component: SupportComponent; triangles: Uint32Array }[] = [];
+  for (const component of mesh.components) {
+    const triangles = mesh.indices.subarray(component.start, component.start + component.count);
+    if (component.part === 'tip' || component.part === 'neck') kept.push({ component, triangles });
+    else if (component.landingReach !== undefined) kept.push({ component: { part: 'neck', ...(component.contactId ? { contactId: component.contactId } : {}), start: 0, count: 0 }, triangles: landingEnd(mesh.positions, triangles, component.landingReach) });
+  }
+  const indices = new Uint32Array(kept.reduce((total, entry) => total + entry.triangles.length, 0));
   const components: SupportComponent[] = [];
   let offset = 0;
-  for (const component of kept) {
-    indices.set(mesh.indices.subarray(component.start, component.start + component.count), offset);
-    components.push({ ...component, start: offset });
-    offset += component.count;
+  for (const { component, triangles } of kept) {
+    if (triangles.length === 0) continue;
+    indices.set(triangles, offset);
+    components.push({ ...component, start: offset, count: triangles.length });
+    offset += triangles.length;
   }
-  const parts = (['tip', 'neck'] as const).filter((part) => kept.some((component) => component.part === part));
+  const parts = (['tip', 'neck'] as const).filter((part) => components.some((component) => component.part === part));
   return { positions: mesh.positions, indices, parts, components };
+}
+
+/** Triangles of a tube within `reach` of its end (its last vertex): the landing tip of a landing pillar. */
+function landingEnd(positions: Float32Array, triangles: Uint32Array, reach: number): Uint32Array {
+  let last = 0;
+  for (const vertex of triangles) if (vertex > last) last = vertex;
+  const [ex, ey, ez] = [positions[last * 3]!, positions[last * 3 + 1]!, positions[last * 3 + 2]!];
+  const near = (vertex: number) => Math.hypot(positions[vertex * 3]! - ex, positions[vertex * 3 + 1]! - ey, positions[vertex * 3 + 2]! - ez) <= reach;
+  const out: number[] = [];
+  for (let i = 0; i < triangles.length; i += 3) {
+    if (near(triangles[i]!) && near(triangles[i + 1]!) && near(triangles[i + 2]!)) out.push(triangles[i]!, triangles[i + 1]!, triangles[i + 2]!);
+  }
+  return Uint32Array.from(out);
 }
 
 export function contactAtTriangle(mesh: GeneratedSupportMesh, triangle: number): string | undefined {
@@ -394,10 +418,8 @@ function contactColumn(contact: SupportContact, settings: Readonly<LiveSupportSe
   const normal = normalizeOrDown(contact.normal);
   const tip = subtract(contact.position, scale(normal, tipDepth(settings)));
   if (tip[1] <= raftTop) return undefined;
-  const reach = add(contact.position, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength));
-  const bend: Vector = reach;
+  const { bend, hit } = columnLanding(contact, settings, tipOnly ? undefined : ray);
   const chain: CurveNode[] = [{ point: tip, radius: neckRadius }, { point: bend, radius: pillarRadius }];
-  const hit = tipOnly ? undefined : ray?.cast(bend, ray.height);
   if (hit) {
     if (bend[1] - hit.point[1] > 2 * settings.neckLength) {
       // Inverted neck up to a touch sphere on the model below.
@@ -412,6 +434,29 @@ function contactColumn(contact: SupportContact, settings: Readonly<LiveSupportSe
     chain.push({ point: [bend[0], bend[1] - settings.pillarDiameter, bend[2]], radius: pillarRadius });
   }
   return { tip, curve: filletPolyline(chain, settings.pillarDiameter / 2, 3), ...(hit ? { landing: hit.point } : {}) };
+}
+
+/**
+ * SLASG_Line landing ray of one contact: the neck's lower end `bend` (contact + neck direction x
+ * Connection Length) and the model surface straight below it, when there is one (the column lands
+ * there instead of on the plate). The one place this ray is cast: the column builder and the
+ * no-support zone test (`exactLanding`) both use it.
+ */
+function columnLanding(contact: SupportContact, settings: Readonly<LiveSupportSettings>, ray: LineTarget | undefined): { bend: Vector; hit?: { point: Vector; normal: Vector } } {
+  const bend = add(contact.position, scale(neckDirection(normalizeOrDown(contact.normal), settings.maxNeckAngle), settings.neckLength));
+  const hit = ray?.cast(bend, ray.height);
+  return hit ? { bend, hit } : { bend };
+}
+
+/**
+ * Where contacts' columns land on `model` (plate frame, Y up), cast as the builder casts them in a
+ * Low Poly Mode preview ("Exact Shape": the exact model, no remesh, so no voxel build is needed;
+ * the remeshed build lands within a voxel of it). Undefined: the column goes down to the plate.
+ * The surface normal of a hit points up.
+ */
+export function exactLanding(model: TriangleMesh): (contact: SupportContact, settings: Readonly<LiveSupportSettings>) => { point: Vector; normal: Vector } | undefined {
+  const ray = new LineTarget(new DownRaycaster(model), undefined);
+  return (contact, settings) => columnLanding({ ...contact, normal: ray.normal(contact) }, settings, ray).hit;
 }
 
 /** `to` moved `depth` further along the direction from `from` to `to`. */
@@ -844,8 +889,8 @@ class MeshBuilder {
   private parts: SupportPart[] = [];
   private current?: SupportComponent;
 
-  begin(part: SupportPart, contactId?: string): void {
-    this.current = { part, ...(contactId === undefined ? {} : { contactId }), start: this.indices.length, count: 0 };
+  begin(part: SupportPart, contactId?: string, landingReach?: number): void {
+    this.current = { part, ...(contactId === undefined ? {} : { contactId }), start: this.indices.length, count: 0, ...(landingReach === undefined ? {} : { landingReach }) };
   }
 
   end(): void {

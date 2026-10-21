@@ -92,11 +92,14 @@ export interface TipsState {
 export const TIPS_START: TipsState = { manual: null, below: false };
 
 /**
- * Only contact tips show: the user's choice when there is one, else below the plate (or, with
- * `autoAbove`, also above it: a large model keeps the tips view on to stay smooth).
+ * Only contact tips show: always while painting no-support zones (`zones`: the tips at both ends
+ * of every support sit on the surface to paint, and pillars would hide the blue layer), else the
+ * user's choice when there is one, else below the plate (or, with `autoAbove`, also above it: a
+ * large model keeps the tips view on to stay smooth). Zones never change the state, so leaving
+ * them brings the previous view back.
  */
-export function tipsShown(state: TipsState, autoAbove = false): boolean {
-  return state.manual ?? (state.below || autoAbove);
+export function tipsShown(state: TipsState, autoAbove = false, zones = false): boolean {
+  return zones || (state.manual ?? (state.below || autoAbove));
 }
 
 /** The camera is on the given side of the plate: crossing it resets the choice to automatic. */

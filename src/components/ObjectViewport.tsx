@@ -88,7 +88,7 @@ export interface ObjectViewportProps {
 /** Colours of the edit preview and check markers (the app's red, kraft, blue and an amber). */
 const PREVIEW = { add: '#b59f78', remove: '#7f0019', ring: '#3b3631', zone: '#1d3461', island: '#b3261e', overhang: '#d97706' };
 /** Opacity of the no-support zone layer in zones mode (`full`) and in Support Edit Mode (`faint`). */
-const ZONE_OPACITY = { full: 0.55, faint: 0.25 } as const;
+const ZONE_OPACITY = { full: 0.7, faint: 0.3 } as const;
 /** Opacity of a support body previewed (not yet selected) in red. */
 const SEE_THROUGH = 0.45;
 /** Brush cursor over the active object: a brush icon (tip at the hot spot), crosshair where unsupported. */

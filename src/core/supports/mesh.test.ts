@@ -134,6 +134,26 @@ describe('buildSupportMesh', () => {
     expect(contactAtTriangle(mesh, mesh.components.find((component) => component.contactId === 'auto-1')!.start / 3)).toBe('auto-1');
   });
 
+  it('the tips view also keeps the landing end of a column that lands on the model below (default tip, no sphere)', () => {
+    // Slab top at y = 9, a contact under a shelf at y = 20 straight above it.
+    const box = (y0: number, y1: number, h: number): number[] => [-h, y0, -h, h, y0, -h, h, y1, -h, -h, y1, -h, -h, y0, h, h, y0, h, h, y1, h, -h, y1, h];
+    const faces = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [3, 7, 6, 2], [0, 4, 7, 3], [1, 2, 6, 5]];
+    const quads = (base: number) => faces.flatMap(([a, b, c, d]) => [base + a!, base + b!, base + c!, base + a!, base + c!, base + d!]);
+    const model: TriangleMesh = { positions: new Float32Array([...box(5, 9, 20), ...box(20, 24, 5)]), indices: new Uint32Array([...quads(0), ...quads(8)]) };
+    const plain = { ...defaultSupportSettings, roofSeededModes: [], lowPolyMode: true } as LiveSupportSettings;
+    const mesh = buildSupportMesh([{ id: 'shelf', position: [0, 20, 0], normal: [0, -1, 0] }], plain, { model });
+    const tips = tipsOf(mesh);
+    const ys = (component: { start: number; count: number }) => Array.from(tips.indices.subarray(component.start, component.start + component.count), (v) => tips.positions[v * 3 + 1]!);
+    const ends = tips.components.map((component) => Math.min(...ys(component)));
+    // One kept part at the contact (y ~ 20) and one at the landing on the slab (y ~ 9).
+    expect(ends.some((y) => y > 17)).toBe(true);
+    expect(ends.some((y) => y < 10)).toBe(true);
+    expect(tips.components.every((component) => component.contactId === 'shelf')).toBe(true);
+    // Only the landing end, not the whole pillar.
+    const landing = tips.components.find((component) => Math.min(...ys(component)) < 10)!;
+    expect(Math.max(...ys(landing))).toBeLessThan(9 + plain.neckLength + 0.5);
+  });
+
   it('keeps only the contact tips for the tips view, still picking their contact', () => {
     const mesh = buildSupportMesh([contact, neighbour], settings);
     const tips = tipsOf(mesh);

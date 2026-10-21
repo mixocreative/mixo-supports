@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SupportPoint } from './analysis/types';
+import type { SupportPoint, TriangleMesh } from './analysis/types';
 import { jobContacts, type ContactInputs } from './jobs';
 import { defaultSupportSettings, type LiveSupportSettings } from './supports/settings';
 
@@ -19,5 +19,54 @@ describe('jobContacts', () => {
   it('drops deleted contacts and automatic ones inside a no-support zone, never manual ones', () => {
     const zones = [{ center: [10, 0, 0] as [number, number, number], radius: 1, normal: [0, -1, 0] as [number, number, number], kind: 'paint' as const }, { center: [20, 0, 0] as [number, number, number], radius: 1, normal: [0, -1, 0] as [number, number, number], kind: 'paint' as const }];
     expect(jobContacts(inputs({ deleted: ['auto-0'], zones }), settings).map((contact) => contact.id)).toEqual(['manual-a']);
+  });
+});
+
+describe('jobContacts: landing on a no-support zone', () => {
+  type V = [number, number, number];
+  /** Outward-facing axis-aligned boxes as one mesh. */
+  function boxes(...list: [V, V][]): TriangleMesh {
+    const positions: number[] = [];
+    const indices: number[] = [];
+    for (const [[x0, y0, z0], [x1, y1, z1]] of list) {
+      const base = positions.length / 3;
+      for (const [x, y, z] of [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]]) positions.push(x!, y!, z!);
+      for (const face of [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [3, 7, 6, 2], [0, 4, 7, 3], [1, 2, 6, 5]]) {
+        indices.push(base + face[0]!, base + face[1]!, base + face[2]!, base + face[0]!, base + face[2]!, base + face[3]!);
+      }
+    }
+    return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
+  }
+  // A slab (top at y = 9) with a shelf above it (underside at y = 20).
+  const model = boxes([[-20, 5, -20], [20, 9, 20]], [[-5, 20, -5], [5, 24, 5]]);
+  const under = (id: string, position: V): SupportPoint => ({ id, regionId: 0, position, normal: [0, -1, 0], source: 'interior' });
+  const paint = (center: V, normal: V = [0, 1, 0]) => ({ center, radius: 3, normal, kind: 'paint' as const });
+  const shelfInputs = (zones: ContactInputs['zones']): ContactInputs => ({
+    // auto-shelf lands on the slab top under it; auto-slab (slab underside) lands on the plate.
+    points: [under('auto-shelf', [0, 20, 0]), under('auto-slab', [15, 5, 0])],
+    manual: [under('manual-shelf', [2, 20, 2])],
+    suppressed: [], deleted: [], zones,
+  });
+  const ids = (zones: ContactInputs['zones'], frame = { position: [0, 0, 0] as V, rotation: [0, 0, 0] as V }) =>
+    jobContacts(shelfInputs(zones), settings, { model, frame }).map((contact) => contact.id);
+
+  it('drops an automatic support whose column lands inside a zone painted on the surface below; manual ones stay', () => {
+    expect(ids([])).toEqual(['auto-shelf', 'auto-slab', 'manual-shelf']);
+    expect(ids([paint([0, 9, 0])])).toEqual(['auto-slab', 'manual-shelf']);
+  });
+
+  it('keeps the same-side rule and erase: a zone on the far side, or erased again, drops nothing', () => {
+    expect(ids([paint([0, 9, 0], [0, -1, 0])])).toEqual(['auto-shelf', 'auto-slab', 'manual-shelf']);
+    expect(ids([paint([0, 9, 0]), { ...paint([0, 9, 0]), kind: 'erase' }])).toEqual(['auto-shelf', 'auto-slab', 'manual-shelf']);
+    // A zone elsewhere on the slab top leaves the landing support alone.
+    expect(ids([paint([12, 9, 12])])).toEqual(['auto-shelf', 'auto-slab', 'manual-shelf']);
+  });
+
+  it('casts in the frame the supports were generated at (unit moved on the plate)', () => {
+    expect(ids([paint([0, 9, 0])], { position: [30, 2, -10], rotation: [0, 0, 0] })).toEqual(['auto-slab', 'manual-shelf']);
+  });
+
+  it('without a model (no supports generated) only the contact itself is tested', () => {
+    expect(jobContacts(shelfInputs([paint([0, 9, 0])]), settings).map((contact) => contact.id)).toEqual(['auto-shelf', 'auto-slab', 'manual-shelf']);
   });
 });

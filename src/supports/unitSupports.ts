@@ -29,7 +29,9 @@ const contactCache = new WeakMap<PrintUnit, readonly SupportContact[]>();
 export function unitContacts(unit: PrintUnit): readonly SupportContact[] {
   let contacts = contactCache.get(unit);
   if (!contacts) {
-    contacts = Object.freeze(jobContacts(contactInputs(unit), resolveSettings(unit.settings)));
+    // Once supports exist, a column landing on a zoned surface below drops its contact too.
+    const landing = unit.supports === undefined ? undefined : { model: unit.source, frame: generationTransform(unit) };
+    contacts = Object.freeze(jobContacts(contactInputs(unit), resolveSettings(unit.settings), landing));
     contactCache.set(unit, contacts);
   }
   return contacts;

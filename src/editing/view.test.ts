@@ -115,6 +115,22 @@ describe('Tips only (tipsShown, tipsCamera, tipsToggle)', () => {
     for (const [state, autoAbove, shown] of table) expect(tipsShown(state, autoAbove), JSON.stringify([state, autoAbove])).toBe(shown);
   });
 
+  it('painting zones forces the tips view (both ends of every support show over the blue layer) without touching the choice', () => {
+    const table: [TipsState, boolean, boolean][] = [
+      // state, painting zones, shown
+      [at(false, false), true, true],
+      [at(false, true), true, true],
+      [at(null, false), true, true],
+      [at(false, false), false, false],
+      [at(true, false), false, true],
+    ];
+    for (const [state, zones, shown] of table) expect(tipsShown(state, false, zones), JSON.stringify([state, zones])).toBe(shown);
+    // Leaving zones mode: the state was never changed, so the previous view comes back.
+    const before = at(false, true);
+    expect(tipsShown(before, false, true)).toBe(true);
+    expect(tipsShown(before, false, false)).toBe(false);
+  });
+
   it('crossing the plate (either way) hands the choice back to the camera; staying on one side keeps it', () => {
     const table: [TipsState, boolean, TipsState][] = [
       [at(false, true), false, at(null, false)],
