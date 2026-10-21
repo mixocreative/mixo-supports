@@ -53,7 +53,7 @@ export interface SupportMeshOptions {
   /** Unit letter embossed on the raft when labels are enabled. */
   labelText?: string;
   /** Precomputed raft outline for `model` (it only depends on the model, Expand and voxels). */
-  raftOutline?: { raw: Vector[]; polygon: Point2[] };
+  raftOutline?: { raw: Vector[]; polygon: Point2[]; others?: { raw: Vector[]; polygon: Point2[] }[] };
   /** Cached remesh of `model` for Middle Ø (see `lineTarget`); built on demand otherwise. */
   remesh?: RemeshTarget;
   /** Cached scatter remesh of `model` (voxel Spacing / 4) for Safe Distance; built on demand otherwise. */
@@ -616,19 +616,28 @@ function addStructures(
   const voxels = roof ? Math.max(settings.voxelResolution, 64) : settings.voxelResolution;
   const outline = options.raftOutline ?? (options.model ? raftOutline(options.model, expand, voxels) : undefined);
 
+  const grown = (polygon: Point2[]): Point2[] => {
+    if (!roof) return polygon;
+    const bisectors = cornerBisectors(polygon);
+    return polygon.map(([x, z], i) => [x - bisectors[i]![0] * settings.columnDiameter, z - bisectors[i]![1] * settings.columnDiameter]);
+  };
+  // Parts set apart from the largest each get their own raft (and roof/cage); the letter label
+  // stays on the largest.
+  const others = (outline?.others ?? []).filter((loop) => loop.polygon.length >= 3);
   if (settings.raftEnabled) {
-    let floor: Point2[] = outline && outline.polygon.length >= 3 ? outline.polygon : footprintRing(footprints, expand);
+    const floor = grown(outline && outline.polygon.length >= 3 ? outline.polygon : footprintRing(footprints, expand));
     if (floor.length < 3) return;
-    if (roof) {
-      const bisectors = cornerBisectors(floor);
-      floor = floor.map(([x, z], i) => [x - bisectors[i]![0] * settings.columnDiameter, z - bisectors[i]![1] * settings.columnDiameter]);
-    }
     addRaft(builder, floor, settings);
     if (settings.labelEnabled && options.labelText) addLabel(builder, raftLabelCandidates(floor, settings), settings, options.labelText);
+    for (const loop of others) addRaft(builder, grown(loop.polygon), settings);
   }
 
   if (!roof || !outline || !options.model) return;
-  const geometry = buildRoofCage(outline.raw, meshBounds(options.model).max[1], settings);
+  const top = meshBounds(options.model).max[1];
+  for (const loop of [outline, ...others]) addRoofCage(builder, buildRoofCage(loop.raw, top, settings));
+}
+
+function addRoofCage(builder: MeshBuilder, geometry: ReturnType<typeof buildRoofCage>): void {
   // Realizer.003 always tubes the column lines at 12 sides.
   for (const bar of geometry.bars) {
     builder.begin(bar.part);

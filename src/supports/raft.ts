@@ -20,11 +20,12 @@ export function raftPerimeter(model: TriangleMesh, expand: number, voxelResoluti
 /**
  * Raft outline: the raw dual-contour boundary loop (as SLASG_Raft's Perimiter output, with each
  * vertex's height above the plate, Blender start vertex, counter-clockwise) and its 3 x Voxel Resolution
- * resample that becomes the raft n-gon. Roof and Cage columns stand on the raw loop.
+ * resample that becomes the raft n-gon. Roof and Cage columns stand on the raw loop. `others`
+ * holds the outlines of parts set apart from the largest one.
  */
-export function raftOutline(model: TriangleMesh, expand: number, voxelResolution: number): { raw: [number, number, number][]; polygon: Point2[] } {
+export function raftOutline(model: TriangleMesh, expand: number, voxelResolution: number): RaftLoop & { others: RaftLoop[] } {
   const triangles = projectTriangles(model);
-  if (triangles.length === 0) return { raw: [], polygon: [] };
+  if (triangles.length === 0) return { raw: [], polygon: [], others: [] };
   const bounds3 = bounds3d(model);
   const diagonal = Math.hypot(bounds3.max[0] - bounds3.min[0], bounds3.max[1] - bounds3.min[1], bounds3.max[2] - bounds3.min[2]);
   const voxel = (diagonal + 2 * expand) / voxelResolution;
@@ -95,11 +96,10 @@ export function raftOutline(model: TriangleMesh, expand: number, voxelResolution
   };
 
   const loops = traceContours(f0, width, height);
-  if (loops.length === 0) return { raw: [], polygon: [] };
-  const outerCells = loops.reduce((best, loop) => {
-    const size = (cells: [number, number][]) => Math.abs(area(cells.map(([i, j]) => dual(i, j))));
-    return size(loop) > size(best) ? loop : best;
-  });
+  if (loops.length === 0) return { raw: [], polygon: [], others: [] };
+  const plans = loops.map((loop) => loop.map(([i, j]) => dual(i, j)));
+  const sizes = plans.map((plan) => Math.abs(area(plan)));
+  const largest = sizes.indexOf(Math.max(...sizes));
   // OpenVDB emits points leaf by leaf (8^3 blocks in x, y, z order), x-major inside a leaf, so
   // the perimeter curve starts at the loop vertex with the smallest such key (Blender X/Y; web
   // cell (i, j) spans Blender y cell -(j0 + j + 1)). Blender's loop then runs clockwise.
@@ -109,15 +109,49 @@ export function raftOutline(model: TriangleMesh, expand: number, voxelResolution
     return [Math.floor(x / 8), Math.floor(y / 8), ((x % 8) + 8) % 8, ((y % 8) + 8) % 8];
   };
   const before = (a: number[], b: number[]) => a.findIndex((value, index) => value !== b[index]) >= 0 && a[a.findIndex((value, index) => value !== b[index])]! < b[a.findIndex((value, index) => value !== b[index])]!;
-  let start = 0;
-  outerCells.forEach((cell, index) => { if (before(key(cell), key(outerCells[start]!))) start = index; });
-  let ordered = [...outerCells.slice(start), ...outerCells.slice(0, start)];
-  if (area(ordered.map(([i, j]) => dual(i, j)).map(([x, z]) => [x, -z] as Point2)) > 0) ordered = [ordered[0]!, ...ordered.slice(1).reverse()];
-  const clockwise = ordered.map(([i, j]) => dual3(i, j));
-  // The perimeter curve itself runs counter-clockwise from the start vertex (Roof/Cage columns
-  // follow it); Fill Curve reverses the corners, so the raft n-gon is the clockwise resample.
-  const raw = [clockwise[0]!, ...clockwise.slice(1).reverse()];
-  return { raw, polygon: resampleClosed(clockwise.map(([x, , z]) => [x, z] as Point2), 3 * voxelResolution) };
+  const build = (cells: [number, number][], samples: number): RaftLoop => {
+    let start = 0;
+    cells.forEach((cell, index) => { if (before(key(cell), key(cells[start]!))) start = index; });
+    let ordered = [...cells.slice(start), ...cells.slice(0, start)];
+    if (area(ordered.map(([i, j]) => dual(i, j)).map(([x, z]) => [x, -z] as Point2)) > 0) ordered = [ordered[0]!, ...ordered.slice(1).reverse()];
+    const clockwise = ordered.map(([i, j]) => dual3(i, j));
+    // The perimeter curve itself runs counter-clockwise from the start vertex (Roof/Cage columns
+    // follow it); Fill Curve reverses the corners, so the raft n-gon is the clockwise resample.
+    const raw = [clockwise[0]!, ...clockwise.slice(1).reverse()];
+    return { raw, polygon: resampleClosed(clockwise.map(([x, , z]) => [x, z] as Point2), samples) };
+  };
+  const main = build(loops[largest]!, 3 * voxelResolution);
+  // Parts set apart on one plate each get their own raft: every other loop that is not a hole
+  // inside another loop, sampled in proportion to its length (holes in a part are filled).
+  const mainLength = perimeter(plans[largest]!);
+  const others = loops
+    .map((cells, index) => ({ cells, index }))
+    .filter(({ index }) => index !== largest && !plans.some((plan, other) => other !== index && sizes[other]! > sizes[index]! && inside(plans[index]![0]!, plan)))
+    .map(({ cells, index }) => build(cells, Math.max(24, Math.round(3 * voxelResolution * perimeter(plans[index]!) / mainLength))));
+  return { ...main, others };
+}
+
+export interface RaftLoop {
+  raw: [number, number, number][];
+  polygon: Point2[];
+}
+
+function perimeter(loop: readonly Point2[]): number {
+  return loop.reduce((sum, [x, z], i) => {
+    const [nx, nz] = loop[(i + 1) % loop.length]!;
+    return sum + Math.hypot(nx - x, nz - z);
+  }, 0);
+}
+
+/** Even-odd point in polygon. */
+function inside([x, z]: Point2, polygon: readonly Point2[]): boolean {
+  let result = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const [xi, zi] = polygon[i]!;
+    const [xj, zj] = polygon[j]!;
+    if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) result = !result;
+  }
+  return result;
 }
 
 /**
