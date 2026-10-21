@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import edgeOrder from '../../../tools/blender-parity/edge_order_stages.json';
 import stages from '../../../tools/blender-parity/ridge_stages.json';
 import { blenderVertexNormals } from '../analysis/blenderBvh';
 import { blenderEdges, legacyRidgeMidpoints } from '../analysis/legacyRidges';
@@ -44,4 +45,27 @@ describe('Blender legacy ridges (v-ridge, stage by stage)', () => {
       expect(stage.kept.Edge!.every((value, k) => value > 0 || stage.kept.Vertical![k]! > 0)).toBe(true);
     });
   }
+});
+
+/**
+ * Blender's edge order for an R of 1000+ faces, where mesh_calc_edges splits the edges over 8
+ * hash maps (tools/blender-parity/edge_order_dump.py: the v-ridge scaled 1.25, Spacing 2). Faces
+ * and edges are stored as base64 little-endian Uint16 arrays.
+ */
+describe('Blender edge order (1000+ faces, 8 hash maps)', () => {
+  const u16 = (text: string) => {
+    const bytes = Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
+    return Array.from(new Uint16Array(bytes.buffer, 0, bytes.length / 2));
+  };
+  const corners = u16(edgeOrder.corners);
+  let offset = 0;
+  const faces = [...edgeOrder.faceSizes].map((size) => corners.slice(offset, (offset += Number(size))));
+  const flat = u16(edgeOrder.edges);
+  const edges = Array.from({ length: flat.length / 2 }, (_, k) => [flat[2 * k]!, flat[2 * k + 1]!]);
+
+  it('orders the edges as Blender does', () => {
+    expect(faces.length).toBeGreaterThanOrEqual(1000);
+    expect(offset).toBe(corners.length);
+    expect(blenderEdges(faces)).toEqual(edges);
+  });
 });

@@ -92,11 +92,12 @@ function faceTriangles(positions: readonly Vector[], face: readonly number[]): [
 }
 
 /**
- * Signed Angle of each edge (Blender 5.2 Edge Angle node): 0 unless exactly two faces use the
+ * Signed Angle of an edge (Blender 5.2 Edge Angle node): 0 unless exactly two faces use the
  * edge; else the angle between the first two faces' normals, negative where the edge is concave:
- * where the third corner of face 2's triangle on the edge is not below face 1's plane.
+ * where the third corner of face 2's triangle on the edge is not below face 1's plane. Returns
+ * a function of the edge index; face normals are worked out once, on first use.
  */
-export function signedEdgeAngles(positions: readonly Vector[], faces: readonly (readonly number[])[], edges: readonly [number, number][]): number[] {
+function signedEdgeAngle(positions: readonly Vector[], faces: readonly (readonly number[])[], edges: readonly [number, number][]): (edge: number) => number {
   const stride = positions.length;
   const index = new Map<number, number>();
   edges.forEach(([a, b], e) => index.set(a * stride + b, e));
@@ -112,24 +113,35 @@ export function signedEdgeAngles(positions: readonly Vector[], faces: readonly (
       else first[e] = second[e] = -2;
     });
   });
-  return edges.map(([a, b], e) => {
+  const normals: (Vector | undefined)[] = new Array(faces.length);
+  const normalOf = (face: number) => (normals[face] ??= faceNormal(positions, faces[face]!));
+  return (e) => {
     if (first[e]! < 0 || second[e]! < 0) return 0;
-    const n1 = faceNormal(positions, faces[first[e]!]!);
-    const n2 = faceNormal(positions, faces[second[e]!]!);
+    const [a, b] = edges[e]!;
     let other = -1;
     for (const tri of faceTriangles(positions, faces[second[e]!]!)) {
-      const k = [0, 1, 2].find((corner) => {
+      for (let corner = 0; corner < 3 && other < 0; corner += 1) {
         const p = tri[corner]!;
         const q = tri[(corner + 1) % 3]!;
-        return (p === a && q === b) || (p === b && q === a);
-      });
-      if (k !== undefined) { other = tri[(k + 2) % 3]!; break; }
+        if ((p === a && q === b) || (p === b && q === a)) other = tri[(corner + 2) % 3]!;
+      }
+      if (other >= 0) break;
     }
+    // Blender asserts this is unreachable: face 2 uses the edge, so one triangle holds it.
+    if (other < 0) return 0;
+    const n1 = normalOf(first[e]!);
+    const n2 = normalOf(second[e]!);
     const midpoint = [0, 1, 2].map((axis) => f(f(positions[a]![axis]! + positions[b]![axis]!) * 0.5)) as Vector;
     const concavity = dot(n1, normalizeCpp(sub(positions[other]!, midpoint)));
     const angle = angleNormalized(n1, n2);
     return angle === 0 || angle === f(2 * Math.PI) || concavity < 0 ? angle : -angle;
-  });
+  };
+}
+
+/** Signed Angle of every edge (see `signedEdgeAngle`). */
+export function signedEdgeAngles(positions: readonly Vector[], faces: readonly (readonly number[])[], edges: readonly [number, number][]): number[] {
+  const angle = signedEdgeAngle(positions, faces, edges);
+  return edges.map((_, e) => angle(e));
 }
 
 /**
@@ -147,16 +159,19 @@ export function legacyRidgeMidpoints(
   overhangAngleDegrees: number,
 ): Vector[] {
   const edges = blenderEdges(faces);
-  const angles = signedEdgeAngles(positions, faces, edges);
+  const angle = signedEdgeAngle(positions, faces, edges);
   const ridge = f(ridgeAngleDegrees * Math.PI / 180);
+  // JS cos / asin run in double precision and are rounded to single, where Blender calls cosf /
+  // asinf: up to about 2.6e-7 rad apart, which only matters for an edge that close to a limit.
   const limit = f(-f(Math.cos(f(overhangAngleDegrees * Math.PI / 180))));
   const midpoints: Vector[] = [];
   edges.forEach(([a, b], e) => {
-    if (!(angles[e]! > ridge)) return;
+    // The cheap normal test first (Blender evaluates both; the result is the same).
     const na = vertexNormals[a]!;
     const nb = vertexNormals[b]!;
     const normal = normalizeCpp([0, 1, 2].map((axis) => f(f(na[axis]! * 0.5) + f(nb[axis]! * 0.5))) as Vector);
     if (normal[2] > limit) return;
+    if (!(angle(e) > ridge)) return;
     midpoints.push([0, 1, 2].map((axis) => f(f(positions[a]![axis]! * 0.5) + f(positions[b]![axis]! * 0.5))) as Vector);
   });
   return midpoints;
