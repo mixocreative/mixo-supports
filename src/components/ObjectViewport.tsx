@@ -506,10 +506,12 @@ function useScreenBrush(options: {
         if (queue.pending) {
           // A stroke: the circle sweeps every queued step; painted ids are the preview too. One
           // selection commit per frame (per brush mode), however many steps were tested in it.
-          queue.drain(bodies.ids.length, (step) => {
-            const adding = step.mode === 'select';
-            return brushHitsFrom(step.next, bodies, projected, step.from, step.to, step.radius, visibility.isVisible, (id) => !queue.painted.has(id) && selection.has(id) !== adding, stop);
-          }, (ids, mode) => live.current.onPaint(ids, mode));
+          queue.drain(
+            bodies.ids.length,
+            (step, want) => brushHitsFrom(step.next, bodies, projected, step.from, step.to, step.radius, visibility.isVisible, want, stop),
+            (ids, mode) => live.current.onPaint(ids, mode),
+            (id) => selection.has(id),
+          );
         } else if (hover) {
           const adding = brush.mode === 'select';
           const part = brushHitsFrom(hover.next, bodies, projected, undefined, hover.at, brush.radius, visibility.isVisible, (id) => selection.has(id) !== adding, stop);

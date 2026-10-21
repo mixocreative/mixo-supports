@@ -34,12 +34,12 @@ describe('stroke queue (Drag over steps waiting for hit tests)', () => {
     queue.begin();
     queue.push([1, 0], 'select', 24);
     // Frame 1 runs out of time half way through the step.
-    queue.drain(4, test, (ids, mode) => commits.push([[...ids], mode]));
+    queue.drain(4, test, (ids, mode) => commits.push([[...ids], mode]), () => false);
     expect(queue.steps).toHaveLength(1);
     // The user switches to Unselect and a smaller circle, then strokes again.
     queue.begin();
     queue.push([2, 0], 'unselect', 8);
-    while (queue.pending) queue.drain(4, test, (ids, mode) => commits.push([[...ids], mode]));
+    while (queue.pending) queue.drain(4, test, (ids, mode) => commits.push([[...ids], mode]), () => false);
     expect(calls.map(({ mode, radius }) => [mode, radius])).toEqual([['select', 24], ['select', 24], ['unselect', 8], ['unselect', 8]]);
     expect(commits).toEqual([[['1:0', '1:1'], 'select'], [['1:2', '1:3'], 'select'], [['2:0', '2:1'], 'unselect'], [['2:2', '2:3'], 'unselect']]);
     expect(queue.pending).toBe(false);
@@ -51,7 +51,7 @@ describe('stroke queue (Drag over steps waiting for hit tests)', () => {
     queue.begin();
     queue.push([1, 0], 'select', 24);
     queue.push([1, 0], 'select', 24);
-    queue.drain(2, tester(2).test, (ids, mode) => commits.push([[...ids], mode]));
+    queue.drain(2, tester(2).test, (ids, mode) => commits.push([[...ids], mode]), () => false);
     expect(commits).toEqual([[['1:0', '1:1'], 'select']]);
     expect(queue.painted.has('1:1')).toBe(true);
   });
@@ -62,12 +62,12 @@ describe('stroke queue (Drag over steps waiting for hit tests)', () => {
     queue.begin();
     queue.push([1, 0], 'select', 24);
     queue.push([3, 0], 'select', 24);
-    queue.drain(6, test, () => {});
+    queue.drain(6, test, () => {}, () => false);
     expect(queue.steps[0]!.next).toBe(2);
     queue.rebase();
     expect(queue.steps.map((step) => step.next)).toEqual([0, 0]);
     expect(queue.pending).toBe(true);
-    while (queue.pending) queue.drain(6, test, () => {});
+    while (queue.pending) queue.drain(6, test, () => {}, () => false);
     expect(calls.filter((call) => call.start === 0)).toHaveLength(3);
     // Painted ids stay painted: the host's skip test still sees them after the rebuild.
     expect(queue.painted.has('1:0')).toBe(true);
@@ -81,5 +81,39 @@ describe('stroke queue (Drag over steps waiting for hit tests)', () => {
     expect(queue.pending).toBe(false);
     queue.push([2, 0], 'select', 24);
     expect(queue.steps[0]!.from).toBeUndefined();
+  });
+
+  it('a new Unselect stroke over ids the old Select stroke is still painting ends with them unselected', () => {
+    const queue = createStrokeQueue();
+    const selected = new Set<string>();
+    // The host's selection follows each commit (as the selection prop does a render later).
+    const commit = (ids: readonly string[], mode: BrushMode) => ids.forEach((id) => (mode === 'select' ? selected.add(id) : selected.delete(id)));
+    const ids = ['a', 'b', 'c', 'd'];
+    /** Both strokes pass over the same supports a–d, two per frame. */
+    const test = (step: QueuedStep, want: (id: string) => boolean) => {
+      const end = Math.min(ids.length, step.next + 2);
+      return { hits: ids.slice(step.next, end).filter(want), next: end };
+    };
+    queue.begin();
+    queue.push([1, 0], 'select', 24);
+    queue.drain(ids.length, test, commit, (id) => selected.has(id));
+    expect([...selected]).toEqual(['a', 'b']);
+    queue.begin();
+    queue.push([1, 0], 'unselect', 24);
+    while (queue.pending) queue.drain(ids.length, test, commit, (id) => selected.has(id));
+    expect([...selected]).toEqual([]);
+  });
+
+  it('the selection a frame tests against includes what earlier steps of the same frame committed', () => {
+    const queue = createStrokeQueue();
+    const committed: [string[], BrushMode][] = [];
+    const base = new Set<string>(); // the host's selection prop: stale for the whole frame
+    const test = (_step: QueuedStep, want: (id: string) => boolean) => ({ hits: ['a'].filter(want), next: 1 });
+    queue.begin();
+    queue.push([1, 0], 'select', 24);
+    queue.begin();
+    queue.push([2, 0], 'unselect', 24);
+    queue.drain(1, test, (ids, mode) => committed.push([[...ids], mode]), (id) => base.has(id));
+    expect(committed).toEqual([[['a'], 'select'], [['a'], 'unselect']]);
   });
 });
