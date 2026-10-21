@@ -528,6 +528,10 @@ const ZH: Dictionary = {
   'Nothing to undo here: leave the mode to undo earlier steps.': '這裡沒有可復原的步驟：離開模式後即可復原更早的步驟。',
   'Nothing to export: {name} has no supports left.': '沒有可匯出的內容：{name} 已沒有任何支撐。',
   'Nothing to export: no object in this export has supports left.': '沒有可匯出的內容：這次匯出的物件都已沒有支撐。',
+  'The check did not finish for 1 object: run it again.': '有 1 個物件的檢查沒有完成：請再檢查一次。',
+  'The check did not finish for {n} objects: run it again.': '有 {n} 個物件的檢查沒有完成：請再檢查一次。',
+  'Exported {files}, but the support check did not finish for 1 object: run Check supports.': '已匯出 {files}，但有 1 個物件的支撐檢查沒有完成：請執行「檢查支撐」。',
+  'Exported {files}, but the support check did not finish for {n} objects: run Check supports.': '已匯出 {files}，但有 {n} 個物件的支撐檢查沒有完成：請執行「檢查支撐」。',
 };
 
 const JA: Dictionary = {
@@ -976,6 +980,10 @@ const JA: Dictionary = {
   'Nothing to undo here: leave the mode to undo earlier steps.': 'ここでは元に戻せる操作がありません。モードを終了すると、それより前の操作を元に戻せます。',
   'Nothing to export: {name} has no supports left.': '書き出すものがありません：{name} にはサポートが残っていません。',
   'Nothing to export: no object in this export has supports left.': '書き出すものがありません：書き出し対象のオブジェクトにはサポートが残っていません。',
+  'The check did not finish for 1 object: run it again.': '1 個のオブジェクトのチェックが完了しませんでした。もう一度チェックしてください。',
+  'The check did not finish for {n} objects: run it again.': '{n} 個のオブジェクトのチェックが完了しませんでした。もう一度チェックしてください。',
+  'Exported {files}, but the support check did not finish for 1 object: run Check supports.': '{files} を書き出しましたが、1 個のオブジェクトのサポートチェックが完了しませんでした。「サポートを確認」を実行してください。',
+  'Exported {files}, but the support check did not finish for {n} objects: run Check supports.': '{files} を書き出しましたが、{n} 個のオブジェクトのサポートチェックが完了しませんでした。「サポートを確認」を実行してください。',
 };
 
 export const DICTIONARY: Record<Exclude<Lang, 'en'>, Dictionary> = { 'zh-Hant': ZH, ja: JA };

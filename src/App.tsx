@@ -36,6 +36,7 @@ import { keyAction } from './editing/keys';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
 import { busyStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
+import { checkStatus, exportStatus, joinRun, tallyChecks, type CheckTally } from './editing/check';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
 import type { BrushMode, ZonesReturn } from './editing/types';
@@ -328,14 +329,19 @@ export default function App() {
   }, [analysis, dispatch, setStatus, targets, unitName]);
 
   // ---- Support check -------------------------------------------------------------------
-  /** Checks the units' current contacts; resolves with the spots found outside and inside no-support zones. */
-  const runCheck = useCallback(async (units: readonly PrintUnit[]): Promise<{ spots: number; inZone: number }> => {
+  /** Running checks by unit id, with the unit version they check (a second caller joins, editing/check). */
+  const checksRunning = useRef(new Map<string, { token: object; promise: Promise<SupportProblem[] | undefined> }>());
+  /**
+   * Checks the units' current contacts; resolves with the spots found outside and inside no-support
+   * zones, and how many units' checks did not finish (replaced by a newer check of a changed unit).
+   */
+  const runCheck = useCallback(async (units: readonly PrintUnit[]): Promise<CheckTally> => {
     const checked = await Promise.all(units.filter((unit) => unit.supports).map(async (unit) => {
       const orientation = orientationOf(unit);
       const key = `check:${unit.id}`;
       {
-        const found = await analysis().check(key, checkJobOf(unit), { key: 'Checking supports on {name}', vars: { name: unitName(unit.id) } });
-        if (!found) return { spots: 0, inZone: 0 };
+        const found = await joinRun(checksRunning.current, unit.id, unit, () => analysis().check(key, checkJobOf(unit), { key: 'Checking supports on {name}', vars: { name: unitName(unit.id) } }));
+        if (!found) return undefined;
         // Spots face down on the plate: plate down in unit-local space keeps a zone on the far side of a thin floor out.
         const down = inverseTransformDirection(orientation, [0, -1, 0]);
         const items = found.map((problem) => {
@@ -347,7 +353,7 @@ export default function App() {
         return { spots: items.length - inZone, inZone };
       }
     }));
-    return checked.reduce((sum, count) => ({ spots: sum.spots + count.spots, inZone: sum.inZone + count.inZone }), { spots: 0, inZone: 0 });
+    return tallyChecks(checked);
   }, [analysis, unitName]);
 
   /** Findings for units unchanged since their check (an edited unit is re-checked shortly). */
@@ -360,8 +366,12 @@ export default function App() {
     const stale = scene.units.filter((unit) => unit.supports && problems.has(unit.id) && problems.get(unit.id)!.unit !== unit);
     if (stale.length === 0) return;
     window.clearTimeout(recheckTimer.current);
-    recheckTimer.current = window.setTimeout(() => void runCheck(stale).catch(() => 0), 600);
-  }, [problems, runCheck, scene.units]);
+    // A recheck replaced by a newer one says nothing (the newer one runs); a failure or a cancel is
+    // said, since the edited unit's findings stay hidden until a check finishes.
+    recheckTimer.current = window.setTimeout(() => void runCheck(stale).catch((error: unknown) => (
+      isAbort(error) ? setStatus('Support check cancelled.') : setStatusMessage(errorStatus('check', codedJobError(error)))
+    )), 600);
+  }, [problems, runCheck, scene.units, setStatus]);
 
   const showProblem = useCallback((problem: UnitProblem) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === problem.unitId);
@@ -373,7 +383,7 @@ export default function App() {
     if (units.length === 0) return setStatus('Generate supports before checking them.');
     setStatus('Checking supports on 1 object.', { n: units.length }, 'Checking supports on {n} objects.');
     runCheck(units).then(
-      ({ spots, inZone }) => (spots + inZone === 0 ? setStatus('No unsupported spots found.') : setStatus('1 spot may print unsupported: see Check supports.', { n: spots + inZone }, '{n} spots may print unsupported: see Check supports.')),
+      (tally) => setStatusMessage(checkStatus(tally)),
       (error: unknown) => (isAbort(error) ? setStatus('Support check cancelled.') : setStatusMessage(errorStatus('check', codedJobError(error)))),
     );
   }, [runCheck, setStatus, targets]);
@@ -692,7 +702,8 @@ export default function App() {
     setExporting(true);
     setStatus('Preparing export at full resolution.');
     // The check runs alongside, on the analysis workers, so the export can warn about gaps.
-    const checking = runCheck(units.map(([unit]) => unit)).catch(() => ({ spots: 0, inZone: 0 }));
+    // A check that fails or is cancelled leaves its units unchecked: the status says so.
+    const checking = runCheck(units.map(([unit]) => unit)).catch((): CheckTally => ({ spots: 0, inZone: 0, incomplete: units.filter(([unit]) => unit.supports).length }));
     const label = { key: files.length === 1 ? 'Exporting {name}' : 'Exporting {n} files', vars: { name: files[0]!.fileName, n: files.length } };
     try {
       const jobs = units.map(([unit, index]) => ({ unitId: unit.id, job: supportJobOf(unit, index, 'export'), transform: unit.transform }));
@@ -708,12 +719,7 @@ export default function App() {
         window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
       const names = written.map((file) => file.fileName).join(', ');
-      // Spots inside no-support zones are left unsupported on purpose: not counted, only mentioned.
-      const { spots, inZone } = await checking;
-      if (spots > 0 && inZone > 0) setStatus('Exported {files}. 1 spot may print unsupported ({m} more inside no-support zones): see Check supports.', { files: names, n: spots, m: inZone }, 'Exported {files}. {n} spots may print unsupported ({m} more inside no-support zones): see Check supports.');
-      else if (spots > 0) setStatus('Exported {files}. 1 spot may print unsupported: see Check supports.', { files: names, n: spots }, 'Exported {files}. {n} spots may print unsupported: see Check supports.');
-      else if (inZone > 0) setStatus('Exported {files}. 1 unsupported spot is inside a no-support zone.', { files: names, n: inZone }, 'Exported {files}. {n} unsupported spots are inside no-support zones.');
-      else setStatus('Exported {files}.', { files: names });
+      setStatusMessage(exportStatus(names, await checking));
     } catch (error) {
       if (isAbort(error)) setStatus('Export cancelled; no file was written.');
       else setStatusMessage(errorStatus('export', codedJobError(error)));

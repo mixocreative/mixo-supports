@@ -12,7 +12,7 @@ declare global {
 
 /** Source text of every non-test module, keyed './path'. */
 const SOURCES = import.meta.glob<string>(['./**/*.ts', './**/*.tsx', '!./**/*.test.ts', '!./**/*.test.tsx'], { query: '?raw', import: 'default', eager: true });
-const UI_FILES = ['./App.tsx', './components/SettingsPanel.tsx', './components/JobActivity.tsx', './components/ObjectViewport.tsx', './components/UndoToast.tsx', './editing/status.ts', './editing/errors.ts', './editing/toast.ts'];
+const UI_FILES = ['./App.tsx', './components/SettingsPanel.tsx', './components/JobActivity.tsx', './components/ObjectViewport.tsx', './components/UndoToast.tsx', './editing/status.ts', './editing/errors.ts', './editing/toast.ts', './editing/check.ts'];
 /** Quoted literals in UI files that are not shown to the user. */
 const NOT_UI = new Set(['Tab', 'Escape', 'Enter', 'Delete', 'Backspace', 'Unit', 'Mixo supports', 'ArrowUp', 'ArrowDown', 'CodedError', 'TimeoutError', '{error}', 'AbortError']);
 
