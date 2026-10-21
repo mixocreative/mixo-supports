@@ -15,6 +15,11 @@
   --blue: #1d3461;
   --blue-hover: #284579;
   --radius: 2px;
+  --dur: .15s;
+  /* Dense sizes (mixo-app-style), used by the viewport tools. */
+  --row: 22px;
+  --fs-sm: 11px;
+  --fs-md: 11.5px;
   font-family: 'Zen Kaku Gothic New', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
   color: var(--ink);
   background: var(--paper);
@@ -55,6 +60,8 @@ button:focus-visible, input:focus-visible, summary:focus-visible, .drop:focus-wi
 .primary.regen { background: var(--blue); border-color: var(--blue); }
 .primary.regen:hover:not(:disabled) { background: var(--blue-hover); border-color: var(--blue-hover); }
 button.active, button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+/* A pressed toggle stays ink under the pointer (a primary keeps its own hover). */
+button.active:not(.primary):hover:not(:disabled), button[aria-pressed='true']:not(.primary):hover:not(:disabled) { background: var(--ink); border-color: var(--ink); }
 
 /* ---- Header -------------------------------------------------------------- */
 header {
@@ -123,7 +130,6 @@ h3 { display: flex; align-items: center; min-height: 26px; margin: 0 0 10px; pad
   border: 0;
   border-radius: 0;
   background: transparent;
-  text-transform: capitalize;
   white-space: nowrap;
 }
 .segmented button + button { border-left: 1px solid var(--line); }
@@ -205,18 +211,18 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
 }
 .viewport-view {
   position: absolute;
-  top: 56px;
+  top: 40px;
   right: 14px;
   z-index: 2;
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 .viewport--editing canvas { cursor: crosshair; }
 .edit-frame {
   position: absolute;
   inset: 0;
   z-index: 2;
-  border: 3px solid var(--red);
+  border: 1px solid var(--red);
   pointer-events: none;
 }
 .edit-badge {
@@ -226,39 +232,42 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
   z-index: 3;
   display: flex;
   gap: 10px;
-  align-items: baseline;
-  padding: 6px 10px;
+  align-items: center;
+  min-height: var(--row);
+  padding: 0 8px;
+  border-radius: var(--radius);
   background: var(--red);
   color: var(--surface);
-  font-size: 12px;
+  font-size: var(--fs-md);
   letter-spacing: .06em;
   pointer-events: none;
 }
 .edit-badge span { opacity: .8; letter-spacing: .02em; }
-.edit-badge b { font-weight: 600; letter-spacing: .02em; }
+.edit-badge b { font-weight: 500; letter-spacing: .02em; }
+/* Under the badge's row: the two-row bar is wider than the space beside the badge. */
 .edit-bar {
   position: absolute;
-  top: 12px;
+  top: 44px;
   right: 14px;
   z-index: 3;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   align-items: flex-end;
   max-width: calc(100% - 28px);
-  padding: 6px 6px 6px 14px;
+  padding: 4px 4px 4px 10px;
   background: var(--surface);
   border: 1px solid var(--line-strong);
-  font-size: 12px;
+  border-radius: var(--radius);
+  font-size: var(--fs-md);
   color: var(--ink);
   white-space: nowrap;
 }
-.edit-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 16px; align-items: center; }
-.edit-bar button { padding: 6px 12px; }
+.edit-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; align-items: center; }
 kbd {
   font: inherit;
-  font-size: 11px;
-  padding: 1px 5px;
+  font-size: var(--fs-sm);
+  padding: 0 4px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--sunken);
@@ -405,11 +414,17 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 .problem-kind.overhang { background: #d97706; }
 
 /* ---- Edit bar tools and selection ---------------------------------------- */
-.edit-bar .segmented button { padding: 5px 10px; }
+/* Viewport tools at the Dense sizes: 22px rows, 11.5px text, plain words. */
+.viewport-edit-toggle, .viewport-view button, .edit-bar button { height: var(--row); padding: 0 10px; font-size: var(--fs-md); }
+.edit-bar .segmented { height: var(--row); }
+.edit-bar .segmented button { height: 100%; padding: 0 10px; font-size: var(--fs-md); }
+.edit-bar .primary { height: calc(var(--row) + 2px); }
+/* Tips only forced on below the plate: disabled, yet it still reads as on; its title says why. */
+.viewport-view button[aria-pressed='true']:disabled { opacity: 1; color: var(--paper); cursor: default; }
 .edit-size { display: flex; gap: 8px; align-items: center; }
 .edit-size input { width: 96px; accent-color: var(--ink); }
 .edit-size output { min-width: 3.5em; font-variant-numeric: tabular-nums; }
-.edit-count { font-variant-numeric: tabular-nums; }
+.edit-count { color: var(--muted); font-variant-numeric: tabular-nums; }
 /* The wide edit bar takes the top right; the view buttons move to the bottom right meanwhile. */
 .viewport--editing .viewport-view { top: auto; bottom: 14px; }
 
@@ -423,7 +438,10 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
   .right { grid-area: right; overflow: visible; }
   .edit-bar { left: 14px; right: 14px; top: auto; bottom: 12px; max-width: none; align-items: stretch; white-space: normal; }
   .edit-row { justify-content: space-between; }
-  .viewport--editing .viewport-view { top: 56px; bottom: auto; }
+  /* The count leads; Delete, Clear and Done stay together at the end. */
+  .edit-row + .edit-row { justify-content: flex-end; }
+  .edit-count { margin-right: auto; }
+  .viewport--editing .viewport-view { top: 40px; bottom: auto; }
   footer { height: auto; min-height: 32px; flex-wrap: wrap; gap: 6px 18px; padding: 8px 16px; }
   footer strong { margin-left: 0; flex-basis: 100%; }
 }
@@ -443,5 +461,6 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 @media (pointer: coarse) {
   .edit-hint { display: none; }
   button, .segmented button, .panel .segmented button { min-height: 40px; }
+  .edit-bar .segmented { height: auto; }
   .problems button { min-height: 36px; }
 }

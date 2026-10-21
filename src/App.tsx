@@ -430,9 +430,17 @@ export default function App() {
     }
     if (!sceneRef.current.activeUnitId) return setStatus('Select an object to edit its supports.');
     undoFloor.current = historyRef.current.past.length;
-    setEditMode('edit');
-    setStatus('Support Edit Mode: click the model to add, right-click a support to remove.');
+    setEditMode('edit'); // the status line follows from the tool, below
   }, []);
+  // Entering Edit Mode or switching tool says what a click or drag now does.
+  const editToolStatus = editTool === 'add'
+    ? 'Support Edit Mode: click the model to add, right-click a support to remove.'
+    : selectStyle === 'click'
+      ? 'Support Edit Mode: click supports to select them, right-click a support to remove.'
+      : 'Support Edit Mode: drag over supports to select them, starting on the model.';
+  useEffect(() => {
+    if (editMode !== 'off') setStatus(editToolStatus);
+  }, [editMode, editToolStatus, setStatus]);
 
   const fixProblem = useCallback((problem: UnitProblem) => {
     showProblem(problem);
@@ -760,7 +768,7 @@ export default function App() {
           <div className="edit-frame" aria-hidden="true" />
           <div className="edit-badge" role="status">
             {t('Support Edit Mode')}<span>{activeUnit?.name}</span>
-            {editTool === 'select' && <b>{t(selectStyle === 'brush' ? 'Drag over supports to select' : 'Click supports to select')}</b>}
+            <b>{t(editTool === 'add' ? 'Click the model to add supports' : selectStyle === 'brush' ? 'Drag over supports to select' : 'Click supports to select')}</b>
           </div>
           <div className="edit-bar">
             <div className="edit-row">

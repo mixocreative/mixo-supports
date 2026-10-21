@@ -153,10 +153,10 @@ function EditPreview({ hover, unit, brush }: { hover: Hover; unit: PrintUnit; br
 
 /**
  * Paints the whole body (tip, pillar, foot) of the supports of the given contacts over the
- * supports themselves: solid at `opacity` 1, see-through otherwise. Shares the support
+ * supports themselves, red unless told otherwise: solid at `opacity` 1, see-through otherwise. Shares the support
  * geometry's vertices.
  */
-function SupportBodies({ supports, geometry, ids, opacity }: { supports: GeneratedSupportMesh; geometry: THREE.BufferGeometry; ids: readonly string[]; opacity: number }) {
+function SupportBodies({ supports, geometry, ids, opacity, color = PREVIEW.remove }: { supports: GeneratedSupportMesh; geometry: THREE.BufferGeometry; ids: readonly string[]; opacity: number; color?: string }) {
   const key = ids.join(',');
   const bodies = useMemo(() => {
     const wanted = new Set(ids);
@@ -185,7 +185,7 @@ function SupportBodies({ supports, geometry, ids, opacity }: { supports: Generat
   const seeThrough = opacity < 1;
   // Drawn over the support it covers (polygon offset) and never pickable.
   return <mesh geometry={bodies} raycast={() => undefined} renderOrder={seeThrough ? 18 : 17}>
-    <meshStandardMaterial color={PREVIEW.remove} emissive={PREVIEW.remove} emissiveIntensity={0.35} metalness={0} roughness={0.8} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} transparent={seeThrough} opacity={opacity} depthWrite={!seeThrough} />
+    <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.35} metalness={0} roughness={0.8} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} transparent={seeThrough} opacity={opacity} depthWrite={!seeThrough} />
   </mesh>;
 }
 
@@ -306,6 +306,11 @@ function UnitObject(props: UnitObjectProps) {
   const doomed = useDoomed(unit, editing && hover?.remove ? hover.point : undefined);
   const selectedIds = useMemo(() => [...props.selection], [props.selection]);
   const brushed = useMemo(() => (brush && hover?.facing ? contactsInBrush(contacts, toVector(hover.point), brush.radius, toVector(hover.facing)) : []), [brush, hover, contacts]);
+  // Drag over → Unselect previews the selected supports under the brush in see-through grey,
+  // taken off the solid red, so the ones about to turn back show.
+  const unselecting = brush?.mode === 'unselect';
+  const turningBack = useMemo(() => (unselecting ? brushed.filter((id) => props.selection.has(id)) : []), [unselecting, brushed, props.selection]);
+  const solidIds = useMemo(() => (turningBack.length ? selectedIds.filter((id) => !turningBack.includes(id)) : selectedIds), [selectedIds, turningBack]);
 
   // Drag over: the canvas shows the brush cursor while the pointer is over this object.
   const gl = useThree((state) => state.gl);
@@ -449,10 +454,12 @@ function UnitObject(props: UnitObjectProps) {
     </mesh>}
     {editing && hover && <EditPreview hover={hover} unit={unit} {...(brush ? { brush } : {})} />}
     {editing && supports && supportGeometry && <>
-      <SupportBodies supports={supports} geometry={supportGeometry} ids={selectedIds} opacity={1} />
+      <SupportBodies supports={supports} geometry={supportGeometry} ids={solidIds} opacity={1} />
       <SupportBodies supports={supports} geometry={supportGeometry} ids={doomed} opacity={1} />
       {pointed && <SupportBodies supports={supports} geometry={supportGeometry} ids={[pointed]} opacity={SEE_THROUGH} />}
-      <SupportBodies supports={supports} geometry={supportGeometry} ids={brushed} opacity={SEE_THROUGH} />
+      {unselecting
+        ? <SupportBodies supports={supports} geometry={supportGeometry} ids={turningBack} opacity={SEE_THROUGH} color={PREVIEW.ring} />
+        : <SupportBodies supports={supports} geometry={supportGeometry} ids={brushed} opacity={SEE_THROUGH} />}
     </>}
     {props.problems.length > 0 && <ProblemMarkers problems={props.problems} />}
   </group>;
