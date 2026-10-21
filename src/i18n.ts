@@ -532,6 +532,7 @@ const ZH: Dictionary = {
   'The check did not finish for {n} objects: run it again.': '有 {n} 個物件的檢查沒有完成：請再檢查一次。',
   'Exported {files}, but the support check did not finish for 1 object: run Check supports.': '已匯出 {files}，但有 1 個物件的支撐檢查沒有完成：請執行「檢查支撐」。',
   'Exported {files}, but the support check did not finish for {n} objects: run Check supports.': '已匯出 {files}，但有 {n} 個物件的支撐檢查沒有完成：請執行「檢查支撐」。',
+  '{name} was rotated while its contacts were placed: placing them again.': '配置接觸點時 {name} 被旋轉了：正在重新配置。',
 };
 
 const JA: Dictionary = {
@@ -984,6 +985,7 @@ const JA: Dictionary = {
   'The check did not finish for {n} objects: run it again.': '{n} 個のオブジェクトのチェックが完了しませんでした。もう一度チェックしてください。',
   'Exported {files}, but the support check did not finish for 1 object: run Check supports.': '{files} を書き出しましたが、1 個のオブジェクトのサポートチェックが完了しませんでした。「サポートを確認」を実行してください。',
   'Exported {files}, but the support check did not finish for {n} objects: run Check supports.': '{files} を書き出しましたが、{n} 個のオブジェクトのサポートチェックが完了しませんでした。「サポートを確認」を実行してください。',
+  '{name} was rotated while its contacts were placed: placing them again.': '接触点の配置中に {name} が回転されたため、配置し直しています。',
 };
 
 export const DICTIONARY: Record<Exclude<Lang, 'en'>, Dictionary> = { 'zh-Hant': ZH, ja: JA };

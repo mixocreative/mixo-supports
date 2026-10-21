@@ -32,7 +32,7 @@ import { problemInZone, type ZoneStamp } from './core/supports/zones';
 import { deleteCommands } from './supports/selection';
 import { contactsInBrush } from './editing/selection';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
-import { checkJobOf, orientationOf, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitLowestY, unitRemovedCount, unitSupportMesh } from './supports/unitSupports';
+import { checkJobOf, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './supports/unitSupports';
 import { keyAction } from './editing/keys';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
 import { busyStatus, missStatus, sessionStatus } from './editing/status';
@@ -284,13 +284,6 @@ export default function App() {
     }
     for (const unit of units) {
       const settings = resolveSettings(unit.settings);
-      // The lowest model point sits Lift Height above the plate (y = 0) where the supports stand
-      // (worked out without copying the model on the main thread).
-      const lowest = unitLowestY(unit);
-      const transform: ModelTransform = {
-        position: [unit.transform.position[0], unit.transform.position[1] + settings.liftHeight - lowest, unit.transform.position[2]],
-        rotation: [...unit.transform.rotation],
-      };
       // Placement runs on the rotated but untranslated model (placementJobOf) so moving a unit
       // never shifts the sampling lattice; automatic IDs (and suppressions) stay stable.
       const orientation = orientationOf(unit);
@@ -300,28 +293,19 @@ export default function App() {
         if (!result) return; // replaced by a newer request for this unit
         placing.current.delete(unit.id);
         setPendingCount(placing.current.size);
-        if (!sceneRef.current.units.some((candidate) => candidate.id === unit.id)) return;
-        const toLocal = (point: SupportPoint): SupportPoint => ({
-          ...point,
-          position: inverseTransformPoint(orientation, point.position),
-          normal: inverseTransformDirection(orientation, point.normal),
-        });
-        const points = result.points.map(toLocal);
-        dispatch({ type: 'batch', commands: [
-          { type: 'transform/set', unitId: unit.id, transform },
-          {
-            type: 'supports/set',
-            unitId: unit.id,
-            placement: {
-              points,
-              regions: result.regions,
-              contactPositions: new Float32Array(points.flatMap((point) => point.position)),
-              contactNormals: new Float32Array(points.flatMap((point) => point.normal)),
-            },
-            supports: { kind: 'live', data: { transform: { position: [...transform.position], rotation: [...transform.rotation] } } },
-          },
-        ] });
-        setStatus('{name}: {n} automatic contacts generated.', { name: unit.name, n: points.length });
+        const now = sceneRef.current.units.find((candidate) => candidate.id === unit.id);
+        if (!now) return;
+        // Applied to the unit as it is now: a move made meanwhile stays, and the lowest model point
+        // sits Lift Height above the plate (y = 0) where the supports stand. A rotation made
+        // meanwhile turned the contacts away: place again for the new orientation.
+        const commands = placementCommands(now, orientation, result, settings.liftHeight);
+        if (!commands) {
+          generate([unit.id]);
+          setStatus('{name} was rotated while its contacts were placed: placing them again.', { name: unit.name });
+          return;
+        }
+        dispatch({ type: 'batch', commands });
+        setStatus('{name}: {n} automatic contacts generated.', { name: unit.name, n: result.points.length });
       }, (error: unknown) => {
         placing.current.delete(unit.id);
         setPendingCount(placing.current.size);

@@ -94,3 +94,36 @@ describe('unitLowestY', () => {
     expect(unitLowestY(unit)).toBe(meshBounds(applyTransform((unit as { source: never }).source, (unit as { transform: never }).transform)).min[1]);
   });
 });
+
+describe('placementCommands (a finished placement meets the unit as it is now)', () => {
+  const requested = { position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] };
+  const result = { points: [point('auto-0', 0)], regions: [] };
+  const lift = 5;
+
+  it('keeps a move made while the placement ran and lifts the model to Lift Height', async () => {
+    const { placementCommands } = await import('./unitSupports');
+    const moved: PrintUnit = { ...unit, transform: { position: [30, 10, -4], rotation: [0, 0, 0] } };
+    const commands = placementCommands(moved, requested, result, lift)!;
+    expect(commands[0]).toEqual({ type: 'transform/set', unitId: 'unit-a', transform: { position: [30, 10, -4], rotation: [0, 0, 0] } });
+    expect(commands[1]).toMatchObject({ type: 'supports/set', unitId: 'unit-a', supports: { kind: 'live', data: { transform: { position: [30, 10, -4], rotation: [0, 0, 0] } } } });
+    // Lowest point (local y = -5) at the plate plus Lift Height.
+    const low: PrintUnit = { ...unit, transform: { position: [30, 2, -4], rotation: [0, 0, 0] } };
+    expect(placementCommands(low, requested, result, lift)![0]).toMatchObject({ transform: { position: [30, 10, -4] } });
+  });
+
+  it('maps contacts back to unit-local space through the requested orientation', async () => {
+    const { placementCommands } = await import('./unitSupports');
+    const turned = { position: [0, 0, 0] as [number, number, number], rotation: [Math.PI, 0, 0] as [number, number, number] };
+    const now: PrintUnit = { ...unit, transform: { position: [0, 10, 0], rotation: [Math.PI, 0, 0] } };
+    const placed = { points: [{ ...point('auto-0', 2), position: [2, 5, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number] }], regions: [] };
+    const set = placementCommands(now, turned, placed, lift)![1] as { placement: { points: { position: number[]; normal: number[] }[] } };
+    expect(set.placement.points[0]!.position.map((v) => Math.round(v * 1e6) / 1e6 + 0)).toEqual([2, -5, 0]);
+    expect(set.placement.points[0]!.normal.map((v) => Math.round(v * 1e6) / 1e6 + 0)).toEqual([0, 1, 0]);
+  });
+
+  it('applies nothing when the unit was rotated meanwhile (its contacts face the old way)', async () => {
+    const { placementCommands } = await import('./unitSupports');
+    const rotated: PrintUnit = { ...unit, transform: { position: [0, 10, 0], rotation: [0, 0.5, 0] } };
+    expect(placementCommands(rotated, requested, result, lift)).toBeUndefined();
+  });
+});
