@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import type { Vector } from '../core/vec3';
-import { boundsSphere, fitDirection, focusView, frameView } from '../editing/view';
+import { boundsSphere, fitDirection, frameView } from '../editing/view';
 
 // The framing the viewport did with three.js before editing/view took it over, kept here as the
 // reference: the pure functions must give the same numbers bit for bit.
@@ -16,12 +16,6 @@ function threeFrame(box: THREE.Box3, fov: number, kind: 'bottom' | 'fit', positi
     camera.copy(sphere.center).add(direction.multiplyScalar(distance));
   }
   return { position: camera.toArray(), target: sphere.center.toArray() };
-}
-
-function threeFocus(point: Vector, position: THREE.Vector3, target: THREE.Vector3) {
-  const goal = new THREE.Vector3(...point);
-  const offset = position.clone().sub(target);
-  return { position: goal.clone().add(offset.setLength(Math.min(offset.length(), 60))).toArray(), target: goal.toArray() };
 }
 
 /** Small deterministic generator (mulberry32). */
@@ -56,6 +50,5 @@ describe('editing/view matches the three.js framing', () => {
     for (const kind of ['bottom', 'fit'] as const) {
       expect(frameView(bounds, fov, kind, { position, target })).toEqual(threeFrame(box, fov, kind, pos, tgt));
     }
-    expect(focusView(min, { position, target })).toEqual(threeFocus(min, pos, tgt));
   });
 });

@@ -29,8 +29,8 @@ export function fitDirection(direction: Vector): Vector {
 export const FRAME_MARGIN = 1.15;
 /** Smallest framed radius (mm), so a tiny object is not framed from inside its own tips. */
 const MIN_FRAME_RADIUS = 1;
-/** Farthest Show/focus distance (mm) from the point turned to. */
-const FOCUS_MAX_DISTANCE = 60;
+/** Smallest radius (mm) Show me frames around a check finding. */
+export const MIN_SPOT_RADIUS = 5;
 
 /** Orbit camera placement: camera position and the point it orbits around (looks at). */
 export interface CameraView {
@@ -63,15 +63,13 @@ export function frameView(bounds: { center: Vector; radius: number }, fovDeg: nu
   return { position: [center[0] + x * distance, center[1] + y * distance, center[2] + z * distance], target: [...center] };
 }
 
-/** Turns the orbit camera to `point`, keeping its viewing direction, no farther than 60 mm from it. */
-export function focusView(point: Vector, current: CameraView): CameraView {
-  let [x, y, z] = [current.position[0] - current.target[0], current.position[1] - current.target[1], current.position[2] - current.target[2]];
-  const length = Math.sqrt(x * x + y * y + z * z);
-  const reach = Math.min(length, FOCUS_MAX_DISTANCE);
-  // Normalise, then scale (the order three.js's setLength uses).
-  const inverse = 1 / (length || 1);
-  [x, y, z] = [x * inverse * reach, y * inverse * reach, z * inverse * reach];
-  return { position: [point[0] + x, point[1] + y, point[2] + z], target: [...point] };
+/**
+ * Show me on a support check finding: frames the spot from the current direction, as Fit view
+ * frames objects. The spot counts as a sphere of radius √area (mm), at least 5 mm (an island has no
+ * area), so a large uncovered overhang is framed whole.
+ */
+export function spotView(point: Vector, area: number, fovDeg: number, current: CameraView): CameraView {
+  return frameView({ center: point, radius: Math.max(MIN_SPOT_RADIUS, Math.sqrt(Math.max(area, 0))) }, fovDeg, 'fit', current);
 }
 
 /** The camera is below the build plate (y = 0). */

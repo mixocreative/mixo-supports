@@ -16,7 +16,7 @@ export interface EditSession {
   tool: EditTool;
   selectStyle: SelectStyle;
   brushMode: BrushMode;
-  /** Drag-over reach in mm: a view setting, so the object's Erase radius stays untouched. */
+  /** Drag-over reach in mm: a view setting, so the object's Remove radius stays untouched. */
   brushRadius: number;
   zoneKind: ZoneKind;
   /** Zone brush radius in mm. */
@@ -60,7 +60,9 @@ export type SessionEvent =
   | { type: 'setZoneRadius'; radius: number }
   | { type: 'toggleContact'; id: string }
   | { type: 'paint'; ids: readonly string[]; mode: BrushMode }
-  | { type: 'clearSelection' };
+  | { type: 'clearSelection' }
+  /** Undo of a cleared selection: exactly these ids again. */
+  | { type: 'restoreSelection'; ids: readonly string[] };
 
 /** The selection empties on every mode change. */
 function withMode(state: EditSession, mode: EditMode, zonesReturn = state.zonesReturn): EditSession {
@@ -107,6 +109,8 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
       return state.mode === 'edit' ? withSelection(state, toggleSelection(state.selection, event.id)) : state;
     case 'paint':
       return state.mode === 'edit' ? withSelection(state, paintSelection(state.selection, event.ids, event.mode)) : state;
+    case 'restoreSelection':
+      return state.mode === 'edit' ? withSelection(state, new Set(event.ids)) : state;
     case 'clearSelection':
       return withSelection(state, state.selection.size === 0 ? state.selection : NO_SELECTION);
   }

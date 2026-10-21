@@ -417,7 +417,8 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 /* Tips only forced on below the plate: disabled, yet it still reads as on; its title says why. */
 .viewport-view button[aria-pressed='true']:disabled { opacity: 1; color: var(--paper); cursor: default; }
 .edit-size { display: flex; gap: 8px; align-items: center; }
-.edit-size input { width: 96px; accent-color: var(--ink); }
+/* Viewport tool hit areas stay at least 24 px tall (NN/g, WCAG 2.5.8): the slider gets a full row. */
+.edit-size input { width: 96px; height: 24px; margin: 0; accent-color: var(--ink); }
 .edit-size output { min-width: 3.5em; font-variant-numeric: tabular-nums; }
 .edit-count { color: var(--muted); font-variant-numeric: tabular-nums; }
 /* No-support zones mode: the same chrome in the zone colour, so it never reads as Support Edit Mode. */
@@ -425,6 +426,36 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 .viewport--zones .edit-badge { border-color: var(--blue); background: var(--blue); }
 /* The wide edit bar takes the top right; the view buttons move to the bottom right meanwhile. */
 .viewport--editing .viewport-view { top: auto; bottom: 14px; }
+
+/* ---- Undo toast (mixo-app-style: surface, hairline, 2 px radius, no shadow) ---- */
+.undo-toast-region {
+  position: absolute;
+  left: 50%;
+  bottom: 44px;
+  z-index: 4;
+  transform: translateX(-50%);
+  max-width: calc(100% - 28px);
+  pointer-events: none;
+}
+.undo-toast {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 4px 4px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-size: 12px;
+  letter-spacing: .02em;
+  pointer-events: auto;
+}
+.undo-toast span[aria-hidden] { color: var(--muted); }
+.undo-toast button { padding: 4px 10px; min-height: 24px; font-size: 12px; font-weight: 500; }
+@media (prefers-reduced-motion: no-preference) {
+  .undo-toast { animation: undo-toast-in var(--dur) ease-out; }
+}
+@keyframes undo-toast-in { from { opacity: 0; transform: translateY(4px); } }
 
 /* ---- Tablet and phone: viewport on top, panels below, the page scrolls ---- */
 @media (max-width: 1100px) {
@@ -460,4 +491,9 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
   .edit-hint { display: none; }
   button, .segmented button, .panel .segmented button { min-height: 40px; }
   .problems button { min-height: 36px; }
+}
+
+/* The edit bar takes the bottom of the viewport on tablets and phones: the undo toast goes above. */
+@media (max-width: 1100px) {
+  .viewport--editing .undo-toast-region { bottom: auto; top: 56px; }
 }

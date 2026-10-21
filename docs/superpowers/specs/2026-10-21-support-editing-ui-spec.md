@@ -13,6 +13,11 @@ tests) win. Numbers are millimetres, pixels or radians as stated.
 | Status line | `src/editing/status.ts` | `status.test.ts` |
 | Camera framing | `src/editing/view.ts` | `view.test.ts`, `components/viewParity.test.ts` |
 | Selection rules | `src/editing/selection.ts` | `selection.test.ts` |
+| Number fields | `src/editing/numberInput.ts` | `numberInput.test.ts` |
+| Error messages | `src/editing/errors.ts` | `errors.test.ts`, `i18n.test.ts`, `importErrors.test.ts` |
+| Undo toasts | `src/editing/toast.ts` | `toast.test.ts` |
+| Glossary | `src/glossary.ts`, `docs/migration/glossary.md` | `glossary.test.ts` |
+| Hover hints | `src/components/hint.ts` | `hints.test.ts` |
 | Placement math | `src/core/transform.ts` | `core/transform.test.ts`, `state/transformParity.test.ts` |
 | Conventions | `src/core/conventions.ts` | — |
 
@@ -44,6 +49,7 @@ Lifetime rules:
 - Tool settings (tool, style, radii, kinds) survive mode and object changes.
 - **Undo floor:** entering a mode from `off` records the history length; inside a mode Undo stops there (`startsEditing`). Moving edit → zones → edit keeps the first floor. The host owns history.
 - Delete selection: exactly the selected live supports go in one undo step (manual contacts removed, automatic ones recorded as deleted); the selection clears; the tool stays.
+- Clear selection (button, or Esc with a selection) runs at once and offers Undo on a toast; Undo puts exactly those ids back (`restoreSelection`, minus supports deleted since).
 - Another object clicked while a mode is on: refused with `busyStatus` (object selection unchanged).
 
 ## 2. Key table (`keyAction`, first match wins)
@@ -60,7 +66,7 @@ Lifetime rules:
 | 5 | Tab | zones | — | none (swallowed) | yes |
 | 6 | Esc, Enter | zones | Enter not on a control | leaveMode (closeZones) | yes |
 | 7 | Delete, Backspace | edit | selection > 0 | deleteSelection | yes |
-| 8 | Esc | edit | selection > 0 | clearSelection | yes |
+| 8 | Esc | edit | selection > 0 | clearSelection (with an Undo toast) | yes |
 | 9 | Esc, Enter | edit | Enter not on a control | leaveMode (toggleEdit → off) | yes |
 | 10 | Delete | off | — | deleteObjects | no |
 | 11 | G | off | (also with Ctrl) | gizmo Move | no |
@@ -104,7 +110,7 @@ Support hit (only `edit` on the active object takes it; otherwise `pass`):
 
 No hit (`missAction`): in `edit`/`zones` → miss (status says what to click); in `off` a left click clears the object selection; the release of a gizmo drag is ignored.
 
-Erase radius: every contact within the object's Erase radius (setting, default in `core/supports/settings.ts`) of the picked point; the hover preview highlights exactly those.
+Remove radius (setting `eraseRadius`, default 1.5 mm; formerly labelled "Erase radius"): every contact within it of the picked point goes; the hover preview highlights exactly those.
 
 ## 4. Strokes (`createStroke`)
 
@@ -189,7 +195,7 @@ Note for the glossary (Task 12): ja counts supports with both 本 and 個.
 - Distance `d = max(r, 1) / sin(fov/2) × 1.15`.
 - Bottom view: camera at `(cx, cy − d, cz + d·1e-3)` looking at the centre (a hair off vertical keeps the up axis defined; front of the plate at the bottom).
 - Fit view: same direction as now (target → camera), unit length; camera at centre + dir·d. Camera on its target → the start direction (70, 60, 90). Near-vertical (horizontal share < 1e-3) → `(0, y, |y|·1e-3)`.
-- Show / focus (check findings): keep the direction, move the target to the point, distance min(current, 60 mm).
+- Show me (check findings, also Fix): `spotView` frames the spot like Fit view, from the current direction, treating it as a sphere of radius max(5 mm, √area).
 - Tips view: on while the Tips only toggle is on or the camera is below the plate (y < 0); below the plate the toggle shows pressed and disabled.
 
 ## 9. Conventions and the Babylon adapter
@@ -226,3 +232,42 @@ three.js (or @react-three, three-mesh-bvh, three-stdlib). Exceptions, for now:
 
 Everything else, including `src/state/transform.ts`, `src/core/**` and `src/editing/**`, is
 three-free (`src/core/imports.test.ts` enforces core/editing).
+
+## 11. Feedback, errors and forgiveness (Task 12)
+
+**Undo toasts** (`editing/toast.ts`, `components/UndoToast.tsx`). Clear all zones, Clear manual edits
+and Clear selection (with a selection) run at once — no confirm dialog — and show
+"<what was cleared> · Undo" for 6 s (`UNDO_TOAST_MS`) in an always-present polite live region
+(`role="status"`, `aria-live="polite"`), bottom centre of the viewport (top on tablets while a
+mode's bar is at the bottom). The countdown pauses while hovered or focused. Undo restores in one
+step: a history clear undoes that history step; a selection clear puts the ids back. The toast
+closes as soon as its Undo would undo something else (`toastAlive`: the scene moved on, or the
+mode / object changed for a selection). Style: surface background, 1 px `--line-strong`
+hairline, 2 px radius, no shadow, 12 px text, Undo as a plain button (≥ 24 px tall).
+
+| Action | Toast (en) | zh-Hant | ja |
+|---|---|---|---|
+| Clear all zones | No-support zones cleared. | 已清除免支撐區。 | サポート禁止エリアを消去しました。 |
+| Clear manual edits | Manual edits cleared; automatic contacts restored. | (existing key) | (existing key) |
+| Clear selection | Selection of {n} supports cleared. | 已取消選取 {n} 個支撐。 | サポート {n} 本の選択を解除しました。 |
+
+**Error messages** (`editing/errors.ts`): every failure says what happened, then what to do next.
+Errors carry a code (`CodedError`; the import module's English messages, the worker crash and
+timeouts are recognised by `errorCode`) so the line is translated; the raw message is shown only
+inside the generic message of an unknown error. Codes: `non-finite`, `no-mesh`, `file-type`,
+`too-large` (with `{n}` and `{limit}`, for lane B's budget refusal), `timeout`, `worker-stopped`,
+`unknown`; jobs: import, place, build, check, export. Example: "Export failed ({error}). Nothing
+was saved; try again, or export one object at a time."
+
+**Forgiving number fields** (`editing/numberInput.ts`): "2", "2.5", "2mm", "2 mm", "2,5" (decimal
+comma), "45°", "30 %" are read as numbers; values outside a setting's limits are clamped, never
+rejected; text that is not a number leaves the value as it was. A value inside the limits applies
+as it is typed; blur or Enter applies the clamped value and tidies the text; Esc restores it;
+Arrow Up / Down step by the field's step.
+
+**Hover hints**: every tool button, slider and setting has a hint shown on hover (`title`) and read
+as its accessible description (`aria-description`); setting option buttons sit in a
+`role="group"` that carries the setting's hint. Overhang angle and Ridge angle say what lower and
+higher values do.
+
+**Hit areas**: every viewport tool control is at least 24 px tall (sliders 24 px; buttons ≥ 28 px).

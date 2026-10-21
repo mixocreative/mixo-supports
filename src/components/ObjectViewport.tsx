@@ -13,7 +13,7 @@ import { contactsInBrush, notSelected } from '../editing/selection';
 import type { BrushMode, EditMode, EditTool, ZoneKind } from '../editing/types';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
 import { zoneOverlay } from '../core/supports/overlayMesh';
-import { belowPlate, boundsSphere, focusView, frameView, tipsView } from '../editing/view';
+import { belowPlate, boundsSphere, frameView, spotView, tipsView } from '../editing/view';
 import { brushFill, createStroke, zoneFill } from '../editing/stroke';
 import { missAction, pickAction, type PickInput } from '../editing/pick';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../core/supports/zones';
@@ -67,8 +67,8 @@ export interface ObjectViewportProps {
   onZoneStroke: (unitId: string, stamps: ZoneStamp[]) => void;
   /** Support check findings to mark, positions in their unit's local frame. */
   problems: readonly (SupportProblem & { unitId: string })[];
-  /** Point (plate space) the camera should turn to; a new `seq` repeats the move. */
-  focus?: { point: Vector; seq: number };
+  /** Check finding to frame (Show me): point in plate space, its area in mm²; a new `seq` repeats the move. */
+  focus?: { point: Vector; area: number; seq: number };
   /** A new `seq` turns the camera to look straight up at the selection (or every object). */
   viewRequest?: ViewRequest;
   /** Show only the contact tips; the view also does so on its own from below the plate. */
@@ -149,7 +149,7 @@ function toVector(vector: THREE.Vector3): Vector {
 
 /**
  * Support Edit Mode preview at the pointer: a ghost tip where a click adds a support, the
- * Erase radius ring with the contacts a click would remove highlighted, or (Drag over, zone
+ * Remove radius ring with the contacts a click would remove highlighted, or (Drag over, zone
  * brush) the brush ring alone in its colour.
  */
 function EditPreview({ hover, unit, brush }: { hover: Hover; unit: PrintUnit; brush?: { radius: number; color: string } }) {
@@ -284,7 +284,7 @@ function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMesh; geo
   </mesh>;
 }
 
-/** Contact ids within the Erase radius of a unit-local point: what a remove click there takes. */
+/** Contact ids within the Remove radius of a unit-local point: what a remove click there takes. */
 function useDoomed(unit: PrintUnit, point: THREE.Vector3 | undefined): string[] {
   const eraseRadius = useMemo(() => resolveSettings(unit.settings).eraseRadius, [unit.settings]);
   const contacts = useMemo(() => unitContacts(unit), [unit]);
@@ -343,15 +343,15 @@ function PlateSide({ onChange }: { onChange: (below: boolean) => void }) {
   return null;
 }
 
-/** Turns the orbit camera to a point, keeping its viewing direction, close enough to see it. */
-function FocusCamera({ focus }: { focus?: { point: Vector; seq: number } }) {
+/** Frames a check finding from the current viewing direction (Show me). */
+function FocusCamera({ focus }: { focus?: { point: Vector; area: number; seq: number } }) {
   const controls = useThree((state) => state.controls) as unknown as { target: THREE.Vector3; update(): void } | null;
-  const camera = useThree((state) => state.camera);
+  const camera = useThree((state) => state.camera) as THREE.PerspectiveCamera;
   useEffect(() => {
     if (!focus || !controls) return;
-    const turned = focusView(focus.point, { position: camera.position.toArray(), target: controls.target.toArray() });
-    camera.position.set(...turned.position);
-    controls.target.set(...turned.target);
+    const framed = spotView(focus.point, focus.area, camera.fov, { position: camera.position.toArray(), target: controls.target.toArray() });
+    camera.position.set(...framed.position);
+    controls.target.set(...framed.target);
     controls.update();
   }, [focus?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
@@ -538,7 +538,7 @@ function UnitObject(props: UnitObjectProps) {
     else if (action.type === 'add') props.onAddContact(unit.id, point, surfaceNormal(event));
   };
 
-  /** Right-click removes within Erase radius in every tool; a left click selects (Click) or, with Ctrl, removes (Add). */
+  /** Right-click removes within Remove radius in every tool; a left click selects (Click) or, with Ctrl, removes (Add). */
   const clickSupport = (event: ThreeEvent<MouseEvent>, right: boolean) => {
     if (!supports || event.faceIndex == null) return;
     // Braces, raft and labels belong to no contact: the pick continues behind them.

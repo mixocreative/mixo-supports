@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { belowPlate, boundsSphere, fitDirection, focusView, frameView, FRAME_MARGIN, tipsView } from './view';
+import { belowPlate, boundsSphere, fitDirection, frameView, FRAME_MARGIN, MIN_SPOT_RADIUS, spotView, tipsView } from './view';
 
 const horizontal = ([x, , z]: number[]) => Math.hypot(x!, z!);
 
@@ -59,14 +59,22 @@ describe('frameView', () => {
   });
 });
 
-describe('focusView', () => {
-  it('turns to the point keeping the viewing direction, no farther than 60 mm', () => {
-    const near = focusView([5, 5, 5], { position: [0, 0, 10], target: [0, 0, 0] });
-    expect(near).toEqual({ position: [5, 5, 15], target: [5, 5, 5] });
-    const far = focusView([0, 0, 0], { position: [0, 300, 400], target: [0, 0, 0] });
-    expect(far.position[0]).toBe(0);
-    expect(far.position[1]).toBeCloseTo(36, 12);
-    expect(far.position[2]).toBeCloseTo(48, 12);
+describe('spotView (Show me on a check finding)', () => {
+  it('frames the spot from the current direction, close enough to see it', () => {
+    const view = spotView([5, 5, 5], 0, 40, { position: [0, 0, 100], target: [0, 0, 0] });
+    expect(view.target).toEqual([5, 5, 5]);
+    // An island (no area) is framed as a 10 mm wide spot.
+    const distance = MIN_SPOT_RADIUS / Math.sin(40 * (Math.PI / 180) / 2) * FRAME_MARGIN;
+    expect(view.position[0]).toBeCloseTo(5, 12);
+    expect(view.position[1]).toBeCloseTo(5, 12);
+    expect(view.position[2]).toBeCloseTo(5 + distance, 9);
+  });
+
+  it('frames a larger overhang wider', () => {
+    const small = spotView([0, 0, 0], 4, 40, { position: [0, 0, 100], target: [0, 0, 0] });
+    const large = spotView([0, 0, 0], 400, 40, { position: [0, 0, 100], target: [0, 0, 0] });
+    expect(large.position[2]).toBeCloseTo(20 / Math.sin(40 * (Math.PI / 180) / 2) * FRAME_MARGIN, 9);
+    expect(large.position[2]).toBeGreaterThan(small.position[2]);
   });
 });
 

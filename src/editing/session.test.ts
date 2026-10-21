@@ -111,6 +111,13 @@ describe('reduceSession: selection', () => {
     expect(reduceSession(editing, { type: 'clearSelection' })).toBe(editing);
   });
 
+  it('puts a cleared selection back exactly (Undo on the toast), in Support Edit Mode only', () => {
+    const cleared = reduceSession(selected, { type: 'clearSelection' });
+    const restored = reduceSession(cleared, { type: 'restoreSelection', ids: ['a', 'b'] });
+    expect([...restored.selection]).toEqual(['a', 'b']);
+    expect(reduceSession(withActive, { type: 'restoreSelection', ids: ['a'] })).toBe(withActive);
+  });
+
   it('clears on every mode change', () => {
     expect(reduceSession(selected, { type: 'toggleEdit' }).selection.size).toBe(0);
     expect(reduceSession(selected, { type: 'openZones', from: 'edit', activeUnitId: 'u1' }).selection.size).toBe(0);

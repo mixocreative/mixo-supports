@@ -27,7 +27,7 @@ export interface PickInput {
 /**
  * What a click means. `pass`: this hit does not take it, the object behind gets the click (or
  * none does). `none`: taken, nothing happens. `select`: pick the object (`additive` with Shift).
- * `add` a contact at the model point; `erase` every contact within Erase radius of the point;
+ * `add` a contact at the model point; `erase` every contact within Remove radius of the point;
  * `removeContact`: erase around the support's contact; `toggle` its selection; `miss`: tell the
  * user what to click instead.
  */
