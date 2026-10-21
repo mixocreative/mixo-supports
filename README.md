@@ -91,6 +91,10 @@ Every push to `main` is deployed to GitHub Pages.
 | `tools/blender-parity/` | Headless Blender scripts that record the reference data the tests compare against |
 | `docs/` | Design notes: [Blender parity](docs/BLENDER_PARITY.md), [SLASG node logic](docs/SLASG_NODE_LOGIC.md), [handoff](docs/HANDOFF.md) |
 
+## License
+
+Copyright © 2026 mixocreative. All rights reserved. The code is public to read, but copying, modifying, redistributing, hosting or any commercial use requires written permission. You are free to use the [hosted app](https://mixocreative.github.io/mixo-supports/) for your own prints, and the files you export are yours. See [LICENSE](LICENSE).
+
 ## Feedback
 
 Found a model that supports badly, or want a feature? [Open an issue](https://github.com/mixocreative/mixo-supports/issues) and attach the file if you can. A ⭐ helps other resin printers find the project.

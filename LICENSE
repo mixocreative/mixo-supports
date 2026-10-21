@@ -1,0 +1,17 @@
+Copyright (c) 2026 mixocreative. All rights reserved.
+
+This source code is published for viewing only. No license is granted to copy,
+modify, merge, publish, distribute, sublicense, sell, host, or otherwise use
+this software or any part of it, for commercial or non-commercial purposes,
+without prior written permission from the copyright holder.
+
+You may use the hosted application at https://mixocreative.github.io/mixo-supports/
+to prepare your own prints, and the files you export from it are yours.
+
+Third-party components keep their own licenses: the npm dependencies listed in
+package.json, and the OpenVDB lookup tables in src/supports/openvdbTables.ts
+(Apache-2.0, Copyright Contributors to the OpenVDB Project).
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
