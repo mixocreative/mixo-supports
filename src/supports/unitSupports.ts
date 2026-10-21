@@ -22,12 +22,23 @@ export function resolveSettings(settings: SupportSettings | undefined): LiveSupp
   return { ...defaultSupportSettings, roofSeededModes: [], ...(settings as Partial<LiveSupportSettings> | undefined) };
 }
 
-/** Final contacts in unit-local space: automatic minus suppressed, deleted and no-support zones, plus manual. */
-export function unitContacts(unit: PrintUnit): SupportContact[] {
-  const settings = resolveSettings(unit.settings);
-  return composeContacts(unit.placement?.points ?? [], unit.manual, unit.suppressed, settings.eraseRadius, unit.deleted, settings.scatterSpacing / 2)
-    .map(({ id, position, normal, source }) => ({ id, position, normal, kind: CONTACT_KIND[source], tree: !id.startsWith('manual-') }))
-    .filter((contact) => !contact.tree || !zonedAt(unit.zones, contact.position, contact.normal));
+const contactCache = new WeakMap<PrintUnit, readonly SupportContact[]>();
+
+/**
+ * Final contacts in unit-local space: automatic minus suppressed, deleted and no-support zones, plus
+ * manual. Units are immutable, so the list is worked out once per unit object; it is frozen and
+ * shared by every caller, never to be changed in place.
+ */
+export function unitContacts(unit: PrintUnit): readonly SupportContact[] {
+  let contacts = contactCache.get(unit);
+  if (!contacts) {
+    const settings = resolveSettings(unit.settings);
+    contacts = Object.freeze(composeContacts(unit.placement?.points ?? [], unit.manual, unit.suppressed, settings.eraseRadius, unit.deleted, settings.scatterSpacing / 2)
+      .map(({ id, position, normal, source }) => ({ id, position, normal, kind: CONTACT_KIND[source], tree: !id.startsWith('manual-') }))
+      .filter((contact) => !contact.tree || !zonedAt(unit.zones, contact.position, contact.normal)));
+    contactCache.set(unit, contacts);
+  }
+  return contacts;
 }
 
 /**

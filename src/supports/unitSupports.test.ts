@@ -34,6 +34,16 @@ describe('unit supports', () => {
     expect(unitContacts(zoned).map((contact) => contact.id)).toEqual(['auto-1', 'manual-a']);
   });
 
+  it('computes the contacts once per unit object and hands out a read-only list', () => {
+    const first = unitContacts(unit);
+    expect(unitContacts(unit)).toBe(first);
+    expect(Object.isFrozen(first)).toBe(true);
+    // A changed unit is a new object: its own list.
+    const zoned: PrintUnit = { ...unit, zones: [{ center: [0, -5, 0], radius: 1, normal: [0, -1, 0], kind: 'paint' }] };
+    expect(unitContacts(zoned)).not.toBe(first);
+    expect(unitContacts(zoned).map((contact) => contact.id)).toEqual(['manual-a']);
+  });
+
   it('merges settings over defaults and composes contacts', () => {
     expect(resolveSettings({ preset: 'HEAVY', touchDiameter: 1 })).toMatchObject({ preset: 'HEAVY', touchDiameter: 1, raftEnabled: true });
     expect(unitContacts(unit).map((contact) => contact.id)).toEqual(['auto-0', 'manual-a']);
