@@ -960,6 +960,8 @@ export default function App() {
               <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
             </div>
             {!tips.below && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
+            {/* CIA-05: zones test the landing of each support, not the shared junction landing of a tree (see release-3 backlog). */}
+            {activeUnit && activeSettings.scatterAutoTree && <p className="edit-note" role="note">{t('Tree supports: the shared foot of a tree is not checked against zones yet.')}</p>}
             <div className="edit-row">
               <button className="danger" onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear all zones')}</button>
               <button className="primary edit-done" onClick={closeZones} {...hint('Finish painting zones (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
