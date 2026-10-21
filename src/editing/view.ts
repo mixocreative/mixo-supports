@@ -1,4 +1,4 @@
-type Vector = [number, number, number];
+import type { Vector } from '../core/vec3';
 
 /** Viewing direction used when the camera sits on its target (the app's start view). */
 const START_DIRECTION: Vector = [70, 60, 90];
@@ -23,4 +23,63 @@ export function fitDirection(direction: Vector): Vector {
     length = Math.hypot(y, z);
   }
   return [x / length, y / length, z / length];
+}
+
+/** Framing margin: the framed sphere fills the view up to 1 / 1.15 of its height. */
+export const FRAME_MARGIN = 1.15;
+/** Smallest framed radius (mm), so a tiny object is not framed from inside its own tips. */
+const MIN_FRAME_RADIUS = 1;
+/** Farthest Show/focus distance (mm) from the point turned to. */
+const FOCUS_MAX_DISTANCE = 60;
+
+/** Orbit camera placement: camera position and the point it orbits around (looks at). */
+export interface CameraView {
+  position: Vector;
+  target: Vector;
+}
+
+/** The bounding sphere of a box (its centre and half its diagonal), as the view frames it. */
+export function boundsSphere(box: { min: Vector; max: Vector }): { center: Vector; radius: number } {
+  const { min, max } = box;
+  const [sx, sy, sz] = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+  return {
+    center: [(min[0] + max[0]) * 0.5, (min[1] + max[1]) * 0.5, (min[2] + max[2]) * 0.5],
+    radius: Math.sqrt(sx * sx + sy * sy + sz * sz) * 0.5,
+  };
+}
+
+/**
+ * Frames a sphere (the selection, or every object) for a perspective camera with vertical field
+ * of view `fovDeg`: `bottom` looks straight up at it from below (a hair off vertical keeps the
+ * orbit's up axis defined, front of the plate at the bottom); `fit` keeps the current viewing
+ * direction (see `fitDirection`).
+ */
+export function frameView(bounds: { center: Vector; radius: number }, fovDeg: number, kind: 'bottom' | 'fit', current?: CameraView): CameraView {
+  const { center } = bounds;
+  const distance = Math.max(bounds.radius, MIN_FRAME_RADIUS) / Math.sin(fovDeg * (Math.PI / 180) / 2) * FRAME_MARGIN;
+  if (kind === 'bottom') return { position: [center[0], center[1] - distance, center[2] + distance * MIN_HORIZONTAL], target: [...center] };
+  const from = current ?? { position: START_DIRECTION, target: [0, 0, 0] };
+  const [x, y, z] = fitDirection([from.position[0] - from.target[0], from.position[1] - from.target[1], from.position[2] - from.target[2]]);
+  return { position: [center[0] + x * distance, center[1] + y * distance, center[2] + z * distance], target: [...center] };
+}
+
+/** Turns the orbit camera to `point`, keeping its viewing direction, no farther than 60 mm from it. */
+export function focusView(point: Vector, current: CameraView): CameraView {
+  let [x, y, z] = [current.position[0] - current.target[0], current.position[1] - current.target[1], current.position[2] - current.target[2]];
+  const length = Math.sqrt(x * x + y * y + z * z);
+  const reach = Math.min(length, FOCUS_MAX_DISTANCE);
+  // Normalise, then scale (the order three.js's setLength uses).
+  const inverse = 1 / (length || 1);
+  [x, y, z] = [x * inverse * reach, y * inverse * reach, z * inverse * reach];
+  return { position: [point[0] + x, point[1] + y, point[2] + z], target: [...point] };
+}
+
+/** The camera is below the build plate (y = 0). */
+export function belowPlate(cameraY: number): boolean {
+  return cameraY < 0;
+}
+
+/** Only contact tips show: the Tips only toggle, or the camera below the plate. */
+export function tipsView(tipsOnly: boolean, below: boolean): boolean {
+  return tipsOnly || below;
 }

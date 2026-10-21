@@ -9,12 +9,14 @@ import type { TriangleMesh } from '../core/analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
 import { transformFromObject, type ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../core/supports/mesh';
-import { brushSamples, contactsInBrush, notSelected } from '../editing/selection';
+import { contactsInBrush, notSelected } from '../editing/selection';
 import type { BrushMode, EditMode, EditTool, ZoneKind } from '../editing/types';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
 import { zoneOverlay } from '../core/supports/overlayMesh';
-import { fitDirection } from '../editing/view';
-import { nextStamp, sameStamp, stampsAlong, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../core/supports/zones';
+import { belowPlate, boundsSphere, focusView, frameView, tipsView } from '../editing/view';
+import { brushFill, createStroke, zoneFill } from '../editing/stroke';
+import { missAction, pickAction, type PickInput } from '../editing/pick';
+import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../core/supports/zones';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
 type Vector = [number, number, number];
@@ -26,9 +28,6 @@ export function acceptModelFile(file: File): boolean {
 export function isTransformMode(mode: GizmoMode): mode is 'translate' | 'rotate' {
   return mode !== 'none';
 }
-
-/** Pointer travel (px) above which a click is treated as an orbit drag and ignored. */
-const CLICK_TOLERANCE = 4;
 
 export interface ObjectViewportProps {
   scene: PrintScene;
@@ -316,16 +315,9 @@ function ViewCamera({ view, unitIds }: { view?: ViewRequest; unitIds: readonly s
       if (group) box.expandByObject(group);
     }
     if (box.isEmpty()) return;
-    const sphere = box.getBoundingSphere(new THREE.Sphere());
-    const distance = Math.max(sphere.radius, 1) / Math.sin(THREE.MathUtils.degToRad(camera.fov) / 2) * 1.15;
-    if (view.kind === 'bottom') {
-      // A hair off vertical keeps the orbit's up axis defined: front of the plate at the bottom.
-      camera.position.set(sphere.center.x, sphere.center.y - distance, sphere.center.z + distance * 1e-3);
-    } else {
-      const direction = new THREE.Vector3(...fitDirection(toVector(camera.position.clone().sub(controls.target))));
-      camera.position.copy(sphere.center).add(direction.multiplyScalar(distance));
-    }
-    controls.target.copy(sphere.center);
+    const framed = frameView(boundsSphere({ min: box.min.toArray(), max: box.max.toArray() }), camera.fov, view.kind, { position: camera.position.toArray(), target: controls.target.toArray() });
+    camera.position.set(...framed.position);
+    controls.target.set(...framed.target);
     controls.update();
   }, [view?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
@@ -335,7 +327,7 @@ function ViewCamera({ view, unitIds }: { view?: ViewRequest; unitIds: readonly s
 function PlateSide({ onChange }: { onChange: (below: boolean) => void }) {
   const below = useRef(false);
   useFrame(({ camera }) => {
-    const now = camera.position.y < 0;
+    const now = belowPlate(camera.position.y);
     if (now === below.current) return;
     below.current = now;
     onChange(now);
@@ -349,10 +341,9 @@ function FocusCamera({ focus }: { focus?: { point: Vector; seq: number } }) {
   const camera = useThree((state) => state.camera);
   useEffect(() => {
     if (!focus || !controls) return;
-    const target = new THREE.Vector3(...focus.point);
-    const offset = camera.position.clone().sub(controls.target);
-    camera.position.copy(target).add(offset.setLength(Math.min(offset.length(), 60)));
-    controls.target.copy(target);
+    const turned = focusView(focus.point, { position: camera.position.toArray(), target: controls.target.toArray() });
+    camera.position.set(...turned.position);
+    controls.target.set(...turned.target);
     controls.update();
   }, [focus?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
@@ -419,21 +410,33 @@ function UnitObject(props: UnitObjectProps) {
     return () => { canvas.style.cursor = ''; };
   }, [cursor, gl]);
 
-  // A brush stroke (Drag over, or the zone brush): from a left press on this object until the
-  // button is released anywhere. A zone stroke is handed on once, when it ends.
+  // A brush stroke (Drag over, or the zone brush): the rules are editing/stroke; this wires the
+  // pointer and window events to it. A zone stroke is handed on once, when it ends.
   // The orbit is off for the stroke (the r3f canvas listener runs before the OrbitControls one,
   // so the press that starts a stroke never starts a rotation).
   const controls = useThree((state) => state.controls) as unknown as { enabled: boolean } | null;
-  const endStroke = useRef<(() => void) | null>(null);
-  /** Drag over: the brush centre last painted in this stroke. */
-  const brushLast = useRef<Vector | undefined>(undefined);
-  useEffect(() => () => endStroke.current?.(), []);
+  /** Runs once when a stroke ends (release, cancel, blur, a move with no button, the brush gone). */
+  const strokeEnded = useRef(() => {});
+  const [brushStroke] = useState(() => createStroke(() => strokeEnded.current()));
+  const release = useCallback(() => void brushStroke.end(), [brushStroke]);
+  strokeEnded.current = () => {
+    window.removeEventListener('pointerup', release);
+    window.removeEventListener('pointercancel', release);
+    window.removeEventListener('blur', release);
+    if (controls) controls.enabled = true;
+    const stamps = strokeStamps.current;
+    if (stamps.length === 0) return;
+    strokeStamps.current = [];
+    props.onZoneStroke(unit.id, stamps);
+    setStroke([]);
+  };
+  useEffect(() => () => void brushStroke.end(), [brushStroke]);
   // The brush going away mid-stroke (tool or mode changed, another object made active) ends the
   // stroke at once, so the orbit is back without waiting for the release.
   const brushing = Boolean(brush || zoneBrush);
   useEffect(() => {
-    if (!brushing) endStroke.current?.();
-  }, [brushing]);
+    if (!brushing) brushStroke.end();
+  }, [brushing, brushStroke]);
   /** Unit-local point under the pointer, its surface normal and the direction to the camera. */
   const brushHover = (event: ThreeEvent<PointerEvent>): Hover & { facing: THREE.Vector3 } => {
     const point = event.object.worldToLocal(event.point.clone());
@@ -444,50 +447,30 @@ function UnitObject(props: UnitObjectProps) {
     if (!brush && !zoneBrush) return;
     const at = brushHover(event);
     setHover(at);
-    // A release the window never saw (focus lost, cancelled pointer) ends the stroke here.
-    if (endStroke.current && (event.buttons & 1) === 0) endStroke.current();
-    if (!endStroke.current) return;
+    if (brushStroke.move((event.buttons & 1) !== 0) !== 'sample') return;
+    const center = toVector(at.point);
     if (brush) {
       // A fast drag skips ahead between pointer events: paint the gap too, as a zone stroke fills it.
-      const center = toVector(at.point);
       const facing = toVector(at.facing);
-      for (const sample of brushSamples(brushLast.current, center, brush.radius)) props.onPaint(unit.id, sample, facing, brush.mode);
-      brushLast.current = center;
+      for (const sample of brushStroke.samples(center, brushFill(brush.radius))) props.onPaint(unit.id, sample, facing, brush.mode);
       return;
     }
     if (!zoneBrush) return;
-    const center = toVector(at.point);
-    const last = strokeStamps.current.at(-1)?.center;
-    if (!nextStamp(last, center, zoneBrush.radius)) return;
-    // A fast drag skips ahead between pointer events: fill the gap (stamps share this hit's normal).
-    const normal = toVector(at.normal.clone().normalize());
-    const fill = last ? stampsAlong(last, center, zoneBrush.radius) : [];
     const { radius, kind } = zoneBrush;
-    strokeStamps.current = [...strokeStamps.current, ...fill.map((between) => ({ center: between, radius, normal, kind })), { center, radius, normal, kind }];
+    // New stamps (a fast drag's gap filled) share this hit's normal.
+    const centers = brushStroke.samples(center, zoneFill(radius));
+    if (centers.length === 0) return;
+    const normal = toVector(at.normal.clone().normalize());
+    strokeStamps.current = [...strokeStamps.current, ...centers.map((between) => ({ center: between, radius, normal, kind }))];
     setStroke(strokeStamps.current);
   };
   const startStroke = (event: ThreeEvent<PointerEvent>) => {
-    if ((!brush && !zoneBrush) || event.button !== 0) return;
+    if ((!brush && !zoneBrush) || !brushStroke.begin(event.button)) return;
     event.stopPropagation();
     if (controls) controls.enabled = false;
-    const end = () => {
-      window.removeEventListener('pointerup', end);
-      window.removeEventListener('pointercancel', end);
-      window.removeEventListener('blur', end);
-      endStroke.current = null;
-      brushLast.current = undefined;
-      if (controls) controls.enabled = true;
-      const stamps = strokeStamps.current;
-      if (stamps.length === 0) return;
-      strokeStamps.current = [];
-      props.onZoneStroke(unit.id, stamps);
-      setStroke([]);
-    };
-    endStroke.current?.();
-    endStroke.current = end;
-    window.addEventListener('pointerup', end);
-    window.addEventListener('pointercancel', end);
-    window.addEventListener('blur', end);
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    window.addEventListener('blur', release);
     paint(event);
   };
 
@@ -522,32 +505,40 @@ function UnitObject(props: UnitObjectProps) {
     return [normal.x, normal.y, normal.z];
   };
 
-  const clickModel = (event: ThreeEvent<MouseEvent>, remove: boolean) => {
-    if (event.delta > CLICK_TOLERANCE) return;
+  /** The click rules (editing/pick) for a hit on this object; `contact` only matters on supports. */
+  const pickFor = (event: ThreeEvent<MouseEvent>, hit: PickInput['hit'], right: boolean, contact: boolean) => pickAction({
+    hit,
+    button: right ? 'right' : 'left',
+    ctrl: event.ctrlKey || event.metaKey,
+    shift: event.shiftKey,
+    travel: event.delta,
+    mode: editMode,
+    tool: props.editTool,
+    selectStyle: props.brush ? 'brush' : 'click',
+    active: props.active,
+    contact,
+  });
+
+  const clickModel = (event: ThreeEvent<MouseEvent>, right: boolean) => {
+    const action = pickFor(event, 'model', right, false);
+    if (action.type === 'pass') return;
     event.stopPropagation();
     const point: Vector = [event.point.x, event.point.y, event.point.z];
-    if (editMode === 'off') return remove ? undefined : props.onSelect(unit.id, event.shiftKey);
-    // Painting zones: the zone brush owns the active model; clicks never select, add or remove.
-    if (editMode === 'zones') return;
-    if (!props.active) return props.onSelect(unit.id, false);
-    if (remove) return props.onErase(unit.id, point);
-    // Selecting never adds: Click says to click a support; Drag over owns the left button.
-    if (selecting) return clickSelecting ? props.onEditMiss() : undefined;
-    if (event.ctrlKey || event.metaKey) return props.onErase(unit.id, point);
-    props.onAddContact(unit.id, point, surfaceNormal(event));
+    if (action.type === 'select') props.onSelect(unit.id, action.additive);
+    else if (action.type === 'erase') props.onErase(unit.id, point);
+    else if (action.type === 'miss') props.onEditMiss();
+    else if (action.type === 'add') props.onAddContact(unit.id, point, surfaceNormal(event));
   };
 
   /** Right-click removes within Erase radius in every tool; a left click selects (Click) or, with Ctrl, removes (Add). */
   const clickSupport = (event: ThreeEvent<MouseEvent>, right: boolean) => {
-    if (event.delta > CLICK_TOLERANCE || editMode !== 'edit' || !props.active || !supports || event.faceIndex == null) return;
-    const toggle = !right && clickSelecting;
-    // A plain left click in Add (or any left click in Drag over) passes through to the model behind.
-    if (!right && !toggle && (selecting || (!event.ctrlKey && !event.metaKey))) return;
+    if (!supports || event.faceIndex == null) return;
     // Braces, raft and labels belong to no contact: the pick continues behind them.
     const contactId = contactAtTriangle(supports, event.faceIndex);
-    if (!contactId) return;
+    const action = pickFor(event, 'support', right, Boolean(contactId));
+    if (action.type === 'pass' || !contactId) return;
     event.stopPropagation();
-    if (toggle) return props.onToggleContact(unit.id, contactId);
+    if (action.type === 'toggle') return props.onToggleContact(unit.id, contactId);
     event.nativeEvent.preventDefault?.();
     props.onRemoveContact(unit.id, contactId);
   };
@@ -645,9 +636,9 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       (raycaster as THREE.Raycaster & { firstHitOnly?: boolean }).firstHitOnly = true;
     }}
     onPointerMissed={(event) => {
-      if (dragging) return;
-      if (props.editMode !== 'off') props.onEditMiss();
-      else if (event.button === 0) props.onSelect(null, false);
+      const action = missAction({ mode: props.editMode, button: event.button === 0 ? 'left' : event.button === 2 ? 'right' : 'middle', gizmoDragging: dragging });
+      if (action.type === 'miss') props.onEditMiss();
+      else if (action.type === 'deselect') props.onSelect(null, false);
     }}
     onContextMenu={(event) => event.preventDefault()}
   >
@@ -664,7 +655,7 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       key={unit.id}
       unit={unit}
       supports={props.supportMeshes.get(unit.id)}
-      tipsView={props.tipsOnly || below}
+      tipsView={tipsView(props.tipsOnly, below)}
       selected={selected.has(unit.id)}
       active={unit.id === activeId}
       editMode={props.editMode}
