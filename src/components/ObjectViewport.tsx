@@ -7,7 +7,7 @@ import { TransformControls as TransformControlsImpl } from 'three-stdlib';
 import type { SupportProblem } from '../core/analysis/supportCheck';
 import type { TriangleMesh } from '../core/analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
-import { transformFromObject, type ModelTransform } from '../state/transform';
+import type { ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../core/supports/mesh';
 import { contactsInBrush, notSelected } from '../editing/selection';
 import type { BrushMode, EditMode, EditTool, ZoneKind } from '../editing/types';
@@ -27,6 +27,14 @@ export function acceptModelFile(file: File): boolean {
 
 export function isTransformMode(mode: GizmoMode): mode is 'translate' | 'rotate' {
   return mode !== 'none';
+}
+
+/** A gizmo-moved object's placement (Euler XYZ, the three.js default order this app keeps). */
+export function transformFromObject(object: THREE.Object3D): ModelTransform {
+  return {
+    position: [object.position.x, object.position.y, object.position.z],
+    rotation: [object.rotation.x, object.rotation.y, object.rotation.z],
+  };
 }
 
 export interface ObjectViewportProps {

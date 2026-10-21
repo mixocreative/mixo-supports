@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Object3D } from 'three';
-import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformDirection, transformFromObject, transformPoint, unitWorldTransform } from './transform';
+import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformDirection, transformPoint, unitWorldTransform } from './transform';
 import type { TriangleMesh } from '../core/analysis/types';
 
 const source: TriangleMesh = {
@@ -32,19 +31,6 @@ describe('applyTransform', () => {
     });
     expect(Array.from(transformed.indices)).toEqual(Array.from(source.indices));
     expect(transformed.indices).not.toBe(source.indices);
-  });
-});
-
-describe('transformFromObject', () => {
-  it('serializes an Object3D position and rotation', () => {
-    const object = new Object3D();
-    object.position.set(1, 2, 3);
-    object.rotation.set(0, 0.5, 0);
-
-    expect(transformFromObject(object)).toEqual({
-      position: [1, 2, 3],
-      rotation: [0, 0.5, 0],
-    });
   });
 });
 
