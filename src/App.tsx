@@ -504,7 +504,11 @@ export default function App() {
     if (unit && contact) eraseNear(unit, [...contact.position]);
   }, [eraseNear]);
 
-  const onEditMiss = useCallback(() => setStatus('Nothing under the cursor: click the model to add, right-click a support to remove.'), []);
+  const onEditMiss = useCallback(() => {
+    if (editTool === 'add') setStatus('Nothing under the cursor: click the model to add, right-click a support to remove.');
+    else if (selectStyle === 'click') setStatus('No support here: click a support to select it.');
+    else setStatus('Nothing under the cursor: start the drag on the model.');
+  }, [editTool, selectStyle, setStatus]);
 
   const onErase = useCallback((unitId: string, point: [number, number, number]) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
@@ -777,7 +781,8 @@ export default function App() {
                   <output>{t('{n} mm', { n: brushRadius })}</output>
                 </label>
               </>}
-              <span className="edit-hint"><kbd>{t('Right-click')}</kbd> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd> {t('remove')}</span>
+              {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
+              <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{editTool === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
               <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
             </div>
             <div className="edit-row">

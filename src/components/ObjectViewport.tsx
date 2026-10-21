@@ -70,6 +70,8 @@ export interface ObjectViewportProps {
 
 /** Colours of the edit preview and check markers (the app's red, kraft and an amber). */
 const PREVIEW = { add: '#b59f78', remove: '#7f0019', ring: '#3b3631', island: '#b3261e', overhang: '#d97706' };
+/** Opacity of a support body previewed (not yet selected) in red. */
+const SEE_THROUGH = 0.45;
 
 function toGeometry(mesh: TriangleMesh): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry();
@@ -107,7 +109,7 @@ interface Hover {
   /** Unit-local point under the pointer and the surface normal there. */
   point: THREE.Vector3;
   normal: THREE.Vector3;
-  /** The click would remove (Ctrl, a support under the pointer, or tap-removes). */
+  /** The click would remove (Ctrl, or a support under the pointer). */
   remove: boolean;
 }
 
@@ -140,18 +142,16 @@ function EditPreview({ hover, unit }: { hover: Hover; unit: PrintUnit }) {
 }
 
 /**
- * Paints the whole body (tip, pillar, foot) of every support a click would remove, so the
- * one under the pointer is unmistakable. Shares the support geometry's vertices.
+ * Paints the whole body (tip, pillar, foot) of the supports of the given contacts over the
+ * supports themselves: solid at `opacity` 1, see-through otherwise. Shares the support
+ * geometry's vertices.
  */
-function SupportHighlight({ hover, unit, supports, geometry }: { hover: Hover; unit: PrintUnit; supports: GeneratedSupportMesh; geometry: THREE.BufferGeometry }) {
-  const eraseRadius = useMemo(() => resolveSettings(unit.settings).eraseRadius, [unit.settings]);
-  const contacts = useMemo(() => unitContacts(unit), [unit]);
-  const doomed = contacts.filter((contact) => new THREE.Vector3(...contact.position).distanceTo(hover.point) <= eraseRadius).map((contact) => contact.id);
-  const key = doomed.join(',');
-  const highlight = useMemo(() => {
-    if (doomed.length === 0) return undefined;
-    const ids = new Set(doomed);
-    const parts = supports.components.filter((component) => component.contactId && ids.has(component.contactId));
+function SupportBodies({ supports, geometry, ids, opacity }: { supports: GeneratedSupportMesh; geometry: THREE.BufferGeometry; ids: readonly string[]; opacity: number }) {
+  const key = ids.join(',');
+  const bodies = useMemo(() => {
+    const wanted = new Set(ids);
+    const parts = supports.components.filter((component) => component.contactId && wanted.has(component.contactId));
+    if (parts.length === 0) return undefined;
     const index = new Uint32Array(parts.reduce((total, part) => total + part.count, 0));
     let offset = 0;
     for (const part of parts) {
@@ -164,12 +164,27 @@ function SupportHighlight({ hover, unit, supports, geometry }: { hover: Hover; u
     sub.setIndex(new THREE.BufferAttribute(index, 1));
     return sub;
   }, [key, supports, geometry]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => highlight?.dispose(), [highlight]);
-  if (!highlight) return null;
+  useEffect(() => () => {
+    if (!bodies) return;
+    // Disposing frees the GPU buffers of every attribute still attached: keep the shared ones.
+    bodies.deleteAttribute('position');
+    bodies.deleteAttribute('normal');
+    bodies.dispose();
+  }, [bodies]);
+  if (!bodies) return null;
+  const seeThrough = opacity < 1;
   // Drawn over the support it covers (polygon offset) and never pickable.
-  return <mesh geometry={highlight} raycast={() => undefined} renderOrder={17}>
-    <meshStandardMaterial color={PREVIEW.remove} emissive={PREVIEW.remove} emissiveIntensity={0.35} metalness={0} roughness={0.8} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
+  return <mesh geometry={bodies} raycast={() => undefined} renderOrder={seeThrough ? 18 : 17}>
+    <meshStandardMaterial color={PREVIEW.remove} emissive={PREVIEW.remove} emissiveIntensity={0.35} metalness={0} roughness={0.8} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} transparent={seeThrough} opacity={opacity} depthWrite={!seeThrough} />
   </mesh>;
+}
+
+/** Contact ids within the Erase radius of a unit-local point: what a remove click there takes. */
+function useDoomed(unit: PrintUnit, point: THREE.Vector3 | undefined): string[] {
+  const eraseRadius = useMemo(() => resolveSettings(unit.settings).eraseRadius, [unit.settings]);
+  const contacts = useMemo(() => unitContacts(unit), [unit]);
+  if (!point) return [];
+  return contacts.filter((contact) => new THREE.Vector3(...contact.position).distanceTo(point) <= eraseRadius).map((contact) => contact.id);
 }
 
 /** Support check findings, drawn through the model so hidden spots still show. */
@@ -236,7 +251,7 @@ function FocusCamera({ focus }: { focus?: { point: Vector; seq: number } }) {
   return null;
 }
 
-interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMeshes' | 'gizmoMode' | 'onTransform' | 'onEditMiss' | 'problems' | 'focus' | 'bottomView' | 'tipsOnly' | 'onBelowPlate'> {
+interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMeshes' | 'gizmoMode' | 'onTransform' | 'problems' | 'focus' | 'bottomView' | 'tipsOnly' | 'onBelowPlate'> {
   problems: readonly SupportProblem[];
   unit: PrintUnit;
   supports?: GeneratedSupportMesh;
@@ -254,13 +269,24 @@ function UnitObject(props: UnitObjectProps) {
   const supports = tips ?? props.supports;
   const model = useGeometry(unit.source, true);
   const supportGeometry = useGeometry(supports, editing);
+  // Select supports: Click picks one support at a time; Drag over (the brush) owns the left button.
+  const selecting = props.editTool === 'select';
+  const clickSelecting = selecting && !props.brush;
   const [hover, setHover] = useState<Hover | null>(null);
-  useEffect(() => {
-    if (!editing) setHover(null);
-  }, [editing]);
+  /** Select supports → Click: the contact whose support is under the pointer. */
+  const [pointed, setPointed] = useState<string | null>(null);
+  const leave = () => {
+    setHover(null);
+    setPointed(null);
+  };
+  useEffect(leave, [editing, selecting, clickSelecting]);
+  const doomed = useDoomed(unit, editing && hover?.remove ? hover.point : undefined);
+  const selectedIds = useMemo(() => [...props.selection], [props.selection]);
   const hoverModel = (event: ThreeEvent<PointerEvent>) => {
     if (!editing) return;
     event.stopPropagation();
+    // Selecting previews supports only: the model under the pointer shows nothing.
+    if (selecting) return leave();
     setHover({
       point: event.object.worldToLocal(event.point.clone()),
       normal: event.face?.normal.clone() ?? new THREE.Vector3(0, -1, 0),
@@ -273,6 +299,7 @@ function UnitObject(props: UnitObjectProps) {
     const contact = contactId && unitContacts(unit).find((candidate) => candidate.id === contactId);
     if (!contact) return; // braces and raft: the model behind takes the hover
     event.stopPropagation();
+    if (selecting) return setPointed(clickSelecting ? contact.id : null);
     setHover({ point: new THREE.Vector3(...contact.position), normal: new THREE.Vector3(...contact.normal).normalize(), remove: true });
   };
   const surfaceNormal = (event: ThreeEvent<MouseEvent>): Vector => {
@@ -286,18 +313,24 @@ function UnitObject(props: UnitObjectProps) {
     const point: Vector = [event.point.x, event.point.y, event.point.z];
     if (editMode === 'off') return remove ? undefined : props.onSelect(unit.id, event.shiftKey);
     if (!props.active) return props.onSelect(unit.id, false);
-    if (remove || event.ctrlKey || event.metaKey) return props.onErase(unit.id, point);
+    if (remove) return props.onErase(unit.id, point);
+    // Selecting never adds: Click says to click a support; Drag over owns the left button.
+    if (selecting) return clickSelecting ? props.onEditMiss() : undefined;
+    if (event.ctrlKey || event.metaKey) return props.onErase(unit.id, point);
     props.onAddContact(unit.id, point, surfaceNormal(event));
   };
 
-  const removeSupport = (event: ThreeEvent<MouseEvent>, force: boolean) => {
+  /** Right-click removes within Erase radius in every tool; a left click selects (Click) or, with Ctrl, removes (Add). */
+  const clickSupport = (event: ThreeEvent<MouseEvent>, right: boolean) => {
     if (event.delta > CLICK_TOLERANCE || editMode === 'off' || !props.active || !supports || event.faceIndex == null) return;
-    // A plain left click passes through the support to add on the model behind it.
-    if (!force && !event.ctrlKey && !event.metaKey) return;
+    const toggle = !right && clickSelecting;
+    // A plain left click in Add (or any left click in Drag over) passes through to the model behind.
+    if (!right && !toggle && (selecting || (!event.ctrlKey && !event.metaKey))) return;
     // Braces, raft and labels belong to no contact: the pick continues behind them.
     const contactId = contactAtTriangle(supports, event.faceIndex);
     if (!contactId) return;
     event.stopPropagation();
+    if (toggle) return props.onToggleContact(unit.id, contactId);
     event.nativeEvent.preventDefault?.();
     props.onRemoveContact(unit.id, contactId);
   };
@@ -309,7 +342,7 @@ function UnitObject(props: UnitObjectProps) {
       raycast={acceleratedRaycast}
       onClick={(event) => clickModel(event, false)}
       onContextMenu={(event) => clickModel(event, true)}
-      {...(editing ? { onPointerMove: hoverModel, onPointerOut: () => setHover(null) } : {})}
+      {...(editing ? { onPointerMove: hoverModel, onPointerOut: leave } : {})}
     >
       <meshStandardMaterial
         color={props.active ? '#f6f3ec' : props.selected ? '#e6e1d7' : '#cdc8bf'}
@@ -326,16 +359,20 @@ function UnitObject(props: UnitObjectProps) {
       raycast={acceleratedRaycast}
       // Supports take pointer events only while edited, so they cost no raycasts otherwise.
       {...(editing ? {
-        onClick: (event: ThreeEvent<MouseEvent>) => removeSupport(event, false),
-        onContextMenu: (event: ThreeEvent<MouseEvent>) => removeSupport(event, true),
+        onClick: (event: ThreeEvent<MouseEvent>) => clickSupport(event, false),
+        onContextMenu: (event: ThreeEvent<MouseEvent>) => clickSupport(event, true),
         onPointerMove: hoverSupport,
-        onPointerOut: () => setHover(null),
+        onPointerOut: leave,
       } : {})}
     >
       <meshStandardMaterial color={props.selected ? '#b59f78' : '#c8b896'} metalness={0} roughness={0.9} />
     </mesh>}
     {editing && hover && <EditPreview hover={hover} unit={unit} />}
-    {editing && hover?.remove && supports && supportGeometry && <SupportHighlight hover={hover} unit={unit} supports={supports} geometry={supportGeometry} />}
+    {editing && supports && supportGeometry && <>
+      <SupportBodies supports={supports} geometry={supportGeometry} ids={selectedIds} opacity={1} />
+      <SupportBodies supports={supports} geometry={supportGeometry} ids={doomed} opacity={1} />
+      {pointed && <SupportBodies supports={supports} geometry={supportGeometry} ids={[pointed]} opacity={SEE_THROUGH} />}
+    </>}
     {props.problems.length > 0 && <ProblemMarkers problems={props.problems} />}
   </group>;
 }
@@ -410,6 +447,7 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       onAddContact={props.onAddContact}
       onRemoveContact={props.onRemoveContact}
       onErase={props.onErase}
+      onEditMiss={props.onEditMiss}
       editTool={props.editTool}
       {...(props.brush ? { brush: props.brush } : {})}
       selection={props.selection}
