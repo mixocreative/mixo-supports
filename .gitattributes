@@ -1,0 +1,2 @@
+# The golden update script writes LF; keep the snapshots LF in every checkout so it leaves no diff.
+src/goldens/__snapshots__/*.json text eol=lf
