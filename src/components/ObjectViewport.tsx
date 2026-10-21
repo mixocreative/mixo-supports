@@ -482,7 +482,9 @@ function useScreenBrush(options: {
     // (`brushHitsFrom`), so a dense plate stays smooth; a stroke's queue is finished in later
     // frames even after the release, and survives this effect restarting on new supports.
     const queue = queueRef.current!;
-    queue.rebase();
+    // Remove supports leaves an empty mesh: queued steps must not run on the next generated supports.
+    if (bodies.ids.length === 0) queue.clear();
+    else queue.rebase();
     let size = { width: canvas.clientWidth, height: canvas.clientHeight };
     /** The hover circle being tested, the support index reached and what it found so far. */
     let hover: { at: [number, number]; next: number; found: string[] } | undefined;
@@ -576,8 +578,9 @@ function useScreenBrush(options: {
     if (queue.pending) schedule();
     return () => {
       if (frame) cancelAnimationFrame(frame);
-      // New supports keep the queue (the next run rebases it); the brush going away drops it.
-      if (!live.current.brush) queue.clear();
+      // New supports keep the queue (the next run rebases it); the brush or the support mesh
+      // going away drops it, so stale steps never run on the next generated supports.
+      if (!live.current.brush || !live.current.supports) queue.clear();
       canvas.removeEventListener('pointerdown', down, { capture: true });
       canvas.removeEventListener('pointerleave', leave);
       window.removeEventListener('pointermove', move);
