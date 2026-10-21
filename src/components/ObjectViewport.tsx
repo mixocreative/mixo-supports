@@ -1,6 +1,6 @@
 import { Grid, OrbitControls, TransformControls } from '@react-three/drei';
-import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
 import { TransformControls as TransformControlsImpl } from 'three-stdlib';
@@ -8,7 +8,7 @@ import type { SupportProblem } from '../analysis/supportCheck';
 import type { TriangleMesh } from '../analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
 import { transformFromObject, type ModelTransform } from '../state/transform';
-import { contactAtTriangle, type GeneratedSupportMesh } from '../supports/mesh';
+import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../supports/mesh';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
@@ -51,6 +51,12 @@ export interface ObjectViewportProps {
   problems: readonly (SupportProblem & { unitId: string })[];
   /** Point (plate space) the camera should turn to; a new `seq` repeats the move. */
   focus?: { point: Vector; seq: number };
+  /** A new `seq` turns the camera to look straight up at the selection (or every object). */
+  bottomView?: { seq: number };
+  /** Show only the contact tips; the view also does so on its own from below the plate. */
+  tipsOnly: boolean;
+  /** The camera went below the plate (or back above it). */
+  onBelowPlate: (below: boolean) => void;
 }
 
 /** Colours of the edit preview and check markers (the app's red, kraft and an amber). */
@@ -78,7 +84,10 @@ function useGeometry(mesh: TriangleMesh | undefined, bvh: boolean): THREE.Buffer
     if (!geometry || !bvh) return;
     geometry.computeBoundsTree = computeBoundsTree;
     geometry.disposeBoundsTree = disposeBoundsTree;
-    geometry.computeBoundsTree();
+    // Indirect: a default build reorders the index buffer in place (it is the mesh's own
+    // array), which breaks the triangle → support contact lookup and mutates scene data.
+    // (0.7.8 supports the option; its typings do not list it yet.)
+    geometry.computeBoundsTree({ indirect: true } as Parameters<typeof computeBoundsTree>[0]);
     return () => geometry.disposeBoundsTree?.();
   }, [geometry, bvh]);
   useEffect(() => () => geometry?.dispose(), [geometry]);
@@ -121,6 +130,39 @@ function EditPreview({ hover, unit }: { hover: Hover; unit: PrintUnit }) {
   </group>;
 }
 
+/**
+ * Paints the whole body (tip, pillar, foot) of every support a click would remove, so the
+ * one under the pointer is unmistakable. Shares the support geometry's vertices.
+ */
+function SupportHighlight({ hover, unit, supports, geometry }: { hover: Hover; unit: PrintUnit; supports: GeneratedSupportMesh; geometry: THREE.BufferGeometry }) {
+  const eraseRadius = useMemo(() => resolveSettings(unit.settings).eraseRadius, [unit.settings]);
+  const contacts = useMemo(() => unitContacts(unit), [unit]);
+  const doomed = contacts.filter((contact) => new THREE.Vector3(...contact.position).distanceTo(hover.point) <= eraseRadius).map((contact) => contact.id);
+  const key = doomed.join(',');
+  const highlight = useMemo(() => {
+    if (doomed.length === 0) return undefined;
+    const ids = new Set(doomed);
+    const parts = supports.components.filter((component) => component.contactId && ids.has(component.contactId));
+    const index = new Uint32Array(parts.reduce((total, part) => total + part.count, 0));
+    let offset = 0;
+    for (const part of parts) {
+      index.set(supports.indices.subarray(part.start, part.start + part.count), offset);
+      offset += part.count;
+    }
+    const sub = new THREE.BufferGeometry();
+    sub.setAttribute('position', geometry.getAttribute('position'));
+    sub.setAttribute('normal', geometry.getAttribute('normal'));
+    sub.setIndex(new THREE.BufferAttribute(index, 1));
+    return sub;
+  }, [key, supports, geometry]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => highlight?.dispose(), [highlight]);
+  if (!highlight) return null;
+  // Drawn over the support it covers (polygon offset) and never pickable.
+  return <mesh geometry={highlight} raycast={() => undefined} renderOrder={17}>
+    <meshStandardMaterial color={PREVIEW.remove} emissive={PREVIEW.remove} emissiveIntensity={0.35} metalness={0} roughness={0.8} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
+  </mesh>;
+}
+
 /** Support check findings, drawn through the model so hidden spots still show. */
 function ProblemMarkers({ problems }: { problems: readonly SupportProblem[] }) {
   return <group>
@@ -129,6 +171,45 @@ function ProblemMarkers({ problems }: { problems: readonly SupportProblem[] }) {
       <meshBasicMaterial color={problem.kind === 'island' ? PREVIEW.island : PREVIEW.overhang} depthTest={false} transparent opacity={0.55} />
     </mesh>)}
   </group>;
+}
+
+/**
+ * Looks straight up at the selected objects (every object when none is selected), framing
+ * them; below the plate the view shows only the contact tips (Blender: Ctrl+Numpad 7).
+ * The grid draws its top side only, so it never hides the view from below.
+ */
+function BottomCamera({ view, unitIds }: { view?: { seq: number }; unitIds: readonly string[] }) {
+  const controls = useThree((state) => state.controls) as unknown as { target: THREE.Vector3; update(): void } | null;
+  const camera = useThree((state) => state.camera) as THREE.PerspectiveCamera;
+  const scene = useThree((state) => state.scene);
+  useEffect(() => {
+    if (!view || !controls) return;
+    const box = new THREE.Box3();
+    for (const id of unitIds) {
+      const group = scene.getObjectByName(id);
+      if (group) box.expandByObject(group);
+    }
+    if (box.isEmpty()) return;
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const distance = Math.max(sphere.radius, 1) / Math.sin(THREE.MathUtils.degToRad(camera.fov) / 2) * 1.15;
+    // A hair off vertical keeps the orbit's up axis defined: front of the plate at the bottom.
+    camera.position.set(sphere.center.x, sphere.center.y - distance, sphere.center.z + distance * 1e-3);
+    controls.target.copy(sphere.center);
+    controls.update();
+  }, [view?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+/** Reports when the camera crosses the plate, so the view can switch to contact tips. */
+function PlateSide({ onChange }: { onChange: (below: boolean) => void }) {
+  const below = useRef(false);
+  useFrame(({ camera }) => {
+    const now = camera.position.y < 0;
+    if (now === below.current) return;
+    below.current = now;
+    onChange(now);
+  });
+  return null;
 }
 
 /** Turns the orbit camera to a point, keeping its viewing direction, close enough to see it. */
@@ -146,18 +227,22 @@ function FocusCamera({ focus }: { focus?: { point: Vector; seq: number } }) {
   return null;
 }
 
-interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMeshes' | 'gizmoMode' | 'onTransform' | 'onEditMiss' | 'problems' | 'focus'> {
+interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMeshes' | 'gizmoMode' | 'onTransform' | 'onEditMiss' | 'problems' | 'focus' | 'bottomView' | 'tipsOnly' | 'onBelowPlate'> {
   problems: readonly SupportProblem[];
   unit: PrintUnit;
   supports?: GeneratedSupportMesh;
+  tipsView: boolean;
   selected: boolean;
   active: boolean;
   onGroup?: (group: THREE.Group | null) => void;
 }
 
 function UnitObject(props: UnitObjectProps) {
-  const { unit, supports, editMode } = props;
+  const { unit, editMode } = props;
   const editing = editMode !== 'off' && props.active;
+  // The tips view draws (and picks) only the contact tips of the built supports.
+  const tips = useMemo(() => (props.tipsView && props.supports ? tipsOf(props.supports) : undefined), [props.tipsView, props.supports]);
+  const supports = tips ?? props.supports;
   const model = useGeometry(unit.source, true);
   const supportGeometry = useGeometry(supports, editing);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -241,6 +326,7 @@ function UnitObject(props: UnitObjectProps) {
       <meshStandardMaterial color={props.selected ? '#b59f78' : '#c8b896'} metalness={0} roughness={0.9} />
     </mesh>}
     {editing && hover && <EditPreview hover={hover} unit={unit} />}
+    {editing && hover?.remove && supports && supportGeometry && <SupportHighlight hover={hover} unit={unit} supports={supports} geometry={supportGeometry} />}
     {props.problems.length > 0 && <ProblemMarkers problems={props.problems} />}
   </group>;
 }
@@ -269,6 +355,12 @@ function UnitTransformControls({ mode, object, onDraggingChanged, onCommit }: {
 export default function ObjectViewport(props: ObjectViewportProps) {
   const [dragging, setDragging] = useState(false);
   const [activeGroup, setActiveGroup] = useState<THREE.Group | null>(null);
+  const [below, setBelow] = useState(false);
+  const { onBelowPlate } = props;
+  const plateSide = useCallback((now: boolean) => {
+    setBelow(now);
+    onBelowPlate(now);
+  }, [onBelowPlate]);
   const { scene } = props;
   const selected = new Set(scene.selectedUnitIds);
   const activeId = scene.activeUnitId;
@@ -293,10 +385,13 @@ export default function ObjectViewport(props: ObjectViewportProps) {
     <Grid args={[240, 240]} cellSize={5} cellThickness={0.5} cellColor="#d3cdc2" sectionSize={25} sectionThickness={0.9} sectionColor="#b9b1a3" fadeDistance={400} fadeStrength={1.5} infiniteGrid />
     <OrbitControls makeDefault enabled={!dragging} />
     <FocusCamera focus={props.focus} />
+    <PlateSide onChange={plateSide} />
+    <BottomCamera view={props.bottomView} unitIds={scene.selectedUnitIds.length > 0 ? scene.selectedUnitIds : scene.units.map((unit) => unit.id)} />
     {scene.units.map((unit) => <UnitObject
       key={unit.id}
       unit={unit}
       supports={props.supportMeshes.get(unit.id)}
+      tipsView={props.tipsOnly || below}
       selected={selected.has(unit.id)}
       active={unit.id === activeId}
       editMode={props.editMode}

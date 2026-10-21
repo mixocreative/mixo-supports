@@ -88,6 +88,10 @@ export default function App() {
   /** Support Edit Mode click action; Remove makes a tap remove (touch screens have no right-click). */
   const [tapRemoves, setTapRemoves] = useState(false);
   const [focus, setFocus] = useState<{ point: [number, number, number]; seq: number }>();
+  const [bottomView, setBottomView] = useState<{ seq: number }>();
+  // Contact tips view (Blender: Only Tip + Ctrl+Numpad 7): view only, settings and export untouched.
+  const [tipsOnly, setTipsOnly] = useState(false);
+  const [belowPlate, setBelowPlate] = useState(false);
   /** Unit to open in Support Edit Mode once it is the active unit ("Fix" on a check finding). */
   const [editTarget, setEditTarget] = useState<string>();
   const [modelVisible, setModelVisible] = useState(true);
@@ -680,7 +684,20 @@ export default function App() {
           tapRemoves={tapRemoves}
           problems={currentProblems}
           {...(focus ? { focus } : {})}
+          {...(bottomView ? { bottomView } : {})}
+          tipsOnly={tipsOnly}
+          onBelowPlate={setBelowPlate}
         />
+        <div className="viewport-view" role="group" aria-label={t('View')}>
+          <button
+            className={tipsOnly || belowPlate ? 'active' : ''}
+            aria-pressed={tipsOnly || belowPlate}
+            onClick={() => setTipsOnly((value) => !value)}
+            disabled={belowPlate}
+            title={t(belowPlate ? 'Below the plate: only contact tips show. Orbit above it for full supports.' : 'Show only the contact tips: no pillars, braces or raft. Export stays full.')}
+          >{t('Tips only')}</button>
+          <button onClick={() => setBottomView((current) => ({ seq: (current?.seq ?? 0) + 1 }))} disabled={scene.units.length === 0} title={t('Look straight up at the selection to check contact points')}>{t('Bottom view')}</button>
+        </div>
         {isDraggingOver && <div className="viewport-drop-overlay">{t('Drop to import')}</div>}
         <ProgressBar tasks={[...tasks.values()]} />
         {editMode === 'off' ? <>

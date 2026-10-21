@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TriangleMesh } from '../analysis/types';
-import { buildSupportMesh, contactAtTriangle, meshBounds, type GeneratedSupportMesh, type SupportContact } from './mesh';
+import { buildSupportMesh, contactAtTriangle, meshBounds, tipsOf, type GeneratedSupportMesh, type SupportContact } from './mesh';
 import { defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings } from './settings';
 
 const settings: LiveSupportSettings = { ...defaultSupportSettings, contactShape: 'SPHERE', roofSeededModes: [] };
@@ -132,6 +132,20 @@ describe('buildSupportMesh', () => {
 
     expect(owners).toEqual(new Set(['auto-0', 'auto-1']));
     expect(contactAtTriangle(mesh, mesh.components.find((component) => component.contactId === 'auto-1')!.start / 3)).toBe('auto-1');
+  });
+
+  it('keeps only the contact tips for the tips view, still picking their contact', () => {
+    const mesh = buildSupportMesh([contact, neighbour], settings);
+    const tips = tipsOf(mesh);
+
+    expect(tips.positions).toBe(mesh.positions);
+    expect(new Set(tips.components.map((component) => component.part))).toEqual(new Set(['tip', 'neck']));
+    expect(tips.parts).toEqual(['tip', 'neck']);
+    expect(tips.indices.length).toBe(tips.components.reduce((total, component) => total + component.count, 0));
+    for (const component of tips.components) {
+      expect(contactAtTriangle(tips, component.start / 3)).toBe(component.contactId);
+    }
+    expect(Math.min(...tips.components.map((component) => minY(tips, component)))).toBeGreaterThan(5);
   });
 
   it('stands feet on the plate, embedded in the raft floor, as Blender does', () => {

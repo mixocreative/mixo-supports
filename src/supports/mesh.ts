@@ -341,6 +341,24 @@ export function meshBounds(mesh: TriangleMesh): { min: Vector; max: Vector } {
 }
 
 /** Contact that owns a triangle of the generated mesh, if any. */
+/**
+ * The contact tips alone (tip spheres and necks) of a built support mesh, for viewing contact
+ * points without pillars, braces or raft. Shares the vertices; contacts still pick.
+ */
+export function tipsOf(mesh: GeneratedSupportMesh): GeneratedSupportMesh {
+  const kept = mesh.components.filter((component) => component.part === 'tip' || component.part === 'neck');
+  const indices = new Uint32Array(kept.reduce((total, component) => total + component.count, 0));
+  const components: SupportComponent[] = [];
+  let offset = 0;
+  for (const component of kept) {
+    indices.set(mesh.indices.subarray(component.start, component.start + component.count), offset);
+    components.push({ ...component, start: offset });
+    offset += component.count;
+  }
+  const parts = (['tip', 'neck'] as const).filter((part) => kept.some((component) => component.part === part));
+  return { positions: mesh.positions, indices, parts, components };
+}
+
 export function contactAtTriangle(mesh: GeneratedSupportMesh, triangle: number): string | undefined {
   const index = triangle * 3;
   let low = 0;
