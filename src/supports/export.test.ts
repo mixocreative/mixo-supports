@@ -1,5 +1,7 @@
+import { BufferAttribute, BufferGeometry, Group, Mesh } from 'three';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+import { importStlUnit } from '../state/import';
 import { describe, expect, it } from 'vitest';
-import { Mesh } from 'three';
 import type { SupportPoint, TriangleMesh } from '../analysis/types';
 import { emptyScene, type PrintScene, type PrintUnit } from '../state/project';
 import { buildExportJobs, buildExportScene, encodeStl, uniqueFileNames } from './export';
@@ -63,6 +65,21 @@ describe('support export', () => {
     expect(new DataView(stl).getUint32(80, true)).toBe(triangles);
     expect(stl.byteLength).toBe(84 + triangles * 50);
     expect(Array.from(cube.positions)).toEqual(before);
+  });
+
+  it('writes STL Z-up and reads it back Y-up unchanged', () => {
+    const tall: TriangleMesh = { positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 5, 0]), indices: new Uint32Array([0, 1, 2]) };
+    const group = new Group();
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(tall.positions, 3));
+    geometry.setIndex(new BufferAttribute(tall.indices, 1));
+    group.add(new Mesh(geometry));
+    const stl = encodeStl(group);
+    const view = new DataView(stl);
+    // Third vertex (web y = 5) is STL z = 5.
+    expect([view.getFloat32(84 + 36, true), view.getFloat32(84 + 40, true), view.getFloat32(84 + 44, true)].map((v) => v + 0)).toEqual([0, 0, 5]);
+    const imported = importStlUnit(new STLLoader().parse(stl), 'tall.stl').mesh;
+    expect(Array.from(imported.positions).map((v) => Math.round(v * 1e6) / 1e6 + 0)).toEqual(Array.from(tall.positions));
   });
 
   it('makes stable collision-free file names', () => {

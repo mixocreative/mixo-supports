@@ -46,8 +46,9 @@ export function importGltfUnits(gltf: { scene: Object3D }, fileName: string): Im
   return units;
 }
 
+/** STL is Z-up (slicers, CAD, Blender); the editor is Y-up: web (x, y, z) = STL (x, z, -y). */
 export function importStlUnit(geometry: BufferGeometry, fileName: string): ImportedMesh {
-  return { name: baseName(fileName), mesh: geometryToMesh(geometry) };
+  return { name: baseName(fileName), mesh: geometryToMesh(geometry.clone().rotateX(-Math.PI / 2)) };
 }
 
 /**

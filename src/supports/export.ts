@@ -53,7 +53,7 @@ export function buildExportJobs(scene: PrintScene, request: ExportRequest, meshe
   return jobs.map((job, index) => ({ fileName: names[index]!, group: job.group }));
 }
 
-/** Binary STL of every mesh in the group (world space). */
+/** Binary STL of every mesh in the group (world space), written Z-up: STL (x, y, z) = web (x, -z, y). */
 export function encodeStl(group: Group): ArrayBuffer {
   group.updateMatrixWorld(true);
   const meshes = group.children.filter((child): child is Mesh => child instanceof Mesh);
@@ -74,8 +74,8 @@ export function encodeStl(group: Group): ArrayBuffer {
       normal.subVectors(c, b).cross(new Vector3().subVectors(a, b)).normalize();
       for (const vector of [normal, a, b, c]) {
         view.setFloat32(offset, vector.x, true);
-        view.setFloat32(offset + 4, vector.y, true);
-        view.setFloat32(offset + 8, vector.z, true);
+        view.setFloat32(offset + 4, -vector.z, true);
+        view.setFloat32(offset + 8, vector.y, true);
         offset += 12;
       }
       offset += 2;
