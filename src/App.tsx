@@ -590,7 +590,7 @@ export default function App() {
           <button onClick={() => setModelVisible((visible) => !visible)}>{modelVisible ? t('Hide models') : t('Show models')}</button>
           <button onClick={() => setWireframe((value) => !value)}>{wireframe ? t('Solid') : t('Wireframe')}</button>
         </div>
-        <button className="primary" onClick={() => generate()} disabled={scene.units.length === 0}>{pendingCount > 0 ? t('Generating supports') : t(scopeGenerated ? 'Regenerate supports for {scope}' : 'Generate supports for {scope}', { scope: scopeLabel })}</button>
+        <button className={scopeGenerated ? 'primary regen' : 'primary'} onClick={() => generate()} disabled={scene.units.length === 0}>{pendingCount > 0 ? t('Generating supports') : t(scopeGenerated ? 'Regenerate supports for {scope}' : 'Generate supports for {scope}', { scope: scopeLabel })}</button>
       </div>
     </header>
     <section className="workspace">
@@ -634,7 +634,7 @@ export default function App() {
         </section>
         <section>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
-          <button onClick={() => generate()} disabled={scene.units.length === 0}>{t(scopeGenerated ? 'Regenerate' : 'Generate supports')}</button>
+          <button className={scopeGenerated ? 'primary regen' : undefined} onClick={() => generate()} disabled={scene.units.length === 0}>{t(scopeGenerated ? 'Regenerate' : 'Generate supports')}</button>
           <button onClick={clearManual} disabled={scene.units.length === 0}>{t('Clear manual edits')}</button>
           <button onClick={removeSupports} disabled={scene.units.length === 0}>{t('Remove supports')}</button>
         </section>

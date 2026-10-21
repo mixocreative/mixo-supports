@@ -127,7 +127,7 @@ function preset(touch: number, depth: number, neck: number, neckLength: number, 
     trussDiameter: pillar,
     maxNeckAngle: 45,
     voxelResolution: 16,
-    scatterAngle: 45,
+    scatterAngle: 50,
     scatterMergeDistance: merge,
     scatterBranchDescent: descent,
   } satisfies Partial<LiveSupportSettings>;

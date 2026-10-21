@@ -31,7 +31,7 @@ function mushroom() {
 
 describe('Blender parity (mushroom fixture)', () => {
   // The reference was made with SLASG's Contact Ø sphere (edge inset = its radius + 0.05).
-  const settings = { ...defaultSupportSettings, contactShape: 'SPHERE' as const, roofSeededModes: [] };
+  const settings = { ...defaultSupportSettings, contactShape: 'SPHERE' as const, scatterAngle: 45, roofSeededModes: [] }; // the Blender reference ran at 45 degrees
   const model = mushroom();
   const placement = generatePlacement(model, toPlacementSettings(settings));
   const mesh = buildSupportMesh(placement.points, settings, { labelText: 'A', mode: 'export', model });

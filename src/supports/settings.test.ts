@@ -78,7 +78,7 @@ describe('support settings', () => {
     const settings = updateSetting(updateSetting(defaultSupportSettings, 'scatterSpacing', 4), 'scatterIslands', false);
     expect(toPlacementSettings(settings)).toEqual({
       // Edge anchors stay the contact radius (the 0.2 mm point by default) + 0.05 mm inside edges.
-      overhangAngleDegrees: 45, spacing: 4, edgeInset: expect.closeTo(0.15, 9), sharpEdgeAngleDegrees: 45, includeIslands: false,
+      overhangAngleDegrees: 50, spacing: 4, edgeInset: expect.closeTo(0.15, 9), sharpEdgeAngleDegrees: 45, includeIslands: false,
       includeDownward: true, reinforceEdges: true,
     });
   });
