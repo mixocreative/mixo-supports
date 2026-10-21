@@ -26,6 +26,7 @@ const unitA: PrintUnit = {
   supports: { kind: 'support-mesh', data: { pillars: 1 } },
   manual: [],
   suppressed: [],
+  deleted: [],
 };
 
 describe('reduceScene', () => {
@@ -75,6 +76,13 @@ describe('reduceScene', () => {
       suppressed: ['auto-a'],
     });
     expect(suppressed.units[0]).not.toBe(scene.units[0]);
+  });
+
+  it('records exact deletions once and clears them with manual edits', () => {
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: unitA });
+    const deleted = reduceScene(scene, { type: 'deletion/add', unitId: 'unit-a', pointIds: ['auto-a', 'auto-b', 'auto-a'] });
+    expect(deleted.units[0]!.deleted).toEqual(['auto-a', 'auto-b']);
+    expect(reduceScene(deleted, { type: 'supports/clear-manual', unitId: 'unit-a' }).units[0]!.deleted).toEqual([]);
   });
 
   it('rejects runtime objects from settings and support payloads while retaining JSON-safe scenes', () => {

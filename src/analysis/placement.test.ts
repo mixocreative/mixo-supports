@@ -163,6 +163,24 @@ describe('erase radius (MIXO_ManualPoints)', () => {
   });
 });
 
+describe('exact deletions', () => {
+  const point = (x: number, id = `auto-${Math.round(x * 100)}_100_0`) => ({ id, regionId: 0, position: [x, 1, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], source: 'interior' as const });
+
+  it('hides exactly the deleted automatic contact, never its neighbours or manual ones', () => {
+    const auto = [point(0), point(1), point(3)];
+    const manual = [{ ...point(0.5, 'manual-a') }];
+    expect(composeContacts(auto, manual, [], 1.5, ['auto-0_100_0'], 1).map((p) => p.id))
+      .toEqual(['auto-100_100_0', 'auto-300_100_0', 'manual-a']);
+  });
+
+  it('after spots move, hides only the single nearest automatic contact within the match radius', () => {
+    const moved = [point(0.3), point(0.6), point(3)];
+    expect(composeContacts(moved, [], [], 0, ['auto-0_100_0'], 1).map((p) => p.id))
+      .toEqual(['auto-60_100_0', 'auto-300_100_0']);
+    expect(composeContacts([point(2)], [], [], 0, ['auto-0_100_0'], 1).map((p) => p.id)).toEqual(['auto-200_100_0']);
+  });
+});
+
 describe('placement toggles', () => {
   it('can skip downward interior sampling and edge reinforcement', () => {
     const result = generatePlacement(squareOverhang, { ...settings, includeDownward: false, reinforceEdges: false });

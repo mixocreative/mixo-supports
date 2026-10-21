@@ -88,18 +88,40 @@ export function generatePlacement(mesh: TriangleMesh, settings: PlacementSetting
  * additions, then every contact within `eraseRadius` of a removal marker is deleted. Markers
  * are the removed automatic IDs, which encode their positions; with no radius only the exact
  * IDs are hidden.
+ *
+ * `deleted` lists exact removals, applied after that and never touching neighbours or manual
+ * contacts: an automatic contact with the ID is dropped; if spots have since moved, the
+ * nearest remaining automatic contact closer than `matchRadius` to the ID's position is.
  */
 export function composeContacts(
   auto: readonly SupportPoint[],
   manual: readonly SupportPoint[],
   suppressed: readonly string[],
   eraseRadius = 0,
+  deleted: readonly string[] = [],
+  matchRadius = 0,
 ): SupportPoint[] {
   const hidden = new Set(suppressed);
   const markers = suppressed.map(positionFromId).filter((point): point is Vector => point !== undefined);
   const erased = (point: SupportPoint) => hidden.has(point.id)
     || (eraseRadius > 0 && markers.some((marker) => distance(marker, point.position) < eraseRadius));
-  return [...auto, ...manual].filter((point) => !erased(point));
+  let remainingAuto = auto.filter((point) => !erased(point));
+  for (const id of deleted) {
+    if (remainingAuto.some((point) => point.id === id)) {
+      remainingAuto = remainingAuto.filter((point) => point.id !== id);
+      continue;
+    }
+    const target = positionFromId(id);
+    if (!target) continue;
+    let nearest: SupportPoint | undefined;
+    let nearestDistance = matchRadius;
+    for (const point of remainingAuto) {
+      const d = distance(target, point.position);
+      if (d < nearestDistance) { nearest = point; nearestDistance = d; }
+    }
+    if (nearest) remainingAuto = remainingAuto.filter((point) => point !== nearest);
+  }
+  return [...remainingAuto, ...manual.filter((point) => !erased(point))];
 }
 
 /** Position encoded in an automatic contact ID (0.01 mm grid), if it is one. */

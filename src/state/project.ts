@@ -30,6 +30,8 @@ export interface PrintUnit {
   supports?: SupportMesh;
   manual: SupportPoint[];
   suppressed: string[];
+  /** Exact removals by contact ID; unlike `suppressed` they never take neighbours with them. */
+  deleted: string[];
 }
 
 export interface PrintScene {
@@ -56,7 +58,8 @@ export type SceneCommand =
   | { type: 'manual/add'; unitId: string; point: SupportPoint }
   | { type: 'manual/remove'; unitId: string; pointId: string }
   | { type: 'suppression/add'; unitId: string; pointId: string }
-  | { type: 'suppression/remove'; unitId: string; pointId: string };
+  | { type: 'suppression/remove'; unitId: string; pointId: string }
+  | { type: 'deletion/add'; unitId: string; pointIds: string[] };
 
 export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScene {
   switch (command.type) {
@@ -74,7 +77,7 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
       return scene.activeUnitId === command.unitId ? withoutActiveUnit(remaining) : remaining;
     }
     case 'supports/clear-manual':
-      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, manual: [], suppressed: [] }));
+      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, manual: [], suppressed: [], deleted: [] }));
     case 'selection/set':
       return command.activeUnitId === undefined
         ? { ...withoutActiveUnit(scene), selectedUnitIds: [...command.unitIds] }
@@ -104,6 +107,11 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
       ));
     case 'suppression/remove':
       return updateUnit(scene, command.unitId, (unit) => ({ ...unit, suppressed: unit.suppressed.filter((id) => id !== command.pointId) }));
+    case 'deletion/add':
+      return updateUnit(scene, command.unitId, (unit) => ({
+        ...unit,
+        deleted: [...unit.deleted, ...new Set(command.pointIds.filter((id) => !unit.deleted.includes(id)))],
+      }));
   }
 }
 
@@ -170,6 +178,7 @@ function normalizeUnit(unit: PrintUnit): PrintUnit {
     ...(unit.placement === undefined ? {} : { placement: normalizePlacement(unit.placement) }),
     manual: cloneJsonValue(unit.manual) as unknown as SupportPoint[],
     suppressed: cloneJsonValue(unit.suppressed) as string[],
+    deleted: cloneJsonValue(unit.deleted ?? []) as string[],
   };
 }
 

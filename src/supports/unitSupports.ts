@@ -21,9 +21,10 @@ export function resolveSettings(settings: SupportSettings | undefined): LiveSupp
   return { ...defaultSupportSettings, roofSeededModes: [], ...(settings as Partial<LiveSupportSettings> | undefined) };
 }
 
-/** Final contacts in unit-local space: automatic minus suppressed, plus manual. */
+/** Final contacts in unit-local space: automatic minus suppressed and deleted, plus manual. */
 export function unitContacts(unit: PrintUnit): SupportContact[] {
-  return composeContacts(unit.placement?.points ?? [], unit.manual, unit.suppressed, resolveSettings(unit.settings).eraseRadius)
+  const settings = resolveSettings(unit.settings);
+  return composeContacts(unit.placement?.points ?? [], unit.manual, unit.suppressed, settings.eraseRadius, unit.deleted, settings.scatterSpacing / 2)
     .map(({ id, position, normal, source }) => ({ id, position, normal, kind: CONTACT_KIND[source], tree: !id.startsWith('manual-') }));
 }
 

@@ -124,6 +124,7 @@ export function placeImportedUnits(
       settings: { ...defaultSupportSettings, roofSeededModes: [] } as SupportSettings,
       manual: [],
       suppressed: [],
+      deleted: [],
     };
   });
 }

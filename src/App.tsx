@@ -400,7 +400,7 @@ export default function App() {
     else setStatus('No supports to remove.');
   };
   const clearManual = () => {
-    const count = forTargets((unit) => (unit.manual.length || unit.suppressed.length ? { type: 'supports/clear-manual', unitId: unit.id } : undefined));
+    const count = forTargets((unit) => (unit.manual.length || unit.suppressed.length || unit.deleted.length ? { type: 'supports/clear-manual', unitId: unit.id } : undefined));
     setStatus(count ? 'Manual edits cleared; automatic contacts restored.' : 'No manual edits to clear.');
   };
   const deleteUnits = useCallback(() => {
@@ -570,9 +570,9 @@ export default function App() {
   };
 
   const contactCounts = activeUnit ? {
-    auto: activeUnit.placement?.points.filter((point) => !activeUnit.suppressed.includes(point.id)).length ?? 0,
+    auto: unitContacts(activeUnit).filter((contact) => !contact.id.startsWith('manual-')).length,
     manual: activeUnit.manual.length,
-    removed: activeUnit.suppressed.length,
+    removed: activeUnit.suppressed.length + activeUnit.deleted.length,
   } : undefined;
   const selectedCount = scene.selectedUnitIds.length;
   const scopeLabel = selectedCount > 0 ? t('{n} selected', { n: selectedCount }) : t('all {n}', { n: scene.units.length });

@@ -19,6 +19,7 @@ const unit: PrintUnit = {
   supports: { kind: 'live', data: { transform: generated } },
   manual: [point('manual-a', -3)],
   suppressed: ['auto-1'],
+  deleted: [],
 };
 
 describe('unit supports', () => {
