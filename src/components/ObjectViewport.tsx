@@ -9,7 +9,7 @@ import type { TriangleMesh } from '../analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
 import { transformFromObject, type ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../supports/mesh';
-import { contactsInBrush, type BrushMode } from '../supports/selection';
+import { brushSamples, contactsInBrush, notSelected, type BrushMode } from '../supports/selection';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
 import { zoneOverlay } from '../supports/overlayMesh';
 import { nextStamp, sameStamp, stampsAlong, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../supports/zones';
@@ -400,6 +400,8 @@ function UnitObject(props: UnitObjectProps) {
   // taken off the solid red, so the ones about to turn back show.
   const unselecting = brush?.mode === 'unselect';
   const turningBack = useMemo(() => (unselecting ? brushed.filter((id) => props.selection.has(id)) : []), [unselecting, brushed, props.selection]);
+  // Drag over → Select previews only the supports it would add: a selected one keeps its solid red.
+  const brushedUnselected = useMemo(() => notSelected(brushed, props.selection), [brushed, props.selection]);
   const solidIds = useMemo(() => (turningBack.length ? selectedIds.filter((id) => !turningBack.includes(id)) : selectedIds), [selectedIds, turningBack]);
 
   // Drag over and the zone brush: the canvas shows the brush cursor while the pointer is over this object.
@@ -418,7 +420,15 @@ function UnitObject(props: UnitObjectProps) {
   // so the press that starts a stroke never starts a rotation).
   const controls = useThree((state) => state.controls) as unknown as { enabled: boolean } | null;
   const endStroke = useRef<(() => void) | null>(null);
+  /** Drag over: the brush centre last painted in this stroke. */
+  const brushLast = useRef<Vector | undefined>(undefined);
   useEffect(() => () => endStroke.current?.(), []);
+  // The brush going away mid-stroke (tool or mode changed, another object made active) ends the
+  // stroke at once, so the orbit is back without waiting for the release.
+  const brushing = Boolean(brush || zoneBrush);
+  useEffect(() => {
+    if (!brushing) endStroke.current?.();
+  }, [brushing]);
   /** Unit-local point under the pointer, its surface normal and the direction to the camera. */
   const brushHover = (event: ThreeEvent<PointerEvent>): Hover & { facing: THREE.Vector3 } => {
     const point = event.object.worldToLocal(event.point.clone());
@@ -432,7 +442,14 @@ function UnitObject(props: UnitObjectProps) {
     // A release the window never saw (focus lost, cancelled pointer) ends the stroke here.
     if (endStroke.current && (event.buttons & 1) === 0) endStroke.current();
     if (!endStroke.current) return;
-    if (brush) return props.onPaint(unit.id, toVector(at.point), toVector(at.facing), brush.mode);
+    if (brush) {
+      // A fast drag skips ahead between pointer events: paint the gap too, as a zone stroke fills it.
+      const center = toVector(at.point);
+      const facing = toVector(at.facing);
+      for (const sample of brushSamples(brushLast.current, center, brush.radius)) props.onPaint(unit.id, sample, facing, brush.mode);
+      brushLast.current = center;
+      return;
+    }
     if (!zoneBrush) return;
     const center = toVector(at.point);
     const last = strokeStamps.current.at(-1)?.center;
@@ -453,6 +470,7 @@ function UnitObject(props: UnitObjectProps) {
       window.removeEventListener('pointercancel', end);
       window.removeEventListener('blur', end);
       endStroke.current = null;
+      brushLast.current = undefined;
       if (controls) controls.enabled = true;
       const stamps = strokeStamps.current;
       if (stamps.length === 0) return;
@@ -572,10 +590,10 @@ function UnitObject(props: UnitObjectProps) {
     {editing && !zoning && supports && supportGeometry && <>
       <SupportBodies supports={supports} geometry={supportGeometry} ids={solidIds} opacity={1} />
       <SupportBodies supports={supports} geometry={supportGeometry} ids={doomed} opacity={1} />
-      {pointed && <SupportBodies supports={supports} geometry={supportGeometry} ids={[pointed]} opacity={SEE_THROUGH} />}
+      {pointed && !props.selection.has(pointed) && <SupportBodies supports={supports} geometry={supportGeometry} ids={[pointed]} opacity={SEE_THROUGH} />}
       {unselecting
         ? <SupportBodies supports={supports} geometry={supportGeometry} ids={turningBack} opacity={SEE_THROUGH} color={PREVIEW.ring} />
-        : <SupportBodies supports={supports} geometry={supportGeometry} ids={brushed} opacity={SEE_THROUGH} />}
+        : <SupportBodies supports={supports} geometry={supportGeometry} ids={brushedUnselected} opacity={SEE_THROUGH} />}
     </>}
     {props.problems.length > 0 && <ProblemMarkers problems={props.problems} />}
   </group>;

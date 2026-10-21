@@ -22,6 +22,7 @@ import { problemInZone, type ZoneStamp } from './supports/zones';
 import { contactsInBrush, deleteCommands, paintSelection, pruneSelection, toggleSelection, type BrushMode } from './supports/selection';
 import { applyPreset, defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings, type SettingKey } from './supports/settings';
 import { resolveSettings, unitContacts, unitRemovedCount, unitSupportMesh } from './supports/unitSupports';
+import { enterActsOn } from './editing/keys';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
 type HistoryAction = { type: 'command'; command: SceneCommand } | { type: 'undo' } | { type: 'redo' };
@@ -646,7 +647,7 @@ export default function App() {
       } else if (event.key === 'Tab') {
         event.preventDefault();
         if (editMode !== 'zones') toggleEditMode();
-      } else if (editMode === 'zones' && (event.key === 'Escape' || (event.key === 'Enter' && target?.tagName !== 'BUTTON'))) {
+      } else if (editMode === 'zones' && (event.key === 'Escape' || (event.key === 'Enter' && !enterActsOn(target)))) {
         event.preventDefault();
         closeZones();
       } else if (editMode === 'edit' && selection.size > 0 && (event.key === 'Delete' || event.key === 'Backspace')) {
@@ -655,7 +656,7 @@ export default function App() {
       } else if (editMode === 'edit' && selection.size > 0 && event.key === 'Escape') {
         event.preventDefault();
         setSelection(NO_SELECTION);
-      } else if (editMode === 'edit' && (event.key === 'Escape' || (event.key === 'Enter' && target?.tagName !== 'BUTTON'))) {
+      } else if (editMode === 'edit' && (event.key === 'Escape' || (event.key === 'Enter' && !enterActsOn(target)))) {
         event.preventDefault();
         toggleEditMode();
       } else if (event.key === 'Delete' && editMode === 'off') {

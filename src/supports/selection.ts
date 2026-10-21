@@ -1,5 +1,6 @@
 import type { PrintUnit, SceneCommand } from '../state/project';
 import type { SupportContact, Vector } from './mesh';
+import { stampsAlong } from './zones';
 
 export type BrushMode = 'select' | 'unselect';
 
@@ -22,6 +23,18 @@ export function contactsInBrush(
     if (dx * dx + dy * dy + dz * dz <= limit) ids.push(contact.id);
   }
   return ids;
+}
+
+// Brush centres for one pointer move of a Drag over stroke: the gap since `last` filled the way a
+// zone stroke fills it (`stampsAlong`), so a fast drag skips no support, then `point` itself.
+export function brushSamples(last: Vector | undefined, point: Vector, radius: number): Vector[] {
+  return last ? [...stampsAlong(last, point, radius), point] : [point];
+}
+
+// `ids` without the selected ones (the same array when none is selected): a hover preview drawn
+// over a support already selected would hide its selected colour.
+export function notSelected(ids: readonly string[], selected: ReadonlySet<string>): readonly string[] {
+  return ids.some((id) => selected.has(id)) ? ids.filter((id) => !selected.has(id)) : ids;
 }
 
 export function paintSelection(

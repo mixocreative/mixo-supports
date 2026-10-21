@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SupportContact } from './mesh';
 import type { PrintUnit } from '../state/project';
-import { contactsInBrush, deleteCommands, paintSelection, pruneSelection, toggleSelection } from './selection';
+import { brushSamples, contactsInBrush, deleteCommands, notSelected, paintSelection, pruneSelection, toggleSelection } from './selection';
 
 const contact = (id: string, position: [number, number, number], normal: [number, number, number] = [0, 1, 0]) =>
   ({ id, position, normal }) as SupportContact;
@@ -16,6 +16,30 @@ describe('contactsInBrush', () => {
   it('skips contacts facing away from the camera', () => {
     const wall = [contact('far', [0, 0, 0], [0, 1, 0]), contact('near', [0, 0, 0], [0, -1, 0])];
     expect(contactsInBrush(wall, [0, 0, 0], 1, [0, -1, 0])).toEqual(['near']);
+  });
+});
+
+describe('brushSamples', () => {
+  it('fills a fast move so the brush passes over every support between the two hits', () => {
+    const row = [0, 1, 2, 3, 4, 5, 6].map((x) => contact(`c${x}`, [x, 0, 0]));
+    const samples = brushSamples([0, 0, 0], [6, 0, 0], 1);
+    expect(samples.at(-1)).toEqual([6, 0, 0]);
+    const hit = new Set(samples.flatMap((center) => contactsInBrush(row, center, 1)));
+    expect([...hit].sort()).toEqual(row.map((item) => item.id));
+  });
+
+  it('is just the hit at a stroke start, a short move, or a jump off the model and back', () => {
+    expect(brushSamples(undefined, [6, 0, 0], 1)).toEqual([[6, 0, 0]]);
+    expect(brushSamples([0, 0, 0], [0.8, 0, 0], 1)).toEqual([[0.8, 0, 0]]);
+    expect(brushSamples([0, 0, 0], [20, 0, 0], 1)).toEqual([[20, 0, 0]]);
+  });
+});
+
+describe('notSelected', () => {
+  it('drops the ids already selected, keeping the order', () => {
+    expect(notSelected(['a', 'b', 'c'], new Set(['b']))).toEqual(['a', 'c']);
+    const ids = ['a'];
+    expect(notSelected(ids, new Set())).toBe(ids);
   });
 });
 
