@@ -23,7 +23,33 @@ export function raftPerimeter(model: TriangleMesh, expand: number, voxelResoluti
  * resample that becomes the raft n-gon. Roof and Cage columns stand on the raw loop. `others`
  * holds the outlines of parts set apart from the largest one.
  */
-export function raftOutline(model: TriangleMesh, expand: number, voxelResolution: number, maxVoxel = Infinity): RaftLoop & { others: RaftLoop[] } {
+export function raftOutline(model: TriangleMesh, expand: number, voxelResolution: number): RaftLoop & { others: RaftLoop[] } {
+  // Parts set apart on one plate each get their own raft. The parts come from the mesh itself
+  // (connected pieces whose footprints, grown by Expand Width, touch), never from the coarse
+  // trace, which on a spread-out plate can miss a narrow part entirely. A lone part is traced
+  // exactly as Blender does; separate parts are traced one by one with the voxel also capped at
+  // half the Expand Width, since the whole plate's voxel can be wider than a slender part.
+  const fine = Math.max(0.25, expand / 2);
+  const groups = partGroups(model, expand);
+  if (groups.length <= 1) {
+    const whole = traceOutline(model, expand, voxelResolution, Infinity);
+    return whole.others.length === 0 ? whole : traceOutline(model, expand, voxelResolution, fine);
+  }
+  const traced = groups
+    .map((triangles) => traceOutline(subMesh(model, triangles), expand, voxelResolution, fine))
+    .filter((outline) => outline.polygon.length >= 3);
+  if (traced.length === 0) return { raw: [], polygon: [], others: [] };
+  const sizes = traced.map((outline) => Math.abs(area(outline.polygon)));
+  const first = sizes.indexOf(Math.max(...sizes));
+  return {
+    raw: traced[first]!.raw,
+    polygon: traced[first]!.polygon,
+    others: traced.flatMap((outline, i) => i === first ? outline.others : [{ raw: outline.raw, polygon: outline.polygon }, ...outline.others]),
+  };
+}
+
+/** One dual-contour trace at a voxel of at most `maxVoxel`; `others` are the further non-hole loops. */
+function traceOutline(model: TriangleMesh, expand: number, voxelResolution: number, maxVoxel: number): RaftLoop & { others: RaftLoop[] } {
   const triangles = projectTriangles(model);
   if (triangles.length === 0) return { raw: [], polygon: [], others: [] };
   const bounds3 = bounds3d(model);
@@ -121,59 +147,91 @@ export function raftOutline(model: TriangleMesh, expand: number, voxelResolution
     return { raw, polygon: resampleClosed(clockwise.map(([x, , z]) => [x, z] as Point2), samples) };
   };
   const main = build(loops[largest]!, 3 * voxelResolution);
-  // Parts set apart on one plate each get their own raft: every loop that is not a hole inside
-  // another (holes in a part are filled).
-  const parts = plans
-    .map((plan, index) => index)
-    .filter((index) => !plans.some((plan, other) => other !== index && sizes[other]! > sizes[index]! && inside(plans[index]![0]!, plan)));
-  if (parts.length < 2) return { ...main, others: [] };
-  // The voxel follows the whole file's bounding box, far too coarse for one narrow part of a
-  // spread-out plate, so each part is traced again from its own triangles, with the voxel also
-  // capped at half the Expand Width so slender parts keep their footprint.
-  const traced = parts.map((index) => {
-    const own = subMesh(model, plans[index]!);
-    const outline = own ? raftOutline(own, expand, voxelResolution, Math.min(maxVoxel, Math.max(0.25, expand / 2))) : undefined;
-    return outline && outline.polygon.length >= 3 ? [{ raw: outline.raw, polygon: outline.polygon }, ...outline.others] : [build(loops[index]!, 3 * voxelResolution)];
-  });
-  const first = parts.indexOf(largest);
-  return { ...traced[first]![0]!, others: [...traced[first]!.slice(1), ...traced.filter((_, i) => i !== first).flat()] };
+  // Further loops that are not holes inside another loop (holes in a part are filled).
+  const others = plans
+    .map((_, index) => index)
+    .filter((index) => index !== largest && !plans.some((plan, other) => other !== index && sizes[other]! > sizes[index]! && inside(plans[index]![0]!, plan)))
+    .map((index) => build(loops[index]!, 3 * voxelResolution));
+  return { ...main, others };
 }
 
-/** The model's triangles whose plan centroid lies inside `loop`, or undefined if none. */
-function subMesh(model: TriangleMesh, loop: readonly Point2[]): TriangleMesh | undefined {
-  const indices: number[] = [];
-  const p = model.positions;
-  for (let t = 0; t + 2 < model.indices.length; t += 3) {
-    const [a, b, c] = [model.indices[t]! * 3, model.indices[t + 1]! * 3, model.indices[t + 2]! * 3];
-    const centroid: Point2 = [(p[a]! + p[b]! + p[c]!) / 3, (p[a + 2]! + p[b + 2]! + p[c + 2]!) / 3];
-    if (inside(centroid, loop)) indices.push(model.indices[t]!, model.indices[t + 1]!, model.indices[t + 2]!);
+/**
+ * Triangles grouped into parts: connected pieces of the mesh, merged while their plan bounding
+ * boxes, grown by Expand Width, overlap (their rafts would touch).
+ */
+function partGroups(model: TriangleMesh, expand: number): number[][] {
+  const count = model.indices.length / 3;
+  const parent = new Int32Array(model.positions.length / 3).map((_, i) => i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) { parent[i] = parent[parent[i]!]!; i = parent[i]!; }
+    return i;
+  };
+  const join = (a: number, b: number) => { const ra = find(a); const rb = find(b); if (ra !== rb) parent[ra] = rb; };
+  for (let t = 0; t < count; t += 1) {
+    join(model.indices[t * 3]!, model.indices[t * 3 + 1]!);
+    join(model.indices[t * 3]!, model.indices[t * 3 + 2]!);
   }
-  if (indices.length === 0) return undefined;
-  // Compact the vertices so the part's own bounding box (and so its voxel) is used.
+  // Plan bounding box per connected piece.
+  const pieces = new Map<number, { box: [number, number, number, number]; triangles: number[] }>();
+  const p = model.positions;
+  for (let t = 0; t < count; t += 1) {
+    const root = find(model.indices[t * 3]!);
+    let piece = pieces.get(root);
+    if (!piece) pieces.set(root, (piece = { box: [Infinity, Infinity, -Infinity, -Infinity], triangles: [] }));
+    piece.triangles.push(t);
+    for (let k = 0; k < 3; k += 1) {
+      const v = model.indices[t * 3 + k]! * 3;
+      piece.box[0] = Math.min(piece.box[0], p[v]!);
+      piece.box[1] = Math.min(piece.box[1], p[v + 2]!);
+      piece.box[2] = Math.max(piece.box[2], p[v]!);
+      piece.box[3] = Math.max(piece.box[3], p[v + 2]!);
+    }
+  }
+  // Merge pieces whose grown boxes overlap: sweep along x.
+  const list = [...pieces.values()].sort((a, b) => a.box[0] - b.box[0]);
+  const group = list.map((_, i) => i);
+  const top = (i: number): number => { while (group[i] !== i) { group[i] = group[group[i]!]!; i = group[i]!; } return i; };
+  const reach = 2 * expand + 0.2;
+  for (let i = 0; i < list.length; i += 1) {
+    for (let j = i + 1; j < list.length && list[j]!.box[0] <= list[i]!.box[2] + reach; j += 1) {
+      const a = list[i]!.box;
+      const b = list[j]!.box;
+      if (b[1] <= a[3] + reach && a[1] <= b[3] + reach) group[top(i)] = top(j);
+    }
+  }
+  const merged = new Map<number, number[]>();
+  list.forEach((piece, i) => {
+    const key = top(i);
+    const triangles = merged.get(key);
+    if (triangles) triangles.push(...piece.triangles); else merged.set(key, [...piece.triangles]);
+  });
+  return [...merged.values()];
+}
+
+/** The given triangles as their own mesh, vertices compacted so their own bounding box is used. */
+function subMesh(model: TriangleMesh, triangles: readonly number[]): TriangleMesh {
   const remap = new Map<number, number>();
   const positions: number[] = [];
-  const compact = indices.map((index) => {
-    let mapped = remap.get(index);
-    if (mapped === undefined) {
-      mapped = positions.length / 3;
-      remap.set(index, mapped);
-      positions.push(p[index * 3]!, p[index * 3 + 1]!, p[index * 3 + 2]!);
+  const p = model.positions;
+  const indices = new Uint32Array(triangles.length * 3);
+  triangles.forEach((t, n) => {
+    for (let k = 0; k < 3; k += 1) {
+      const index = model.indices[t * 3 + k]!;
+      let mapped = remap.get(index);
+      if (mapped === undefined) {
+        mapped = positions.length / 3;
+        remap.set(index, mapped);
+        positions.push(p[index * 3]!, p[index * 3 + 1]!, p[index * 3 + 2]!);
+      }
+      indices[n * 3 + k] = mapped;
     }
-    return mapped;
   });
-  return { positions: new Float32Array(positions), indices: new Uint32Array(compact) };
+  return { positions: new Float32Array(positions), indices };
 }
 
 export interface RaftLoop {
   raw: [number, number, number][];
   polygon: Point2[];
-}
-
-function perimeter(loop: readonly Point2[]): number {
-  return loop.reduce((sum, [x, z], i) => {
-    const [nx, nz] = loop[(i + 1) % loop.length]!;
-    return sum + Math.hypot(nx - x, nz - z);
-  }, 0);
 }
 
 /** Even-odd point in polygon. */

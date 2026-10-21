@@ -35,6 +35,22 @@ describe('raftOutline', () => {
     expect(Math.max(...xs)).toBeLessThan(133.5);
   });
 
+  it('covers every part wherever it lands on the trace grid', () => {
+    // A wide part and a 0.75 mm wall 80 mm long, slid across the grid in uneven steps.
+    for (let shift = 0; shift < 9; shift += 0.73) {
+      const outline = raftOutline(boxes([[shift, 0, shift + 8, 80], [shift + 120, 0, shift + 120.75, 80]]), 3, 16);
+      const loops = [outline, ...outline.others];
+      expect(loops).toHaveLength(2);
+      const wall = loops.find((loop) => loop.polygon[0]![0] > shift + 60)!;
+      const xs = wall.polygon.map(([x]) => x);
+      // Expand Width 3 on each side of the wall, within a voxel.
+      expect(Math.min(...xs)).toBeGreaterThan(shift + 116.2);
+      expect(Math.min(...xs)).toBeLessThan(shift + 118);
+      expect(Math.max(...xs)).toBeGreaterThan(shift + 122.7);
+      expect(Math.max(...xs)).toBeLessThan(shift + 124.6);
+    }
+  });
+
   it('keeps a single part to one outline', () => {
     expect(raftOutline(boxes([[0, 0, 30, 6]]), 3, 32).others).toHaveLength(0);
   });
