@@ -6,7 +6,7 @@ import { buildRoofCage } from './roof';
 import { autoTreeLayout, type AutoTree } from './autotree';
 import { RemeshTarget } from './remesh';
 
-type Vector = [number, number, number];
+export type Vector = [number, number, number];
 export type Point2 = [number, number];
 
 /** A support contact in build-plate space: Y is up and the plate is y = 0 (mm). */
