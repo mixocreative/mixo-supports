@@ -2,7 +2,9 @@
 
 Pure TypeScript that a host app (this React/three.js editor today, the Babylon.js app mixomesh
 later) calls to place, build and check resin supports. No React, three.js, DOM, Vite-only syntax,
-i18n or app state; `imports.test.ts` enforces that for `src/core/**` and `src/editing/**`.
+i18n or app state; `imports.test.ts` enforces that for `src/core/**` and `src/editing/**`: a
+relative import must resolve inside those two trees (or to JSON under `tools/`; tests may also
+read `src/goldens/`).
 
 ## Conventions
 
