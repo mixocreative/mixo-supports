@@ -11,8 +11,8 @@ import { transformFromObject, type ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../supports/mesh';
 import { contactsInBrush, type BrushMode } from '../supports/selection';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
-import { refineForOverlay } from '../supports/overlayMesh';
-import { buildVertexGrid, nextStamp, sameStamp, stampsAlong, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../supports/zones';
+import { zoneOverlay } from '../supports/overlayMesh';
+import { nextStamp, sameStamp, stampsAlong, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../supports/zones';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
 /**
@@ -219,13 +219,14 @@ const ZONE_GRID_CELL = 2;
  * model's vertices); its own colour attribute carries alpha 1 on zoned vertices, 0 elsewhere.
  * A `zones` list that starts with the stamps already laid (a stroke in progress, or the stroke
  * just committed as saved copies) lays just the new stamps; any other change (undo, erase all, a
- * new model) recomputes every vertex. A vertex grid built once per model keeps both cheap.
+ * new model) recomputes every vertex. A vertex grid kept per model keeps both cheap.
  */
 function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; zones: readonly ZoneStamp[]; opacity: number }) {
   // Built in the effect for the same reason as `SupportBodies`: the cleanup strips shared attributes.
-  const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute; zoned: Uint8Array; grid: VertexGrid; applied: readonly ZoneStamp[] }>();
+  const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute; zoned: Uint8Array; grid: VertexGrid | undefined; applied: readonly ZoneStamp[] }>();
   useEffect(() => {
-    const refined = refineForOverlay(mesh, OVERLAY_MAX_EDGE, OVERLAY_MAX_TRIANGLES);
+    // The refinement and grid are cached per model mesh; only the GPU copy is made per mount.
+    const { mesh: refined, grid } = zoneOverlay(mesh, OVERLAY_MAX_EDGE, OVERLAY_MAX_TRIANGLES, ZONE_GRID_CELL);
     const shared = refined === mesh;
     const sub = shared ? new THREE.BufferGeometry() : toGeometry(refined);
     if (shared) {
@@ -237,7 +238,6 @@ function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMesh; geo
     // White RGB (the material sets the blue); alpha per vertex.
     const colors = new THREE.BufferAttribute(new Uint8Array(count * 4).fill(255), 4, true);
     sub.setAttribute('color', colors);
-    const grid = buildVertexGrid(sub.getAttribute('position').array as Float32Array, ZONE_GRID_CELL);
     setLayer({ geometry: sub, colors, zoned: new Uint8Array(count), grid, applied: [] });
     return () => {
       if (shared) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TriangleMesh } from '../analysis/types';
-import { refineForOverlay } from './overlayMesh';
+import { refineForOverlay, zoneOverlay } from './overlayMesh';
 
 /** A 100 mm square of two triangles in the xy plane. */
 const square: TriangleMesh = {
@@ -88,5 +88,42 @@ describe('refineForOverlay', () => {
 
   it('returns a mesh that already fits unchanged', () => {
     expect(refineForOverlay(tetrahedron, 50, 1_000_000)).toBe(tetrahedron);
+  });
+
+  it('splits an edge shared by more than 255 faces in every one of them', () => {
+    // A fan of 300 triangles around the 10 mm edge 0-1; every other edge is about 5 mm.
+    const fan = 300;
+    const positions = [0, 0, 0, 10, 0, 0];
+    const indices: number[] = [];
+    for (let k = 0; k < fan; k++) {
+      const angle = (2 * Math.PI * k) / fan;
+      positions.push(5, 0.5 * Math.cos(angle), 0.5 * Math.sin(angle));
+      indices.push(0, 1, 2 + k);
+    }
+    const mesh: TriangleMesh = { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
+    const refined = refineForOverlay(mesh, 6, 1_000_000);
+    expect(refined.indices.length).toBe(fan * 2 * 3);
+    expect(longestEdge(refined)).toBeLessThanOrEqual(6);
+    // No triangle left as zeros at the end of a too-short buffer.
+    for (let t = 0; t < refined.indices.length; t += 3) {
+      const [a, b, c] = [refined.indices[t]!, refined.indices[t + 1]!, refined.indices[t + 2]!];
+      expect(a !== b && b !== c && a !== c).toBe(true);
+    }
+  });
+});
+
+describe('zoneOverlay', () => {
+  it('refines and grids a mesh once per mesh object', () => {
+    const first = zoneOverlay(square, 10, 1_000_000, 2);
+    expect(zoneOverlay(square, 10, 1_000_000, 2)).toBe(first);
+    expect(longestEdge(first.mesh)).toBeLessThanOrEqual(10);
+    expect(first.grid!.cellVertices.length).toBe(first.mesh.positions.length / 3);
+    // A copy of the same data is another mesh object: worked out anew.
+    const copy: TriangleMesh = { positions: square.positions.slice(), indices: square.indices.slice() };
+    expect(zoneOverlay(copy, 10, 1_000_000, 2)).not.toBe(first);
+  });
+
+  it('shares a mesh that already fits', () => {
+    expect(zoneOverlay(tetrahedron, 50, 1_000_000, 2).mesh).toBe(tetrahedron);
   });
 });

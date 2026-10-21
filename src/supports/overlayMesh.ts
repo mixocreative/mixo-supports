@@ -1,4 +1,5 @@
 import type { TriangleMesh } from '../analysis/types';
+import { buildVertexGrid, type VertexGrid } from './zones';
 
 /**
  * A finer copy of a mesh for display-only overlays (the no-support zone layer): per-vertex
@@ -60,6 +61,29 @@ export function refineForOverlay(mesh: TriangleMesh, maxEdge: number, maxTriangl
   return positions === mesh.positions ? mesh : { positions, indices };
 }
 
+interface ZoneOverlay {
+  /** `refineForOverlay` of the mesh (the mesh itself when it already fits). */
+  mesh: TriangleMesh;
+  /** Vertex grid over `mesh` (none for non-finite coordinates, see `buildVertexGrid`). */
+  grid: VertexGrid | undefined;
+}
+
+const overlayCache = new WeakMap<TriangleMesh, { key: string; overlay: ZoneOverlay }>();
+
+/**
+ * The no-support zone layer's mesh and vertex grid for a model, worked out once per mesh object
+ * (meshes are never changed in place), so reopening the layer on the same model costs nothing.
+ */
+export function zoneOverlay(mesh: TriangleMesh, maxEdge: number, maxTriangles: number, cellSize: number): ZoneOverlay {
+  const key = `${maxEdge}:${maxTriangles}:${cellSize}`;
+  const cached = overlayCache.get(mesh);
+  if (cached?.key === key) return cached.overlay;
+  const refined = refineForOverlay(mesh, maxEdge, maxTriangles);
+  const overlay = { mesh: refined, grid: buildVertexGrid(refined.positions, cellSize) };
+  overlayCache.set(mesh, { key, overlay });
+  return overlay;
+}
+
 /** Undirected edges of an index list: endpoints, faces per edge, and each triangle's three edges. */
 function edgeTable(indices: Uint32Array, vertexCount: number) {
   const triangles = indices.length / 3;
@@ -69,7 +93,8 @@ function edgeTable(indices: Uint32Array, vertexCount: number) {
   const slot = new Int32Array(capacity).fill(-1);
   const a = new Uint32Array(triangles * 3);
   const b = new Uint32Array(triangles * 3);
-  const faces = new Uint8Array(triangles * 3);
+  // 32-bit: a non-manifold edge can be shared by more than 255 faces, and each needs its split triangle counted.
+  const faces = new Uint32Array(triangles * 3);
   const triEdges = new Uint32Array(triangles * 3);
   let count = 0;
   for (let c = 0; c < triangles * 3; c++) {
@@ -90,7 +115,7 @@ function edgeTable(indices: Uint32Array, vertexCount: number) {
       a[e] = low;
       b[e] = high;
     }
-    if (faces[e]! < 255) faces[e]!++;
+    faces[e]!++;
     triEdges[c] = e;
   }
   return { a, b, faces, triEdges, count };
