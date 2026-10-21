@@ -1,12 +1,16 @@
-"""Export Blender's built-in Bfont glyphs exactly as MIXO_Label fills them.
+"""Export the label glyphs (Inter, OFL-1.1) exactly as Resin UV's MIXO_Label fills them.
 
-    blender --background --factory-startup --python tools/blender-parity/export_font.py -- <out.json>
+    blender --background --factory-startup --python tools/fonts/export_label_font.py -- src/core/supports/labelFont.json
 
-For each character: String to Curves (Bfont Regular, size 1, align Left / Top Baseline) ->
-Realize Instances -> Fill Curve (Triangles, Even-Odd), giving vertices and triangles at size
-1, plus the advance width measured from the pen position of a following "H".
+Uses tools/fonts/Inter-Regular.ttf (official Inter 4.1 release, static Regular, overlaps
+removed; the same file the add-on ships as mixo3d/assets/fonts/Inter-Regular.ttf for
+MIXO_Label; provenance in tools/fonts/README.md). For each character: String to
+Curves (Inter, size 1, align Left / Top Baseline) -> Realize Instances -> Fill Curve
+(Triangles), giving vertices and triangles at size 1, plus the advance width measured from the
+pen position of a following "H". Also records the capital height (top of "H") at size 1.
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -26,6 +30,11 @@ text = nodes.new("GeometryNodeStringToCurves")
 text.inputs["Align X"].default_value = "Left"
 text.inputs["Align Y"].default_value = "Top Baseline"
 text.inputs["Size"].default_value = 1.0
+FONT_PATH = str(Path(__file__).resolve().parent / "Inter-Regular.ttf")
+if not os.path.exists(FONT_PATH):
+    sys.exit(f"Inter not found at {FONT_PATH}")
+font = bpy.data.fonts.load(FONT_PATH, check_existing=True)
+text.inputs["Font"].default_value = font
 realize = nodes.new("GeometryNodeRealizeInstances")
 fill = nodes.new("GeometryNodeFillCurve")
 fill.inputs["Mode"].default_value = "Triangles"
@@ -50,14 +59,18 @@ def evaluate(string):
 
 
 h_alone, _ = evaluate("H")
-h_min = min(v[0] for v in h_alone)
+h_max = max(v[0] for v in h_alone)
+cap_height = round(max(v[1] for v in h_alone), 5)
 glyphs = {}
 for char in CHARS:
     verts, tris = evaluate(char)
+    # The pen advance: "H" is the rightmost glyph of char + "H", so the pair's right edge sits
+    # one advance further than H's own.
     pair, _ = evaluate(char + "H")
-    single_count = len(verts)
-    advance = min(v[0] for v in pair[single_count:]) - h_min if len(pair) > single_count else 0.6
+    advance = max(v[0] for v in pair) - h_max
     glyphs[char] = {"advance": round(advance, 5), "vertices": verts, "triangles": tris}
     print("GLYPH", char, len(verts), len(tris), round(advance, 4))
-OUT.write_text(json.dumps({"font": "Bfont Regular", "size": 1, "glyphs": glyphs}, separators=(",", ":")))
+meta = {"font": font.name, "file": "Inter-Regular.ttf (Inter 4.1)", "blender": bpy.app.version_string, "size": 1, "capHeight": cap_height}
+OUT.write_text(json.dumps({**meta, "glyphs": glyphs}, separators=(",", ":")))
+print("CAP_HEIGHT", cap_height)
 print("FONT_DONE", OUT)

@@ -1,7 +1,9 @@
 import { RemeshTarget, SurfaceQuery } from '../supports/remesh';
 import { edgeAnchors } from './edgeAnchors';
-import { BlenderPointBvh, blenderVertexNormals } from './blenderBvh';
-import { mergeByDistance } from './kdtree';
+import { NearestPoint } from './nearestPoint';
+import { mergeByDistance } from './mergeByDistance';
+import { Drand48, hashPair } from './random';
+import { vertexNormals } from './vertexNormals';
 import { legacyRidgeMidpoints } from './legacyRidges';
 import { classifyDownwardFaces, faceOverhangLimit, partitionRegions } from './mesh';
 import type {
@@ -250,13 +252,13 @@ function poissonOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate
     for (let k = 1; k < face.length - 1; k += 1) {
       const [a, b, c] = [face[0]!, face[k]!, face[k + 1]!].map((v) => remesh.vertices[v]!) as [Vector, Vector, Vector];
       const area = Math.hypot(...cross(subtract(b, a), subtract(c, a))) / 2;
-      const rng = new BlenderRng(blenderHash(triangle, 0));
+      const rng = new Drand48(hashPair(triangle, 0));
       triangle += 1;
       const amount = area * density;
-      const count = Math.floor(amount) + ((amount - Math.floor(amount)) > rng.float() ? 1 : 0);
+      const count = Math.floor(amount) + ((amount - Math.floor(amount)) > rng.next() ? 1 : 0);
       for (let point = 0; point < count; point += 1) {
-        let r1 = rng.float();
-        let r2 = rng.float();
+        let r1 = rng.next();
+        let r2 = rng.next();
         if (r1 + r2 > 1) {
           r1 = 1 - r1;
           r2 = 1 - r2;
@@ -278,25 +280,18 @@ function poissonOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate
 }
 
 /**
- * Island minima on R: vertices whose lowest adjacent edge (by midpoint height) is not below
- * them. Merge by Distance (Spacing; Blender's KD-tree, so ties resolve alike) clusters them
- * in R vertex order at the mean position, each cluster snaps to the nearest unmerged minimum, and a minimum is dropped when
- * the true normal of its nearest R vertex leans more than Overhang Angle from straight down.
- */
-/**
- * Each stage of the island minima on R, reproduced bit for bit from Blender (checked stage by
- * stage against tools/blender-parity/minima_stages.json): candidates are vertices whose
- * lowest adjacent edge midpoint is not below them; Merge by Distance (Spacing) runs Blender's
- * KD-tree on Blender axes and mixes positions in single precision; each merged point snaps to
- * its nearest candidate and samples the nearest R vertex, both through Blender's point BVH;
- * the point is dropped when acos(-normal.z) of that vertex's single-precision true normal
- * exceeds Overhang angle.
+ * Each stage of the island minima on R (checked stage by stage against Resin UV's dumps in
+ * tools/blender-parity/minima_stages.json and ridge_stages.json): candidates are vertices whose
+ * lowest adjacent edge midpoint is not below them; Merge by Distance (Spacing, points exactly
+ * Spacing apart merge) mixes positions in single precision; each merged point snaps to its
+ * nearest candidate and samples the nearest R vertex (lowest index wins exact ties); the point
+ * is dropped when acos(-normal.z) of that vertex's single-precision true normal exceeds
+ * Overhang angle. All of it runs on Blender axes, single precision.
  *
  * With Reinforce overhang edges off, Resin UV's scatter also feeds the legacy SDF ridge points
- * (`legacyRidgeMidpoints`, driven by Ridge angle; checked against
- * tools/blender-parity/ridge_stages.json) into the same stream after the minima, so they are
- * merged, snapped and filtered with them. A kept point whose cluster holds a minimum is vertical
- * (SLASG_Line: Vertical wins over Edge); the others are edge contacts.
+ * (`legacyRidgeMidpoints`, driven by Ridge angle) into the same stream after the minima, so they
+ * are merged, snapped and filtered with them. A kept point whose cluster holds a minimum is
+ * vertical (SLASG_Line: Vertical wins over Edge); the others are edge contacts.
  */
 export function minimaStages(remesh: Remesh, settings: PlacementSettings): {
   candidates: number[];
@@ -320,35 +315,20 @@ export function minimaStages(remesh: Remesh, settings: PlacementSettings): {
   });
   const candidates: number[] = [];
   for (let v = 0; v < count; v += 1) if (lowest[v]! !== Infinity && !(lowest[v]! < remesh.vertices[v]![1])) candidates.push(v);
-  // Blender axes (web (x, y, z) = Blender (x, -z, y)): the KD-tree and the BVH split on axis
-  // 0, 1, 2 as Blender's do on its X, Y, Z, so equidistant ties fall the same way.
+  // Blender axes (web (x, y, z) = Blender (x, -z, y)), so single-precision results compare
+  // directly with Resin UV's dumps.
   const toBlender = ([x, y, z]: Vector): Vector => [x, -z, y];
   const blender = remesh.vertices.map(toBlender);
-  const normals = blenderVertexNormals(blender, remesh.faces);
+  const normals = vertexNormals(blender, remesh.faces);
   const ridgeMidpoints = settings.reinforceEdges === false
     ? legacyRidgeMidpoints(blender, remesh.faces, normals, settings.sharpEdgeAngleDegrees, settings.overhangAngleDegrees)
     : [];
   const points = [...candidates.map((v) => blender[v]!), ...ridgeMidpoints];
-  // Mixed like attribute_math mix_indices: each member times 1 / n, summed in index order.
   const clusters = mergeByDistance(points, settings.spacing);
-  const merged = clusters.map((cluster) => {
-    const weight = f(1 / cluster.length);
-    const sum: Vector = [0, 0, 0];
-    for (const k of [...cluster].sort((p, q) => p - q)) for (let axis = 0; axis < 3; axis += 1) sum[axis] = f(sum[axis]! + f(points[k]![axis]! * weight));
-    return sum;
-  });
-  // Geometry Proximity (snap) and Sample Nearest (normal) query Blender's point BVH; the snap
-  // lands on the candidate's leaf box, up to FLT_EPSILON from the vertex, exactly as Blender's.
-  const candidateTree = new BlenderPointBvh(points);
-  const snapped = merged.map((centre) => candidateTree.nearestHit(centre).co);
-  const vertexTree = new BlenderPointBvh(blender);
-  const limit = f(settings.overhangAngleDegrees * Math.PI / 180);
-  const keep = snapped.map((point) => {
-    const normal = normals[vertexTree.nearest(point)]!;
-    const down = f(-normal[2]);
-    const angle = down <= -1 ? f(Math.PI) : down >= 1 ? 0 : f(Math.acos(down));
-    return !(angle > limit);
-  });
+  const merged = clusterMeans(points, clusters);
+  const candidateIndex = new NearestPoint(points);
+  const snapped = merged.map((centre) => candidateIndex.nearestHit(centre).co);
+  const keep = downwardMask(snapped, blender, normals, settings.overhangAngleDegrees);
   const kept = snapped.filter((_, k) => keep[k]);
   const keptVertical = clusters.filter((_, k) => keep[k]).map((cluster) => cluster.some((index) => index < candidates.length));
   const toWeb = ([x, y, z]: Vector): Vector => [x, z, -y];
@@ -363,45 +343,43 @@ export function minimaStages(remesh: Remesh, settings: PlacementSettings): {
   };
 }
 
+/**
+ * Mean of each cluster in single precision: every member times 1 / n, summed in ascending
+ * index order (Blender axes).
+ */
+export function clusterMeans(points: readonly Vector[], clusters: readonly (readonly number[])[]): Vector[] {
+  const f = Math.fround;
+  return clusters.map((cluster) => {
+    const weight = f(1 / cluster.length);
+    const sum: Vector = [0, 0, 0];
+    for (const k of [...cluster].sort((p, q) => p - q)) for (let axis = 0; axis < 3; axis += 1) sum[axis] = f(sum[axis]! + f(points[k]![axis]! * weight));
+    return sum;
+  });
+}
+
+/**
+ * Whether each point (Blender axes) faces down enough: the single-precision true normal of
+ * its nearest R vertex is within Overhang angle of -Z.
+ */
+export function downwardMask(points: readonly Vector[], vertices: readonly Vector[], normals: readonly Vector[], overhangAngleDegrees: number): boolean[] {
+  const f = Math.fround;
+  const vertexIndex = new NearestPoint(vertices);
+  const limit = f(overhangAngleDegrees * Math.PI / 180);
+  return points.map((point) => {
+    const nearest = vertexIndex.nearest(point);
+    if (nearest < 0) return false; // no vertices, or a NaN point
+    const down = f(-normals[nearest]![2]);
+    const angle = down <= -1 ? f(Math.PI) : down >= 1 ? 0 : f(Math.acos(down));
+    return !(angle > limit);
+  });
+}
+
 /** Island minima (vertical contacts) and, with Reinforce overhang edges off, legacy ridge points (edge contacts). */
 function minimaOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate[] {
   const stages = minimaStages(remesh, settings);
   return stages.kept.map((position, k) => (stages.keptVertical[k]
     ? { regionId: -1, position, normal: [0, -1, 0], source: 'island' }
     : { regionId: -1, position, normal: [0, -1, 0], source: 'sharp-ridge' }));
-}
-
-/**
- * Blender `RandomNumberGenerator` (drand48-style LCG) seeded per triangle, as used by
- * `Distribute Points on Faces`.
- */
-class BlenderRng {
-  private state: bigint;
-  constructor(seed: number) {
-    this.state = (BigInt(seed >>> 0) << 16n) | 0x330En;
-  }
-  float(): number {
-    this.state = (0x5DEECE66Dn * this.state + 0xBn) & 0xFFFFFFFFFFFFn;
-    return Number(this.state >> 17n) / 0x80000000;
-  }
-}
-
-/** Blender `noise::hash(kx, ky)`: Jenkins lookup3 final mix. */
-function blenderHash(kx: number, ky: number): number {
-  const rot = (x: number, k: number) => ((x << k) | (x >>> (32 - k))) >>> 0;
-  let a = (0xdeadbeef + (2 << 2) + 13) >>> 0;
-  let b = a;
-  let c = a;
-  b = (b + ky) >>> 0;
-  a = (a + kx) >>> 0;
-  c = ((c ^ b) - rot(b, 14)) >>> 0;
-  a = ((a ^ c) - rot(c, 11)) >>> 0;
-  b = ((b ^ a) - rot(a, 25)) >>> 0;
-  c = ((c ^ b) - rot(b, 16)) >>> 0;
-  a = ((a ^ c) - rot(c, 4)) >>> 0;
-  b = ((b ^ a) - rot(a, 14)) >>> 0;
-  c = ((c ^ b) - rot(b, 24)) >>> 0;
-  return c;
 }
 
 class SpatialHash {

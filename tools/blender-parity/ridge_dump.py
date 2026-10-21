@@ -9,10 +9,9 @@ never saved), and runs it on the v-ridge keel of src/goldens/fixtures.ts (in Ble
 Spacing 2, Angle 50 degrees and Reinforce Overhang Edges off (Ridge Angle then reaches the legacy
 ridge compare unchanged), for Ridge Angle 30, 45 and 60 degrees.
 Captures, by re-linking the group output: R (Grid to Mesh) with its edges in Blender's order,
-then per Ridge Angle the kept ridge edges (Delete Geometry.004), their midpoints (Subdivide
-Mesh, originals deleted), the island candidates (minima joined with the midpoints), their Merge
-by Distance result, the snapped points and the points the normal filter keeps, each with its
-Vertical / Edge attributes. Coordinates are Blender's (Z up), exact float32 values.
+then per Ridge Angle the midpoints of the kept ridge edges (Subdivide Mesh, originals deleted),
+the island candidates (minima joined with the midpoints), their Merge by Distance result, the
+snapped points and the points the normal filter keeps, each with its Vertical / Edge attributes. Coordinates are Blender's (Z up), exact float32 values.
 """
 import json
 import math
@@ -107,10 +106,7 @@ stages['R_edges'] = [list(e.vertices) for e in r.edges]
 stages['R_normals'] = [list(n.vector) for n in r.vertex_normals]
 for degrees in (30, 45, 60):
     set_input('Ridge Angle', math.radians(degrees))
-    edge_mesh = capture(nodes['Delete Geometry.004'].outputs[0])
     stage = {
-        'ridge_points': points(edge_mesh),
-        'ridge_edges': [list(e.vertices) for e in edge_mesh.edges],
         'midpoints': points(capture(nodes['Delete Geometry.005'].outputs[0])),
         'candidates': points(capture(nodes['Delete Geometry.008'].outputs[0]), True),
         'merged': points(capture(nodes['Merge by Distance.001'].outputs[0]), True),

@@ -1,4 +1,3 @@
-import { Euler, Matrix4, Quaternion, Vector3 } from 'three';
 import { labelForIndex } from '../core/analysis/mesh';
 import type { ProgressCallback } from '../core/analysis/types';
 import { hidingRemovals } from '../core/analysis/placement';
@@ -7,6 +6,7 @@ import type { GeneratedSupportMesh, SupportContact } from '../core/supports/mesh
 import { defaultSupportSettings, toPlacementSettings, type LiveSupportSettings } from '../core/supports/settings';
 import type { PrintUnit, SupportSettings } from '../state/project';
 import type { ModelTransform } from '../state/transform';
+import { placementMatrix } from '../core/transform';
 import { runSupportJob } from './jobRunner';
 
 /*
@@ -110,8 +110,7 @@ export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'previ
  * Generate costs no full-mesh copy on the main thread.
  */
 export function unitLowestY(unit: PrintUnit): number {
-  const { position, rotation } = unit.transform;
-  const e = new Matrix4().compose(new Vector3(...position), new Quaternion().setFromEuler(new Euler(...rotation)), new Vector3(1, 1, 1)).elements;
+  const e = placementMatrix(unit.transform);
   const positions = unit.source.positions;
   let lowest = Infinity;
   for (let o = 0; o < positions.length; o += 3) {

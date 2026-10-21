@@ -14,8 +14,18 @@ const SOURCES = Object.fromEntries(Object.entries(GLOBBED)
   .map(([key, source]) => [key.replace(/^\.\//, 'core/').replace(/^\.\.\//, ''), source] as const)
   .filter(([file]) => file !== 'core/imports.test.ts'));
 const FORBIDDEN_PACKAGES = [/^react(-dom)?(\/|$)/, /^three(\/|$)/, /^@react-three\//, /^three-mesh-bvh(\/|$)/];
-const FORBIDDEN_DIRS = ['components', 'state', 'workers'];
-const FORBIDDEN_FILES = ['i18n'];
+
+/**
+ * Where a relative import may resolve (paths from the repository root): the portable trees
+ * themselves, and Blender parity data under tools/. Tests may also read the golden fixtures
+ * (src/goldens), which pull three's STL loader in transitively; see core/README.md.
+ */
+function allowedTarget(file: string, target: readonly string[]): boolean {
+  const path = target.join('/');
+  if (path.startsWith('src/core/') || path.startsWith('src/editing/')) return true;
+  if (path.startsWith('tools/') && path.endsWith('.json')) return true;
+  return file.endsWith('.test.ts') && path.startsWith('src/goldens/');
+}
 
 /** Every problem in one module's source; `file` is its path relative to src, with '/'. */
 function portabilityProblems(file: string, source: string): string[] {
@@ -31,11 +41,8 @@ function portabilityProblems(file: string, source: string): string[] {
     if (specifier.includes('?')) problems.push(`${file}: bundler query import '${specifier}'`);
     if (FORBIDDEN_PACKAGES.some((pattern) => pattern.test(specifier))) problems.push(`${file}: imports '${specifier}'`);
     if (!specifier.startsWith('.')) continue;
-    const [top, ...rest] = resolveFrom(file, specifier);
-    const name = rest.length === 0 ? top!.replace(/\.(ts|tsx)$/, '') : undefined;
-    if (FORBIDDEN_DIRS.includes(top!) || (name !== undefined && FORBIDDEN_FILES.includes(name))) {
-      problems.push(`${file}: imports app module '${specifier}'`);
-    }
+    const target = resolveFrom(file, specifier);
+    if (!target || !allowedTarget(file, target)) problems.push(`${file}: imports non-portable module '${specifier}'`);
   }
   if (/\bimport\.meta\b/.test(code) && !file.endsWith('.test.ts')) problems.push(`${file}: uses import.meta`);
   if (/\bnew\s+URL\s*\([^)]*import\.meta\.url/.test(code)) problems.push(`${file}: new URL(..., import.meta.url)`);
@@ -43,12 +50,17 @@ function portabilityProblems(file: string, source: string): string[] {
   return problems;
 }
 
-/** Path segments under src that `specifier` (relative) points to from `file`. */
-function resolveFrom(file: string, specifier: string): string[] {
-  const parts = file.split('/').slice(0, -1);
+/**
+ * Path segments from the repository root that `specifier` (relative) points to from `file`
+ * (a path under src); undefined when it climbs above the repository root.
+ */
+function resolveFrom(file: string, specifier: string): string[] | undefined {
+  const parts = ['src', ...file.split('/').slice(0, -1)];
   for (const part of specifier.split('/')) {
-    if (part === '..') parts.pop();
-    else if (part !== '.') parts.push(part);
+    if (part === '..') {
+      if (parts.length === 0) return undefined;
+      parts.pop();
+    } else if (part !== '.') parts.push(part);
   }
   return parts;
 }
@@ -80,6 +92,15 @@ describe('portabilityProblems', () => {
     expect(check(`const three = await import('three');`)).toHaveLength(1);
   });
 
+  it('flags anything outside core, editing and tools data, from any depth', () => {
+    expect(check(`import { unitContacts } from '../supports/unitSupports';`)).toHaveLength(1);
+    expect(check(`import { deleteCommands } from '../../supports/selection';`, 'core/supports/x.ts')).toHaveLength(1);
+    expect(check(`import { GOLDEN_FIXTURES } from '../goldens/fixtures';`)).toHaveLength(1);
+    expect(check(`import { x } from '../../../src/state/x';`)).toHaveLength(1);
+    expect(check(`import { x } from '../../../../outside';`)).toHaveLength(1);
+    expect(check(`import code from '../../../tools/blender-parity/probe.py';`, 'core/supports/x.test.ts')).toHaveLength(1);
+  });
+
   it('flags app modules by where they resolve, from any depth', () => {
     expect(check(`import type { PrintUnit } from '../state/project';`)).toHaveLength(1);
     expect(check(`import type { PrintUnit } from '../../state/project';`, 'core/supports/x.ts')).toHaveLength(1);
@@ -98,6 +119,8 @@ describe('portabilityProblems', () => {
   it('passes core imports, data files and words in comments', () => {
     expect(check(`import { add } from '../vec3';\nimport type { TriangleMesh } from './types';`, 'core/supports/x.ts')).toEqual([]);
     expect(check(`import reference from '../../../tools/blender-parity/reference.json';`, 'core/supports/x.test.ts')).toEqual([]);
+    expect(check(`import { useCase } from '../../editing/keys';`, 'core/supports/x.ts')).toEqual([]);
+    expect(check(`import { GOLDEN_FIXTURES } from '../../goldens/fixtures';`, 'core/analysis/x.test.ts')).toEqual([]);
     expect(check(`// The document itself (no element focused) has no attributes.\n/* window.x */ const a = 1;`)).toEqual([]);
   });
 });

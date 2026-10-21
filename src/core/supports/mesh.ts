@@ -1,5 +1,5 @@
 import type { ProgressCallback, TriangleMesh } from '../analysis/types';
-import { layoutBfont } from './bfont';
+import { LABEL_CAP_RATIO, layoutLabel } from './labelFont';
 import { tipDepth, tipRadius, type LiveSupportSettings, type TipSection } from './settings';
 import { cornerBisectors, raftOutline } from './raft';
 import { buildRoofCage } from './roof';
@@ -742,13 +742,13 @@ function raftLabelCandidates(polygon: readonly Point2[], settings: Readonly<Live
  * MIXO_Label: the anchor is the support vertex at or below Pad Height (= Wall Height) nearest
  * the bbox corner (Blender max x / min y = web max x / max z). The pad is a frustum from the
  * plate to Pad Height whose bottom is the letters' bbox plus 2 x Margin and whose top is wider
- * by Pad Height x tan(Wall Angle) on each side; the letters (Blender's Bfont, String to Curves
+ * by Pad Height x tan(Wall Angle) on each side; the letters (Inter Regular, String to Curves
  * size = Letter Size, filled) are extruded Emboss Height up from the pad top. Pad and letters
  * are centred on anchor + offset.
  */
 function addLabel(builder: MeshBuilder, candidates: readonly Vector[], settings: Readonly<LiveSupportSettings>, text: string): void {
-  // Resin UV passes Size / LABEL_CAP_RATIO (0.686) so a capital is exactly Letter Size tall.
-  const glyphs = layoutBfont(text, settings.labelSize / 0.686);
+  // Resin UV passes Size / LABEL_CAP_RATIO so a capital is exactly Letter Size tall.
+  const glyphs = layoutLabel(text, settings.labelSize / LABEL_CAP_RATIO);
   if (glyphs.length === 0) return;
   const padHeight = settings.raftWallHeight;
   const below = candidates.filter((point) => point[1] <= padHeight + 0.01);
