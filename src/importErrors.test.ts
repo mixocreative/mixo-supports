@@ -34,6 +34,9 @@ describe('job errors reach the status line as codes', () => {
     expect(errorCode(codedJobError(new WorkerTaskError('Support building crashed', 'crashed')))).toBe('worker-stopped');
     expect(errorCode(codedJobError(new WorkerTaskError('Import restarted: x', 'restarted')))).toBe('worker-stopped');
     expect(errorCode(codedJobError(new WorkerTaskError('Import timed out after 300000 ms', 'timeout')))).toBe('timeout');
+    // No Web Worker, or a reply for an older revision: translated too, never raw English.
+    expect(errorCode(codedJobError(new WorkerTaskError('Support building requires a Web Worker', 'unavailable')))).toBe('worker-stopped');
+    expect(errorCode(codedJobError(new WorkerTaskError('Support building: stale reply', 'stale')))).toBe('worker-stopped');
     const refused = codedJobError(new CapacityError('big.stl', 9_991_920, 6_000_000, 'web'));
     expect(errorStatus('import', refused, { name: 'big.stl' })).toEqual({ key: expect.stringContaining('{n}'), vars: { name: 'big.stl', n: (9_991_920).toLocaleString(), limit: (6_000_000).toLocaleString() } });
     // No client keeps a hand-written crash message of its own any more.

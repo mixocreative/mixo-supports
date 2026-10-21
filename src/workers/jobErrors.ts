@@ -14,7 +14,8 @@ const isErrorCode = (code: unknown): code is ErrorCode => typeof code === 'strin
  * the job activity list explain them in the user's language:
  *   - a refused size or memory, a full plate, a damaged STL, broken vertices: their own code and numbers
  *     (thrown in the app, or in a worker and carried across by serveTask/WorkerTask);
- *   - a WorkerTask timeout → 'timeout'; a crashed or restarted worker → 'worker-stopped'.
+ *   - a WorkerTask timeout → 'timeout'; a crashed or restarted worker, no Web Worker at all, or a
+ *     reply for an older revision → 'worker-stopped'.
  * Anything else passes through unchanged.
  */
 export function codedJobError(error: unknown): unknown {
@@ -22,8 +23,7 @@ export function codedJobError(error: unknown): unknown {
   if (error instanceof CapacityError || error instanceof PlateFullError) return new CodedError(error.code, error.message, formatted(error.vars));
   if (error instanceof WorkerTaskError) {
     if (error.code === 'timeout') return new CodedError('timeout', error.message);
-    if (error.code === 'crashed' || error.code === 'restarted') return new CodedError('worker-stopped', error.message);
-    return error;
+    return new CodedError('worker-stopped', error.message);
   }
   const { code, vars } = (error ?? {}) as { code?: unknown; vars?: Record<string, string | number> };
   if (error instanceof Error && isErrorCode(code)) return new CodedError(code, error.message, formatted(vars));
