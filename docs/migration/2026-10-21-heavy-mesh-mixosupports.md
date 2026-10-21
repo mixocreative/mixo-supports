@@ -30,5 +30,5 @@ Differences from the shared wording: the refusal omits "or use the desktop app" 
 Guards added after review (Task 9 fix round 1): the plate may hold at most 6M triangles (`plate-full`
 at import); placements, preview builds and exports start only while running heavy jobs plus their own
 stay within 6M (`src/core/jobGate.ts`, shown as "Queued"); Generate is refused when what can run at
-once × 850 MiB/M exceeds half of `navigator.deviceMemory` (Chrome reports at most 8 GB, so on Chrome
-this caps a single Generate at about 4.9M triangles at a time).
+once × 850 MiB/M exceeds half of `navigator.deviceMemory`, only when it reports less than 8 GB (the
+value is clamped at 8, so 8 or missing means unknown or large: the 6M gate alone applies).

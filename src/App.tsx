@@ -266,7 +266,7 @@ export default function App() {
     const units = unitIds ? current.units.filter((unit) => unitIds.includes(unit.id)) : targets(current);
     if (units.length === 0) return setStatus('Import a model before generating supports.');
     // The job gate runs at most the refusal limit's triangles at once; refuse when even that
-    // could not fit in half the memory the device reports (Chrome reports up to 8 GB).
+    // could not fit in half the memory a small device reports (deviceMemory under 8; 8 is clamped).
     const generating = units.reduce((sum, unit) => sum + triangleCount(unit), 0);
     try {
       assertGenerateMemory(Math.min(generating, refusalLimit(RUNTIME)), RUNTIME, memoryInfo().deviceMemoryGb);

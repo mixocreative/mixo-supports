@@ -51,15 +51,20 @@ describe('budgets and tiers', () => {
     expect(estimateGenerateBytes(5_000_000) / 2 ** 30).toBeCloseTo(4.15, 1);
   });
 
-  it('refuses a Generate that would need more than half the reported device memory', () => {
+  it('trusts the 6M job gate when deviceMemory is missing or 8 (clamped: unknown or large)', () => {
     expect(() => assertGenerateMemory(6_000_000, 'web', undefined)).not.toThrow();
-    expect(() => assertGenerateMemory(4_000_000, 'web', 8)).not.toThrow();
+    expect(() => assertGenerateMemory(5_000_000, 'web', 8)).not.toThrow(); // the 5M fixture generates on Chrome
+    expect(() => assertGenerateMemory(6_000_000, 'web', 8)).not.toThrow();
+  });
+
+  it('refuses a Generate needing more than half of a small reported device memory (4 GB or less)', () => {
+    expect(() => assertGenerateMemory(2_000_000, 'web', 4)).not.toThrow();
     try {
-      assertGenerateMemory(5_000_000, 'web', 8);
+      assertGenerateMemory(3_000_000, 'web', 4);
       expect.unreachable();
     } catch (error) {
       expect((error as CapacityError).code).toBe('out-of-memory');
-      expect((error as CapacityError).vars.limit).toBe(Math.floor(4 * 2 ** 30 / Math.round(850 * 2 ** 20 / 1e6)));
+      expect((error as CapacityError).vars.limit).toBe(Math.floor(2 * 2 ** 30 / Math.round(850 * 2 ** 20 / 1e6)));
     }
   });
 

@@ -102,12 +102,15 @@ export function assertMemoryCapacity(fileName: string, triangles: number, runtim
 }
 
 /**
- * Refuses a Generate whose jobs could need more than half the device memory at once, where the
- * browser reports it (navigator.deviceMemory; Chrome caps it at 8 GB). `triangles`: what can run at
- * the same time (the job gate never lets more than the refusal limit run together).
+ * Refuses a Generate whose jobs could need more than half the device memory at once, only where the
+ * browser reports a small device: navigator.deviceMemory is clamped at 8, so 8 (or nothing) means
+ * unknown or large and the 6M job gate alone applies. `triangles`: what can run at the same time
+ * (the job gate never lets more than the refusal limit run together).
  */
+export const LARGE_DEVICE_MEMORY_GB = 8;
+
 export function assertGenerateMemory(triangles: number, runtime: Runtime, deviceMemoryGb: number | undefined): void {
-  if (deviceMemoryGb === undefined) return;
+  if (deviceMemoryGb === undefined || deviceMemoryGb >= LARGE_DEVICE_MEMORY_GB) return;
   const cap = deviceMemoryGb * 1024 ** 3 / 2;
   if (estimateGenerateBytes(triangles) > cap) throw new CapacityError('', Math.round(triangles), Math.floor(cap / GENERATE_BYTES_PER_TRIANGLE), runtime, 'memory');
 }

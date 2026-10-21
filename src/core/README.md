@@ -131,7 +131,8 @@ Mode and zones off with a plain message; supports and export always use the full
   1 GiB → `out-of-memory`;
 - plate: the plate's triangles plus the new file's over 6M → `plate-full`;
 - Generate: the triangles that can run at once (at most 6M, see the gate) x 850 MiB/M over half of
-  `navigator.deviceMemory` (where reported; Chrome caps it at 8 GB) → `out-of-memory`.
+  `navigator.deviceMemory`, only when it reports less than 8 GB (it is clamped at 8, so 8 or missing
+  means unknown or large and the 6M gate alone applies) → `out-of-memory`.
 
 **Job gate** (`jobGate.ts`): placement, preview builds and exports start only while the triangles of
 the running ones plus their own stay within 6M; otherwise they wait, shown as "Queued". First in,
