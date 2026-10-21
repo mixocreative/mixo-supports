@@ -118,3 +118,15 @@
 **Files:** `src/core/README.md` (module map, public API, conventions, budgets, worker contract), `docs/migration/README.md` (how mixomesh consumes `src/core`, `src/editing`, worker jobs; Babylon render recipe per feature: support mesh, picking by faceId → contactAtTriangle, selection bodies, tips-only via tipsOf, zone layer via vertex colours, rings, cursor, camera), a pure `src/core/handedness.ts` (`toLeftHanded(mesh)` mirror Z + flip winding; `fromLeftHanded`) with tests (round trip identity; normals flip correctly).
 - [ ] Run the `cia` skill audit over the release (unhappy paths, nothing dies silently, heavy-mesh journeys); fix Critical/Important findings in this task.
 - [ ] Commit `docs: migration README, Babylon adapter; cia fixes`.
+
+### Task 12: NN/g usability set (owner-approved 2026-10-21)
+
+**Files:** `src/i18n.ts` (+ glossary), `src/components/*`, `src/App.tsx` (thin wiring only; logic in `src/editing/`), `docs/migration/ui-spec.md`.
+- [ ] Glossary: one term per concept for en / zh-Hant / ja (`docs/migration/glossary.md`) and a test that every i18n key uses the glossary terms (no synonyms like brush/paint outside zones).
+- [ ] Error messages say what happened and what to do next (import fail, too large, worker timeout, export fail, check failed); test each message key exists in all 3 languages.
+- [ ] Hover hints (`title` + accessible description) on every tool button and setting; Ridge angle and Overhang angle hints explain lower/higher.
+- [ ] Forgiving number fields: accept "2mm", "2 mm", "2,5", clamp to limits instead of rejecting; pure parser in `src/editing/numberInput.ts` with tests.
+- [ ] Check supports results: "Show me" frames the camera on the problem spot (reuse view framing from Task 6).
+- [ ] Destructive actions (Clear all zones, Clear manual edits, Clear selection with >0) run immediately and show a toast "… · Undo" (mixo-app-style, 6 s, aria-live) instead of confirm dialogs; Undo restores in one step.
+- [ ] Viewport tool hit areas ≥ 24 px.
+- [ ] Final review checks all 10 NN/g heuristics against the UI spec.
