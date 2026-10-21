@@ -307,8 +307,10 @@ export default function App() {
         if (!found) return { spots: 0, inZone: 0 };
         // Spots face down on the plate: plate down in unit-local space keeps a zone on the far side of a thin floor out.
         const down = inverseTransformDirection(orientation, [0, -1, 0]);
-        const items = found.map((problem) => ({ ...problem, unitId: unit.id, position: inverseTransformPoint(orientation, problem.position) }))
-          .map((problem) => ({ ...problem, inZone: problemInZone(unit.zones, problem.position, down) }));
+        const items = found.map((problem) => {
+          const position = inverseTransformPoint(orientation, problem.position);
+          return { ...problem, unitId: unit.id, position, inZone: problemInZone(unit.zones, position, down) };
+        });
         setProblems((current) => new Map(current).set(unit.id, { unit, items }));
         const inZone = items.filter((problem) => problem.inZone).length;
         return { spots: items.length - inZone, inZone };
@@ -541,7 +543,7 @@ export default function App() {
   // Like Blender's remove_manual_near: every contact within Erase Radius of the pick goes.
   const eraseNear = useCallback((unit: PrintUnit, local: [number, number, number]) => {
     const radius = resolveSettings(unit.settings).eraseRadius;
-    const hits = unitContacts(unit).filter((contact) => Math.hypot(...contact.position.map((value, axis) => value - local[axis]!)) <= radius);
+    const hits = unitContacts(unit).filter(({ position: [x, y, z] }) => (x - local[0]) ** 2 + (y - local[1]) ** 2 + (z - local[2]) ** 2 <= radius * radius);
     if (hits.length === 0) return setStatus('No support here: right-click a support, or the model within {radius} mm of one.', { radius });
     dispatch({ type: 'batch', commands: hits.map((contact) => removeContact(unit, contact.id)) });
     setStatus('Removed 1 support; removals persist through regeneration.', { n: hits.length }, 'Removed {n} supports; removals persist through regeneration.');
