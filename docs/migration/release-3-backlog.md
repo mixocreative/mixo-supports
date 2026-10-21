@@ -65,3 +65,17 @@ Source: Release 2 final review, cia audit, final fix round. Not deploy-blocking.
 - **Esc after Enter**: ADDRESSED. `SettingsPanel.tsx:247` sets `onFocus.current = commit()`, and `enteredValue` returns the clamped value (`numberInput.ts:57-60`). The spec §11 wording is updated.
 
 ### New Breakage in the Fix Diff
+
+## Open from /cia 2026-10-22 (fix/tips-and-drag-select)
+
+Report: `.playwright-mcp/cia-2026-10-22/report.md`. CIA-01/02/03 fixed, CIA-04 fixed in 6a01211.
+
+- **CIA-05 Tree supports junction vs zones** (Low, controller ruling: a zoned junction landing drops that tree's automatic branches like any zoned auto support). Not built: matching the worker means running `autoTreeLayout` in `jobContacts` on the main thread, with the same normals the builder samples (`lineTarget` on the pillar-voxel remesh outside Low Poly Mode) and, with Safe Distance, the scatter remesh at Spacing / 4. Removing a tree re-clusters the rest, so it would also need a loop until no tree changes. That is the tree placement plus two voxel remeshes on the main thread for every count. Until then, the zones bar shows "Tree supports: the shared foot of a tree is not checked against zones yet." Way in: share one tree layout per unit between counts and the worker (cache it with the remesh), take the junction ray out of `treeGeometry` as `treeLanding(tree, settings, ray)`, and test it with `.playwright-mcp/cia-2026-10-22/probe-tree-zone.ts` as the concave fixture.
+- **CIA-06 info**: Drag over during the first build selects nothing (supports not drawn yet). The job panel shows Building. Maybe show "Supports are still building" when a stroke starts with no bodies.
+- **CIA-07 info**: the first zone near a landing builds the exact-model ray index on the main thread, once per model and frame (a one-off pause on a large model). Could move to the worker or build when idle.
+- **Next walk (UNVERIFIED in the ledger, check at runtime):**
+  - Occlusion: Drag over at runtime skips supports hidden behind the model (only unit-tested so far).
+  - Zone landing: a column landing on a zoned lower surface disappears at runtime (count and drawn supports agree).
+  - Export after zone + Delete: the exported STL has exactly the supports on screen.
+  - Mode change mid-queue: switching Select → Unselect during a long drain keeps the earlier steps as Select. Fixed by CIA-01 and unit-tested in `strokeQueue.test.ts`. A headless Chromium probe on 2026-10-22 (CPU ×20, one queued stroke, then Unselect clicked) selected 175, the same as the control; the old code selected 75. Still to check in a full walk.
+
