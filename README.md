@@ -7,7 +7,7 @@ Drop in a model, get print-ready SLA / MSLA / DLP supports in seconds, fine-tune
 
 ### [▶ Open Mixo Supports](https://mixocreative.github.io/mixo-supports/)
 
-English · 中文 (繁體) · 日本語
+English · [繁體中文](README.zh-Hant.md) · [日本語](README.ja.md)
 
 ![Mixo Supports: a knot model with automatic resin supports and a raft](docs/images/editor.png)
 
@@ -27,7 +27,7 @@ English · 中文 (繁體) · 日本語
 
 ### Automatic supports
 - One click places supports on **downward faces**, **islands** (lowest points that would print in mid-air) and **overhang edges**.
-- **Light, Middle and Heavy presets**, or full custom control of spacing, overhang angle, ridge angle, lift height, pillar diameter and more.
+- **Light, Middle and Heavy presets**, or full custom control of spacing, overhang angle (50° by default), ridge angle, lift height, pillar diameter and more.
 - **Tree supports** that branch and merge to save resin and peel force.
 - A **raft** that follows the model outline, with flared walls and a unit letter. **Roof** and **Cage** modes are also available.
 - Several models on one plate. Each model is its own print unit with supports that move and rotate with it.
