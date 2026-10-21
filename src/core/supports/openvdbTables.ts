@@ -1,3 +1,4 @@
+/*! OpenVDB lookup tables, Copyright Contributors to the OpenVDB Project, Apache-2.0 (THIRD-PARTY-NOTICES.txt). */
 // Lookup tables from OpenVDB tools/VolumeToMesh.h (Apache-2.0, Copyright Contributors to the
 // OpenVDB Project), used to reproduce Blender's Grid to Mesh. Cell corner order: 0 (i, j, k),
 // 1 (i+1, j, k), 2 (i+1, j, k+1), 3 (i, j, k+1), 4 (i, j+1, k), 5 (i+1, j+1, k),

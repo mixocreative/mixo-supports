@@ -1,3 +1,4 @@
+/*! Label glyphs: Inter typeface, Copyright (c) 2016 The Inter Project Authors, SIL Open Font License 1.1 (THIRD-PARTY-NOTICES.txt). */
 import font from './labelFont.json';
 
 /** A glyph placed on the line: Blender text-plane coordinates (x right, y up) at the given size. */

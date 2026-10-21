@@ -10,9 +10,30 @@ to prepare your own prints, and the files you export from it are yours.
 
 Third-party components keep their own licenses: the npm dependencies listed in
 package.json; the OpenVDB lookup tables in src/core/supports/openvdbTables.ts
-(Apache-2.0, Copyright Contributors to the OpenVDB Project); and the support
-logic reproduced from the SLASG Blender add-on, MIT License, Copyright (c)
-2026 morokko-at-gh, whose notice follows:
+(Apache-2.0, Copyright Contributors to the OpenVDB Project); the Inter typeface
+whose glyph outlines draw the support labels (src/core/supports/labelFont.json,
+SIL Open Font License 1.1, Copyright (c) 2016 The Inter Project Authors, text in
+tools/fonts/LICENSE-Inter.txt); the single-precision arccos in src/core/acosf.ts,
+ported from FreeBSD msun e_acosf.c (Copyright (C) 1993 by Sun Microsystems, Inc.,
+notice below); and the support logic reproduced from the SLASG Blender add-on,
+MIT License, Copyright (c) 2026 morokko-at-gh (notice below). The full notices
+and licence texts ship with the hosted application as THIRD-PARTY-NOTICES.txt
+(source: public/THIRD-PARTY-NOTICES.txt).
+
+FreeBSD msun e_acosf.c (src/core/acosf.ts):
+
+  Conversion to float by Ian Lance Taylor, Cygnus Support, ian@cygnus.com.
+
+  ====================================================
+  Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
+
+  Developed at SunPro, a Sun Microsystems, Inc. business.
+  Permission to use, copy, modify, and distribute this
+  software is freely granted, provided that this notice
+  is preserved.
+  ====================================================
+
+SLASG Blender add-on, MIT License, Copyright (c) 2026 morokko-at-gh:
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal

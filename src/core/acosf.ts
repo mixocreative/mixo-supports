@@ -1,4 +1,4 @@
-/*
+/*!
  * Single-precision arccos, ported from FreeBSD msun e_acosf.c:
  *
  *   Conversion to float by Ian Lance Taylor, Cygnus Support, ian@cygnus.com.
