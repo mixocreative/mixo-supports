@@ -11,6 +11,7 @@ import { SupportMeshClient, type MeshProgress } from './workers/meshClient';
 import type { MeshMode } from './workers/meshProtocol';
 import ObjectViewport, { acceptModelFile, type EditMode, type GizmoMode } from './components/ObjectViewport';
 import SettingsPanel from './components/SettingsPanel';
+import { BrandLogo } from './components/BrandLogo';
 import { createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
 import { gltfRawMeshes, placeImportedUnits, type ImportedMesh } from './state/import';
 import { emptyScene, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
@@ -577,7 +578,7 @@ export default function App() {
 
   return <main>
     <header>
-      <div className="brand"><h1>{t('Resin Support Studio')}</h1><small>Mixo supports</small></div>
+      <div className="brand"><h1><BrandLogo product="Supports" /></h1><small>{t('Resin Support Studio')}</small></div>
       <div className="header-actions">
         <div className="segmented lang" role="group" aria-label={t('Language')}>
           {LANGS.map((entry) => <button key={entry.lang} lang={entry.lang} className={lang === entry.lang ? 'active' : ''} aria-pressed={lang === entry.lang} onClick={() => chooseLanguage(entry.lang)}>{entry.label}</button>)}
@@ -634,7 +635,7 @@ export default function App() {
         </section>
         <section>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
-          <button className={scopeGenerated ? 'primary regen' : undefined} onClick={() => generate()} disabled={scene.units.length === 0}>{t(scopeGenerated ? 'Regenerate' : 'Generate supports')}</button>
+          <button className={scopeGenerated ? 'primary regen' : 'primary'} onClick={() => generate()} disabled={scene.units.length === 0}>{t(scopeGenerated ? 'Regenerate' : 'Generate supports')}</button>
           <button onClick={clearManual} disabled={scene.units.length === 0}>{t('Clear manual edits')}</button>
           <button onClick={removeSupports} disabled={scene.units.length === 0}>{t('Remove supports')}</button>
         </section>
