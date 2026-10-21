@@ -2,7 +2,7 @@ import { RemeshTarget, SurfaceQuery } from '../supports/remesh';
 import { edgeAnchors } from './edgeAnchors';
 import { BlenderPointBvh, blenderVertexNormals } from './blenderBvh';
 import { mergeByDistance } from './kdtree';
-import { classifyDownwardFaces, partitionRegions } from './mesh';
+import { classifyDownwardFaces, faceOverhangLimit, partitionRegions } from './mesh';
 import type {
   PlacementResult,
   PlacementSettings,
@@ -34,7 +34,7 @@ interface Candidate {
 export function generatePlacement(mesh: TriangleMesh, settings: PlacementSettings, onProgress?: ProgressCallback): PlacementResult {
   validateSettings(settings);
   onProgress?.(0, 'Finding overhangs');
-  const downward = classifyDownwardFaces(mesh, settings.overhangAngleDegrees);
+  const downward = classifyDownwardFaces(mesh, faceOverhangLimit(settings.overhangAngleDegrees));
   const regions = partitionRegions(mesh, downward);
   const regionOf = new Map<number, number>();
   for (const region of regions) for (const face of region.faceIndices) regionOf.set(face, region.id);
@@ -57,7 +57,7 @@ export function generatePlacement(mesh: TriangleMesh, settings: PlacementSetting
   onProgress?.(0.8, 'Reinforcing edges');
   if (settings.reinforceEdges !== false) {
     for (const anchor of edgeAnchors(mesh, {
-      overhangAngleDegrees: settings.overhangAngleDegrees,
+      overhangAngleDegrees: faceOverhangLimit(settings.overhangAngleDegrees),
       spacing: settings.spacing,
       radius: settings.edgeInset,
       facingDown: settings.includeDownward !== false,
@@ -166,7 +166,7 @@ function exactAsRemesh(mesh: TriangleMesh): Remesh {
 function poissonOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate[] {
   const spacing = settings.spacing;
   const density = (1 / spacing) ** 4;
-  const limit = settings.overhangAngleDegrees * Math.PI / 180;
+  const limit = faceOverhangLimit(settings.overhangAngleDegrees) * Math.PI / 180;
   const raw: Candidate[] = [];
   let triangle = 0;
   remesh.faces.forEach((face, f) => {

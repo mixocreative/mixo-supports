@@ -1,6 +1,18 @@
 import type { Region, TriangleMesh } from './types';
 
 /**
+ * Faces modelled at exactly the Overhang angle land a hair past it once rounded (a 45-degree
+ * plate measures 45.00001), so the downward-face tests (not the island normal filter) get this
+ * much slack; the Blender add-on's patched scatter adds the same.
+ */
+export const OVERHANG_TOLERANCE_DEGREES = 0.1;
+
+/** The Overhang angle that downward faces are tested against. */
+export function faceOverhangLimit(overhangAngleDegrees: number): number {
+  return Math.min(90, overhangAngleDegrees + OVERHANG_TOLERANCE_DEGREES);
+}
+
+/**
  * Returns whether each face points within `overhangAngleDegrees` of straight
  * down. An angle of 0 accepts only directly downward faces; 90 accepts every
  * face with a downward component.

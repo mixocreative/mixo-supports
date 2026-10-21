@@ -571,6 +571,9 @@ export default function App() {
   } : undefined;
   const selectedCount = scene.selectedUnitIds.length;
   const scopeLabel = selectedCount > 0 ? t('{n} selected', { n: selectedCount }) : t('all {n}', { n: scene.units.length });
+  // Once every unit in scope has supports, the one generate action becomes Regenerate.
+  const scopeUnits = targets(scene);
+  const scopeGenerated = scopeUnits.length > 0 && scopeUnits.every((unit) => unit.supports);
 
   return <main>
     <header>
@@ -587,7 +590,7 @@ export default function App() {
           <button onClick={() => setModelVisible((visible) => !visible)}>{modelVisible ? t('Hide models') : t('Show models')}</button>
           <button onClick={() => setWireframe((value) => !value)}>{wireframe ? t('Solid') : t('Wireframe')}</button>
         </div>
-        <button className="primary" onClick={() => generate()} disabled={scene.units.length === 0}>{pendingCount > 0 ? t('Generating supports') : t('Generate supports for {scope}', { scope: scopeLabel })}</button>
+        <button className="primary" onClick={() => generate()} disabled={scene.units.length === 0}>{pendingCount > 0 ? t('Generating supports') : t(scopeGenerated ? 'Regenerate supports for {scope}' : 'Generate supports for {scope}', { scope: scopeLabel })}</button>
       </div>
     </header>
     <section className="workspace">
@@ -631,7 +634,7 @@ export default function App() {
         </section>
         <section>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
-          <button onClick={() => generate()} disabled={scene.units.length === 0}>{t('Regenerate')}</button>
+          <button onClick={() => generate()} disabled={scene.units.length === 0}>{t(scopeGenerated ? 'Regenerate' : 'Generate supports')}</button>
           <button onClick={clearManual} disabled={scene.units.length === 0}>{t('Clear manual edits')}</button>
           <button onClick={removeSupports} disabled={scene.units.length === 0}>{t('Remove supports')}</button>
         </section>

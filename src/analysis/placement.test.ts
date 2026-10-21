@@ -97,6 +97,25 @@ describe('generatePlacement', () => {
   });
 });
 
+describe('overhang angle boundary', () => {
+  // The 45-degree plate of a user's test file: 8 mm up the slope, 0.75 mm thick, 20 mm long.
+  function plate45(): TriangleMesh {
+    const section = [[45.257, 5], [39.6, 10.657], [40.13, 11.187], [45.787, 5.53]].map(([x, y]) => [x! - 39, y!]);
+    const positions: number[] = [];
+    for (const z of [0, 20]) for (const [x, y] of section) positions.push(x!, y!, z);
+    // Sides 0-1 (underside), 1-2 (top end), 2-3 (top), 3-0 (bottom end); then the two caps.
+    const quads = [[0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7], [0, 3, 2, 1], [4, 5, 6, 7]];
+    return { positions: new Float32Array(positions), indices: new Uint32Array(quads.flatMap(([a, b, c, d]) => [a!, b!, c!, a!, c!, d!])) };
+  }
+
+  it('supports a face modelled at exactly the Overhang angle, edges included', () => {
+    const result = generatePlacement(plate45(), { ...settings, spacing: 2, edgeInset: 0.15 });
+    const highEdge = result.points.filter((point) => point.source === 'physical-boundary' && point.position[1] > 10.4);
+    expect(result.points.filter((point) => point.source === 'interior').length).toBeGreaterThanOrEqual(5);
+    expect(highEdge.length).toBeGreaterThanOrEqual(10);
+  });
+});
+
 describe('composeContacts', () => {
   const auto = [
     { id: 'auto-0', regionId: 0, position: [0, 1, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], source: 'interior' as const },

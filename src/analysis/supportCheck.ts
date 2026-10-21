@@ -1,3 +1,4 @@
+import { faceOverhangLimit } from './mesh';
 import type { ProgressCallback, TriangleMesh } from './types';
 
 type Vector = [number, number, number];
@@ -107,7 +108,7 @@ export function checkSupports(mesh: TriangleMesh, contacts: readonly Vector[], s
 
   // Overhang coverage on a lattice of about (spacing / 2)² per sample.
   onProgress?.(0.4, 'Checking overhang coverage');
-  const limit = Math.cos(settings.overhangAngleDegrees * Math.PI / 180);
+  const limit = Math.cos(faceOverhangLimit(settings.overhangAngleDegrees) * Math.PI / 180);
   let overhangArea = 0;
   for (let t = 0; t < indices.length; t += 3) {
     const n = faceNormal(positions, indices[t]!, indices[t + 1]!, indices[t + 2]!);
