@@ -108,7 +108,7 @@ Support hit (only `edit` on the active object takes it; otherwise `pass`):
 | right | any | any | yes | removeContact |
 | any | any | any | no | pass |
 
-No hit (`missAction`): in `edit`/`zones` → miss (status says what to click); in `off` a left click clears the object selection; the release of a gizmo drag is ignored.
+No hit (`missAction`): in `edit`/`zones` → miss (status says what to click; nothing in Drag over, where a stroke may start anywhere); in `off` a left click clears the object selection; the release of a gizmo drag is ignored.
 
 Remove radius (setting `eraseRadius`, default 1.5 mm; formerly labelled "Erase radius"): every contact within it of the picked point goes; the hover preview highlights exactly those.
 
@@ -140,7 +140,6 @@ From `editing/status.ts` and the App handlers. Translations live in `src/i18n.ts
 | No-support zones kept. | 已保留免支撐區。 | サポート禁止エリアを保持しました。 |
 | Nothing under the cursor: click the model to add, right-click a support to remove. | 游標下沒有物件：點擊模型新增，右鍵點擊支撐移除。 | カーソルの下に何もありません：モデルをクリックで追加、サポートを右クリックで削除。 |
 | No support here: click a support to select it. | 這裡沒有支撐：點擊支撐即可選取。 | ここにサポートはありません：サポートをクリックすると選択できます。 |
-| Nothing under the cursor: start the drag on the model. | 游標下沒有物件：請從模型上開始拖曳。 | カーソルの下に何もありません：モデルの上からドラッグを始めてください。 |
 | Finish painting zones first: press Esc or Done. | 請先完成塗刷免支撐區：按 Esc 或「完成」。 | 先にエリアの塗装を終了してください：Esc か「完了」を押します。 |
 | Finish editing supports first: press Esc or Done. | 請先完成支撐編輯：按 Esc 或「完成」。 | 先にサポート編集を終了してください：Esc か「完了」を押します。 |
 | Zone painted: automatic supports inside are hidden. | 已塗刷區域：區域內的自動支撐已隱藏。 | エリアを塗りました：中の自動サポートは非表示になります。 |

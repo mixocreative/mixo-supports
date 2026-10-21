@@ -70,7 +70,10 @@ describe('missStatus', () => {
   it('says what to click instead, per tool', () => {
     expect(missStatus(at({ mode: 'edit', tool: 'add' }))).toEqual({ key: 'Nothing under the cursor: click the model to add, right-click a support to remove.' });
     expect(missStatus(at({ mode: 'edit', tool: 'select', selectStyle: 'click' }))).toEqual({ key: 'No support here: click a support to select it.' });
-    expect(missStatus(at({ mode: 'edit', tool: 'select', selectStyle: 'brush' }))).toEqual({ key: 'Nothing under the cursor: start the drag on the model.' });
+  });
+
+  it('says nothing in Drag over: a stroke may start anywhere, and a tap there already selected what the circle covers', () => {
+    expect(missStatus(at({ mode: 'edit', tool: 'select', selectStyle: 'brush' }))).toBeUndefined();
   });
 
   it('says nothing while painting zones', () => {

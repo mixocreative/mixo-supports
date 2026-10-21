@@ -28,13 +28,14 @@ export function sessionStatus(previous: EditSession, next: EditSession, event: S
   return next.mode !== previous.mode || now?.key !== editStatus(previous)?.key ? now : undefined;
 }
 
-/** A Support Edit Mode click that hit neither the model nor a support: what to click instead. */
+/**
+ * A Support Edit Mode click that hit neither the model nor a support: what to click instead.
+ * Nothing in Drag over: a stroke may start anywhere, and a tap already selected what the circle covered.
+ */
 export function missStatus(session: EditSession): StatusMessage | undefined {
   if (session.mode !== 'edit') return undefined;
   if (session.tool === 'add') return { key: 'Nothing under the cursor: click the model to add, right-click a support to remove.' };
-  return session.selectStyle === 'click'
-    ? { key: 'No support here: click a support to select it.' }
-    : { key: 'Nothing under the cursor: start the drag on the model.' };
+  return session.selectStyle === 'click' ? { key: 'No support here: click a support to select it.' } : undefined;
 }
 
 /** Another object was picked while a mode is on: finish the mode first. */
