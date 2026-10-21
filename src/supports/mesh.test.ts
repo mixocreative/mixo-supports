@@ -54,11 +54,14 @@ function tipRing(mesh: GeneratedSupportMesh, height: number): number[] {
 describe('contact tip shapes', () => {
   const tip = (overrides: Partial<LiveSupportSettings>) => buildSupportMesh([contact], { ...defaultSupportSettings, roofSeededModes: [], ...overrides });
 
-  it('defaults to a cone whose 0.2 mm point touches the model, without a sphere', () => {
+  // Without a sphere the tip end sits Penetration (0.2 mm) inside the model (above the contact).
+  const sunk = contact.position[1] + defaultSupportSettings.pointDepth;
+
+  it('defaults to a cone whose 0.2 mm point sinks 0.2 mm into the model, without a sphere', () => {
     const mesh = tip({});
     expect(mesh.parts).not.toContain('tip');
-    expect(meshBounds(mesh).max[1]).toBeCloseTo(contact.position[1], 5);
-    const ring = tipRing(mesh, contact.position[1]);
+    expect(meshBounds(mesh).max[1]).toBeCloseTo(sunk, 5);
+    const ring = tipRing(mesh, sunk);
     expect(ring.length).toBe(defaultSupportSettings.resolution);
     ring.forEach((distance) => expect(distance).toBeCloseTo(0.1, 5));
     expect(componentsAreClosed(mesh)).toBe(true);
@@ -71,11 +74,26 @@ describe('contact tip shapes', () => {
     tipRing(mesh, contact.position[1]).forEach((distance) => expect(distance).toBeCloseTo(defaultSupportSettings.neckDiameter / 2, 5));
   });
 
+  it('sinks a bare tip landing on the model below by Penetration too', () => {
+    // A contact under an overhang 5 mm above the cube's top (y = 20): its column lands on the cube.
+    const over: SupportContact = { id: 'auto-9', position: [0, 25, 0], normal: [0, -1, 0] };
+    const lowest = (overrides: Partial<LiveSupportSettings>) => {
+      const mesh = buildSupportMesh([over], { ...defaultSupportSettings, roofSeededModes: [], raftEnabled: false, ...overrides }, { model: cube });
+      const ys = mesh.components.filter((component) => component.contactId === over.id).flatMap((component) =>
+        Array.from(mesh.indices.slice(component.start, component.start + component.count), (id) => mesh.positions[id * 3 + 1]!));
+      return Math.min(...ys);
+    };
+    expect(lowest({})).toBeCloseTo(20 - defaultSupportSettings.pointDepth, 3);
+    expect(lowest({ pointDepth: 0.5 })).toBeCloseTo(19.5, 3);
+    // With a sphere SLASG keeps the landing on the surface and the ball sinks by its radius.
+    expect(lowest({ contactShape: 'SPHERE' })).toBeCloseTo(20 - defaultSupportSettings.touchDiameter / 2, 3);
+  });
+
   it('builds square and cross tips with the point Ø across', () => {
-    const square = tipRing(tip({ tipSection: 'SQUARE' }), contact.position[1]);
+    const square = tipRing(tip({ tipSection: 'SQUARE' }), sunk);
     expect(square).toHaveLength(4);
     square.forEach((distance) => expect(distance).toBeCloseTo(0.1 * Math.SQRT2, 5));
-    const cross = tipRing(tip({ tipSection: 'CROSS' }), contact.position[1]);
+    const cross = tipRing(tip({ tipSection: 'CROSS' }), sunk);
     expect(cross).toHaveLength(12);
     expect(Math.max(...cross)).toBeCloseTo(0.1 * Math.hypot(1, 0.4), 5);
     expect(Math.min(...cross)).toBeCloseTo(0.1 * Math.hypot(0.4, 0.4), 5);

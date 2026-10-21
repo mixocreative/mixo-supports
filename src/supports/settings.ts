@@ -22,6 +22,8 @@ export type LiveSupportSettings = {
   contactShape: ContactShape;
   /** Diameter of the tip end touching the model when Contact shape is None. */
   pointDiameter: number;
+  /** How far that tip end sinks into the model so it fuses (Lychee: Penetration); None only. */
+  pointDepth: number;
   tipSection: TipSection;
   tipProfile: TipProfile;
   touchDiameter: number;
@@ -156,6 +158,7 @@ export const defaultSupportSettings: Readonly<LiveSupportSettings> = {
   ...presetValues.LIGHT,
   contactShape: 'NONE',
   pointDiameter: 0.2,
+  pointDepth: 0.2,
   tipSection: 'ROUND',
   tipProfile: 'TAPERED',
   treeSectionIncrement: 20,
@@ -214,6 +217,8 @@ const ANGLE_90: NumericLimit = { min: 0, max: 90 };
 /** Blender property min/max limits; edits are clamped like Blender's UI. */
 export const settingLimits: Record<NumericKey, NumericLimit> = {
   pointDiameter: { min: 0.05, max: 1000 },
+  // A bare tip must reach into the model to fuse with it.
+  pointDepth: { min: 0.05, max: 1000 },
   touchDiameter: LENGTH,
   touchDepth: { min: -2, max: 1000 },
   neckDiameter: LENGTH,
@@ -290,12 +295,25 @@ export function tipRadius(settings: Readonly<LiveSupportSettings>): number {
   return (settings.contactShape === 'SPHERE' ? settings.neckDiameter : settings.pointDiameter) / 2;
 }
 
+/**
+ * How far the contact end sits inside the model: Contact Depth under a sphere (which sinks
+ * by its own radius too), else Penetration.
+ */
+export function tipDepth(settings: Readonly<LiveSupportSettings>): number {
+  return settings.contactShape === 'SPHERE' ? settings.touchDepth : settings.pointDepth;
+}
+
+/** Radius of what touches the model: the Contact Ø sphere, or the Point Ø tip end. */
+export function contactRadius(settings: Readonly<LiveSupportSettings>): number {
+  return (settings.contactShape === 'SPHERE' ? settings.touchDiameter : settings.pointDiameter) / 2;
+}
+
 export function toPlacementSettings(settings: Readonly<LiveSupportSettings>): PlacementSettings {
   return {
     overhangAngleDegrees: settings.scatterAngle,
     spacing: settings.scatterSpacing,
-    // Blender insets edge anchors by the contact tip radius plus EDGE_INSET_MARGIN (0.05 mm), measured.
-    edgeInset: settings.touchDiameter / 2 + 0.05,
+    // Blender insets edge anchors by the contact radius plus EDGE_INSET_MARGIN (0.05 mm), measured.
+    edgeInset: contactRadius(settings) + 0.05,
     sharpEdgeAngleDegrees: settings.scatterRidgeAngle,
     includeIslands: settings.scatterIslands,
     includeDownward: settings.scatterFacingDown,

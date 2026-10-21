@@ -77,7 +77,8 @@ describe('support settings', () => {
   it('derives placement settings for the automatic placement worker', () => {
     const settings = updateSetting(updateSetting(defaultSupportSettings, 'scatterSpacing', 4), 'scatterIslands', false);
     expect(toPlacementSettings(settings)).toEqual({
-      overhangAngleDegrees: 45, spacing: 4, edgeInset: 0.3, sharpEdgeAngleDegrees: 45, includeIslands: false,
+      // Edge anchors stay the contact radius (the 0.2 mm point by default) + 0.05 mm inside edges.
+      overhangAngleDegrees: 45, spacing: 4, edgeInset: expect.closeTo(0.15, 9), sharpEdgeAngleDegrees: 45, includeIslands: false,
       includeDownward: true, reinforceEdges: true,
     });
   });

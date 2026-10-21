@@ -6,9 +6,10 @@ import { meshBounds } from './mesh';
 import { defaultSupportSettings } from './settings';
 import { resolveSettings, unitContacts, unitSupportMesh } from './unitSupports';
 
+// A closed 10 mm cube: its underside (y = -5) is where the contacts sit.
 const source: TriangleMesh = {
-  positions: new Float32Array([-5, -5, -5, 5, -5, -5, 5, -5, 5, -5, -5, 5]),
-  indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+  positions: new Float32Array([-5, -5, -5, 5, -5, -5, 5, -5, 5, -5, -5, 5, -5, 5, -5, 5, 5, -5, 5, 5, 5, -5, 5, 5]),
+  indices: new Uint32Array([0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0]),
 };
 const point = (id: string, x: number): SupportPoint => ({ id, regionId: 0, position: [x, -5, 0], normal: [0, -1, 0], source: 'interior' });
 const generated = { position: [0, 10, 0] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] };
@@ -30,8 +31,9 @@ describe('unit supports', () => {
     const mesh = unitSupportMesh(unit, 0);
     const world = meshBounds(applyTransform(mesh, unit.transform));
     expect(world.min[1]).toBeCloseTo(0);
-    // The tip reaches the model's underside (y = 5); a Contact Ø sphere would poke above it.
-    expect(world.max[1]).toBeGreaterThanOrEqual(5 - 1e-6);
+    // The bare tip sinks Penetration (0.2 mm) into the model's underside at y = 5 to fuse with it
+    // (along the remeshed surface normal, so within a few microns).
+    expect(world.max[1]).toBeCloseTo(5 + defaultSupportSettings.pointDepth, 2);
   });
 
   it('keeps supports rigid with the model when the unit moves afterwards', () => {

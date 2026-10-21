@@ -50,6 +50,11 @@ STRAIGHT). Defaults = a round cone whose 0.2 mm end touches the model, no sphere
 other shapes split the tapered ends (`addTip`, also landings and tree tips) and swap the tube
 profile (`TIP_PROFILES`: square of side Ø, cross of plates Ø long and 0.4 x Ø/2 half-wide).
 Blender parity tests pin `contactShape: 'SPHERE'` (their references were generated with spheres).
+Fusion: a bare tip sinks `pointDepth` (Penetration, 0.2 mm, min 0.05) into the model: contact tips
+along the surface normal (`tipDepth()`, SLASG's Touch Depth), landings on the model below past the
+hit point along their own axis (`sinkInto`). Edge anchors inset by `contactRadius()` + 0.05 (the
+0.2 mm point by default, the Contact Ø sphere with Sphere). Add-on: same rules (realizer v2,
+generator patch v4, `point_depth`).
 
 ## Previous step (Support Edit Mode)
 

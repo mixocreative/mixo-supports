@@ -1,6 +1,6 @@
 import type { ProgressCallback, TriangleMesh } from '../analysis/types';
 import { layoutBfont } from './bfont';
-import { tipRadius, type LiveSupportSettings, type TipSection } from './settings';
+import { tipDepth, tipRadius, type LiveSupportSettings, type TipSection } from './settings';
 import { cornerBisectors, raftOutline } from './raft';
 import { buildRoofCage } from './roof';
 import { autoTreeLayout, type AutoTree } from './autotree';
@@ -273,7 +273,7 @@ export function treeGeometry(tree: AutoTree, contacts: readonly SupportContact[]
   const branches = tree.members.map((member) => {
     const contact = contacts[member]!;
     const normal = normalize(contact.normal);
-    const tip = subtract(contact.position, scale(normal, settings.touchDepth));
+    const tip = subtract(contact.position, scale(normal, tipDepth(settings)));
     const neckEnd = add(contact.position, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength));
     if (spheres) out.spheres.push({ part: 'tip', id: contact.id, centre: tip, radius: settings.touchDiameter / 2 });
     return { id: contact.id, nodes: [{ point: tip, radius: neckRadius }, { point: neckEnd, radius: pillarRadius }] as CurveNode[] };
@@ -289,8 +289,13 @@ export function treeGeometry(tree: AutoTree, contacts: readonly SupportContact[]
   if (hit) {
     junctionRadius = neckRadius;
     end = source[1] - hit.point[1] > 2 * settings.neckLength
-      ? [{ point: add(hit.point, scale(upDirection(hit.normal, settings.maxNeckAngle), settings.neckLength - settings.touchDepth)), radius: treeRadius }, { point: hit.point, radius: neckRadius }]
+      ? [{ point: add(hit.point, scale(upDirection(hit.normal, settings.maxNeckAngle), settings.neckLength - tipDepth(settings))), radius: treeRadius }, { point: hit.point, radius: neckRadius }]
       : [{ point: hit.point, radius: neckRadius }];
+    // A bare tip landing on the model reaches Penetration past the surface to fuse with it.
+    if (!spheres) {
+      const from = end.length > 1 ? end[0]!.point : add(hit.point, [0, 1, 0]);
+      end[end.length - 1] = { point: sinkInto(from, hit.point, settings.pointDepth), radius: neckRadius };
+    }
     if (spheres) out.spheres.push({ part: 'tip', centre: hit.point, radius: settings.touchDiameter / 2 });
   } else {
     junctionRadius = treeRadius;
@@ -368,7 +373,7 @@ function contactColumn(contact: SupportContact, settings: Readonly<LiveSupportSe
   const pillarRadius = settings.pillarDiameter / 2;
   const neckRadius = tipRadius(settings);
   const normal = normalize(contact.normal);
-  const tip = subtract(contact.position, scale(normal, settings.touchDepth));
+  const tip = subtract(contact.position, scale(normal, tipDepth(settings)));
   if (tip[1] <= raftTop) return undefined;
   const reach = add(contact.position, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength));
   const bend: Vector = reach;
@@ -378,14 +383,21 @@ function contactColumn(contact: SupportContact, settings: Readonly<LiveSupportSe
     if (bend[1] - hit.point[1] > 2 * settings.neckLength) {
       // Inverted neck up to a touch sphere on the model below.
       const up = upDirection(hit.normal, settings.maxNeckAngle);
-      chain.push({ point: add(hit.point, scale(up, settings.neckLength - settings.touchDepth)), radius: pillarRadius });
+      chain.push({ point: add(hit.point, scale(up, settings.neckLength - tipDepth(settings))), radius: pillarRadius });
     }
-    chain.push({ point: hit.point, radius: neckRadius });
+    // A bare tip landing on the model reaches Penetration past the surface to fuse with it.
+    const landing = settings.contactShape === 'SPHERE' ? hit.point : sinkInto(chain[chain.length - 1]!.point, hit.point, settings.pointDepth);
+    chain.push({ point: landing, radius: neckRadius });
   } else {
     // No clamping: like Blender, a short column folds back up to Bottom Thickness.
     chain.push({ point: [bend[0], bend[1] - settings.pillarDiameter, bend[2]], radius: pillarRadius });
   }
   return { tip, curve: filletPolyline(chain, settings.pillarDiameter / 2, 3), ...(hit ? { landing: hit.point } : {}) };
+}
+
+/** `to` moved `depth` further along the direction from `from` to `to`. */
+function sinkInto(from: Vector, to: Vector, depth: number): Vector {
+  return add(to, scale(normalize(subtract(to, from)), depth));
 }
 
 /** Full column curve for a plate-landing contact, ending with the foot (for parity tests). */
