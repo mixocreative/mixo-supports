@@ -1,5 +1,6 @@
 import { RemeshTarget, SurfaceQuery } from '../supports/remesh';
 import { edgeAnchors } from './edgeAnchors';
+import { BlenderPointBvh, blenderVertexNormals } from './blenderBvh';
 import { mergeByDistance } from './kdtree';
 import { classifyDownwardFaces, partitionRegions } from './mesh';
 import type {
@@ -207,48 +208,60 @@ function poissonOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate
  * in R vertex order at the mean position, each cluster snaps to the nearest unmerged minimum, and a minimum is dropped when
  * the true normal of its nearest R vertex leans more than Overhang Angle from straight down.
  */
-function minimaOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate[] {
+/**
+ * Each stage of the island minima on R, reproduced bit for bit from Blender (checked stage by
+ * stage against tools/blender-parity/minima_stages.json): candidates are vertices whose
+ * lowest adjacent edge midpoint is not below them; Merge by Distance (Spacing) runs Blender's
+ * KD-tree on Blender axes and mixes positions in single precision; each merged point snaps to
+ * its nearest candidate and samples the nearest R vertex, both through Blender's point BVH;
+ * the point is dropped when acos(-normal.z) of that vertex's single-precision true normal
+ * exceeds Overhang angle.
+ */
+export function minimaStages(remesh: Remesh, settings: PlacementSettings): { candidates: number[]; merged: Vector[]; snapped: Vector[]; kept: Vector[] } {
+  const f = Math.fround;
   const count = remesh.vertices.length;
   const lowest = new Float64Array(count).fill(Infinity);
-  const normals = new Float64Array(count * 3);
-  remesh.faces.forEach((face, f) => {
-    const n = face.length;
-    const normal = remesh.normals[f];
+  remesh.faces.forEach((face) => {
     face.forEach((v, k) => {
-      const w = face[(k + 1) % n]!;
-      const p = remesh.vertices[v]!;
-      const q = remesh.vertices[w]!;
-      const midpoint = (p[1] + q[1]) / 2;
+      const w = face[(k + 1) % face.length]!;
+      const midpoint = (remesh.vertices[v]![1] + remesh.vertices[w]![1]) / 2;
       if (midpoint < lowest[v]!) lowest[v] = midpoint;
       if (midpoint < lowest[w]!) lowest[w] = midpoint;
-      if (!normal) return;
-      // Blender vertex normal: face normals weighted by the corner angle.
-      const e1 = subtract(remesh.vertices[face[(k + n - 1) % n]!]!, p);
-      const e2 = subtract(q, p);
-      const l1 = Math.hypot(...e1);
-      const l2 = Math.hypot(...e2);
-      if (l1 === 0 || l2 === 0) return;
-      const angle = Math.acos(Math.max(-1, Math.min(1, dot(e1, e2) / (l1 * l2))));
-      for (let axis = 0; axis < 3; axis += 1) normals[v * 3 + axis] += normal[axis]! * angle;
     });
   });
   const candidates: number[] = [];
   for (let v = 0; v < count; v += 1) if (lowest[v]! !== Infinity && !(lowest[v]! < remesh.vertices[v]![1])) candidates.push(v);
-  const points = candidates.map((v) => remesh.vertices[v]!);
-  const merged = mergeByDistance(points, settings.spacing)
-    .map((cluster) => scale(cluster.reduce<Vector>((sum, k) => add(sum, points[k]!), [0, 0, 0]), 1 / cluster.length));
-  const limit = settings.overhangAngleDegrees * Math.PI / 180;
-  const nearestOf = (point: Vector, list: readonly number[]) => list.reduce((best, v) => (distance(remesh.vertices[v]!, point) < distance(remesh.vertices[best]!, point) ? v : best));
-  const all = [...Array(count).keys()];
-  const minima: Candidate[] = [];
-  for (const centre of merged) {
-    const position = remesh.vertices[nearestOf(centre, candidates)]!;
-    const near = nearestOf(position, all);
-    const normal = normalize([normals[near * 3]!, normals[near * 3 + 1]!, normals[near * 3 + 2]!]);
-    if (Math.acos(Math.max(-1, Math.min(1, -normal[1]))) > limit) continue;
-    minima.push({ regionId: -1, position, normal: [0, -1, 0], source: 'island' });
-  }
-  return minima;
+  // Blender axes (web (x, y, z) = Blender (x, -z, y)): the KD-tree and the BVH split on axis
+  // 0, 1, 2 as Blender's do on its X, Y, Z, so equidistant ties fall the same way.
+  const toBlender = ([x, y, z]: Vector): Vector => [x, -z, y];
+  const blender = remesh.vertices.map(toBlender);
+  const points = candidates.map((v) => blender[v]!);
+  // Mixed like attribute_math mix_indices: each member times 1 / n, summed in index order.
+  const merged = mergeByDistance(points, settings.spacing).map((cluster) => {
+    const weight = f(1 / cluster.length);
+    const sum: Vector = [0, 0, 0];
+    for (const k of [...cluster].sort((p, q) => p - q)) for (let axis = 0; axis < 3; axis += 1) sum[axis] = f(sum[axis]! + f(points[k]![axis]! * weight));
+    return sum;
+  });
+  // Geometry Proximity (snap) and Sample Nearest (normal) query Blender's point BVH; the snap
+  // lands on the candidate's leaf box, up to FLT_EPSILON from the vertex, exactly as Blender's.
+  const candidateTree = new BlenderPointBvh(points);
+  const snapped = merged.map((centre) => candidateTree.nearestHit(centre).co);
+  const vertexTree = new BlenderPointBvh(blender);
+  const normals = blenderVertexNormals(blender, remesh.faces);
+  const limit = f(settings.overhangAngleDegrees * Math.PI / 180);
+  const kept = snapped.filter((point) => {
+    const normal = normals[vertexTree.nearest(point)]!;
+    const down = f(-normal[2]);
+    const angle = down <= -1 ? f(Math.PI) : down >= 1 ? 0 : f(Math.acos(down));
+    return !(angle > limit);
+  });
+  const toWeb = ([x, y, z]: Vector): Vector => [x, z, -y];
+  return { candidates, merged: merged.map(toWeb), snapped: snapped.map(toWeb), kept: kept.map(toWeb) };
+}
+
+function minimaOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate[] {
+  return minimaStages(remesh, settings).kept.map((position) => ({ regionId: -1, position, normal: [0, -1, 0], source: 'island' }));
 }
 
 /**

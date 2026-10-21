@@ -36,7 +36,7 @@ Reference: Resin UV `SLA Supports` panel in `S:/ai/mixo3dtool/mixo3d` (`properti
 
 - Blender's default raft is voxelised at 16 voxels, which pulls its edge about 0.7 mm inward compared with 64 voxels. The web raft matches the 64-voxel profile and ignores Voxel Resolution.
 - Interior (Poisson) contacts match Blender point for point when the model sits on Blender's voxel grid the same way. The web remeshes in the unit's rotated, untranslated frame, so a unit placed at a different offset can scatter differently (equivalent density and spacing).
-- Island minima on geometry lying exactly on the voxel grid can differ by one remesh step (Spacing / 2), because Blender breaks exact ties by float rounding.
+- Island minima match Blender bit for bit (candidates, merge, snap, normal filter), including exact ties on grid-aligned geometry.
 - Placement takes a few seconds on large models (about 4 s on 77k triangles, in the background with a progress bar).
 
 - Neck normals, landings and Safe Distance use a port of OpenVDB's VolumeToMesh (adaptivity 0.1), evaluated lazily per 8³ leaf. It matches Blender vertex for vertex on the probe model; where a model's faces pass exactly through voxel nodes, Blender's zero-area faces carry float-noise normals that cannot be reproduced. What earlier looked like pillar repulsion was this remesh normal blending.

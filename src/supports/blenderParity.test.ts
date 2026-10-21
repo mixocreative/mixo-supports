@@ -30,7 +30,8 @@ function mushroom() {
 }
 
 describe('Blender parity (mushroom fixture)', () => {
-  const settings = { ...defaultSupportSettings, roofSeededModes: [] };
+  // The reference was made with SLASG's Contact Ø sphere (edge inset = its radius + 0.05).
+  const settings = { ...defaultSupportSettings, contactShape: 'SPHERE' as const, roofSeededModes: [] };
   const model = mushroom();
   const placement = generatePlacement(model, toPlacementSettings(settings));
   const mesh = buildSupportMesh(placement.points, settings, { labelText: 'A', mode: 'export', model });
@@ -55,11 +56,10 @@ describe('Blender parity (mushroom fixture)', () => {
     const poisson = ours(['interior']);
     expect(poisson.length).toBe(BLENDER.classes.poisson);
     for (const point of theirs('face')) expect(Math.min(...poisson.map((p) => near(p, point)))).toBeLessThan(0.02);
-    // Minima: same remesh and merge; on this grid-aligned cap Blender breaks exact distance and
-    // 45° ties by float rounding, so some minima sit one remesh step (Spacing / 2) away and
-    // the rims on the far sides survive here. Every Blender minimum has one of ours nearby.
+    // Minima: bit for bit (see blenderMinima.test.ts): the same 38 points.
     const minima = ours(['island']);
-    for (const point of theirs('vertical')) expect(Math.min(...minima.map((p) => near(p, point)))).toBeLessThanOrEqual(1.0001);
+    expect(minima).toHaveLength(BLENDER.classes.minima);
+    for (const point of theirs('vertical')) expect(Math.min(...minima.map((p) => near(p, point)))).toBeLessThan(1e-4);
   });
 
   it('matches the raft footprint and outward-leaning rim', () => {

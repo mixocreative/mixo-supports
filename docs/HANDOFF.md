@@ -32,7 +32,20 @@ After every implementation task, record: the completed requirement; changed file
 - Results: `npm test` 14 files, 132 tests pass. All 19 cases match on every compared dimension; 3-6 of 17 supports per 45-degree case are turned/shortened by SLASG pillar repulsion (0 at 30 degrees) and are counted, not compared.
 - Next step: read SLASG's neck/pillar node group in Blender to replicate pillar repulsion, then tighten the test to compare every support.
 
-## Latest completed step (worker structure, support check, edit preview, responsive)
+## Latest completed step (island minima bit for bit)
+
+`tools/blender-parity/minima_dump.py` runs the stock SLASG_VertexScatter on the mushroom (SDF
+ridges off, as Resin UV runs it) and dumps every minima stage; `blenderMinima.test.ts` checks ours
+stage by stage, bit for bit. Fixes found: the KD-tree must get Blender axes (web (x, y, z) =
+Blender (x, -z, y)); merged positions mix in single precision (member × 1/n summed in index order);
+snap and normal sample use a port of Blender's point BVH (`analysis/blenderBvh.ts`, BLI_kdopbvh
+build + nearest, leaves padded by FLT_EPSILON, the snap returns the closest point on the padded
+box); vertex normals are Blender's single-precision `normals_calc_verts` (bit-exact on all 1071
+vertices). Placement time unchanged (knot 77k tris: 4.3 s, in the analysis worker).
+Not done, by decision: OpenVDB's concave-corner sign tracing (MeshToVolume.h sweeps, seed fills,
+ComputeIntersectingVoxelSign; ~1.5k lines) for <= 0.05 mm at inner corners.
+
+## Previous step (worker structure, support check, edit preview, responsive)
 
 Workers by role (`src/workers/`), each reporting progress to the viewport bar:
 - `meshClient` + `meshWorker`: two instances, preview and export. Keeps each unit's model (by
