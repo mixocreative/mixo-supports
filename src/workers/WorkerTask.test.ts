@@ -247,6 +247,13 @@ describe('serveTask (worker side)', () => {
     expect(posted[1]!.transfer).toEqual([buffer]);
   });
 
+  it('sends the code and values of a thrown error with its message', async () => {
+    const { target, posted } = scope();
+    serveTask(() => { throw Object.assign(new Error('refused'), { code: 'too-large', vars: { n: 9, limit: 6 } }); }, target);
+    await target.onmessage!({ data: { id: 2, type: 'run', payload: {} } });
+    expect(posted[0]!.message).toEqual({ id: 2, type: 'error', message: 'refused', code: 'too-large', vars: { n: 9, limit: 6 } });
+  });
+
   it('answers an error with its message and ignores other messages', async () => {
     const { target, posted } = scope();
     serveTask(() => { throw new Error('no model'); }, target);
@@ -297,6 +304,31 @@ describe('WorkerTask progress reporting', () => {
     await expect(job).rejects.toSatisfy(isAbort);
     await later();
     expect(activity.view()[0]?.state).toBe('done');
+  });
+
+  it('a job waiting for admission is listed as Queued, runs once admitted, and releases when it settles', async () => {
+    const { activity, task, advance } = setup();
+    let admit!: (release: () => void) => void;
+    let released = 0;
+    const job = task.run({}, { admit: () => new Promise((resolve) => { admit = resolve; }) });
+    advance(500);
+    expect(activity.view()).toMatchObject([{ stage: 'Queued', state: 'indeterminate' }]);
+    expect(FakeWorker.all).toHaveLength(0);
+    admit(() => { released += 1; });
+    await later();
+    const worker = FakeWorker.all[0]!;
+    worker.reply({ id: worker.last.id, type: 'done', result: 'ok' });
+    await expect(job).resolves.toBe('ok');
+    await later();
+    expect(released).toBe(1);
+  });
+
+  it('keeps a worker error code and values across the boundary', async () => {
+    const { task } = setup();
+    const job = task.run({});
+    const worker = FakeWorker.all[0]!;
+    worker.reply({ id: worker.last.id, type: 'error', message: 'too big', code: 'too-large', vars: { n: 9, limit: 6 } });
+    await expect(job).rejects.toMatchObject({ message: 'too big', code: 'too-large', vars: { n: 9, limit: 6 } });
   });
 
   it('a failure is reported with its code', async () => {

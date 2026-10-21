@@ -13,7 +13,7 @@ const SOURCES = import.meta.glob<string>(['./**/*.ts', './**/*.tsx', '!./**/*.te
 const VIEW_LAYER = /^\.\/components\//;
 const LOADER_EXCEPTIONS: Record<string, string> = {
   './state/import.ts': 'walks the GLTFLoader scene graph (gltfRawMeshes) and takes BufferGeometry inputs in tests (geometryToMesh); the weld is typed-array (src/core/import)',
-  './workers/importWorker.ts': 'builds the pick index (three-mesh-bvh on a BufferGeometry) off the main thread',
+  './workers/prepareImport.ts': 'builds the pick index (three-mesh-bvh on a BufferGeometry) in the import worker',
   './App.tsx': 'parses glTF with GLTFLoader on the main thread before the import worker welds it',
 };
 const THREE_IMPORT = /\b(?:import|export)\s[^'"`;]*?\sfrom\s*['"](three|three\/[^'"]*|@react-three\/[^'"]*|three-mesh-bvh|three-stdlib)['"]/;

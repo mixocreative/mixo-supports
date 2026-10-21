@@ -11,7 +11,8 @@ import type { TriangleMesh } from '../core/analysis/types';
 /** `MeshBVH.serialize(bvh, { cloneBuffers: false })` of an indirect BVH, without the index (the mesh has it). */
 export interface SerializedBvh {
   roots: ArrayBuffer[];
-  indirectBuffer: Uint32Array;
+  /** Uint16Array below 65,536 triangles, else Uint32Array (three-mesh-bvh 0.7.8). */
+  indirectBuffer: Uint32Array | Uint16Array;
 }
 
 const displays = new WeakMap<TriangleMesh, TriangleMesh>();

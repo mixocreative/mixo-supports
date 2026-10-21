@@ -19,7 +19,8 @@ import { createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneH
 import { gltfRawMeshes, placeImportedUnits } from './state/import';
 import { setDisplayMesh, setPrebuiltBvh } from './state/meshExtras';
 import { detectRuntime, memoryInfo } from './state/runtime';
-import { assertMemoryCapacity, assertTriangleCapacity, memoryCapBytes, meshTier, TRIANGLE_BUDGET } from './core/budget';
+import { assertGenerateMemory, assertMemoryCapacity, assertPlateCapacity, assertTriangleCapacity, memoryCapBytes, meshTier, refusalLimit, TRIANGLE_BUDGET } from './core/budget';
+import { TriangleGate } from './core/jobGate';
 import { estimateTriangles, ESTIMATE_HEAD_BYTES } from './core/import/estimate';
 import { emptyScene, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
@@ -78,6 +79,21 @@ const RUNTIME = detectRuntime();
 const GLTF_ESTIMATE_BYTES = 16 * 1024 * 1024;
 
 const triangleCount = (unit: PrintUnit) => unit.source.indices.length / 3;
+/** Heavy-job admission for the whole app: placements, preview builds and exports share it. */
+const HEAVY_JOBS = new TriangleGate(refusalLimit(RUNTIME));
+/** A .glb's JSON chunk up to this size is read for its pre-parse triangle count. */
+const GLB_JSON_ESTIMATE_BYTES = 64 * 1024 * 1024;
+
+/** How much of a file the pre-parse estimate reads: a whole small .gltf, a .glb's JSON chunk, else the head. */
+async function estimateHeadBytes(file: File): Promise<number> {
+  if (/\.gltf$/i.test(file.name) && file.size <= GLTF_ESTIMATE_BYTES) return file.size;
+  if (/\.glb$/i.test(file.name) && file.size >= 20) {
+    const json = new DataView(await file.slice(0, 20).arrayBuffer()).getUint32(12, true);
+    if (20 + json <= GLB_JSON_ESTIMATE_BYTES) return Math.min(file.size, 20 + json);
+  }
+  return ESTIMATE_HEAD_BYTES;
+}
+
 const isAbort = (error: unknown) => error instanceof Error && error.name === 'AbortError';
 /** Why a heavy object cannot be edited by hand, and what still works. */
 const HEAVY_EDIT = 'Too detailed to edit by hand ({n} triangles). Generate and export still use the full model.';
@@ -176,9 +192,9 @@ export default function App() {
   // STL files), placement and checks (a small pool, one model per worker) and imports. Every
   // job reports to the job activity list; stale jobs are dropped or stopped.
   const workers = useRef<{ preview?: SupportMeshClient; export?: SupportMeshClient; analysis?: AnalysisClient; importer?: ImportClient }>({});
-  const preview = useCallback(() => (workers.current.preview ??= new SupportMeshClient({ create: createMeshWorker })), []);
-  const exporter = useCallback(() => (workers.current.export ??= new SupportMeshClient({ create: createMeshWorker, mode: 'per-job' })), []);
-  const analysis = useCallback(() => (workers.current.analysis ??= new AnalysisClient(createAnalysisWorker)), []);
+  const preview = useCallback(() => (workers.current.preview ??= new SupportMeshClient({ create: createMeshWorker, gate: HEAVY_JOBS })), []);
+  const exporter = useCallback(() => (workers.current.export ??= new SupportMeshClient({ create: createMeshWorker, mode: 'per-job', gate: HEAVY_JOBS })), []);
+  const analysis = useCallback(() => (workers.current.analysis ??= new AnalysisClient(createAnalysisWorker, undefined, undefined, HEAVY_JOBS)), []);
   const importer = useCallback(() => (workers.current.importer ??= new ImportClient(createImportWorker)), []);
   useEffect(() => () => {
     // An import worker lives only while its import runs.
@@ -249,6 +265,14 @@ export default function App() {
     const current = sceneRef.current;
     const units = unitIds ? current.units.filter((unit) => unitIds.includes(unit.id)) : targets(current);
     if (units.length === 0) return setStatus('Import a model before generating supports.');
+    // The job gate runs at most the refusal limit's triangles at once; refuse when even that
+    // could not fit in half the memory the device reports (Chrome reports up to 8 GB).
+    const generating = units.reduce((sum, unit) => sum + triangleCount(unit), 0);
+    try {
+      assertGenerateMemory(Math.min(generating, refusalLimit(RUNTIME)), RUNTIME, memoryInfo().deviceMemoryGb);
+    } catch (error) {
+      return setStatusMessage(errorStatus('place', codedJobError(error)));
+    }
     for (const unit of units) {
       const settings = resolveSettings(unit.settings);
       // The lowest model point sits Lift Height above the plate (y = 0) where the supports stand
@@ -375,14 +399,16 @@ export default function App() {
     try {
       const imported: PreparedMesh[][] = [];
       const memoryCap = memoryCapBytes(memoryInfo());
+      // The plate's triangles, with each file of this drop as it is read.
+      let plate = sceneRef.current.units.reduce((sum, unit) => sum + triangleCount(unit), 0);
       for (const file of accepted) {
         reading = file.name;
         // Refused before anything is parsed or copied, whenever the file says how big it is.
-        const headBytes = /\.gltf$/i.test(file.name) && file.size <= GLTF_ESTIMATE_BYTES ? file.size : ESTIMATE_HEAD_BYTES;
-        const estimate = estimateTriangles(new Uint8Array(await file.slice(0, headBytes).arrayBuffer()), file.size, file.name);
+        const estimate = estimateTriangles(new Uint8Array(await file.slice(0, await estimateHeadBytes(file)).arrayBuffer()), file.size, file.name);
         if (estimate) {
           assertTriangleCapacity(file.name, estimate.triangles, RUNTIME, estimate.exact);
           assertMemoryCapacity(file.name, estimate.triangles, RUNTIME, memoryCap);
+          if (estimate.exact) assertPlateCapacity(file.name, plate + estimate.triangles, RUNTIME);
         }
         const label = { key: 'Importing {name}', vars: { name: file.name } };
         if (/\.stl$/i.test(file.name)) {
@@ -397,6 +423,9 @@ export default function App() {
           assertTriangleCapacity(file.name, raw.reduce((sum, mesh) => sum + (mesh.indices ? mesh.indices.length : mesh.positions.length / 3) / 3, 0), RUNTIME, true);
           imported.push(await importer().weld(raw, RUNTIME, label, controller.signal));
         }
+        // Counted again from what was read (an estimate may have been short).
+        plate += imported[imported.length - 1]!.reduce((sum, item) => sum + item.mesh.indices.length / 3, 0);
+        assertPlateCapacity(file.name, plate, RUNTIME);
       }
       for (const item of imported.flat()) {
         setPrebuiltBvh(item.display ?? item.mesh, item.bvh);
@@ -417,15 +446,17 @@ export default function App() {
       // Big models: say what the editor does differently, once, at import.
       const heaviest = added.reduce((most, unit) => (triangleCount(unit) > triangleCount(most) ? unit : most));
       const tier = meshTier(triangleCount(heaviest), RUNTIME);
-      const plate = units.reduce((sum, unit) => sum + triangleCount(unit), 0);
+      plate = units.reduce((sum, unit) => sum + triangleCount(unit), 0);
       const vars = { name: heaviest.name, n: triangleCount(heaviest).toLocaleString(), budget: TRIANGLE_BUDGET[RUNTIME].toLocaleString() };
       if (tier === 'heavy') {
         setStatus('{name} is a heavy model ({n} triangles, over {budget}): the view shows a simplified copy and hand editing is off. Generate and export use the full model.', vars);
+      } else if (plate > TRIANGLE_BUDGET[RUNTIME]) {
+        // The plate warning wins over the large-model note (Tips only still turns on).
+        if (tier === 'large') setTipsOnly(true);
+        setStatus('The plate now holds {n} triangles, more than the {budget} this app is tuned for; it may slow down.', { n: plate.toLocaleString(), budget: TRIANGLE_BUDGET[RUNTIME].toLocaleString() });
       } else if (tier === 'large') {
         setTipsOnly(true);
         setStatus('{name} is a large model ({n} triangles): the view shows contact tips only to stay smooth. Turn off Tips only to see whole supports.', vars);
-      } else if (plate > TRIANGLE_BUDGET[RUNTIME]) {
-        setStatus('The plate now holds {n} triangles, more than the {budget} this app is tuned for; it may slow down.', { n: plate.toLocaleString(), budget: TRIANGLE_BUDGET[RUNTIME].toLocaleString() });
       } else {
         setStatus('Imported 1 object. Generate to place supports.', { n: added.length }, 'Imported {n} objects. Generate to place supports.');
       }

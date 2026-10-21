@@ -75,6 +75,13 @@ export interface RunOptions {
   cancellable?: boolean;
   /** The job replaces what the user would be editing (the UI blocks edits while it shows). */
   blocking?: boolean;
+  /** What kind of job it is (an editing/errors context), so its failure is explained in the activity list. */
+  context?: string;
+  /**
+   * Admission (a TriangleGate): the job is listed as "Queued" until this resolves with a release
+   * function, which is called when the job settles. Aborting the job while it waits drops it.
+   */
+  admit?: (signal: AbortSignal) => Promise<() => void>;
 }
 
 interface Job {
@@ -88,7 +95,14 @@ interface Job {
   done?: boolean;
 }
 
-type Reply = { id: number; type: 'progress' | 'done' | 'error'; result?: unknown; revision?: number; message?: string } & ProgressFields;
+type Reply = { id: number; type: 'progress' | 'done' | 'error'; result?: unknown; revision?: number; message?: string; code?: string; vars?: Record<string, string | number> } & ProgressFields;
+
+/** An error the worker threw, with its own code and values when it had them. */
+export class WorkerJobError extends Error {
+  constructor(message: string, readonly code?: string, readonly vars?: Record<string, string | number>) {
+    super(message);
+  }
+}
 
 export class WorkerTaskError extends Error {
   constructor(message: string, readonly code: WorkerTaskErrorCode) {
@@ -138,6 +152,7 @@ export class WorkerTask<P = unknown, R = unknown> {
       label: opts.label ?? this.label,
       cancel: opts.cancellable ?? Boolean(outer) ? () => controller.abort() : null,
       blocking: opts.blocking ?? false,
+      context: opts.context ?? null,
     });
     const inner: RunOptions = {
       ...opts,
@@ -148,7 +163,14 @@ export class WorkerTask<P = unknown, R = unknown> {
       },
     };
     let job: Promise<R>;
-    if (!this.serial) {
+    if (opts.admit) {
+      activity.progress({ stage: 'Queued' });
+      job = opts.admit(controller.signal).then((release) => {
+        const started = this.start(payload, inner);
+        started.then(release, release);
+        return started;
+      });
+    } else if (!this.serial) {
       job = this.start(payload, inner);
     } else {
       job = this.chain.then(() => this.start(payload, inner));
@@ -234,7 +256,7 @@ export class WorkerTask<P = unknown, R = unknown> {
       else this.settle(job, null, message.result);
       return;
     }
-    if (message.type === 'error') this.settle(job, new Error(message.message || `${this.name} failed`));
+    if (message.type === 'error') this.settle(job, new WorkerJobError(message.message || `${this.name} failed`, message.code, message.vars));
   }
 
   private timeout(job: Job): void {

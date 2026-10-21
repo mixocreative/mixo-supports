@@ -27,6 +27,8 @@ export interface JobLabel {
 export interface JobError {
   code: string | null;
   message: string;
+  /** The values its message needs (numbers of a refusal), when the error carried them. */
+  vars?: Record<string, string | number>;
 }
 
 export type JobState = 'indeterminate' | 'determinate' | 'done' | 'failed' | 'cancelled';
@@ -45,6 +47,8 @@ export interface JobRow {
   cancelling: boolean;
   /** The job replaces what the user would be editing: the UI blocks edits while it shows. */
   blocking: boolean;
+  /** What kind of job it is (import, place, build, check, export), for its failure message. */
+  context: string | null;
   error: JobError | null;
 }
 
@@ -68,6 +72,7 @@ interface Entry {
   cancel: (() => void) | null;
   cancelling: boolean;
   blocking: boolean;
+  context: string | null;
 }
 
 /** Fraction 0..1 from a worker progress message, or null when it carries none. */
@@ -103,9 +108,9 @@ export class JobActivity {
   }
 
   /** Register a running job; `cancel` present = cancellable. */
-  begin({ label, cancel = null, blocking = false }: { label: JobLabel; cancel?: (() => void) | null; blocking?: boolean }): JobHandle {
+  begin({ label, cancel = null, blocking = false, context = null }: { label: JobLabel; cancel?: (() => void) | null; blocking?: boolean; context?: string | null }): JobHandle {
     const id = ++this.seq;
-    const entry: Entry = { id, label, stage: null, fraction: null, startedAt: this.clock(), firstProgress: null, shownAt: null, endedAt: null, outcome: null, error: null, cancel, cancelling: false, blocking };
+    const entry: Entry = { id, label, stage: null, fraction: null, startedAt: this.clock(), firstProgress: null, shownAt: null, endedAt: null, outcome: null, error: null, cancel, cancelling: false, blocking, context };
     this.entries.set(id, entry);
     this.notify();
     return {
@@ -113,7 +118,8 @@ export class JobActivity {
       progress: (fields) => {
         if (entry.endedAt !== null) return;
         const fraction = fractionOf(fields);
-        if (fraction !== null) {
+        // A stage that starts at 0 % stays indeterminate until it moves (no bar frozen at 0).
+        if (fraction !== null && (fraction > 0 || entry.fraction !== null)) {
           entry.firstProgress ??= { at: this.clock(), fraction };
           entry.fraction = fraction;
         }
@@ -127,7 +133,12 @@ export class JobActivity {
         else if (isAbort(error)) entry.outcome = 'cancelled';
         else {
           entry.outcome = 'failed';
-          entry.error = { code: (error as { code?: string }).code ?? null, message: error instanceof Error ? error.message : String(error) };
+          const { code, vars } = error as { code?: unknown; vars?: unknown };
+          entry.error = {
+            code: typeof code === 'string' ? code : null,
+            message: error instanceof Error ? error.message : String(error),
+            ...(vars && typeof vars === 'object' ? { vars: vars as Record<string, string | number> } : {}),
+          };
         }
         entry.cancel = null;
         this.notify();
@@ -199,6 +210,7 @@ export class JobActivity {
         cancellable: entry.cancel !== null,
         cancelling: entry.cancelling,
         blocking: entry.blocking,
+        context: entry.context,
         error: entry.error,
       });
     }

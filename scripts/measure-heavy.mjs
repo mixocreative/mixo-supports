@@ -119,7 +119,7 @@ function stop(child) {
 }
 
 const STATUS = 'document.querySelector("footer strong")?.textContent ?? ""';
-const DONE_IMPORT = /Imported|heavy model|large model|plate now holds|build handles up to|more memory|Import error|Import (took|stopped)/;
+const DONE_IMPORT = /Imported|heavy model|large model|plate now holds|too large to edit here|more memory|plate would hold|damaged STL|Could not read|took too long|stopped unexpectedly/;
 
 async function measure(chromePath, file) {
   const profile = mkdtempSync(join(tmpdir(), 'mixo-heavy-'));

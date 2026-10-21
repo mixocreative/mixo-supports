@@ -21,11 +21,11 @@ export class ImportClient {
   }
 
   readStl(file: Blob, name: string, runtime: Runtime, label: JobLabel, signal: AbortSignal): Promise<PreparedMesh[]> {
-    return this.runner.run({ kind: 'stl', name, file, runtime }, { label, signal, blocking: true });
+    return this.runner.run({ kind: 'stl', name, file, runtime }, { label, signal, blocking: true, context: 'import' });
   }
 
   weld(meshes: RawMesh[], runtime: Runtime, label: JobLabel, signal: AbortSignal): Promise<PreparedMesh[]> {
     const transfer = meshes.flatMap((mesh) => [mesh.positions.buffer, ...(mesh.indices ? [mesh.indices.buffer] : [])]);
-    return this.runner.run({ kind: 'weld', meshes, runtime }, { transfer, label, signal, blocking: true });
+    return this.runner.run({ kind: 'weld', meshes, runtime }, { transfer, label, signal, blocking: true, context: 'import' });
   }
 }

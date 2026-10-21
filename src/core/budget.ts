@@ -45,11 +45,15 @@ export function refusalLimit(runtime: Runtime): number {
  * `reason` which limit it hit, so the UI explains it in the user's language.
  */
 export class CapacityError extends Error {
-  readonly code = 'too-large';
+  readonly code: 'too-large' | 'out-of-memory';
+  /** The numbers the shared message needs (editing/errors). */
+  readonly vars: { n: number; limit: number };
   constructor(readonly fileName: string, readonly triangles: number, readonly limit: number, readonly runtime: Runtime, readonly reason: 'triangles' | 'memory' = 'triangles') {
     super(reason === 'triangles'
       ? `"${fileName}" has about ${triangles.toLocaleString('en-US')} triangles; this ${runtime} build handles up to ${limit.toLocaleString('en-US')}. Simplify or split the model.`
       : `"${fileName}" (about ${triangles.toLocaleString('en-US')} triangles) needs more memory than this device can give the editor. Simplify or split the model.`);
+    this.code = reason === 'triangles' ? 'too-large' : 'out-of-memory';
+    this.vars = { n: triangles, limit };
   }
 }
 
@@ -63,18 +67,22 @@ export function assertTriangleCapacity(fileName: string, triangles: number, runt
 }
 
 /**
- * Bytes one imported mesh costs at its peak: the welded mesh (about 18 B per triangle: half as many
- * vertices at 12 B, indices at 12 B) times the copies that can exist at once (scene, import worker
- * while welding, preview worker cache, an analysis job's copy and its turned copy, an export), plus
- * the pick index (about 16 B per triangle) and the import worker's weld table and read chunk.
+ * Measured costs (Task 9, Chrome renderer private bytes, synthetic 2M/5M/10M STL):
+ *   import  ≈ 56 B per triangle: the import worker peaks at 388 MB for 10M (weld table, read chunk,
+ *            mesh, pick index) and the scene keeps the 18 B/triangle mesh;
+ *   Generate ≈ 850 MiB per million triangles (2M → 1.89 GB, 5M → 4.13 GB renderer peak), the
+ *            placement and support jobs' working memory; 10M stopped the tab at 6.5 GB.
  */
-export const MESH_BYTES_PER_TRIANGLE = 18;
-export const PEAK_COPIES = 5;
-export const BVH_BYTES_PER_TRIANGLE = 16;
+export const IMPORT_BYTES_PER_TRIANGLE = 56;
+export const GENERATE_BYTES_PER_TRIANGLE = Math.round(850 * 2 ** 20 / 1e6);
 const IMPORT_OVERHEAD_BYTES = 64 * 1024 * 1024;
 
 export function estimateImportBytes(triangles: number): number {
-  return triangles * (MESH_BYTES_PER_TRIANGLE * PEAK_COPIES + BVH_BYTES_PER_TRIANGLE) + IMPORT_OVERHEAD_BYTES;
+  return triangles * IMPORT_BYTES_PER_TRIANGLE + IMPORT_OVERHEAD_BYTES;
+}
+
+export function estimateGenerateBytes(triangles: number): number {
+  return triangles * GENERATE_BYTES_PER_TRIANGLE;
 }
 
 /**
@@ -86,9 +94,38 @@ export function memoryCapBytes({ jsHeapSizeLimit, deviceMemoryGb }: { jsHeapSize
   return known.length > 0 ? Math.min(...known) : 1024 ** 3;
 }
 
-/** Refuses an import whose estimated peak is over the memory cap. */
+/** Refuses an import whose estimated peak is over the memory cap (`limit`: the triangles the cap allows). */
 export function assertMemoryCapacity(fileName: string, triangles: number, runtime: Runtime, capBytes: number): void {
-  if (estimateImportBytes(triangles) > capBytes) throw new CapacityError(baseName(fileName), Math.round(triangles), refusalLimit(runtime), runtime, 'memory');
+  if (estimateImportBytes(triangles) > capBytes) {
+    throw new CapacityError(baseName(fileName), Math.round(triangles), Math.floor((capBytes - IMPORT_OVERHEAD_BYTES) / IMPORT_BYTES_PER_TRIANGLE), runtime, 'memory');
+  }
+}
+
+/**
+ * Refuses a Generate whose jobs could need more than half the device memory at once, where the
+ * browser reports it (navigator.deviceMemory; Chrome caps it at 8 GB). `triangles`: what can run at
+ * the same time (the job gate never lets more than the refusal limit run together).
+ */
+export function assertGenerateMemory(triangles: number, runtime: Runtime, deviceMemoryGb: number | undefined): void {
+  if (deviceMemoryGb === undefined) return;
+  const cap = deviceMemoryGb * 1024 ** 3 / 2;
+  if (estimateGenerateBytes(triangles) > cap) throw new CapacityError('', Math.round(triangles), Math.floor(cap / GENERATE_BYTES_PER_TRIANGLE), runtime, 'memory');
+}
+
+/** Refuses an import that would put more triangles on the plate than the refusal limit. */
+export function assertPlateCapacity(fileName: string, plateTriangles: number, runtime: Runtime): void {
+  const limit = refusalLimit(runtime);
+  if (plateTriangles > limit) throw new PlateFullError(baseName(fileName), plateTriangles, limit);
+}
+
+/** The plate would hold more triangles than the runtime handles (code 'plate-full'). */
+export class PlateFullError extends Error {
+  readonly code = 'plate-full';
+  readonly vars: { n: number; limit: number };
+  constructor(readonly fileName: string, triangles: number, limit: number) {
+    super(`The plate would hold ${triangles.toLocaleString('en-US')} triangles with "${fileName}"; the limit is ${limit.toLocaleString('en-US')}. Delete or simplify an object first.`);
+    this.vars = { n: triangles, limit };
+  }
 }
 
 function baseName(fileName: string): string {

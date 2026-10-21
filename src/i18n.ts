@@ -510,11 +510,6 @@ const ZH: Dictionary = {
   'about {time} left': '約剩 {time}',
   '{time} so far': '已進行 {time}',
   '{label}: cancelled.': '{label}：已取消。',
-  '{label} failed: {message}': '{label}失敗：{message}',
-  '{label} took too long and was stopped. Try again, or simplify the model.': '{label}耗時過久，已停止。請再試一次，或簡化模型。',
-  '{label} stopped unexpectedly, most likely out of memory. Close other tabs or simplify the model, then try again.': '{label}意外停止，很可能是記憶體不足。請關閉其他分頁或簡化模型後再試。',
-  '{label} was interrupted. Try again.': '{label}被中斷，請再試一次。',
-  '{label} needs background workers, which this browser blocks. Use a current Chrome, Edge, Firefox or Safari.': '{label}需要背景執行緒，但此瀏覽器已封鎖。請使用最新版 Chrome、Edge、Firefox 或 Safari。',
   'Import cancelled; nothing was added.': '已取消匯入，未加入任何物件。',
   'Export cancelled; no file was written.': '已取消輸出，未寫出任何檔案。',
   'Support placement cancelled; existing supports kept.': '已取消支撐配置，保留現有支撐。',
@@ -523,6 +518,12 @@ const ZH: Dictionary = {
   '{name} is a heavy model ({n} triangles, over {budget}): the view shows a simplified copy and hand editing is off. Generate and export use the full model.': '{name} 是重型模型（{n} 個三角面，超過 {budget}）：畫面顯示簡化版本，且無法手動編輯。產生與輸出仍使用完整模型。',
   '{name} is a large model ({n} triangles): the view shows contact tips only to stay smooth. Turn off Tips only to see whole supports.': '{name} 是大型模型（{n} 個三角面）：為保持流暢，畫面只顯示接觸頭。關閉「僅支撐頭」即可查看完整支撐。',
   'The plate now holds {n} triangles, more than the {budget} this app is tuned for; it may slow down.': '底板上目前共有 {n} 個三角面，超過本應用程式建議的 {budget} 個，操作可能變慢。',
+  'Cancel {label}': '取消：{label}',
+  'Dismiss {label}': '關閉：{label}',
+  '{name} is a damaged STL file: its size does not match its triangles. Export it again, then import it.': '{name} 是損壞的 STL 檔案：檔案大小與三角面數不符。請重新輸出後再匯入。',
+  '{name} ({n} triangles) needs more memory than this device can give the editor. Simplify or split the model, then import it again.': '{name}（{n} 個三角面）所需記憶體超出此裝置能提供給編輯器的上限。請簡化或分割模型後再匯入。',
+  'The plate would hold {n} triangles with {name}; the limit is {limit}. Delete or simplify an object first, then import again.': '加入 {name} 後底板上將有 {n} 個三角面，上限為 {limit}。請先刪除或簡化一個物件，再重新匯入。',
+  'Generating supports for {n} triangles at once needs more memory than this device can give the editor. Generate fewer objects at a time, or simplify the models.': '同時為 {n} 個三角面產生支撐所需記憶體超出此裝置能提供給編輯器的上限。請一次為較少物件產生支撐，或簡化模型。',
 };
 
 const JA: Dictionary = {
@@ -953,11 +954,6 @@ const JA: Dictionary = {
   'about {time} left': '残り約 {time}',
   '{time} so far': '経過 {time}',
   '{label}: cancelled.': '{label}：キャンセルしました。',
-  '{label} failed: {message}': '{label}に失敗しました：{message}',
-  '{label} took too long and was stopped. Try again, or simplify the model.': '{label}に時間がかかりすぎたため停止しました。もう一度試すか、モデルを簡略化してください。',
-  '{label} stopped unexpectedly, most likely out of memory. Close other tabs or simplify the model, then try again.': '{label}が予期せず停止しました。メモリ不足の可能性が高いです。ほかのタブを閉じるかモデルを簡略化してから、もう一度試してください。',
-  '{label} was interrupted. Try again.': '{label}が中断されました。もう一度試してください。',
-  '{label} needs background workers, which this browser blocks. Use a current Chrome, Edge, Firefox or Safari.': '{label}にはバックグラウンド処理が必要ですが、このブラウザではブロックされています。最新の Chrome、Edge、Firefox、Safari を使ってください。',
   'Import cancelled; nothing was added.': '読み込みをキャンセルしました。何も追加されていません。',
   'Export cancelled; no file was written.': '書き出しをキャンセルしました。ファイルは作成されていません。',
   'Support placement cancelled; existing supports kept.': 'サポートの配置をキャンセルしました。既存のサポートはそのままです。',
@@ -966,6 +962,12 @@ const JA: Dictionary = {
   '{name} is a heavy model ({n} triangles, over {budget}): the view shows a simplified copy and hand editing is off. Generate and export use the full model.': '{name} は大容量のモデルです（三角形 {n} 個、{budget} 超）：表示は簡略版で、手動編集はできません。生成と書き出しは完全なモデルで行われます。',
   '{name} is a large model ({n} triangles): the view shows contact tips only to stay smooth. Turn off Tips only to see whole supports.': '{name} は大きなモデルです（三角形 {n} 個）：動作を軽くするため接触先端のみ表示しています。サポート全体を見るには「先端のみ」をオフにしてください。',
   'The plate now holds {n} triangles, more than the {budget} this app is tuned for; it may slow down.': 'プレート上の三角形は {n} 個になり、このアプリの想定 {budget} 個を超えています。動作が遅くなる場合があります。',
+  'Cancel {label}': 'キャンセル：{label}',
+  'Dismiss {label}': '閉じる：{label}',
+  '{name} is a damaged STL file: its size does not match its triangles. Export it again, then import it.': '{name} は破損した STL ファイルです：ファイルサイズが三角形の数と合いません。書き出し直してから読み込んでください。',
+  '{name} ({n} triangles) needs more memory than this device can give the editor. Simplify or split the model, then import it again.': '{name}（三角形 {n} 個）には、このデバイスがエディターに割り当てられる以上のメモリが必要です。モデルを簡略化するか分割してから、もう一度読み込んでください。',
+  'The plate would hold {n} triangles with {name}; the limit is {limit}. Delete or simplify an object first, then import again.': '{name} を加えるとプレート上の三角形が {n} 個になり、上限の {limit} を超えます。先にオブジェクトを削除するか簡略化してから、もう一度読み込んでください。',
+  'Generating supports for {n} triangles at once needs more memory than this device can give the editor. Generate fewer objects at a time, or simplify the models.': '三角形 {n} 個分のサポートを一度に生成するには、このデバイスがエディターに割り当てられる以上のメモリが必要です。一度に生成するオブジェクトを減らすか、モデルを簡略化してください。',
 };
 
 export const DICTIONARY: Record<Exclude<Lang, 'en'>, Dictionary> = { 'zh-Hant': ZH, ja: JA };

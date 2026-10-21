@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TriangleMesh } from '../core/analysis/types';
 import type { SupportJob } from '../core/jobs';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
+import { TriangleGate } from '../core/jobGate';
 import { SupportMeshClient } from './meshClient';
 import type { MeshTask } from './meshProtocol';
 import type { WorkerLike } from './WorkerTask';
@@ -176,6 +177,22 @@ describe('support mesh client', () => {
     await expect(queued).resolves.toBeUndefined();
     await expect(running).resolves.toBeUndefined();
     expect(workers[0]!.terminated).toBe(true);
+  });
+
+  it('a build waits ("Queued") while heavy jobs elsewhere fill the gate, then runs', async () => {
+    const gate = new TriangleGate(1);
+    const held = await gate.acquire(1); // a placement holding the plate's budget
+    const workers: FakeWorker[] = [];
+    const client = new SupportMeshClient({ create: () => { const worker = new FakeWorker(); workers.push(worker); return worker; }, gate });
+    const build = client.build('a', job(), label);
+    await tick();
+    expect(workers[0]?.received ?? []).toHaveLength(0);
+    held();
+    await tick();
+    expect(workers[0]!.received).toHaveLength(1);
+    workers[0]!.done(0, built);
+    await expect(build).resolves.toBeDefined();
+    expect(gate.running).toBe(0);
   });
 
   it('per-job export: every model goes with the job and the worker ends with it', async () => {

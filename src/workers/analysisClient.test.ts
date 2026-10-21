@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { PlacementSettings, TriangleMesh } from '../core/analysis/types';
 import type { PlacementJob } from '../core/jobs';
+import { TriangleGate } from '../core/jobGate';
 import { AnalysisClient, analysisPoolSize } from './analysisClient';
+import { JobActivity } from './jobActivity';
 import type { AnalysisTask } from './analysisProtocol';
 import type { WorkerLike } from './WorkerTask';
 
@@ -103,6 +105,24 @@ describe('analysis client', () => {
     jobActivity.cancel(row!.id);
     await expect(job).rejects.toSatisfy((error) => (error as Error).name === 'AbortError');
     expect(workers[0]!.terminated).toBe(true);
+  });
+
+  it('heavy placements wait for the job gate: the second starts only when the first frees its triangles', async () => {
+    const { workers, create } = pool();
+    const gate = new TriangleGate(1); // each test mesh has 1 triangle: one placement at a time
+    const client = new AnalysisClient(create, () => {}, 2, gate);
+    const first = client.place('place:a', job(), label);
+    const second = client.place('place:b', job(), label);
+    await tick();
+    // The second waits for admission: its worker is not even started yet.
+    expect(workers.map((worker) => worker.received.length)).toEqual([1]);
+    workers[0]!.done(0, placed);
+    await expect(first).resolves.toBeDefined();
+    await tick();
+    expect(workers[1]!.received).toHaveLength(1);
+    workers[1]!.done(0, placed);
+    await expect(second).resolves.toBeDefined();
+    expect(gate.running).toBe(0);
   });
 
   it('rejects with the worker error message', async () => {

@@ -2,6 +2,7 @@ import type { SupportProblem } from '../core/analysis/supportCheck';
 import type { PlacementResult, TriangleMesh } from '../core/analysis/types';
 import type { CheckJob, PlacementJob } from '../core/jobs';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
+import type { TriangleGate } from '../core/jobGate';
 import type { JobLabel } from './jobActivity';
 import { REPLACED, WorkerTask, type WorkerLike } from './WorkerTask';
 
@@ -47,6 +48,8 @@ export class AnalysisClient {
     private readonly create: (() => WorkerLike) | null,
     private readonly onProgress: (key: string, fraction: number, stage: string) => void = () => {},
     private readonly size = analysisPoolSize(),
+    /** Heavy-job admission shared with the support mesh clients (placements only; checks are light). */
+    private readonly gate?: TriangleGate,
   ) {}
 
   place(key: string, job: PlacementJob, label: JobLabel): Promise<PlacementResult | undefined> {
@@ -104,6 +107,8 @@ export class AnalysisClient {
       transfer: [mesh.positions.buffer, mesh.indices.buffer],
       signal: job.controller.signal,
       label: job.label,
+      context: job.task.kind,
+      ...(this.gate && job.task.kind === 'place' ? { admit: (signal: AbortSignal) => this.gate!.acquire(mesh.indices.length / 3, signal) } : {}),
       onProgress: (fields) => {
         if (typeof fields.fraction === 'number' && typeof fields.stage === 'string') this.onProgress(job.key, fields.fraction, fields.stage);
       },

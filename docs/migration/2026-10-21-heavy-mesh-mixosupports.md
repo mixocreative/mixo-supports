@@ -26,3 +26,9 @@ gets the same numbers until placement memory drops. mixomesh (import and editing
 2.5M / 10M and desktop 6M / 24M.
 
 Differences from the shared wording: the refusal omits "or use the desktop app" (mixosupports has none).
+
+Guards added after review (Task 9 fix round 1): the plate may hold at most 6M triangles (`plate-full`
+at import); placements, preview builds and exports start only while running heavy jobs plus their own
+stay within 6M (`src/core/jobGate.ts`, shown as "Queued"); Generate is refused when what can run at
+once × 850 MiB/M exceeds half of `navigator.deviceMemory` (Chrome reports at most 8 GB, so on Chrome
+this caps a single Generate at about 4.9M triangles at a time).

@@ -3,6 +3,7 @@ import type { JobTransform, SupportJob } from '../core/jobs';
 import type { GeneratedSupportMesh } from '../core/supports/mesh';
 import type { ExportFilePlan } from '../supports/export';
 import type { ExportedFile, ExportUnitPayload, MeshMode, MeshTask, MeshTaskResult, SupportJobPayload } from './meshProtocol';
+import type { TriangleGate } from '../core/jobGate';
 import type { JobLabel } from './jobActivity';
 import { REPLACED, WorkerTask, WorkerTaskError, type WorkerLike } from './WorkerTask';
 
@@ -40,6 +41,13 @@ interface Pending {
   cut?: boolean;
 }
 
+/** Triangles a job's models hold. */
+function triangles(sources: Map<string, TriangleMesh>): number {
+  let total = 0;
+  for (const mesh of sources.values()) total += mesh.indices.length / 3;
+  return total;
+}
+
 /** A running build is only cut short (worker restarted, caches lost) once it has run this long. */
 const RESTART_AFTER_MS = 800;
 const BUILD_TIMEOUT_MS = 5 * 60_000;
@@ -54,6 +62,8 @@ export interface SupportMeshClientOptions {
   mode?: 'persistent' | 'per-job';
   onProgress?: (progress: MeshProgress) => void;
   onIdle?: (mode: MeshMode, unitId: string) => void;
+  /** Heavy-job admission shared with placement: a build or export waits ("Queued") while it would not fit. */
+  gate?: TriangleGate;
 }
 
 /**
@@ -190,6 +200,8 @@ export class SupportMeshClient {
       timeoutMs: pending.timeoutMs,
       signal: controller.signal,
       label: pending.label,
+      context: pending.task.kind === 'export' ? 'export' : 'build',
+      ...(this.options.gate && pending.task.kind !== 'forget' ? { admit: (signal: AbortSignal) => this.options.gate!.acquire(triangles(pending.sources), signal) } : {}),
       cancellable: pending.cancellable,
       onProgress: (fields) => {
         if (typeof fields.fraction === 'number' && typeof fields.stage === 'string') pending.onProgress?.(fields.fraction, fields.stage);

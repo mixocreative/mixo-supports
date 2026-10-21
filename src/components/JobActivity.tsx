@@ -1,6 +1,8 @@
-import { useEffect, useReducer } from 'react';
+import { useEffect, useReducer, useRef } from 'react';
+import { ERROR_CONTEXTS, errorStatus, type ErrorContext } from '../editing/errors';
 import { t, translateMessage } from '../i18n';
 import { jobActivity, type JobActivity, type JobRow } from '../workers/jobActivity';
+import { rebuiltJobError } from '../workers/jobErrors';
 
 /** Re-render this often while jobs are listed: the show delay, linger and times are time-driven. */
 const TICK_MS = 250;
@@ -10,19 +12,15 @@ function formatTime(ms: number): string {
   return seconds < 60 ? t('{n} s', { n: seconds }) : t('{m} min {s} s', { m: Math.floor(seconds / 60), s: seconds % 60 });
 }
 
-/** A failure in plain words with what to do next, translated by its error code. */
+/**
+ * A failure in plain words with the next step, in the user's language: the same message the status
+ * line gives (editing/errors), from the job's context and the error's code and values.
+ */
 export function failureText(row: JobRow): string {
-  const label = translateMessage(row.label);
-  switch (row.error?.code) {
-    case 'timeout': return t('{label} took too long and was stopped. Try again, or simplify the model.', { label });
-    case 'crashed': return t('{label} stopped unexpectedly, most likely out of memory. Close other tabs or simplify the model, then try again.', { label });
-    case 'restarted': return t('{label} was interrupted. Try again.', { label });
-    case 'unavailable': return t('{label} needs background workers, which this browser blocks. Use a current Chrome, Edge, Firefox or Safari.', { label });
-    default: {
-      const message = (row.error?.message ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
-      return t('{label} failed: {message}', { label, message });
-    }
-  }
+  const context: ErrorContext = (ERROR_CONTEXTS as readonly string[]).includes(row.context ?? '') ? row.context as ErrorContext : 'build';
+  const name = row.label.vars?.name;
+  const error = rebuiltJobError(row.error ?? { code: null, message: '' });
+  return translateMessage(errorStatus(context, error, name === undefined ? {} : { name: String(name) }));
 }
 
 /** Row text: what runs (and its stage), and the numbers (percent, time left or elapsed). */
@@ -56,8 +54,18 @@ export default function JobActivityPanel({ activity = jobActivity }: { activity?
   }, [busy]);
   const rows = activity.view();
   const blocking = rows.some((row) => row.blocking && (row.state === 'indeterminate' || row.state === 'determinate'));
-  // Announced politely: what started, and how a job ended badly; never the ticking percent.
-  const announcement = rows.map((row) => (row.state === 'failed' || row.state === 'cancelled' ? rowText(row).label : row.state === 'done' ? '' : `${translateMessage(row.label)}…`)).filter(Boolean).join(' ');
+  // Announced politely, once each: a job that appears, and how a job ended badly; never the ticking percent.
+  const announced = useRef(new Map<number, string>());
+  const lastAnnouncement = useRef('');
+  const fresh: string[] = [];
+  for (const row of rows) {
+    const phase = row.state === 'failed' || row.state === 'cancelled' ? row.state : 'running';
+    if (row.state === 'done' || announced.current.get(row.id) === phase) continue;
+    announced.current.set(row.id, phase);
+    fresh.push(phase === 'running' ? `${translateMessage(row.label)}…` : rowText(row).label);
+  }
+  if (fresh.length > 0) lastAnnouncement.current = fresh.join(' ');
+  const announcement = lastAnnouncement.current;
   return <>
     {blocking && <div className="job-veil" aria-hidden="true" />}
     <section className="job-activity" aria-label={t('Background work')} hidden={rows.length === 0}>
@@ -71,8 +79,8 @@ export default function JobActivityPanel({ activity = jobActivity }: { activity?
             <div className="job-head">
               <span className="job-label" title={text.label}>{text.label}</span>
               {text.meta && <span className="job-meta">{text.meta}</span>}
-              {row.cancellable && !ended && <button onClick={() => activity.cancel(row.id)}>{t('Cancel')}</button>}
-              {row.state === 'failed' && <button onClick={() => activity.dismiss(row.id)}>{t('Dismiss')}</button>}
+              {row.cancellable && !ended && <button onClick={() => activity.cancel(row.id)} aria-label={t('Cancel {label}', { label: translateMessage(row.label) })}>{t('Cancel')}</button>}
+              {row.state === 'failed' && <button onClick={() => activity.dismiss(row.id)} aria-label={t('Dismiss {label}', { label: translateMessage(row.label) })}>{t('Dismiss')}</button>}
             </div>
             {!ended && <div
               className={`progress-track${determinate ? '' : ' progress-track--indeterminate'}`}

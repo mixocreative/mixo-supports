@@ -2,6 +2,7 @@ import { BufferGeometry, Mesh, type Object3D } from 'three';
 import type { TriangleMesh } from '../core/analysis/types';
 import { parseStl } from '../core/import/stl';
 import { NonFiniteError, weldPositions } from '../core/import/weld';
+import { CodedError } from '../editing/errors';
 import { meshBounds } from '../core/supports/mesh';
 import { defaultSupportSettings } from '../core/supports/settings';
 import type { PrintUnit, SupportSettings } from './project';
@@ -95,7 +96,7 @@ export function named<T>(name: string, weld: () => T): T {
   try {
     return weld();
   } catch (error) {
-    if (error instanceof NonFiniteError) throw new Error(`${name} has vertex coordinates that are not finite numbers (NaN or infinity); repair or re-export the model`);
+    if (error instanceof NonFiniteError) throw new CodedError('non-finite', `${name} has vertex coordinates that are not finite numbers (NaN or infinity); repair or re-export the model`);
     throw error;
   }
 }

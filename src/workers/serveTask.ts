@@ -3,7 +3,8 @@
  * A worker module calls `serveTask(handler)` once:
  *   handler(payload, { progress(fields), revision }) → result,
  *   or `transferable(result, buffers)` so the buffers move instead of being copied.
- * The request's revision is echoed on 'done' so the client can drop stale results.
+ * The request's revision is echoed on 'done' so the client can drop stale results. A thrown error's
+ * string `code` and `vars` (an extension of mixomesh's contract) travel with its message.
  */
 
 const TRANSFER = Symbol('transfer');
@@ -45,7 +46,13 @@ export function serveTask<P, R>(handler: (payload: P, context: TaskContext) => R
         wrapped ? (out as Transferred<R>).transfer : [],
       );
     } catch (error) {
-      target().postMessage({ id, type: 'error', message: error instanceof Error ? error.message : String(error) });
+      // An error code and its values cross with the message, so the client can explain it in any language.
+      const { code, vars } = (error ?? {}) as { code?: unknown; vars?: unknown };
+      target().postMessage({
+        id, type: 'error', message: error instanceof Error ? error.message : String(error),
+        ...(typeof code === 'string' ? { code } : {}),
+        ...(vars && typeof vars === 'object' ? { vars } : {}),
+      });
     }
   };
 }

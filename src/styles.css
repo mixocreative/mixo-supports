@@ -314,7 +314,7 @@ kbd {
 .progress-track--indeterminate .progress-fill { width: 30%; animation: job-travel 1.2s ease-in-out infinite; }
 @keyframes job-travel { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
 /* An import changes what is edited: the viewport takes no input while it shows (Cancel stays reachable). */
-.job-veil { position: absolute; inset: 0; z-index: 4; background: rgb(244 242 237 / .55); cursor: progress; }
+.job-veil { position: absolute; inset: 0; z-index: 4; background: color-mix(in srgb, var(--paper) 55%, transparent); cursor: progress; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) {
   .progress-fill { transition: none; }

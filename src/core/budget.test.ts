@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertTriangleCapacity, CapacityError, estimateImportBytes, FULL_TIER_MAX, memoryCapBytes, meshTier, refusalLimit, TRIANGLE_BUDGET } from './budget';
+import { assertGenerateMemory, assertMemoryCapacity, assertPlateCapacity, assertTriangleCapacity, CapacityError, estimateGenerateBytes, estimateImportBytes, PlateFullError, FULL_TIER_MAX, memoryCapBytes, meshTier, refusalLimit, TRIANGLE_BUDGET } from './budget';
 
 describe('budgets and tiers', () => {
   it('warns at 1x and refuses above 4x the runtime budget', () => {
@@ -44,5 +44,42 @@ describe('budgets and tiers', () => {
     expect(memoryCapBytes({ jsHeapSizeLimit: 4 * 1024 ** 3 })).toBe(4 * 1024 ** 3);
     expect(memoryCapBytes({ deviceMemoryGb: 4 })).toBe(2 * 1024 ** 3);
     expect(memoryCapBytes({ jsHeapSizeLimit: 4 * 1024 ** 3, deviceMemoryGb: 2 })).toBe(1024 ** 3);
+  });
+
+  it('calibrates Generate to the measured ~850 MiB per million triangles', () => {
+    expect(estimateGenerateBytes(2_000_000) / 2 ** 30).toBeCloseTo(1.66, 1);
+    expect(estimateGenerateBytes(5_000_000) / 2 ** 30).toBeCloseTo(4.15, 1);
+  });
+
+  it('refuses a Generate that would need more than half the reported device memory', () => {
+    expect(() => assertGenerateMemory(6_000_000, 'web', undefined)).not.toThrow();
+    expect(() => assertGenerateMemory(4_000_000, 'web', 8)).not.toThrow();
+    try {
+      assertGenerateMemory(5_000_000, 'web', 8);
+      expect.unreachable();
+    } catch (error) {
+      expect((error as CapacityError).code).toBe('out-of-memory');
+      expect((error as CapacityError).vars.limit).toBe(Math.floor(4 * 2 ** 30 / Math.round(850 * 2 ** 20 / 1e6)));
+    }
+  });
+
+  it('names the triangles memory allows when an import is over the memory cap', () => {
+    try {
+      assertMemoryCapacity('x.stl', 30_000_000, 'web', 2 ** 30);
+      expect.unreachable();
+    } catch (error) {
+      expect((error as CapacityError).code).toBe('out-of-memory');
+      expect((error as CapacityError).vars.limit).toBeLessThan(30_000_000);
+    }
+  });
+
+  it('refuses an import that would put more than the refusal limit on the plate', () => {
+    expect(() => assertPlateCapacity('a.stl', refusalLimit('web'), 'web')).not.toThrow();
+    expect(() => assertPlateCapacity('C:/x/a.stl', refusalLimit('web') + 1, 'web')).toThrow(PlateFullError);
+    try {
+      assertPlateCapacity('C:/x/a.stl', 7_000_000, 'web');
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'plate-full', fileName: 'a.stl', vars: { n: 7_000_000, limit: refusalLimit('web') } });
+    }
   });
 });
