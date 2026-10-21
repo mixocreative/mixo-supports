@@ -23,12 +23,12 @@ export function raftPerimeter(model: TriangleMesh, expand: number, voxelResoluti
  * resample that becomes the raft n-gon. Roof and Cage columns stand on the raw loop. `others`
  * holds the outlines of parts set apart from the largest one.
  */
-export function raftOutline(model: TriangleMesh, expand: number, voxelResolution: number): RaftLoop & { others: RaftLoop[] } {
+export function raftOutline(model: TriangleMesh, expand: number, voxelResolution: number, maxVoxel = Infinity): RaftLoop & { others: RaftLoop[] } {
   const triangles = projectTriangles(model);
   if (triangles.length === 0) return { raw: [], polygon: [], others: [] };
   const bounds3 = bounds3d(model);
   const diagonal = Math.hypot(bounds3.max[0] - bounds3.min[0], bounds3.max[1] - bounds3.min[1], bounds3.max[2] - bounds3.min[2]);
-  const voxel = (diagonal + 2 * expand) / voxelResolution;
+  const voxel = Math.min((diagonal + 2 * expand) / voxelResolution, maxVoxel);
   const iso = expand + 0.1;
   const field = new PlanDistance(triangles, iso + 2 * voxel);
 
@@ -121,14 +121,47 @@ export function raftOutline(model: TriangleMesh, expand: number, voxelResolution
     return { raw, polygon: resampleClosed(clockwise.map(([x, , z]) => [x, z] as Point2), samples) };
   };
   const main = build(loops[largest]!, 3 * voxelResolution);
-  // Parts set apart on one plate each get their own raft: every other loop that is not a hole
-  // inside another loop, sampled in proportion to its length (holes in a part are filled).
-  const mainLength = perimeter(plans[largest]!);
-  const others = loops
-    .map((cells, index) => ({ cells, index }))
-    .filter(({ index }) => index !== largest && !plans.some((plan, other) => other !== index && sizes[other]! > sizes[index]! && inside(plans[index]![0]!, plan)))
-    .map(({ cells, index }) => build(cells, Math.max(24, Math.round(3 * voxelResolution * perimeter(plans[index]!) / mainLength))));
-  return { ...main, others };
+  // Parts set apart on one plate each get their own raft: every loop that is not a hole inside
+  // another (holes in a part are filled).
+  const parts = plans
+    .map((plan, index) => index)
+    .filter((index) => !plans.some((plan, other) => other !== index && sizes[other]! > sizes[index]! && inside(plans[index]![0]!, plan)));
+  if (parts.length < 2) return { ...main, others: [] };
+  // The voxel follows the whole file's bounding box, far too coarse for one narrow part of a
+  // spread-out plate, so each part is traced again from its own triangles, with the voxel also
+  // capped at half the Expand Width so slender parts keep their footprint.
+  const traced = parts.map((index) => {
+    const own = subMesh(model, plans[index]!);
+    const outline = own ? raftOutline(own, expand, voxelResolution, Math.min(maxVoxel, Math.max(0.25, expand / 2))) : undefined;
+    return outline && outline.polygon.length >= 3 ? [{ raw: outline.raw, polygon: outline.polygon }, ...outline.others] : [build(loops[index]!, 3 * voxelResolution)];
+  });
+  const first = parts.indexOf(largest);
+  return { ...traced[first]![0]!, others: [...traced[first]!.slice(1), ...traced.filter((_, i) => i !== first).flat()] };
+}
+
+/** The model's triangles whose plan centroid lies inside `loop`, or undefined if none. */
+function subMesh(model: TriangleMesh, loop: readonly Point2[]): TriangleMesh | undefined {
+  const indices: number[] = [];
+  const p = model.positions;
+  for (let t = 0; t + 2 < model.indices.length; t += 3) {
+    const [a, b, c] = [model.indices[t]! * 3, model.indices[t + 1]! * 3, model.indices[t + 2]! * 3];
+    const centroid: Point2 = [(p[a]! + p[b]! + p[c]!) / 3, (p[a + 2]! + p[b + 2]! + p[c + 2]!) / 3];
+    if (inside(centroid, loop)) indices.push(model.indices[t]!, model.indices[t + 1]!, model.indices[t + 2]!);
+  }
+  if (indices.length === 0) return undefined;
+  // Compact the vertices so the part's own bounding box (and so its voxel) is used.
+  const remap = new Map<number, number>();
+  const positions: number[] = [];
+  const compact = indices.map((index) => {
+    let mapped = remap.get(index);
+    if (mapped === undefined) {
+      mapped = positions.length / 3;
+      remap.set(index, mapped);
+      positions.push(p[index * 3]!, p[index * 3 + 1]!, p[index * 3 + 2]!);
+    }
+    return mapped;
+  });
+  return { positions: new Float32Array(positions), indices: new Uint32Array(compact) };
 }
 
 export interface RaftLoop {

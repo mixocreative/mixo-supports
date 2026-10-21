@@ -24,6 +24,17 @@ describe('raftOutline', () => {
     expect(outline.others.map((loop) => Math.min(...xs(loop))).sort((a, b) => a - b)).toEqual([expect.closeTo(37, 0), expect.closeTo(57, 0)]);
   });
 
+  it('traces a narrow part at its own resolution, not the whole plate', () => {
+    // At 16 voxels over the whole 130 mm plate a voxel is ~8 mm, wider than the 1 mm part.
+    const outline = raftOutline(boxes([[0, 0, 30, 80], [129, 0, 130, 80]]), 3, 16);
+    expect(outline.others).toHaveLength(1);
+    const xs = outline.others[0]!.polygon.map(([x]) => x);
+    expect(Math.min(...xs)).toBeGreaterThan(125.5);
+    expect(Math.min(...xs)).toBeLessThan(126.5);
+    expect(Math.max(...xs)).toBeGreaterThan(132.5);
+    expect(Math.max(...xs)).toBeLessThan(133.5);
+  });
+
   it('keeps a single part to one outline', () => {
     expect(raftOutline(boxes([[0, 0, 30, 6]]), 3, 32).others).toHaveLength(0);
   });
