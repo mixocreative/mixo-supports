@@ -166,6 +166,8 @@ export class WorkerTask<P = unknown, R = unknown> {
     if (opts.admit) {
       activity.progress({ stage: 'Queued' });
       job = opts.admit(controller.signal).then((release) => {
+        // Admitted: no longer queued, though the worker has not named its first stage yet.
+        activity.progress({ stage: null });
         const started = this.start(payload, inner);
         started.then(release, release);
         return started;

@@ -123,7 +123,8 @@ export class JobActivity {
           entry.firstProgress ??= { at: this.clock(), fraction };
           entry.fraction = fraction;
         }
-        if (typeof fields.stage === 'string') entry.stage = fields.stage;
+        // A stage names what runs now; null clears it (a queued job that was admitted).
+        if (typeof fields.stage === 'string' || fields.stage === null) entry.stage = fields.stage;
         this.notify();
       },
       end: (error) => {

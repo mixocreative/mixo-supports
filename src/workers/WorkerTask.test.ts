@@ -316,6 +316,8 @@ describe('WorkerTask progress reporting', () => {
     expect(FakeWorker.all).toHaveLength(0);
     admit(() => { released += 1; });
     await later();
+    // Admitted and running: no longer "Queued" while the worker has not posted a stage yet.
+    expect(activity.view()[0]?.stage).toBeNull();
     const worker = FakeWorker.all[0]!;
     worker.reply({ id: worker.last.id, type: 'done', result: 'ok' });
     await expect(job).resolves.toBe('ok');
