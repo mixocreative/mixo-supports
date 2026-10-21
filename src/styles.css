@@ -16,10 +16,6 @@
   --blue-hover: #284579;
   --radius: 2px;
   --dur: .15s;
-  /* Dense sizes (mixo-app-style), used by the viewport tools. */
-  --row: 22px;
-  --fs-sm: 11px;
-  --fs-md: 11.5px;
   font-family: 'Zen Kaku Gothic New', 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
   color: var(--ink);
   background: var(--paper);
@@ -211,11 +207,11 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
 }
 .viewport-view {
   position: absolute;
-  top: 40px;
+  top: 56px;
   right: 14px;
   z-index: 2;
   display: flex;
-  gap: 4px;
+  gap: 6px;
 }
 .viewport--editing canvas { cursor: crosshair; }
 .edit-frame {
@@ -233,12 +229,14 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
   display: flex;
   gap: 10px;
   align-items: center;
-  min-height: var(--row);
-  padding: 0 8px;
+  /* Same height and text size as the buttons beside it. */
+  padding: 8px 12px;
+  line-height: normal;
+  border: 1px solid var(--red);
   border-radius: var(--radius);
   background: var(--red);
   color: var(--surface);
-  font-size: var(--fs-md);
+  font-size: 13px;
   letter-spacing: .06em;
   pointer-events: none;
 }
@@ -247,27 +245,27 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
 /* Under the badge's row: the two-row bar is wider than the space beside the badge. */
 .edit-bar {
   position: absolute;
-  top: 44px;
+  top: 56px;
   right: 14px;
   z-index: 3;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   align-items: flex-end;
   max-width: calc(100% - 28px);
-  padding: 4px 4px 4px 10px;
+  padding: 6px 6px 6px 14px;
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
-  font-size: var(--fs-md);
+  font-size: 12px;
   color: var(--ink);
   white-space: nowrap;
 }
-.edit-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; align-items: center; }
+.edit-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 16px; align-items: center; }
 kbd {
   font: inherit;
-  font-size: var(--fs-sm);
-  padding: 0 4px;
+  font-size: 11px;
+  padding: 1px 5px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--sunken);
@@ -414,11 +412,8 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 .problem-kind.overhang { background: #d97706; }
 
 /* ---- Edit bar tools and selection ---------------------------------------- */
-/* Viewport tools at the Dense sizes: 22px rows, 11.5px text, plain words. */
-.viewport-edit-toggle, .viewport-view button, .edit-bar button { height: var(--row); padding: 0 10px; font-size: var(--fs-md); }
-.edit-bar .segmented { height: var(--row); }
-.edit-bar .segmented button { height: 100%; padding: 0 10px; font-size: var(--fs-md); }
-.edit-bar .primary { height: calc(var(--row) + 2px); }
+/* Viewport tools keep the app's button sizes; segments get room for their words. */
+.edit-bar .segmented button { padding: 6px 10px; }
 /* Tips only forced on below the plate: disabled, yet it still reads as on; its title says why. */
 .viewport-view button[aria-pressed='true']:disabled { opacity: 1; color: var(--paper); cursor: default; }
 .edit-size { display: flex; gap: 8px; align-items: center; }
@@ -441,7 +436,7 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
   /* The count leads; Delete, Clear and Done stay together at the end. */
   .edit-row + .edit-row { justify-content: flex-end; }
   .edit-count { margin-right: auto; }
-  .viewport--editing .viewport-view { top: 40px; bottom: auto; }
+  .viewport--editing .viewport-view { top: 56px; bottom: auto; }
   footer { height: auto; min-height: 32px; flex-wrap: wrap; gap: 6px 18px; padding: 8px 16px; }
   footer strong { margin-left: 0; flex-basis: 100%; }
 }
@@ -461,6 +456,5 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 @media (pointer: coarse) {
   .edit-hint { display: none; }
   button, .segmented button, .panel .segmented button { min-height: 40px; }
-  .edit-bar .segmented { height: auto; }
   .problems button { min-height: 36px; }
 }

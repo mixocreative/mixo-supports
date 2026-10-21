@@ -153,7 +153,7 @@ function EditPreview({ hover, unit, brush }: { hover: Hover; unit: PrintUnit; br
 
 /**
  * Paints the whole body (tip, pillar, foot) of the supports of the given contacts over the
- * supports themselves, red unless told otherwise: solid at `opacity` 1, see-through otherwise. Shares the support
+ * supports themselves in `color` (red by default): solid at `opacity` 1, see-through below it. Shares the support
  * geometry's vertices.
  */
 function SupportBodies({ supports, geometry, ids, opacity, color = PREVIEW.remove }: { supports: GeneratedSupportMesh; geometry: THREE.BufferGeometry; ids: readonly string[]; opacity: number; color?: string }) {
