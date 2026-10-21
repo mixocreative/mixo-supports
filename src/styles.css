@@ -214,6 +214,8 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
   gap: 6px;
 }
 .viewport--editing canvas { cursor: crosshair; }
+/* Select supports → Click: the arrow, as the Click tool button shows (Drag over sets its brush cursor itself). */
+.viewport--pick canvas { cursor: default; }
 .edit-frame {
   position: absolute;
   inset: 0;
@@ -262,6 +264,19 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
   white-space: nowrap;
 }
 .edit-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 16px; align-items: center; }
+/* Big icon + text choice between two ways of using a tool (Select supports: Click | Drag over). */
+.tool-choice { display: flex; gap: 4px; }
+.tool-choice button {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 40px; margin: 0; padding: 0 14px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink);
+  font-size: 13px; font-weight: 500; white-space: nowrap;
+}
+.tool-choice button svg { width: 19px; height: 19px; flex: none; }
+.tool-choice button:hover:not([aria-pressed='true']) { background: var(--sunken); }
+.tool-choice button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.tool-choice button:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
 /* One-line guidance inside the edit bar (zones above the plate). */
 .edit-note { margin: 0; max-width: 100%; white-space: normal; text-align: right; color: var(--muted); }
 kbd {

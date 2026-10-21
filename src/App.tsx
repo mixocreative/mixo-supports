@@ -40,6 +40,7 @@ import { CodedError, errorStatus } from './editing/errors';
 import { checkStatus, exportStatus, joinRun, tallyChecks, type CheckTally } from './editing/check';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
+import { BrushIcon, PointerIcon } from './components/ToolIcons';
 import type { BrushMode, ZonesReturn } from './editing/types';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
@@ -867,7 +868,7 @@ export default function App() {
         </section>
       </aside>
       <section
-        className={`viewport${isDraggingOver ? ' viewport--dropping' : ''}${editMode === 'off' ? '' : ' viewport--editing'}${editMode === 'zones' ? ' viewport--zones' : ''}`}
+        className={`viewport${isDraggingOver ? ' viewport--dropping' : ''}${editMode === 'off' ? '' : ' viewport--editing'}${editMode === 'zones' ? ' viewport--zones' : ''}${editMode === 'edit' && editTool === 'select' && selectStyle === 'click' ? ' viewport--pick' : ''}`}
         onDragOver={(event) => { event.preventDefault(); setIsDraggingOver(true); }}
         onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDraggingOver(false); }}
         onDrop={dropImport}
@@ -958,9 +959,9 @@ export default function App() {
                 <button aria-pressed={editTool === 'add'} onClick={() => send({ type: 'setTool', tool: 'add' })} {...hint('Click the model to add a support; right-click or Ctrl+click a support to remove it')}>{t('Add supports')}</button>
                 <button aria-pressed={editTool === 'select'} onClick={() => send({ type: 'setTool', tool: 'select' })} {...hint('Pick supports to delete several at once')}>{t('Select supports')}</button>
               </div>
-              {editTool === 'select' && <div className="segmented" role="group" aria-label={t('How to select')}>
-                <button aria-pressed={selectStyle === 'click'} onClick={() => send({ type: 'setSelectStyle', style: 'click' })} {...hint('Click supports one at a time to select them')}>{t('Click')}</button>
-                <button aria-pressed={selectStyle === 'brush'} onClick={() => send({ type: 'setSelectStyle', style: 'brush' })} {...hint('Drag over supports to select many at once, starting anywhere in the view')}>{t('Drag over')}</button>
+              {editTool === 'select' && <div className="tool-choice" role="group" aria-label={t('How to select')}>
+                <button aria-pressed={selectStyle === 'click'} onClick={() => send({ type: 'setSelectStyle', style: 'click' })} {...hint('Click supports one at a time to select them')}><PointerIcon />{t('Click')}</button>
+                <button aria-pressed={selectStyle === 'brush'} onClick={() => send({ type: 'setSelectStyle', style: 'brush' })} {...hint('Drag over supports to select many at once, starting anywhere in the view')}><BrushIcon />{t('Drag over')}</button>
               </div>}
               {editTool === 'select' && selectStyle === 'brush' && <>
                 <div className="segmented" role="group" aria-label={t('Dragging over supports')}>

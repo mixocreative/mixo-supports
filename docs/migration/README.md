@@ -153,9 +153,9 @@ quoted here are the ones the code uses.
   vertices, its own `components`). Use the core-frame
   camera height: Y is not mirrored, so the Babylon camera's `position.y` works directly.
 - Feed `tipsCamera(tips, belowPlate(camera.y))` every frame and `tipsToggle(tips, largeModel)` on
-  the button: tips turn on by themselves below the plate, the button is disabled only while
-  painting zones (forced on there) and
-  switches them off; crossing the plate hands the choice back to the camera (UI spec section 8).
+  the button: tips turn on by themselves below the plate and a click switches them off; crossing
+  the plate hands the choice back to the camera. The button is disabled only while painting zones,
+  which force tips on without changing the state (UI spec sections 4 and 8).
 - Not the same as the `previewMode: 'ONLY_TIP'` setting, which builds a tips-only mesh.
 
 ### 5.5 No-support zone layer: vertex colours
