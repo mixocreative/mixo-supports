@@ -15,7 +15,7 @@ import { contactsInBrush, notSelected } from '../editing/selection';
 import type { BrushMode, EditMode, EditTool, SelectStyle, ZoneKind } from '../editing/types';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
 import { zoneOverlay } from '../core/supports/overlayMesh';
-import { belowPlate, boundsSphere, frameView, spotView, tipsView } from '../editing/view';
+import { belowPlate, boundsSphere, frameView, spotView } from '../editing/view';
 import { brushFill, createStroke, zoneFill } from '../editing/stroke';
 import { missAction, pickAction, type PickInput } from '../editing/pick';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../core/supports/zones';
@@ -78,8 +78,8 @@ export interface ObjectViewportProps {
   focus?: { point: Vector; area: number; seq: number };
   /** A new `seq` turns the camera to look straight up at the selection (or every object). */
   viewRequest?: ViewRequest;
-  /** Show only the contact tips; the view also does so on its own from below the plate. */
-  tipsOnly: boolean;
+  /** Show only the contact tips (the host decides: editing/view `tipsShown`). */
+  tipsView: boolean;
   /** The camera went below the plate (or back above it). */
   onBelowPlate: (below: boolean) => void;
 }
@@ -370,11 +370,10 @@ function FocusCamera({ focus }: { focus?: { point: Vector; area: number; seq: nu
   return null;
 }
 
-interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMeshes' | 'gizmoMode' | 'onTransform' | 'problems' | 'focus' | 'viewRequest' | 'tipsOnly' | 'onBelowPlate'> {
+interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMeshes' | 'gizmoMode' | 'onTransform' | 'problems' | 'focus' | 'viewRequest' | 'onBelowPlate'> {
   problems: readonly SupportProblem[];
   unit: PrintUnit;
   supports?: GeneratedSupportMesh;
-  tipsView: boolean;
   selected: boolean;
   active: boolean;
   onGroup?: (group: THREE.Group | null) => void;
@@ -645,12 +644,6 @@ function UnitTransformControls({ mode, object, onDraggingChanged, onCommit }: {
 export default function ObjectViewport(props: ObjectViewportProps) {
   const [dragging, setDragging] = useState(false);
   const [activeGroup, setActiveGroup] = useState<THREE.Group | null>(null);
-  const [below, setBelow] = useState(false);
-  const { onBelowPlate } = props;
-  const plateSide = useCallback((now: boolean) => {
-    setBelow(now);
-    onBelowPlate(now);
-  }, [onBelowPlate]);
   const { scene } = props;
   const selected = new Set(scene.selectedUnitIds);
   const activeId = scene.activeUnitId;
@@ -675,13 +668,13 @@ export default function ObjectViewport(props: ObjectViewportProps) {
     <Grid args={[240, 240]} cellSize={5} cellThickness={0.5} cellColor="#d3cdc2" sectionSize={25} sectionThickness={0.9} sectionColor="#b9b1a3" fadeDistance={400} fadeStrength={1.5} infiniteGrid />
     <OrbitControls makeDefault enabled={!dragging} />
     <FocusCamera focus={props.focus} />
-    <PlateSide onChange={plateSide} />
+    <PlateSide onChange={props.onBelowPlate} />
     <ViewCamera view={props.viewRequest} unitIds={scene.selectedUnitIds.length > 0 ? scene.selectedUnitIds : scene.units.map((unit) => unit.id)} />
     {scene.units.map((unit) => <UnitObject
       key={unit.id}
       unit={unit}
       supports={props.supportMeshes.get(unit.id)}
-      tipsView={tipsView(props.tipsOnly, below)}
+      tipsView={props.tipsView}
       selected={selected.has(unit.id)}
       active={unit.id === activeId}
       editMode={props.editMode}

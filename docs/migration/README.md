@@ -148,10 +148,12 @@ quoted here are the ones the code uses.
 
 ### 5.4 Tips only: `tipsOf`
 
-- When `tipsView(tipsOnly, belowPlate(camera.y))` is true, draw and pick `tipsOf(mesh)` instead
+- When `tipsShown(tips, largeModel)` is true, draw and pick `tipsOf(mesh)` instead
   of the full mesh (tips and necks, same vertices, its own `components`). Use the core-frame
   camera height: Y is not mirrored, so the Babylon camera's `position.y` works directly.
-- Below the plate the Tips only toggle shows pressed and disabled (UI spec section 8).
+- Feed `tipsCamera(tips, belowPlate(camera.y))` every frame and `tipsToggle(tips, largeModel)` on
+  the button: tips turn on by themselves below the plate, the button is never disabled and
+  switches them off; crossing the plate hands the choice back to the camera (UI spec section 8).
 - Not the same as the `previewMode: 'ONLY_TIP'` setting, which builds a tips-only mesh.
 
 ### 5.5 No-support zone layer: vertex colours

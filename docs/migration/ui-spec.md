@@ -8,7 +8,7 @@ does, for the final review.
 
 | # | Heuristic | How the UI meets it | Where |
 |---|---|---|---|
-| 1 | Visibility of system status | Status line for every step (tool in use, what a click did, counts); mode frame + badge naming mode and tool; progress bar per worker job; Tips only shows pressed (and why it is disabled) below the plate; selected count in the edit bar | spec §5, §6; `editing/status.ts` |
+| 1 | Visibility of system status | Status line for every step (tool in use, what a click did, counts); mode frame + badge naming mode and tool; progress bar per worker job; Tips only turns on by itself below the plate, shows pressed and its hint says a click switches it off; selected count in the edit bar | spec §5, §6; `editing/status.ts` |
 | 2 | Match between system and the real world | Printing words from slicers (Chitubox/Lychee names in hints), millimetres, "build plate", one glossary term per concept in en / zh-Hant / ja, add-on wording | `docs/migration/glossary.md`, settings hints |
 | 3 | User control and freedom | Undo / Redo everywhere (Ctrl+Z, buttons), undo floor per mode, Esc / Done leaves a mode, destructive clears run at once with an Undo toast, Esc first drops a selection | spec §1, §2, §11 |
 | 4 | Consistency and standards | One stroke machine for Drag over and zones; Paint / Erase / Brush only for zones, Select / Drag over / Size for picking; same Done + Esc in both modes; red = selected / about to go, blue = zones | spec §3, §4, §6; glossary test |

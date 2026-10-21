@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { belowPlate, boundsSphere, fitDirection, frameView, FRAME_MARGIN, MIN_SPOT_RADIUS, spotView, tipsView } from './view';
+import { belowPlate, boundsSphere, fitDirection, frameView, FRAME_MARGIN, MIN_SPOT_RADIUS, spotView, TIPS_START, tipsCamera, tipsShown, tipsToggle, type TipsState } from './view';
 
 const horizontal = ([x, , z]: number[]) => Math.hypot(x!, z!);
 
@@ -84,13 +84,75 @@ describe('boundsSphere', () => {
   });
 });
 
-describe('belowPlate and tipsView', () => {
-  it('shows only the tips from below the plate or when asked', () => {
+describe('belowPlate', () => {
+  it('is true only with the camera under y = 0', () => {
     expect(belowPlate(-0.001)).toBe(true);
     expect(belowPlate(0)).toBe(false);
     expect(belowPlate(10)).toBe(false);
-    expect(tipsView(false, false)).toBe(false);
-    expect(tipsView(true, false)).toBe(true);
-    expect(tipsView(false, true)).toBe(true);
+  });
+});
+
+describe('Tips only (tipsShown, tipsCamera, tipsToggle)', () => {
+  const at = (manual: boolean | null, below: boolean): TipsState => ({ manual, below });
+
+  it('starts above the plate, following the camera, tips off', () => {
+    expect(TIPS_START).toEqual({ manual: null, below: false });
+    expect(tipsShown(TIPS_START)).toBe(false);
+  });
+
+  it('shows the manual choice when there is one, else turns on by itself below the plate', () => {
+    const table: [TipsState, boolean, boolean][] = [
+      // state, auto-on above the plate (large model), shown
+      [at(null, false), false, false],
+      [at(null, true), false, true],
+      [at(true, false), false, true],
+      [at(false, true), false, false],
+      [at(true, true), false, true],
+      [at(false, false), false, false],
+      [at(null, false), true, true],
+      [at(false, false), true, false],
+    ];
+    for (const [state, autoAbove, shown] of table) expect(tipsShown(state, autoAbove), JSON.stringify([state, autoAbove])).toBe(shown);
+  });
+
+  it('crossing the plate (either way) hands the choice back to the camera; staying on one side keeps it', () => {
+    const table: [TipsState, boolean, TipsState][] = [
+      [at(false, true), false, at(null, false)],
+      [at(true, false), true, at(null, true)],
+      [at(false, false), true, at(null, true)],
+      [at(true, true), false, at(null, false)],
+      [at(false, true), true, at(false, true)],
+      [at(true, false), false, at(true, false)],
+    ];
+    for (const [state, below, next] of table) expect(tipsCamera(state, below), JSON.stringify([state, below])).toEqual(next);
+    const same = at(false, true);
+    expect(tipsCamera(same, true)).toBe(same);
+  });
+
+  it('a click always flips what shows, also below the plate (the button is never disabled)', () => {
+    const table: [TipsState, boolean, TipsState][] = [
+      [at(null, false), false, at(true, false)],
+      [at(null, true), false, at(false, true)],
+      [at(false, true), false, at(true, true)],
+      [at(true, false), false, at(false, false)],
+      [at(null, false), true, at(false, false)],
+    ];
+    for (const [state, autoAbove, next] of table) expect(tipsToggle(state, autoAbove), JSON.stringify([state, autoAbove])).toEqual(next);
+  });
+
+  it('walks the owner story: Bottom view turns tips on, a click turns them off, Fit view keeps them off, orbiting above and back turns them on again', () => {
+    let state = TIPS_START;
+    state = tipsToggle(state); // on above the plate
+    expect(tipsShown(state)).toBe(true);
+    state = tipsToggle(state); // and off again
+    expect(tipsShown(state)).toBe(false);
+    state = tipsCamera(state, true); // Bottom view
+    expect(tipsShown(state)).toBe(true);
+    state = tipsToggle(state); // switched off below the plate
+    expect(tipsShown(state)).toBe(false);
+    state = tipsCamera(state, true); // Fit view keeps the angle below
+    expect(tipsShown(state)).toBe(false);
+    state = tipsCamera(tipsCamera(state, false), true); // above, then below again
+    expect(tipsShown(state)).toBe(true);
   });
 });

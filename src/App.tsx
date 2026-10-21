@@ -31,6 +31,7 @@ import type { Vector } from './core/vec3';
 import { problemInZone, type ZoneStamp } from './core/supports/zones';
 import { deleteCommands } from './supports/selection';
 import { contactsInBrush } from './editing/selection';
+import { TIPS_START, tipsCamera, tipsShown, tipsToggle } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
 import { checkJobOf, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './supports/unitSupports';
 import { keyAction } from './editing/keys';
@@ -162,8 +163,9 @@ export default function App() {
   const [viewRequest, setViewRequest] = useState<ViewRequest>();
   const requestView = useCallback((kind: ViewRequest['kind']) => setViewRequest((current) => ({ kind, seq: (current?.seq ?? 0) + 1 })), []);
   // Contact tips view (Blender: Only Tip + Ctrl+Numpad 7): view only, settings and export untouched.
-  const [tipsOnly, setTipsOnly] = useState(false);
-  const [belowPlate, setBelowPlate] = useState(false);
+  /** Tips only: the user's choice, else on by itself below the plate (editing/view). */
+  const [tips, setTips] = useState(TIPS_START);
+  const onBelowPlate = useCallback((below: boolean) => setTips((state) => tipsCamera(state, below)), []);
   /** Unit to open in Support Edit Mode once it is the active unit ("Fix" on a check finding). */
   const [editTarget, setEditTarget] = useState<string>();
   const [modelVisible, setModelVisible] = useState(true);
@@ -176,6 +178,9 @@ export default function App() {
   /** A heavy active object takes no hand edits (Edit Mode, zones); generation and export still run. */
   const activeHeavy = isHeavy(activeUnit);
   const heavyHint = activeHeavy ? t(HEAVY_EDIT, { n: triangleCount(activeUnit!).toLocaleString() }) : undefined;
+  /** A large model on the plate keeps the tips view on above the plate too (to stay smooth), until switched off. */
+  const largeTips = useMemo(() => scene.units.some((unit) => meshTier(triangleCount(unit), RUNTIME) === 'large'), [scene.units]);
+  const tipsOn = tipsShown(tips, largeTips);
   // Support Edit Mode belongs to the active unit: it ends when that unit goes (delete, undo).
   // The selection empties on leaving a mode or changing the active object; ids that no longer
   // exist (undo, regeneration) drop out.
@@ -461,11 +466,9 @@ export default function App() {
       if (tier === 'heavy') {
         setStatus('{name} is a heavy model ({n} triangles, over {budget}): the view shows a simplified copy and hand editing is off. Generate and export use the full model.', vars);
       } else if (plate > TRIANGLE_BUDGET[RUNTIME]) {
-        // The plate warning wins over the large-model note (Tips only still turns on).
-        if (tier === 'large') setTipsOnly(true);
+        // The plate warning wins over the large-model note (Tips only still turns on: see largeTips).
         setStatus('The plate now holds {n} triangles, more than the {budget} this app is tuned for; it may slow down.', { n: plate.toLocaleString(), budget: TRIANGLE_BUDGET[RUNTIME].toLocaleString() });
       } else if (tier === 'large') {
-        setTipsOnly(true);
         setStatus('{name} is a large model ({n} triangles): the view shows contact tips only to stay smooth. Turn off Tips only to see whole supports.', vars);
       } else {
         setStatus('Imported 1 object. Generate to place supports.', { n: added.length }, 'Imported {n} objects. Generate to place supports.');
@@ -893,16 +896,15 @@ export default function App() {
           problems={currentProblems}
           {...(focus ? { focus } : {})}
           {...(viewRequest ? { viewRequest } : {})}
-          tipsOnly={tipsOnly}
-          onBelowPlate={setBelowPlate}
+          tipsView={tipsOn}
+          onBelowPlate={onBelowPlate}
         />
         <div className="viewport-view" role="group" aria-label={t('View')}>
           <button
-            className={tipsOnly || belowPlate ? 'active' : ''}
-            aria-pressed={tipsOnly || belowPlate}
-            onClick={() => setTipsOnly((value) => !value)}
-            disabled={belowPlate}
-            {...hint(belowPlate ? 'Below the plate: only contact tips show. Orbit above it for full supports.' : 'Show only the contact tips: no pillars, braces or raft. Export stays full.')}
+            className={tipsOn ? 'active' : ''}
+            aria-pressed={tipsOn}
+            onClick={() => setTips((state) => tipsToggle(state, largeTips))}
+            {...hint(tipsOn ? 'Only contact tips show. Turns on by itself below the plate; click to switch off. Export stays full.' : 'Show only the contact tips: no pillars, braces or raft. Turns on by itself below the plate. Export stays full.')}
           >{t('Tips only')}</button>
           <button onClick={() => requestView('fit')} disabled={scene.units.length === 0} {...hint('Frame the selection from the current angle')}>{t('Fit view')}</button>
           <button onClick={() => requestView('bottom')} disabled={scene.units.length === 0} {...hint('Look straight up at the selection to check contact points')}>{t('Bottom view')}</button>

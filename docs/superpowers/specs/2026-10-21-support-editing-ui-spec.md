@@ -196,7 +196,7 @@ Note for the glossary (Task 12): ja counts supports with both 本 and 個.
 - Bottom view: camera at `(cx, cy − d, cz + d·1e-3)` looking at the centre (a hair off vertical keeps the up axis defined; front of the plate at the bottom).
 - Fit view: same direction as now (target → camera), unit length; camera at centre + dir·d. Camera on its target → the start direction (70, 60, 90). Near-vertical (horizontal share < 1e-3) → `(0, y, |y|·1e-3)`.
 - Show me (check findings, also Fix): `spotView` frames the spot like Fit view, from the current direction, treating it as a sphere of radius max(5 mm, √area).
-- Tips view: on while the Tips only toggle is on or the camera is below the plate (y < 0); below the plate the toggle shows pressed and disabled.
+- Tips view (`TipsState`, `tipsShown` / `tipsCamera` / `tipsToggle`): state `{ manual: boolean | null, below }`, `null` = follow the camera. Shown = `manual ?? (below || largeModel)` (a large-tier model on the plate keeps tips on above the plate too). The camera crossing the plate (y < 0 ↔ y ≥ 0, either way) resets `manual` to `null`, so going below turns tips on by itself. The Tips only button is never disabled: a click sets `manual = !shown`, so tips can be switched off below the plate (and stay off through Fit view, which keeps the angle) until the camera crosses the plate again. Button pressed = shown. Hint when shown: "Only contact tips show. Turns on by itself below the plate; click to switch off. Export stays full."; otherwise "Show only the contact tips: no pillars, braces or raft. Turns on by itself below the plate. Export stays full."
 
 ## 9. Conventions and the Babylon adapter
 

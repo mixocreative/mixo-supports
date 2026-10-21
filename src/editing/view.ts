@@ -77,7 +77,34 @@ export function belowPlate(cameraY: number): boolean {
   return cameraY < 0;
 }
 
-/** Only contact tips show: the Tips only toggle, or the camera below the plate. */
-export function tipsView(tipsOnly: boolean, below: boolean): boolean {
-  return tipsOnly || below;
+/**
+ * Tips only: `manual` is the user's own choice (null: follow the camera); `below` is the plate
+ * side the camera was last seen on. Below the plate the tips view turns on by itself, but the
+ * user can always switch it off (or on); crossing the plate either way hands the choice back to
+ * the camera.
+ */
+export interface TipsState {
+  manual: boolean | null;
+  below: boolean;
+}
+
+/** Start: camera above the plate, following it. */
+export const TIPS_START: TipsState = { manual: null, below: false };
+
+/**
+ * Only contact tips show: the user's choice when there is one, else below the plate (or, with
+ * `autoAbove`, also above it: a large model keeps the tips view on to stay smooth).
+ */
+export function tipsShown(state: TipsState, autoAbove = false): boolean {
+  return state.manual ?? (state.below || autoAbove);
+}
+
+/** The camera is on the given side of the plate: crossing it resets the choice to automatic. */
+export function tipsCamera(state: TipsState, below: boolean): TipsState {
+  return below === state.below ? state : { manual: null, below };
+}
+
+/** The Tips only button: flips what shows now, on either side of the plate. */
+export function tipsToggle(state: TipsState, autoAbove = false): TipsState {
+  return { ...state, manual: !tipsShown(state, autoAbove) };
 }
