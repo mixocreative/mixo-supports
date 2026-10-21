@@ -71,16 +71,15 @@ export interface Column {
 
 const RING_SAMPLES = 48;
 const MIN_LENGTH = 1e-4;
-/** Half-width of a Cross tip's plates, as a fraction of the tip radius. */
-export const CROSS_HALF_WIDTH = 0.4;
-/** Unit tip profiles (radius 1) in the tube's normal / binormal plane, counter-clockwise. */
-export const TIP_PROFILES: Readonly<Record<Exclude<TipSection, 'ROUND'>, readonly Point2[]>> = {
-  SQUARE: [[1, 1], [-1, 1], [-1, -1], [1, -1]],
-  CROSS: (() => {
-    const a = CROSS_HALF_WIDTH;
-    return [[1, a], [a, a], [a, 1], [-a, 1], [-a, a], [-1, a], [-1, -a], [-a, -a], [-a, -1], [a, -1], [a, -a], [1, -a]] as Point2[];
-  })(),
-};
+/**
+ * Unit tip profile (radius 1) in the tube's normal / binormal plane, counter-clockwise: a square
+ * of side Ø, or a cross of two plates Ø long and `crossWidth` % of Ø wide.
+ */
+export function tipProfile(section: Exclude<TipSection, 'ROUND'>, crossWidth: number): Point2[] {
+  if (section === 'SQUARE') return [[1, 1], [-1, 1], [-1, -1], [1, -1]];
+  const a = crossWidth / 100;
+  return [[1, a], [a, a], [a, 1], [-a, 1], [-a, a], [-1, a], [-1, -a], [-a, -a], [-a, -1], [a, -1], [a, -a], [1, -a]];
+}
 
 /** True when the tip is not the stock round cone (SLASG's own geometry). */
 function shapedTip(settings: Readonly<LiveSupportSettings>): boolean {
@@ -91,7 +90,7 @@ function shapedTip(settings: Readonly<LiveSupportSettings>): boolean {
 function addTip(builder: MeshBuilder, nodes: readonly CurveNode[], settings: Readonly<LiveSupportSettings>, segments: number): void {
   const radius = tipRadius(settings);
   const path = settings.tipProfile === 'STRAIGHT' ? nodes.map((node) => ({ ...node, radius })) : nodes;
-  builder.tube(path, segments, settings.tipSection === 'ROUND' ? undefined : TIP_PROFILES[settings.tipSection]);
+  builder.tube(path, segments, settings.tipSection === 'ROUND' ? undefined : tipProfile(settings.tipSection, settings.tipCrossWidth));
 }
 
 /** Index of the last node at full pillar radius; the nodes after it taper into a contact on the model. */

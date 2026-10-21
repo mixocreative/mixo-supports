@@ -1,7 +1,8 @@
 import type { TriangleMesh } from '../analysis/types';
 import type { PrintUnit } from '../state/project';
+import type { ExportFilePlan } from '../supports/export';
 import type { GeneratedSupportMesh } from '../supports/mesh';
-import type { MeshMode, MeshWorkerRequest, MeshWorkerResponse, MeshWorkerUnit } from './meshProtocol';
+import type { BuildRequest, ExportedFile, ExportRequest, MeshMode, MeshWorkerResponse, MeshWorkerUnit, UnitPayload } from './meshProtocol';
 
 export interface MeshProgress {
   unitId: string;
@@ -10,17 +11,32 @@ export interface MeshProgress {
   stage: string;
 }
 
-interface Job {
-  request: MeshWorkerRequest;
-  source: TriangleMesh;
+interface BuildJob {
+  request: BuildRequest;
+  sources: Map<string, TriangleMesh>;
   resolve: (mesh: GeneratedSupportMesh | undefined) => void;
   reject: (error: Error) => void;
 }
 
+interface ExportJob {
+  request: ExportRequest;
+  sources: Map<string, TriangleMesh>;
+  onProgress: (fraction: number, stage: string) => void;
+  resolve: (files: ExportedFile[]) => void;
+  reject: (error: Error) => void;
+}
+
+type Job = BuildJob | ExportJob;
+
+/** A running build is only cut short (worker restarted, caches lost) once it has run this long. */
+const RESTART_AFTER_MS = 800;
+
 /**
- * Builds support meshes off the main thread. `build` resolves with the mesh, or with
- * `undefined` when a newer request for the same unit and mode replaced it. Progress for the
- * running job is reported through `onProgress`; `onIdle` fires when nothing is pending.
+ * One background worker for support meshes. `build` resolves with the mesh, or with `undefined`
+ * when a newer request for the same unit and mode replaced it; a replaced build that is already
+ * running stops at once when it has run for a while (the worker is restarted and the other
+ * jobs are sent again). `exportFiles` builds full-resolution supports and the STL files in the
+ * worker. `forget` frees a deleted unit's model and caches in the worker.
  */
 export class SupportMeshClient {
   private worker: Worker | null = null;
@@ -28,6 +44,7 @@ export class SupportMeshClient {
   private readonly tokens = new WeakMap<TriangleMesh, number>();
   /** Source token the worker holds for each unit. */
   private readonly sent = new Map<string, number>();
+  private running: { jobId: number; since: number } | undefined;
   private nextToken = 1;
   private nextJob = 1;
 
@@ -37,18 +54,37 @@ export class SupportMeshClient {
   ) {}
 
   build(unit: PrintUnit, unitIndex: number, mode: MeshMode): Promise<GeneratedSupportMesh | undefined> {
-    let token = this.tokens.get(unit.source);
-    if (token === undefined) this.tokens.set(unit.source, (token = this.nextToken++));
-    const request: MeshWorkerRequest = { jobId: this.nextJob++, unitIndex, mode, sourceToken: token, unit: this.strip(unit, token) };
+    const request: BuildRequest = { kind: 'build', jobId: this.nextJob++, mode, ...this.payload(unit, unitIndex) };
+    this.cutShort((job) => job.request.kind === 'build' && job.request.unit.id === unit.id && job.request.mode === mode);
     return new Promise((resolve, reject) => {
-      this.jobs.set(request.jobId, { request, source: unit.source, resolve, reject });
+      this.jobs.set(request.jobId, { request, sources: new Map([[unit.id, unit.source]]), resolve, reject });
       this.post(request);
     });
+  }
+
+  exportFiles(units: readonly [PrintUnit, number][], files: ExportFilePlan[], onProgress: (fraction: number, stage: string) => void): Promise<ExportedFile[]> {
+    const request: ExportRequest = { kind: 'export', jobId: this.nextJob++, files, units: units.map(([unit, index]) => this.payload(unit, index)) };
+    return new Promise((resolve, reject) => {
+      this.jobs.set(request.jobId, { request, sources: new Map(units.map(([unit]) => [unit.id, unit.source])), onProgress, resolve, reject });
+      this.post(request);
+    });
+  }
+
+  /** The unit was deleted: free its model and caches in the worker. */
+  forget(unitId: string): void {
+    if (!this.sent.delete(unitId) || !this.worker) return;
+    this.worker.postMessage({ kind: 'forget', unitId });
   }
 
   dispose(): void {
     this.worker?.terminate();
     this.worker = null;
+  }
+
+  private payload(unit: PrintUnit, unitIndex: number): UnitPayload {
+    let token = this.tokens.get(unit.source);
+    if (token === undefined) this.tokens.set(unit.source, (token = this.nextToken++));
+    return { unitIndex, sourceToken: token, unit: this.strip(unit, token) };
   }
 
   /** Placement regions and contact arrays are not needed; the model goes only once. */
@@ -63,7 +99,30 @@ export class SupportMeshClient {
     return out;
   }
 
-  private post(request: MeshWorkerRequest): void {
+  /** Restart the worker when the running job is one `replaced` matches and has run long enough. */
+  private cutShort(replaced: (job: Job) => boolean): void {
+    const running = this.running && this.jobs.get(this.running.jobId);
+    if (!running || !replaced(running) || performance.now() - this.running!.since < RESTART_AFTER_MS) return;
+    this.worker?.terminate();
+    this.worker = null;
+    this.running = undefined;
+    this.sent.clear();
+    this.finish(running.request.jobId, () => (running.request.kind === 'build' ? (running as BuildJob).resolve(undefined) : (running as ExportJob).reject(new Error('cancelled'))));
+    // Everything else goes to the new worker, with the models it now lacks.
+    for (const job of this.jobs.values()) this.post(this.withSources(job));
+  }
+
+  private withSources(job: Job): BuildRequest | ExportRequest {
+    const add = (payload: UnitPayload): UnitPayload => {
+      const source = job.sources.get(payload.unit.id)!;
+      this.sent.set(payload.unit.id, payload.sourceToken);
+      return { ...payload, unit: { ...payload.unit, source } };
+    };
+    if (job.request.kind === 'build') return (job.request = { ...job.request, ...add(job.request) });
+    return (job.request = { ...job.request, units: job.request.units.map(add) });
+  }
+
+  private post(request: BuildRequest | ExportRequest): void {
     this.ensureWorker().postMessage(request);
   }
 
@@ -77,6 +136,7 @@ export class SupportMeshClient {
       for (const job of this.jobs.values()) job.reject(error);
       this.jobs.clear();
       this.sent.clear();
+      this.running = undefined;
       this.worker?.terminate();
       this.worker = null;
     };
@@ -87,21 +147,26 @@ export class SupportMeshClient {
   private receive(message: MeshWorkerResponse): void {
     const job = this.jobs.get(message.jobId);
     if (!job) return;
-    const { unit, mode } = job.request;
     switch (message.kind) {
+      case 'started':
+        this.running = { jobId: message.jobId, since: performance.now() };
+        return;
       case 'progress':
-        this.onProgress({ unitId: unit.id, mode, fraction: message.fraction, stage: message.stage });
+        if (job.request.kind === 'build') this.onProgress({ unitId: job.request.unit.id, mode: job.request.mode, fraction: message.fraction, stage: message.stage });
+        else (job as ExportJob).onProgress(message.fraction, message.stage);
         return;
       case 'need-source':
-        job.request.unit = { ...unit, source: job.source };
-        this.sent.set(unit.id, job.request.sourceToken);
-        this.post(job.request);
+        message.unitIds.forEach((id) => this.sent.delete(id));
+        this.post(this.withSources(job));
         return;
       case 'result':
-        this.finish(message.jobId, () => job.resolve(message.mesh));
+        this.finish(message.jobId, () => (job as BuildJob).resolve(message.mesh));
+        return;
+      case 'exported':
+        this.finish(message.jobId, () => (job as ExportJob).resolve(message.files));
         return;
       case 'dropped':
-        this.finish(message.jobId, () => job.resolve(undefined));
+        this.finish(message.jobId, () => (job as BuildJob).resolve(undefined));
         return;
       case 'error':
         this.finish(message.jobId, () => job.reject(new Error(message.message)));
@@ -112,8 +177,10 @@ export class SupportMeshClient {
   private finish(jobId: number, settle: () => void): void {
     const job = this.jobs.get(jobId)!;
     this.jobs.delete(jobId);
+    if (this.running?.jobId === jobId) this.running = undefined;
     settle();
+    if (job.request.kind !== 'build') return;
     const { unit, mode } = job.request;
-    if (![...this.jobs.values()].some((other) => other.request.unit.id === unit.id && other.request.mode === mode)) this.onIdle(mode, unit.id);
+    if (![...this.jobs.values()].some((other) => other.request.kind === 'build' && other.request.unit.id === unit.id && other.request.mode === mode)) this.onIdle(mode, unit.id);
   }
 }

@@ -1,9 +1,6 @@
-import { BufferAttribute, BufferGeometry, Group, Mesh, Vector3 } from 'three';
-import type { TriangleMesh } from '../analysis/types';
+import type { ProgressCallback, TriangleMesh } from '../analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
-import { applyTransform } from '../state/transform';
-import type { GeneratedSupportMesh } from './mesh';
-import { unitSupportMesh } from './unitSupports';
+import { transformPoint, type ModelTransform } from '../state/transform';
 
 export type ExportKind =
   | 'active-printable'
@@ -12,75 +9,87 @@ export type ExportKind =
   | 'separate-supports'
   | 'whole-printable';
 
-export interface ExportRequest {
-  kind: ExportKind;
+/** One mesh of an export file: the unit's model or its supports, placed by the unit transform. */
+export interface ExportPartPlan {
+  unitId: string;
+  content: 'model' | 'supports';
 }
 
-export interface ExportJob {
+export interface ExportFilePlan {
   fileName: string;
-  group: Group;
+  parts: ExportPartPlan[];
 }
 
-/** A single export group for the active unit or the whole scene, in plate space (y = 0 is the plate). */
-export function buildExportScene(scene: PrintScene, request: ExportRequest, meshes?: ReadonlyMap<string, GeneratedSupportMesh>): Group {
-  const group = new Group();
-  for (const [unit, index] of unitsFor(scene, request.kind)) addUnit(group, unit, index, request.kind.endsWith('supports'), meshes);
-  return group;
+/** A part ready to encode: unit-local mesh plus the transform to plate space (y = 0 is the plate). */
+export interface ExportPart {
+  mesh: TriangleMesh;
+  transform: ModelTransform;
 }
 
 /** The units (with their scene index) an export of this kind includes. */
 export function exportUnits(scene: PrintScene, kind: ExportKind): [PrintUnit, number][] {
-  return unitsFor(scene, kind);
+  const indexed = scene.units.map((unit, index) => [unit, index] as [PrintUnit, number]);
+  if (kind.startsWith('active')) return indexed.filter(([unit]) => unit.id === scene.activeUnitId);
+  return indexed;
+}
+
+/** Files of an export: one per unit for the separate modes, otherwise one for the plate. */
+export function planExport(scene: PrintScene, kind: ExportKind): ExportFilePlan[] {
+  const supportsOnly = kind.endsWith('supports');
+  const suffix = supportsOnly ? 'supports' : 'printable';
+  const partsOf = (unit: PrintUnit): ExportPartPlan[] => [
+    ...(supportsOnly ? [] : [{ unitId: unit.id, content: 'model' as const }]),
+    ...(unit.supports ? [{ unitId: unit.id, content: 'supports' as const }] : []),
+  ];
+  const units = exportUnits(scene, kind).map(([unit]) => unit);
+  if (kind === 'whole-printable') {
+    const parts = units.flatMap(partsOf);
+    return parts.length === 0 ? [] : [{ fileName: `scene-${suffix}.stl`, parts }];
+  }
+  const files = units.map((unit) => ({ name: `${unit.name}-${suffix}`, parts: partsOf(unit) })).filter((file) => file.parts.length > 0);
+  const names = uniqueFileNames(files.map((file) => file.name));
+  return files.map((file, index) => ({ fileName: names[index]!, parts: file.parts }));
 }
 
 /**
- * Download jobs: one per unit for the separate modes, otherwise one. Empty groups are skipped.
- * `meshes` supplies prebuilt export-mode support meshes by unit id (the app builds them in a
- * worker); missing ones are built here.
+ * Binary STL of the parts in plate space, written Z-up: STL (x, y, z) = web (x, -z, y).
+ * Empty meshes are skipped; `onProgress` follows the triangles written.
  */
-export function buildExportJobs(scene: PrintScene, request: ExportRequest, meshes?: ReadonlyMap<string, GeneratedSupportMesh>): ExportJob[] {
-  const suffix = request.kind.endsWith('supports') ? 'supports' : 'printable';
-  if (request.kind === 'whole-printable') {
-    const group = buildExportScene(scene, request, meshes);
-    return group.children.length === 0 ? [] : [{ fileName: `scene-${suffix}.stl`, group }];
-  }
-  const jobs = unitsFor(scene, request.kind).map(([unit, index]) => {
-    const group = new Group();
-    addUnit(group, unit, index, suffix === 'supports', meshes);
-    return { name: `${unit.name}-${suffix}`, group };
-  }).filter((job) => job.group.children.length > 0);
-  const names = uniqueFileNames(jobs.map((job) => job.name));
-  return jobs.map((job, index) => ({ fileName: names[index]!, group: job.group }));
-}
-
-/** Binary STL of every mesh in the group (world space), written Z-up: STL (x, y, z) = web (x, -z, y). */
-export function encodeStl(group: Group): ArrayBuffer {
-  group.updateMatrixWorld(true);
-  const meshes = group.children.filter((child): child is Mesh => child instanceof Mesh);
-  const triangles = meshes.reduce((sum, mesh) => sum + triangleCount(mesh.geometry), 0);
+export function encodeStl(parts: readonly ExportPart[], onProgress?: ProgressCallback): ArrayBuffer {
+  const triangles = parts.reduce((sum, part) => sum + part.mesh.indices.length / 3, 0);
   const buffer = new ArrayBuffer(84 + triangles * 50);
   const view = new DataView(buffer);
   view.setUint32(80, triangles, true);
   let offset = 84;
-  const [a, b, c, normal] = [new Vector3(), new Vector3(), new Vector3(), new Vector3()];
-  for (const mesh of meshes) {
-    const position = mesh.geometry.getAttribute('position');
-    const index = mesh.geometry.getIndex();
-    const corner = (triangle: number, vertex: number) => index ? index.getX(triangle * 3 + vertex) : triangle * 3 + vertex;
-    for (let triangle = 0; triangle < triangleCount(mesh.geometry); triangle += 1) {
-      a.fromBufferAttribute(position, corner(triangle, 0)).applyMatrix4(mesh.matrixWorld);
-      b.fromBufferAttribute(position, corner(triangle, 1)).applyMatrix4(mesh.matrixWorld);
-      c.fromBufferAttribute(position, corner(triangle, 2)).applyMatrix4(mesh.matrixWorld);
-      normal.subVectors(c, b).cross(new Vector3().subVectors(a, b)).normalize();
-      for (const vector of [normal, a, b, c]) {
-        view.setFloat32(offset, vector.x, true);
-        view.setFloat32(offset + 4, -vector.z, true);
-        view.setFloat32(offset + 8, vector.y, true);
-        offset += 12;
-      }
+  let written = 0;
+  const write = (x: number, y: number, z: number) => {
+    view.setFloat32(offset, x, true);
+    view.setFloat32(offset + 4, -z, true);
+    view.setFloat32(offset + 8, y, true);
+    offset += 12;
+  };
+  for (const { mesh, transform } of parts) {
+    const { positions, indices } = mesh;
+    const vertex = (index: number) => transformPoint(transform, [positions[index * 3]!, positions[index * 3 + 1]!, positions[index * 3 + 2]!]);
+    for (let t = 0; t < indices.length; t += 3) {
+      const a = vertex(indices[t]!);
+      const b = vertex(indices[t + 1]!);
+      const c = vertex(indices[t + 2]!);
+      // Normal of (c - b) x (a - b), the same winding the viewport renders.
+      const u = [c[0] - b[0], c[1] - b[1], c[2] - b[2]];
+      const v = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+      const n = [u[1]! * v[2]! - u[2]! * v[1]!, u[2]! * v[0]! - u[0]! * v[2]!, u[0]! * v[1]! - u[1]! * v[0]!];
+      const length = Math.hypot(n[0]!, n[1]!, n[2]!) || 1;
+      write(n[0]! / length, n[1]! / length, n[2]! / length);
+      write(a[0], a[1], a[2]);
+      write(b[0], b[1], b[2]);
+      write(c[0], c[1], c[2]);
       offset += 2;
+      written += 1;
+      if (onProgress && written % 20000 === 0) onProgress(written / triangles, 'Writing STL');
     }
   }
+  onProgress?.(1, 'Writing STL');
   return buffer;
 }
 
@@ -93,29 +102,4 @@ export function uniqueFileNames(names: readonly string[]): string[] {
     used.set(safe, count);
     return count === 1 ? `${safe}.stl` : `${safe}-${count}.stl`;
   });
-}
-
-function unitsFor(scene: PrintScene, kind: ExportKind): [PrintUnit, number][] {
-  const indexed = scene.units.map((unit, index) => [unit, index] as [PrintUnit, number]);
-  if (kind.startsWith('active')) return indexed.filter(([unit]) => unit.id === scene.activeUnitId);
-  return indexed;
-}
-
-function addUnit(group: Group, unit: PrintUnit, index: number, supportsOnly: boolean, meshes?: ReadonlyMap<string, GeneratedSupportMesh>): void {
-  if (!supportsOnly) group.add(meshObject(applyTransform(unit.source, unit.transform), `${unit.name} model`));
-  const supports = meshes?.get(unit.id) ?? unitSupportMesh(unit, index, 'export');
-  if (supports.indices.length > 0) group.add(meshObject(applyTransform(supports, unit.transform), `${unit.name} supports`));
-}
-
-function meshObject(mesh: TriangleMesh, name: string): Mesh {
-  const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(mesh.positions, 3));
-  geometry.setIndex(new BufferAttribute(mesh.indices, 1));
-  const object = new Mesh(geometry);
-  object.name = name;
-  return object;
-}
-
-function triangleCount(geometry: BufferGeometry): number {
-  return (geometry.getIndex()?.count ?? geometry.getAttribute('position').count) / 3;
 }

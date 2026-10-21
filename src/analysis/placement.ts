@@ -107,14 +107,6 @@ export function positionFromId(id: string): Vector | undefined {
   return match ? [Number(match[1]) / 100, Number(match[2]) / 100, Number(match[3]) / 100] : undefined;
 }
 
-/** Worker results are accepted only for the newest generation request of their unit. */
-export function isCurrentPlacement(
-  latest: Readonly<Record<string, number>>,
-  response: { unitId: string; revision: number },
-): boolean {
-  return latest[response.unitId] === response.revision;
-}
-
 function validateSettings(settings: PlacementSettings): void {
   if (!Number.isFinite(settings.spacing) || settings.spacing <= 0) throw new RangeError('spacing must be greater than zero');
   if (!Number.isFinite(settings.edgeInset) || settings.edgeInset < 0) throw new RangeError('edgeInset must be non-negative');

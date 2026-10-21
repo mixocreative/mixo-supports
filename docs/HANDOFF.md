@@ -32,7 +32,30 @@ After every implementation task, record: the completed requirement; changed file
 - Results: `npm test` 14 files, 132 tests pass. All 19 cases match on every compared dimension; 3-6 of 17 supports per 45-degree case are turned/shortened by SLASG pillar repulsion (0 at 30 degrees) and are counted, not compared.
 - Next step: read SLASG's neck/pillar node group in Blender to replicate pillar repulsion, then tighten the test to compare every support.
 
-## Latest completed step (UI languages)
+## Latest completed step (worker structure, support check, edit preview, responsive)
+
+Workers by role (`src/workers/`), each reporting progress to the viewport bar:
+- `meshClient` + `meshWorker`: two instances, preview and export. Keeps each unit's model (by
+  token) so remesh/raft caches (WeakMaps on the model) stay warm; `forget(unitId)` frees them when
+  a unit is deleted. A replaced build that has run > 800 ms is stopped by restarting the worker
+  (other jobs re-sent, models re-sent on `need-source`). Export = one worker job: full-resolution
+  supports + STL encoding (`encodeStl(parts)` in `supports/export.ts`, three-free), files returned
+  as transferred buffers. Preview builds wait 120 ms (typing bursts).
+- `analysisClient` + `analysisWorker`: pool of 1-3 workers (cores / 2), one job and one model per
+  worker; keyed jobs (`place:<unit>`, `check:<unit>`), a replaced running job's worker is replaced.
+- `importClient` + `importWorker`: STL parse + Z-up + weld; glTF parsed on the main thread
+  (GLTFLoader may decode images) and only welded in the worker. Lives only during an import.
+Support check (`analysis/supportCheck.ts`): plateau-aware downward local minima without a contact
+within Support spacing, and overhang samples beyond 1.5 x spacing; touching cells merge into one
+finding. UI: "Check supports" list (Show = focus camera, Fix = select + Support Edit Mode), markers
+drawn through the model, auto re-check 600 ms after a checked unit changes, check alongside every
+export with a warning. Edit preview: ghost tip (add) or Erase radius ring + doomed contacts (remove);
+Add/Remove click action for touch. Raycasts use three-mesh-bvh (models always, supports only while
+edited; supports take no pointer events otherwise). Layout: one grid row on desktop (canvas cannot
+grow the page); tablet viewport on top + two panel columns; phone one column. Cross plate width
+`tipCrossWidth` (% of tip Ø).
+
+## Previous step (UI languages)
 
 `src/i18n.ts`: English, Traditional Chinese (Taiwan) and Japanese. English text is the key;
 `t(key, vars)`, `plural(n, one, other)`; status lines are stored as `Message` (key + vars) so they

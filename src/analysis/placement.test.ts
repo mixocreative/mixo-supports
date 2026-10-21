@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { composeContacts, generatePlacement, isCurrentPlacement } from './placement';
+import { composeContacts, generatePlacement } from './placement';
 import type { PlacementSettings, TriangleMesh } from './types';
 
 const squareOverhang: TriangleMesh = {
@@ -149,14 +149,5 @@ describe('placement toggles', () => {
     const result = generatePlacement(squareOverhang, { ...settings, includeDownward: false, reinforceEdges: false });
     expect(result.points.length).toBeGreaterThan(0);
     expect(new Set(result.points.map((point) => point.source))).toEqual(new Set(['island']));
-  });
-});
-
-describe('isCurrentPlacement', () => {
-  it('accepts only the latest revision for a unit', () => {
-    const latest = { 'unit-a': 3 };
-    expect(isCurrentPlacement(latest, { unitId: 'unit-a', revision: 3 })).toBe(true);
-    expect(isCurrentPlacement(latest, { unitId: 'unit-a', revision: 2 })).toBe(false);
-    expect(isCurrentPlacement(latest, { unitId: 'unit-b', revision: 3 })).toBe(false);
   });
 });

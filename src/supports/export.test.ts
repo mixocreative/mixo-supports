@@ -1,11 +1,12 @@
-import { BufferAttribute, BufferGeometry, Group, Mesh } from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { importStlUnit } from '../state/import';
 import { describe, expect, it } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../analysis/types';
 import { emptyScene, type PrintScene, type PrintUnit } from '../state/project';
-import { buildExportJobs, buildExportScene, encodeStl, uniqueFileNames } from './export';
+import { encodeStl, planExport, uniqueFileNames, type ExportPart } from './export';
 import { meshBounds } from './mesh';
+import { applyTransform } from '../state/transform';
+import { unitSupportMesh } from './unitSupports';
 import { defaultSupportSettings } from './settings';
 
 const cube: TriangleMesh = {
@@ -34,47 +35,50 @@ const scene: PrintScene = {
 };
 
 describe('support export', () => {
+  /** Parts of a planned file, built the way the export worker builds them. */
+  const parts = (kind: Parameters<typeof planExport>[1], file = 0): ExportPart[] => planExport(scene, kind)[file]!.parts.map((part) => {
+    const index = scene.units.findIndex((unit) => unit.id === part.unitId);
+    const unit = scene.units[index]!;
+    return { mesh: part.content === 'model' ? unit.source : unitSupportMesh(unit, index, 'export'), transform: unit.transform };
+  });
+
   it('composes the active unit as printable or supports only', () => {
-    expect(buildExportScene(scene, { kind: 'active-printable' }).children).toHaveLength(2);
-    expect(buildExportScene(scene, { kind: 'active-supports' }).children).toHaveLength(1);
+    expect(planExport(scene, 'active-printable')).toEqual([{ fileName: 'Part-printable.stl', parts: [{ unitId: 'unit-a', content: 'model' }, { unitId: 'unit-a', content: 'supports' }] }]);
+    expect(planExport(scene, 'active-supports')[0]!.parts).toEqual([{ unitId: 'unit-a', content: 'supports' }]);
   });
 
   it('exports each unit separately and the whole scene together', () => {
-    const separate = buildExportJobs(scene, { kind: 'separate-printable' });
-    expect(separate).toHaveLength(scene.units.length);
-    expect(separate.map((job) => job.fileName)).toEqual(['Part-printable.stl', 'Part-printable-2.stl', 'Bare-printable.stl']);
-    expect(buildExportJobs(scene, { kind: 'separate-supports' })).toHaveLength(2);
-    expect(buildExportScene(scene, { kind: 'whole-printable' }).children.length).toBeGreaterThan(scene.units.length);
-    expect(buildExportJobs(scene, { kind: 'whole-printable' })).toEqual([expect.objectContaining({ fileName: 'scene-printable.stl' })]);
+    const separate = planExport(scene, 'separate-printable');
+    expect(separate.map((file) => file.fileName)).toEqual(['Part-printable.stl', 'Part-printable-2.stl', 'Bare-printable.stl']);
+    expect(planExport(scene, 'separate-supports')).toHaveLength(2);
+    const whole = planExport(scene, 'whole-printable');
+    expect(whole).toHaveLength(1);
+    expect(whole[0]!.fileName).toBe('scene-printable.stl');
+    expect(whole[0]!.parts.length).toBeGreaterThan(scene.units.length);
   });
 
   it('places geometry with the current unit transform and the plate at y = 0', () => {
-    const group = buildExportScene(scene, { kind: 'active-printable' });
-    const [model, supports] = group.children as Mesh[];
-    const position = (mesh: Mesh) => ({ positions: mesh.geometry.getAttribute('position').array as Float32Array, indices: new Uint32Array() });
-    expect(meshBounds(position(model!)).min[1]).toBeCloseTo(5);
-    expect(meshBounds(position(supports!)).min[1]).toBeCloseTo(0);
+    const [model, supports] = parts('active-printable');
+    expect(meshBounds(applyTransform(model!.mesh, model!.transform)).min[1]).toBeCloseTo(5);
+    expect(meshBounds(applyTransform(supports!.mesh, supports!.transform)).min[1]).toBeCloseTo(0);
   });
 
   it('never mutates source meshes and encodes binary STL with every triangle', () => {
     const before = Array.from(cube.positions);
-    const group = buildExportScene(scene, { kind: 'active-printable' });
-    const triangles = (group.children as Mesh[]).reduce((sum, mesh) => sum + mesh.geometry.getIndex()!.count / 3, 0);
-    const stl = encodeStl(group);
+    const file = parts('active-printable');
+    const triangles = file.reduce((sum, part) => sum + part.mesh.indices.length / 3, 0);
+    const progress: number[] = [];
+    const stl = encodeStl(file, (fraction) => progress.push(fraction));
 
     expect(new DataView(stl).getUint32(80, true)).toBe(triangles);
     expect(stl.byteLength).toBe(84 + triangles * 50);
     expect(Array.from(cube.positions)).toEqual(before);
+    expect(progress[progress.length - 1]).toBe(1);
   });
 
   it('writes STL Z-up and reads it back Y-up unchanged', () => {
     const tall: TriangleMesh = { positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 5, 0]), indices: new Uint32Array([0, 1, 2]) };
-    const group = new Group();
-    const geometry = new BufferGeometry();
-    geometry.setAttribute('position', new BufferAttribute(tall.positions, 3));
-    geometry.setIndex(new BufferAttribute(tall.indices, 1));
-    group.add(new Mesh(geometry));
-    const stl = encodeStl(group);
+    const stl = encodeStl([{ mesh: tall, transform: { position: [0, 0, 0], rotation: [0, 0, 0] } }]);
     const view = new DataView(stl);
     // Third vertex (web y = 5) is STL z = 5.
     expect([view.getFloat32(84 + 36, true), view.getFloat32(84 + 40, true), view.getFloat32(84 + 44, true)].map((v) => v + 0)).toEqual([0, 0, 5]);

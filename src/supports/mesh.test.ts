@@ -98,6 +98,9 @@ describe('contact tip shapes', () => {
     expect(Math.max(...cross)).toBeCloseTo(0.1 * Math.hypot(1, 0.4), 5);
     expect(Math.min(...cross)).toBeCloseTo(0.1 * Math.hypot(0.4, 0.4), 5);
     expect(componentsAreClosed(tip({ tipSection: 'CROSS' }))).toBe(true);
+    // Plate width follows tipCrossWidth (% of the tip Ø).
+    const thin = tipRing(tip({ tipSection: 'CROSS', tipCrossWidth: 20 }), sunk);
+    expect(Math.min(...thin)).toBeCloseTo(0.1 * Math.hypot(0.2, 0.2), 5);
   });
 
   it('keeps the point Ø along the whole tip when Straight', () => {

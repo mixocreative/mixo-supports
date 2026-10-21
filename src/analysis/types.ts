@@ -37,31 +37,5 @@ export interface PlacementResult {
   contactNormals: Float32Array;
 }
 
-export interface PlacementWorkerRequest {
-  jobId: number;
-  unitId: string;
-  revision: number;
-  mesh: TriangleMesh;
-  settings: PlacementSettings;
-}
-
-export interface PlacementWorkerResponse {
-  kind: 'result';
-  jobId: number;
-  unitId: string;
-  revision: number;
-  result: PlacementResult;
-}
-
-/** Sent while a placement job runs: `fraction` in [0, 1] and the current stage. */
-export interface PlacementWorkerProgress {
-  kind: 'progress';
-  jobId: number;
-  unitId: string;
-  revision: number;
-  fraction: number;
-  stage: string;
-}
-
 /** Reports how far a long job has come: `fraction` in [0, 1] and a short stage name. */
 export type ProgressCallback = (fraction: number, stage: string) => void;

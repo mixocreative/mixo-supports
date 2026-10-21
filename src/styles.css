@@ -23,7 +23,7 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 1080px; background: var(--paper); }
+body { margin: 0; background: var(--paper); }
 button, input { font: inherit; color: inherit; }
 
 /* ---- Controls ------------------------------------------------------------ */
@@ -70,6 +70,8 @@ h1 { margin: 0; font-size: 16px; font-weight: 500; letter-spacing: .08em; }
   height: calc(100vh - 56px - 32px);
   display: grid;
   grid-template-columns: 268px 1fr 300px;
+  /* One row the height of the window: panels scroll, the canvas never grows the page. */
+  grid-template-rows: minmax(0, 1fr);
 }
 .panel { padding: 20px; overflow: auto; background: var(--paper); }
 .left { border-right: 1px solid var(--line); }
@@ -154,7 +156,7 @@ h3 { font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: .06
 .panel .unit.active b { background: var(--red); border-color: var(--red); color: #fff; }
 
 /* ---- Viewport: a quiet light room --------------------------------------- */
-.viewport { position: relative; min-width: 0; background: #e9e6df; }
+.viewport { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #e9e6df; }
 .viewport canvas { height: 100% !important; }
 .viewport--dropping { outline: 1px solid var(--ink); outline-offset: -12px; }
 .viewport-drop-overlay {
@@ -336,3 +338,55 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 
 /* ---- Language switch ------------------------------------------------------ */
 .segmented.lang button { padding: 6px 10px; font-size: 12px; }
+
+/* ---- Support check ---------------------------------------------------------- */
+.problems { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.problems li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+}
+.problems button { padding: 4px 8px; font-size: 12px; white-space: nowrap; }
+.problem-text { display: grid; min-width: 0; }
+.problem-text small { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.problem-kind { width: 10px; height: 10px; border-radius: 50%; }
+.problem-kind.island { background: #b3261e; }
+.problem-kind.overhang { background: #d97706; }
+
+/* ---- Edit bar click action ---------------------------------------------- */
+.edit-bar .segmented button { padding: 5px 10px; }
+
+/* ---- Tablet and phone: viewport on top, panels below, the page scrolls ---- */
+@media (max-width: 1100px) {
+  header { height: auto; min-height: 56px; flex-wrap: wrap; gap: 10px; padding: 10px 16px; }
+  .header-actions { flex-wrap: wrap; gap: 10px; }
+  .workspace { height: auto; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: max(58vh, 320px) auto; grid-template-areas: 'view view' 'left right'; }
+  .viewport { grid-area: view; border-bottom: 1px solid var(--line); }
+  .left { grid-area: left; overflow: visible; }
+  .right { grid-area: right; overflow: visible; }
+  .edit-bar { left: 14px; right: 14px; top: auto; bottom: 12px; justify-content: space-between; flex-wrap: wrap; white-space: normal; }
+  footer { height: auto; min-height: 32px; flex-wrap: wrap; gap: 6px 18px; padding: 8px 16px; }
+  footer strong { margin-left: 0; flex-basis: 100%; }
+}
+@media (max-width: 700px) {
+  .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: max(58vh, 320px) auto auto; grid-template-areas: 'view' 'left' 'right'; }
+  .right { border-left: 0; border-top: 1px solid var(--line); }
+  .left { border-right: 0; }
+  .panel { padding: 16px; }
+  .header-actions { width: 100%; }
+  .header-actions > .primary { flex-basis: 100%; }
+  .brand small { display: none; }
+  .toolbar-group + .toolbar-group { padding-left: 0; border-left: 0; }
+  .edit-hint { display: none; }
+  .edit-badge span { display: none; }
+}
+/* Touch screens: no keyboard hints, roomier tap targets. */
+@media (pointer: coarse) {
+  .edit-hint { display: none; }
+  button, .segmented button, .panel .segmented button { min-height: 40px; }
+  .problems button { min-height: 36px; }
+}

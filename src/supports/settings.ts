@@ -25,6 +25,8 @@ export type LiveSupportSettings = {
   /** How far that tip end sinks into the model so it fuses (Lychee: Penetration); None only. */
   pointDepth: number;
   tipSection: TipSection;
+  /** Width of each plate of a Cross tip, in % of the tip Ø. */
+  tipCrossWidth: number;
   tipProfile: TipProfile;
   touchDiameter: number;
   touchDepth: number;
@@ -160,6 +162,7 @@ export const defaultSupportSettings: Readonly<LiveSupportSettings> = {
   pointDiameter: 0.2,
   pointDepth: 0.2,
   tipSection: 'ROUND',
+  tipCrossWidth: 40,
   tipProfile: 'TAPERED',
   treeSectionIncrement: 20,
   trussEnabled: true,
@@ -217,6 +220,7 @@ const ANGLE_90: NumericLimit = { min: 0, max: 90 };
 /** Blender property min/max limits; edits are clamped like Blender's UI. */
 export const settingLimits: Record<NumericKey, NumericLimit> = {
   pointDiameter: { min: 0.05, max: 1000 },
+  tipCrossWidth: { min: 10, max: 90 },
   // A bare tip must reach into the model to fuse with it.
   pointDepth: { min: 0.05, max: 1000 },
   touchDiameter: LENGTH,

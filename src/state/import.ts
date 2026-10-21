@@ -1,4 +1,4 @@
-import { BufferGeometry, Mesh, type Object3D } from 'three';
+import { BufferAttribute, BufferGeometry, Matrix4, Mesh, type Object3D } from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { TriangleMesh } from '../analysis/types';
 import { meshBounds } from '../supports/mesh';
@@ -33,17 +33,52 @@ export function geometryToMesh(geometry: BufferGeometry): TriangleMesh {
   return { positions, indices: new Uint32Array(welded.index!.array) };
 }
 
-/** Every mesh in a glTF scene becomes its own print unit, with its world transform baked in. */
-export function importGltfUnits(gltf: { scene: Object3D }, fileName: string): ImportedMesh[] {
+/** A glTF mesh's raw arrays and world matrix, cheap to collect on the main thread. */
+export interface RawMesh {
+  name: string;
+  positions: Float32Array;
+  indices?: Uint32Array;
+  /** Column-major 4x4 world matrix. */
+  matrix: number[];
+}
+
+/** Every mesh in a glTF scene, unwelded and with its world matrix (welded later, see weldRawMesh). */
+export function gltfRawMeshes(gltf: { scene: Object3D }, fileName: string): RawMesh[] {
   const base = baseName(fileName);
-  const units: ImportedMesh[] = [];
+  const meshes: RawMesh[] = [];
   gltf.scene.updateMatrixWorld(true);
   gltf.scene.traverse((object) => {
     if (!(object instanceof Mesh) || !(object.geometry instanceof BufferGeometry)) return;
-    const geometry = object.geometry.clone().applyMatrix4(object.matrixWorld);
-    units.push({ name: object.name || `${base} ${units.length + 1}`, mesh: geometryToMesh(geometry) });
+    const position = object.geometry.getAttribute('position');
+    const positions = new Float32Array(position.count * 3);
+    for (let vertex = 0; vertex < position.count; vertex += 1) {
+      positions[vertex * 3] = position.getX(vertex);
+      positions[vertex * 3 + 1] = position.getY(vertex);
+      positions[vertex * 3 + 2] = position.getZ(vertex);
+    }
+    const index = object.geometry.getIndex();
+    meshes.push({
+      name: object.name || `${base} ${meshes.length + 1}`,
+      positions,
+      ...(index ? { indices: Uint32Array.from(index.array) } : {}),
+      matrix: object.matrixWorld.toArray(),
+    });
   });
-  return units;
+  return meshes;
+}
+
+/** A raw glTF mesh as a print unit mesh: world matrix baked in, coincident vertices welded. */
+export function weldRawMesh(raw: RawMesh): ImportedMesh {
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(raw.positions, 3));
+  if (raw.indices) geometry.setIndex(new BufferAttribute(raw.indices, 1));
+  geometry.applyMatrix4(new Matrix4().fromArray(raw.matrix));
+  return { name: raw.name, mesh: geometryToMesh(geometry) };
+}
+
+/** Every mesh in a glTF scene becomes its own print unit, with its world transform baked in. */
+export function importGltfUnits(gltf: { scene: Object3D }, fileName: string): ImportedMesh[] {
+  return gltfRawMeshes(gltf, fileName).map(weldRawMesh);
 }
 
 /** STL is Z-up (slicers, CAD, Blender); the editor is Y-up: web (x, y, z) = STL (x, z, -y). */
