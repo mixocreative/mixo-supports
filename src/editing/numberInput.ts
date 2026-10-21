@@ -51,8 +51,18 @@ export function formatNumber(value: number): string {
 }
 
 /**
- * Esc in a number field: the value it had when the field got focus. Values inside the limits
- * apply while typing, so Esc must put that one back; undefined when nothing changed.
+ * Enter (or leaving) a number field: the value it now holds, the typed text held to the limits, or
+ * `current` when nothing was typed or the text is not a number. After Enter, Esc goes back to it.
+ */
+export function enteredValue(text: string | undefined, limits: NumberLimits, current: number): number {
+  const read = text === undefined ? undefined : readNumberInput(text, limits);
+  return read ? read.value : current;
+}
+
+/**
+ * Esc in a number field: the value it had when the field got focus, or was last entered with Enter.
+ * Values inside the limits apply while typing, so Esc must put that one back; undefined when
+ * nothing changed.
  */
 export function escapeValue(onFocus: number | undefined, current: number): number | undefined {
   return onFocus !== undefined && onFocus !== current ? onFocus : undefined;

@@ -265,7 +265,7 @@ was saved; try again, or export one object at a time."
 **Forgiving number fields** (`editing/numberInput.ts`): full-width input is folded (NFKC); "2", "2.5", "2mm", "2 mm", "2,5" (decimal
 comma), "45°", "30 %" are read as numbers; values outside a setting's limits are clamped, never
 rejected; text that is not a number leaves the value as it was. A value inside the limits applies
-as it is typed; blur or Enter applies the clamped value and tidies the text; Esc puts back the value the field had on focus;
+as it is typed; blur or Enter applies the clamped value and tidies the text; Esc puts back the value the field had on focus or was last entered with Enter;
 Arrow Up / Down step by the field's step.
 
 **Hover hints**: every tool button, slider and setting has a hint shown on hover (`title`) and read

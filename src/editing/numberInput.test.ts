@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { escapeValue, formatNumber, parseNumber, readNumberInput, stepNumber } from './numberInput';
+import { enteredValue, escapeValue, formatNumber, parseNumber, readNumberInput, stepNumber } from './numberInput';
 
 describe('parseNumber', () => {
   it.each([
@@ -59,5 +59,21 @@ describe('escapeValue', () => {
     expect(escapeValue(2, 2.5)).toBe(2);
     expect(escapeValue(2, 2)).toBeUndefined();
     expect(escapeValue(undefined, 2)).toBeUndefined();
+  });
+});
+
+describe('enteredValue', () => {
+  const limits = { min: 0, max: 10 };
+  it('Enter keeps the typed value (held to the limits), and Esc after it reverts only to that', () => {
+    // Focused at 2, typed "12 mm", Enter: 10 is committed and becomes what Esc goes back to.
+    const committed = enteredValue('12 mm', limits, 2);
+    expect(committed).toBe(10);
+    expect(escapeValue(committed, 10)).toBeUndefined();
+    expect(escapeValue(committed, 7)).toBe(10);
+  });
+
+  it('nothing typed, or text that is not a number, keeps the current value', () => {
+    expect(enteredValue(undefined, limits, 4)).toBe(4);
+    expect(enteredValue('abc', limits, 4)).toBe(4);
   });
 });
