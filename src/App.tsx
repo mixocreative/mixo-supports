@@ -21,6 +21,7 @@ import { setDisplayMesh, setPrebuiltBvh } from './state/meshExtras';
 import { detectRuntime, memoryInfo } from './state/runtime';
 import { assertGenerateMemory, assertMemoryCapacity, assertPlateCapacity, assertTriangleCapacity, memoryCapBytes, meshTier, refusalLimit, TRIANGLE_BUDGET } from './core/budget';
 import { TriangleGate } from './core/jobGate';
+import { PlateLedger, type PlateScene } from './core/plateLedger';
 import { estimateTriangles, ESTIMATE_HEAD_BYTES } from './core/import/estimate';
 import { emptyScene, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
@@ -82,6 +83,8 @@ const GLTF_ESTIMATE_BYTES = 16 * 1024 * 1024;
 const triangleCount = (unit: PrintUnit) => unit.source.indices.length / 3;
 /** Heavy-job admission for the whole app: placements, preview builds and exports share it. */
 const HEAVY_JOBS = new TriangleGate(refusalLimit(RUNTIME));
+/** The plate guard across imports that run at once: each holds what it adds while it reads. */
+const PLATE = new PlateLedger();
 /** A .glb's JSON chunk up to this size is read for its pre-parse triangle count. */
 const GLB_JSON_ESTIMATE_BYTES = 64 * 1024 * 1024;
 
@@ -234,6 +237,8 @@ export default function App() {
 
   useEffect(() => {
     const ids = new Set(scene.units.map((unit) => unit.id));
+    // Imported units the scene now shows are counted by the scene, no longer held by their import.
+    PLATE.settle(ids);
     for (const id of [...requested.current.keys()]) {
       if (ids.has(id)) continue;
       requested.current.delete(id);
@@ -409,11 +414,15 @@ export default function App() {
     let reading = accepted[0]!.name;
     // One controller for the whole drop: Cancel (in the activity list) stops it and nothing is added.
     const controller = new AbortController();
+    // What this drop adds is held on the plate while it reads, so an import started meanwhile counts
+    // it too; a failure or cancel releases it (core/plateLedger).
+    const reservation = PLATE.open();
+    const plateNow = (): PlateScene => ({ ids: new Set(sceneRef.current.units.map((unit) => unit.id)), triangles: sceneRef.current.units.reduce((sum, unit) => sum + triangleCount(unit), 0) });
     try {
       const imported: PreparedMesh[][] = [];
       const memoryCap = memoryCapBytes(memoryInfo());
-      // The plate's triangles, with each file of this drop as it is read.
-      let plate = sceneRef.current.units.reduce((sum, unit) => sum + triangleCount(unit), 0);
+      // The triangles this drop adds, with each file as it is read.
+      let adding = 0;
       for (const file of accepted) {
         reading = file.name;
         // Refused before anything is parsed or copied, whenever the file says how big it is.
@@ -421,7 +430,7 @@ export default function App() {
         if (estimate) {
           assertTriangleCapacity(file.name, estimate.triangles, RUNTIME, estimate.exact);
           assertMemoryCapacity(file.name, estimate.triangles, RUNTIME, memoryCap);
-          if (estimate.exact) assertPlateCapacity(file.name, plate + estimate.triangles, RUNTIME);
+          if (estimate.exact) reservation.hold(adding + estimate.triangles, plateNow(), (plate) => assertPlateCapacity(file.name, plate, RUNTIME));
         }
         const label = { key: 'Importing {name}', vars: { name: file.name } };
         if (/\.stl$/i.test(file.name)) {
@@ -437,8 +446,8 @@ export default function App() {
           imported.push(await importer().weld(raw, RUNTIME, label, controller.signal));
         }
         // Counted again from what was read (an estimate may have been short).
-        plate += imported[imported.length - 1]!.reduce((sum, item) => sum + item.mesh.indices.length / 3, 0);
-        assertPlateCapacity(file.name, plate, RUNTIME);
+        adding += imported[imported.length - 1]!.reduce((sum, item) => sum + item.mesh.indices.length / 3, 0);
+        reservation.hold(adding, plateNow(), (plate) => assertPlateCapacity(file.name, plate, RUNTIME));
       }
       for (const item of imported.flat()) {
         setPrebuiltBvh(item.display ?? item.mesh, item.bvh);
@@ -456,10 +465,11 @@ export default function App() {
         ...added.map((unit) => ({ type: 'unit/add' as const, unit, owned: true })),
         { type: 'selection/set', unitIds: added.map((unit) => unit.id), activeUnitId: added[0]!.id },
       ] });
+      reservation.commit(added.map((unit) => unit.id));
       // Big models: say what the editor does differently, once, at import.
       const heaviest = added.reduce((most, unit) => (triangleCount(unit) > triangleCount(most) ? unit : most));
       const tier = meshTier(triangleCount(heaviest), RUNTIME);
-      plate = units.reduce((sum, unit) => sum + triangleCount(unit), 0);
+      const plate = units.reduce((sum, unit) => sum + triangleCount(unit), 0);
       const vars = { name: heaviest.name, n: triangleCount(heaviest).toLocaleString(), budget: TRIANGLE_BUDGET[RUNTIME].toLocaleString() };
       if (tier === 'heavy') {
         setStatus('{name} is a heavy model ({n} triangles, over {budget}): the view shows a simplified copy and hand editing is off. Generate and export use the full model.', vars);
@@ -474,6 +484,7 @@ export default function App() {
         setStatus('Imported 1 object. Generate to place supports.', { n: added.length }, 'Imported {n} objects. Generate to place supports.');
       }
     } catch (error) {
+      reservation.release();
       if (isAbort(error)) setStatus('Import cancelled; nothing was added.');
       else setStatusMessage(errorStatus('import', codedJobError(error), { name: reading }));
     }
