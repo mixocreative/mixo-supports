@@ -1,6 +1,6 @@
 import { Grid, OrbitControls, TransformControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
 import { TransformControls as TransformControlsImpl } from 'three-stdlib';
@@ -12,6 +12,7 @@ import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../support
 import { brushSamples, contactsInBrush, notSelected, type BrushMode } from '../supports/selection';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
 import { zoneOverlay } from '../supports/overlayMesh';
+import { fitDirection } from '../editing/view';
 import { nextStamp, sameStamp, stampsAlong, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../supports/zones';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
@@ -105,7 +106,21 @@ type BvhGeometry = THREE.BufferGeometry & { boundsTree?: unknown; computeBoundsT
  * supports only while edited, the only time they take pointer events).
  */
 function useGeometry(mesh: TriangleMesh | undefined, bvh: boolean): THREE.BufferGeometry | undefined {
-  const geometry = useMemo(() => (mesh && mesh.indices.length > 0 ? toGeometry(mesh) as BvhGeometry : undefined), [mesh]);
+  // Built in the effect, not memoised, like `SupportBodies`: StrictMode runs mount, cleanup, mount
+  // on one render, and a memoised geometry would live on after the cleanup disposed it. A layout
+  // effect, so the render with the new geometry follows before any frame is drawn; until then
+  // (a new mesh) there is none, never one of another mesh.
+  const [built, setBuilt] = useState<{ mesh: TriangleMesh; geometry: BvhGeometry }>();
+  useLayoutEffect(() => {
+    if (!mesh || mesh.indices.length === 0) {
+      setBuilt(undefined);
+      return;
+    }
+    const next = { mesh, geometry: toGeometry(mesh) as BvhGeometry };
+    setBuilt(next);
+    return () => next.geometry.dispose();
+  }, [mesh]);
+  const geometry = built && built.mesh === mesh ? built.geometry : undefined;
   useEffect(() => {
     if (!geometry || !bvh) return;
     geometry.computeBoundsTree = computeBoundsTree;
@@ -116,7 +131,6 @@ function useGeometry(mesh: TriangleMesh | undefined, bvh: boolean): THREE.Buffer
     geometry.computeBoundsTree({ indirect: true } as Parameters<typeof computeBoundsTree>[0]);
     return () => geometry.disposeBoundsTree?.();
   }, [geometry, bvh]);
-  useEffect(() => () => geometry?.dispose(), [geometry]);
   return geometry;
 }
 
@@ -316,9 +330,8 @@ function ViewCamera({ view, unitIds }: { view?: ViewRequest; unitIds: readonly s
       // A hair off vertical keeps the orbit's up axis defined: front of the plate at the bottom.
       camera.position.set(sphere.center.x, sphere.center.y - distance, sphere.center.z + distance * 1e-3);
     } else {
-      const direction = camera.position.clone().sub(controls.target);
-      if (direction.lengthSq() === 0) direction.set(70, 60, 90);
-      camera.position.copy(sphere.center).add(direction.normalize().multiplyScalar(distance));
+      const direction = new THREE.Vector3(...fitDirection(toVector(camera.position.clone().sub(controls.target))));
+      camera.position.copy(sphere.center).add(direction.multiplyScalar(distance));
     }
     controls.target.copy(sphere.center);
     controls.update();

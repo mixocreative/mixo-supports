@@ -105,7 +105,7 @@ export default function App() {
   const [zonesReturn, setZonesReturn] = useState<'off' | 'edit'>('off');
   const [focus, setFocus] = useState<{ point: [number, number, number]; seq: number }>();
   const [viewRequest, setViewRequest] = useState<ViewRequest>();
-  const requestView = (kind: ViewRequest['kind']) => setViewRequest((current) => ({ kind, seq: (current?.seq ?? 0) + 1 }));
+  const requestView = useCallback((kind: ViewRequest['kind']) => setViewRequest((current) => ({ kind, seq: (current?.seq ?? 0) + 1 })), []);
   // Contact tips view (Blender: Only Tip + Ctrl+Numpad 7): view only, settings and export untouched.
   const [tipsOnly, setTipsOnly] = useState(false);
   const [belowPlate, setBelowPlate] = useState(false);
