@@ -16,6 +16,7 @@ conventions converts at its boundary.
 |---|---|
 | `vec3.ts` | Shared vector helpers (`add`, `subtract`, `scale`, `dot`, `cross`, `length`, `lengthSq`, `distance`, `distanceSq`, `normalize`) |
 | `conventions.ts` | Coordinate convention constants |
+| `jobs.ts` | `SupportJob`, `PlacementJob`, `CheckJob`: plain job inputs (unit-local mesh, transform, settings, contact edits, label), and `jobContacts` (final contacts from the edits) |
 | `analysis/types.ts` | `TriangleMesh`, placement settings and results |
 | `analysis/mesh.ts` | Downward-face classification, overhang limits, regions, labels |
 | `analysis/placement.ts` | Automatic contact placement (remesh minima, islands, edge anchors) |
@@ -35,7 +36,8 @@ Kept outside `src/core` because they import app modules or three.js:
 
 | Module | Reason |
 |---|---|
-| `src/supports/unitSupports.ts` | App glue: `PrintUnit`/`SupportSettings` (state/project) and three-based `state/transform`. Task 8 makes it the only `PrintUnit → SupportJob` adapter. |
+| `src/supports/unitSupports.ts` | App glue: the only `PrintUnit` → `SupportJob` / `PlacementJob` / `CheckJob` adapter, plus the per-unit caches the UI reads. |
+| `src/supports/jobRunner.ts` | Runs the core jobs (any thread). Uses three-based `state/transform`; moves into the core with a three-free transform module. |
 | `src/supports/selection.ts` | `deleteCommands` returns `SceneCommand`s for `PrintUnit` (state/project). The rest (toggle, paint, prune, brush) is pure and can move once the command part is split off. |
 | `src/supports/export.ts` | `PrintScene`/`PrintUnit` and `state/transform` (three). |
 | `src/supports/zones.test.ts` | Tests core `zones.ts` but builds orientations with `state/transform` (three); can move after Task 7's `core/transform.ts`. |
@@ -50,3 +52,15 @@ three in transitively.
 `blenderBvh.ts`, `kdtree.ts`, the Blender hash in `placement.ts` and the Blender-behaviour parts of
 `remesh.ts` are translations of Blender C source (GPL-2.0-or-later); Task 10 replaces them.
 `openvdbTables.ts` is OpenVDB-derived (attribution).
+
+## Jobs and workers
+
+The app runs the jobs in Web Workers through `src/workers/WorkerTask.ts`, a port of mixomesh's
+`WorkerTask`/`serveTask` contract (factory injection, progress, AbortSignal, timeout, revision echo,
+crash isolation, fallback); worker factories live only in `src/workers/factories.ts`.
+
+Model copies: placement and check jobs carry a copy of the model that is transferred to the worker
+and dropped with the job. The preview support-mesh worker keeps one model per unit in a token cache
+(`src/workers/sourceCache.ts`) so rebuilds keep their remesh caches warm; entries are freed when the
+unit is removed (`forget`) and the cache is capped at 512 MiB (least recently used first; an
+evicted model is sent again on demand). Exports run in a per-job worker that ends with the export.

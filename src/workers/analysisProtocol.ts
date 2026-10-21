@@ -1,29 +1,12 @@
-import type { CheckSettings, SupportProblem } from '../core/analysis/supportCheck';
-import type { PlacementResult, PlacementSettings, TriangleMesh } from '../core/analysis/types';
+import type { SupportProblem } from '../core/analysis/supportCheck';
+import type { PlacementResult } from '../core/analysis/types';
+import type { CheckJob, PlacementJob } from '../core/jobs';
 
-type Vector = [number, number, number];
+/** One analysis job: automatic placement or a support check (the mesh arrives as a transferred copy). */
+export type AnalysisTask =
+  | { kind: 'place'; job: PlacementJob }
+  | { kind: 'check'; job: CheckJob };
 
-/** Automatic contact placement for one unit (model already in its placement frame). */
-export interface PlaceRequest {
-  kind: 'place';
-  jobId: number;
-  mesh: TriangleMesh;
-  settings: PlacementSettings;
-}
-
-/** What the contacts leave unsupported (model and contacts in the same Y-up frame). */
-export interface CheckRequest {
-  kind: 'check';
-  jobId: number;
-  mesh: TriangleMesh;
-  contacts: Vector[];
-  settings: CheckSettings;
-}
-
-export type AnalysisRequest = PlaceRequest | CheckRequest;
-
-export type AnalysisResponse =
-  | { kind: 'progress'; jobId: number; fraction: number; stage: string }
-  | { kind: 'placed'; jobId: number; result: PlacementResult }
-  | { kind: 'checked'; jobId: number; problems: SupportProblem[] }
-  | { kind: 'error'; jobId: number; message: string };
+export type AnalysisResult =
+  | { kind: 'placed'; result: PlacementResult }
+  | { kind: 'checked'; problems: SupportProblem[] };

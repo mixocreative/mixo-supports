@@ -1,55 +1,64 @@
-import type { CheckSettings, SupportProblem } from '../core/analysis/supportCheck';
-import type { PlacementResult, PlacementSettings, TriangleMesh } from '../core/analysis/types';
-import type { AnalysisRequest, AnalysisResponse } from './analysisProtocol';
-
-type Vector = [number, number, number];
+import type { SupportProblem } from '../core/analysis/supportCheck';
+import type { PlacementResult, TriangleMesh } from '../core/analysis/types';
+import type { CheckJob, PlacementJob } from '../core/jobs';
+import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
+import { WorkerTask, type WorkerLike } from './WorkerTask';
 
 interface Job {
   key: string;
-  request: AnalysisRequest;
-  settle: (response: AnalysisResponse | undefined) => void;
+  task: AnalysisTask;
+  controller: AbortController;
+  settle: (result: AnalysisResult | undefined, error?: unknown) => void;
 }
 
 interface Slot {
-  worker: Worker;
+  runner: WorkerTask<AnalysisTask, AnalysisResult>;
   job?: Job;
 }
+
+/** A placement or check on a big model can take minutes; past this the worker is restarted and the job fails. */
+const ANALYSIS_TIMEOUT_MS = 10 * 60_000;
 
 /** Workers for placement and checks: enough to run a few units side by side, never many. */
 export function analysisPoolSize(cores = typeof navigator === 'undefined' ? 2 : navigator.hardwareConcurrency || 2): number {
   return Math.max(1, Math.min(3, Math.floor(cores / 2)));
 }
 
+/** A copy of the model whose buffers can move to a worker (the scene keeps its own). */
+function transferableCopy(mesh: TriangleMesh): TriangleMesh {
+  return { positions: mesh.positions.slice(), indices: mesh.indices.slice() };
+}
+
 /**
- * Placement and support checks off the main thread, on a small pool of workers (one job per
- * worker at a time, so each worker only holds the model it is working on). Jobs are keyed
- * (`place:<unit>`, `check:<unit>`): a new job replaces a queued one with the same key, and a
- * running one is stopped at once by replacing its worker. Replaced jobs resolve `undefined`.
+ * Placement and support checks off the main thread, on a small pool of WorkerTask runners (one job
+ * per worker at a time; each job carries its own copy of the model, so no worker keeps one).
+ * Jobs are keyed (`place:<unit>`, `check:<unit>`): a new job replaces a queued one with the same
+ * key, and a running one is stopped at once (its worker is replaced). Replaced jobs resolve
+ * `undefined`.
  */
 export class AnalysisClient {
   private readonly slots: Slot[] = [];
   private readonly queue: Job[] = [];
-  private nextJob = 1;
 
   constructor(
+    private readonly create: (() => WorkerLike) | null,
     private readonly onProgress: (key: string, fraction: number, stage: string) => void,
     private readonly size = analysisPoolSize(),
   ) {}
 
-  place(key: string, mesh: TriangleMesh, settings: PlacementSettings): Promise<PlacementResult | undefined> {
-    return this.submit(key, { kind: 'place', jobId: this.nextJob++, mesh, settings }).then((response) => (response?.kind === 'placed' ? response.result : undefined));
+  place(key: string, job: PlacementJob): Promise<PlacementResult | undefined> {
+    return this.submit(key, { kind: 'place', job }).then((result) => (result?.kind === 'placed' ? result.result : undefined));
   }
 
-  check(key: string, mesh: TriangleMesh, contacts: Vector[], settings: CheckSettings): Promise<SupportProblem[] | undefined> {
-    return this.submit(key, { kind: 'check', jobId: this.nextJob++, mesh, contacts, settings }).then((response) => (response?.kind === 'checked' ? response.problems : undefined));
+  check(key: string, job: CheckJob): Promise<SupportProblem[] | undefined> {
+    return this.submit(key, { kind: 'check', job }).then((result) => (result?.kind === 'checked' ? result.problems : undefined));
   }
 
   /** Stop and forget the job with this key, queued or running. */
   cancel(key: string): void {
     const queued = this.queue.findIndex((job) => job.key === key);
     if (queued >= 0) this.queue.splice(queued, 1)[0]!.settle(undefined);
-    const slot = this.slots.find((candidate) => candidate.job?.key === key);
-    if (slot) this.restart(slot);
+    this.slots.find((slot) => slot.job?.key === key)?.job!.controller.abort();
   }
 
   /** Keys of jobs that are queued or running. */
@@ -58,18 +67,14 @@ export class AnalysisClient {
   }
 
   dispose(): void {
-    for (const slot of this.slots) slot.worker.terminate();
+    for (const slot of this.slots) slot.runner.terminate();
     this.slots.length = 0;
   }
 
-  private submit(key: string, request: AnalysisRequest): Promise<AnalysisResponse | undefined> {
+  private submit(key: string, task: AnalysisTask): Promise<AnalysisResult | undefined> {
     this.cancel(key);
     return new Promise((resolve, reject) => {
-      this.queue.push({
-        key,
-        request,
-        settle: (response) => (response?.kind === 'error' ? reject(new Error(response.message)) : resolve(response)),
-      });
+      this.queue.push({ key, task, controller: new AbortController(), settle: (result, error) => (error ? reject(error) : resolve(result)) });
       this.pump();
     });
   }
@@ -77,44 +82,33 @@ export class AnalysisClient {
   private pump(): void {
     while (this.queue.length > 0) {
       let slot = this.slots.find((candidate) => !candidate.job);
-      if (!slot && this.slots.length < this.size) this.slots.push((slot = this.spawn()));
+      if (!slot && this.slots.length < this.size) {
+        slot = { runner: new WorkerTask({ create: this.create, name: 'Support analysis', timeoutMs: ANALYSIS_TIMEOUT_MS }) };
+        this.slots.push(slot);
+      }
       if (!slot) return;
       const job = this.queue.shift()!;
-      slot.job = job;
-      const { request } = job;
-      // The model moves to the worker; this side keeps no copy.
-      slot.worker.postMessage(request, [request.mesh.positions.buffer, request.mesh.indices.buffer]);
+      this.start(slot, job);
     }
   }
 
-  private spawn(): Slot {
-    const slot: Slot = { worker: new Worker(new URL('./analysisWorker.ts', import.meta.url), { type: 'module' }) };
-    slot.worker.onmessage = (event: MessageEvent<AnalysisResponse>) => {
-      const job = slot.job;
-      if (!job || job.request.jobId !== event.data.jobId) return;
-      if (event.data.kind === 'progress') {
-        this.onProgress(job.key, event.data.fraction, event.data.stage);
-        return;
-      }
+  private start(slot: Slot, job: Job): void {
+    slot.job = job;
+    // Copied only now, so a queued job that is replaced never costs a copy; the copy moves to the worker.
+    const mesh = transferableCopy(job.task.job.mesh);
+    const task = { ...job.task, job: { ...job.task.job, mesh } } as AnalysisTask;
+    slot.runner.run(task, {
+      transfer: [mesh.positions.buffer, mesh.indices.buffer],
+      signal: job.controller.signal,
+      onProgress: (fields) => {
+        if (typeof fields.fraction === 'number' && typeof fields.stage === 'string') this.onProgress(job.key, fields.fraction, fields.stage);
+      },
+    }).then(
+      (result) => job.settle(result),
+      (error: unknown) => (error instanceof Error && error.name === 'AbortError' ? job.settle(undefined) : job.settle(undefined, error)),
+    ).finally(() => {
       slot.job = undefined;
-      job.settle(event.data);
       this.pump();
-    };
-    slot.worker.onerror = (event) => {
-      event.preventDefault();
-      const job = slot.job;
-      this.restart(slot, false);
-      job?.settle({ kind: 'error', jobId: job.request.jobId, message: 'The analysis worker stopped.' });
-    };
-    return slot;
-  }
-
-  /** Replace a slot's worker (stops its job); the job resolves undefined unless `settle` is false. */
-  private restart(slot: Slot, settle = true): void {
-    const job = slot.job;
-    slot.worker.terminate();
-    this.slots.splice(this.slots.indexOf(slot), 1);
-    if (settle) job?.settle(undefined);
-    this.pump();
+    });
   }
 }

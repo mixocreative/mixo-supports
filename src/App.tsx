@@ -7,6 +7,7 @@ import type { SupportPoint } from './core/analysis/types';
 import ProgressBar, { type ProgressTask } from './components/ProgressBar';
 import { AnalysisClient } from './workers/analysisClient';
 import { ImportClient } from './workers/importClient';
+import { createAnalysisWorker, createImportWorker, createMeshWorker } from './workers/factories';
 import { SupportMeshClient, type MeshProgress } from './workers/meshClient';
 import type { MeshMode } from './workers/meshProtocol';
 import ObjectViewport, { acceptModelFile, type EditMode, type EditTool, type GizmoMode, type ViewRequest } from './components/ObjectViewport';
@@ -21,8 +22,8 @@ import { meshBounds, type GeneratedSupportMesh } from './core/supports/mesh';
 import type { Vector } from './core/vec3';
 import { problemInZone, type ZoneStamp } from './core/supports/zones';
 import { contactsInBrush, deleteCommands, paintSelection, pruneSelection, toggleSelection, type BrushMode } from './supports/selection';
-import { applyPreset, defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
-import { resolveSettings, unitContacts, unitRemovedCount, unitSupportMesh } from './supports/unitSupports';
+import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
+import { checkJobOf, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './supports/unitSupports';
 import { enterActsOn } from './editing/keys';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
@@ -159,16 +160,17 @@ export default function App() {
     fraction: progress.fraction,
   }), [setTask, unitName]);
   const meshIdle = useCallback((mode: MeshMode, unitId: string) => setTask(`mesh:${mode}:${unitId}`, undefined), [setTask]);
-  const preview = useCallback(() => (workers.current.preview ??= new SupportMeshClient(meshProgress, meshIdle)), [meshIdle, meshProgress]);
-  const exporter = useCallback(() => (workers.current.export ??= new SupportMeshClient(meshProgress, meshIdle)), [meshIdle, meshProgress]);
-  const analysis = useCallback(() => (workers.current.analysis ??= new AnalysisClient((key, fraction, stage) => {
+  const preview = useCallback(() => (workers.current.preview ??= new SupportMeshClient({ create: createMeshWorker, onProgress: meshProgress, onIdle: meshIdle })), [meshIdle, meshProgress]);
+  const exporter = useCallback(() => (workers.current.export ??= new SupportMeshClient({ create: createMeshWorker, mode: 'per-job', onProgress: meshProgress, onIdle: meshIdle })), [meshIdle, meshProgress]);
+  const analysis = useCallback(() => (workers.current.analysis ??= new AnalysisClient(createAnalysisWorker, (key, fraction, stage) => {
     const [kind, unitId] = key.split(':') as [string, string];
     setTask(key, { label: { key: kind === 'place' ? 'Placing contacts on {name}' : 'Checking supports on {name}', vars: { name: unitName(unitId) } }, stage, fraction });
   })), [setTask, unitName]);
-  const importer = useCallback(() => (workers.current.importer ??= new ImportClient()), []);
+  const importer = useCallback(() => (workers.current.importer ??= new ImportClient(createImportWorker)), []);
   useEffect(() => () => {
-    const { preview: p, export: e, analysis: a, importer: i } = workers.current;
-    p?.dispose(); e?.dispose(); a?.dispose(); i?.dispose();
+    // An import worker lives only while its import runs.
+    const { preview: p, export: e, analysis: a } = workers.current;
+    p?.dispose(); e?.dispose(); a?.dispose();
   }, []);
 
   // ---- Support meshes ------------------------------------------------------------------
@@ -225,7 +227,7 @@ export default function App() {
         buildTimers.current.delete(unit.id);
         if (requested.current.get(unit.id)?.unit !== unit) return;
         setTask(`mesh:preview:${unit.id}`, queued);
-        preview().build(unit, index, 'preview').then((mesh) => {
+        preview().build(unit.id, supportJobOf(unit, index, 'preview')).then((mesh) => {
           if (!mesh || requested.current.get(unit.id)?.unit !== unit) return;
           setSupportMeshes((current) => new Map(current).set(unit.id, mesh));
         }, (error: Error) => setStatus('Support building failed: {error}', { error: error.message }));
@@ -246,13 +248,13 @@ export default function App() {
         position: [unit.transform.position[0], unit.transform.position[1] + settings.liftHeight - lowest, unit.transform.position[2]],
         rotation: [...unit.transform.rotation],
       };
-      // Placement runs on the rotated but untranslated model so moving a unit never
-      // shifts the sampling lattice; automatic IDs (and suppressions) stay stable.
+      // Placement runs on the rotated but untranslated model (placementJobOf) so moving a unit
+      // never shifts the sampling lattice; automatic IDs (and suppressions) stay stable.
       const orientation = orientationOf(unit);
       const key = `place:${unit.id}`;
       setTask(key, { label: { key: 'Placing contacts on {name}', vars: { name: unitName(unit.id) } }, stage: 'Queued', fraction: 0 });
       placing.current.add(unit.id);
-      analysis().place(key, applyTransform(unit.source, orientation), toPlacementSettings(settings)).then((result) => {
+      analysis().place(key, placementJobOf(unit)).then((result) => {
         if (!result) return; // replaced by a newer request for this unit
         placing.current.delete(unit.id);
         setPendingCount(placing.current.size);
@@ -294,17 +296,11 @@ export default function App() {
   /** Checks the units' current contacts; resolves with the spots found outside and inside no-support zones. */
   const runCheck = useCallback(async (units: readonly PrintUnit[]): Promise<{ spots: number; inZone: number }> => {
     const checked = await Promise.all(units.filter((unit) => unit.supports).map(async (unit) => {
-      const settings = resolveSettings(unit.settings);
       const orientation = orientationOf(unit);
       const key = `check:${unit.id}`;
       setTask(key, { label: { key: 'Checking supports on {name}', vars: { name: unitName(unit.id) } }, stage: 'Queued', fraction: 0 });
       try {
-        const found = await analysis().check(
-          key,
-          applyTransform(unit.source, orientation),
-          unitContacts(unit).map((contact) => transformPoint(orientation, contact.position)),
-          { overhangAngleDegrees: settings.scatterAngle, spacing: settings.scatterSpacing },
-        );
+        const found = await analysis().check(key, checkJobOf(unit));
         if (!found) return { spots: 0, inZone: 0 };
         // Spots face down on the plate: plate down in unit-local space keeps a zone on the far side of a thin floor out.
         const down = inverseTransformDirection(orientation, [0, -1, 0]);
@@ -610,7 +606,8 @@ export default function App() {
     const checking = runCheck(units.map(([unit]) => unit)).catch(() => ({ spots: 0, inZone: 0 }));
     const label = { key: files.length === 1 ? 'Exporting {name}' : 'Exporting {n} files', vars: { name: files[0]!.fileName, n: files.length } };
     try {
-      const written = await exporter().exportFiles(units, files, (fraction, stage) => setTask('export', { label, stage, fraction }));
+      const jobs = units.map(([unit, index]) => ({ unitId: unit.id, job: supportJobOf(unit, index, 'export'), transform: unit.transform }));
+      const written = await exporter().exportFiles(jobs, files, (fraction, stage) => setTask('export', { label, stage, fraction }));
       for (const file of written) {
         const url = URL.createObjectURL(new Blob([file.buffer], { type: 'model/stl' }));
         const anchor = document.createElement('a');
