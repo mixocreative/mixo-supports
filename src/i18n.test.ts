@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { SETTING_GROUPS } from './components/SettingsPanel';
+import { PRESET_HINTS, ROOF_HINTS, SETTING_GROUPS } from './components/SettingsPanel';
+import { CodedError, ERROR_CODES, ERROR_CONTEXTS, errorStatus } from './editing/errors';
+import { undoToast } from './editing/toast';
 import { DICTIONARY, STAGE_KEYS, detectLanguage, plural, setLanguage, t, translateMessage } from './i18n';
 
 declare global {
@@ -10,9 +12,9 @@ declare global {
 
 /** Source text of every non-test module, keyed './path'. */
 const SOURCES = import.meta.glob<string>(['./**/*.ts', './**/*.tsx', '!./**/*.test.ts', '!./**/*.test.tsx'], { query: '?raw', import: 'default', eager: true });
-const UI_FILES = ['./App.tsx', './components/SettingsPanel.tsx', './components/ProgressBar.tsx', './components/ObjectViewport.tsx'];
+const UI_FILES = ['./App.tsx', './components/SettingsPanel.tsx', './components/ProgressBar.tsx', './components/ObjectViewport.tsx', './components/UndoToast.tsx', './editing/status.ts', './editing/errors.ts', './editing/toast.ts'];
 /** Quoted literals in UI files that are not shown to the user. */
-const NOT_UI = new Set(['Tab', 'Escape', 'Enter', 'Delete', 'Backspace', 'Unit', 'Mixo supports']);
+const NOT_UI = new Set(['Tab', 'Escape', 'Enter', 'Delete', 'Backspace', 'Unit', 'Mixo supports', 'ArrowUp', 'ArrowDown', 'CodedError', 'TimeoutError', '{error}']);
 
 /** Single-quoted literals that read like UI text: a lowercase letter and a space or capital start. */
 function uiLiterals(code: string): string[] {
@@ -30,6 +32,16 @@ describe('i18n', () => {
     for (const file of UI_FILES) {
       const code = SOURCES[file]!.replace(/^import .*$/gm, '');
       uiLiterals(code).filter((text) => !NOT_UI.has(text) && !text.includes('${')).forEach((text) => keys.add(text));
+      // Hover hints and export hints, parentheses included (uiLiterals skips text with brackets).
+      for (const match of code.matchAll(/(?:hint\(|hint: )'([^'\n]+)'/g)) keys.add(match[1]!);
+      for (const match of code.matchAll(/hint\([^)]*?\? '([^']+)' : '([^']+)'/g)) keys.add(match[1]!).add(match[2]!);
+    }
+    [...Object.values(PRESET_HINTS), ...Object.values(ROOF_HINTS)].forEach((text) => keys.add(text));
+    for (const context of ERROR_CONTEXTS) for (const code of ERROR_CODES) keys.add(errorStatus(context, new CodedError(code, 'x')).key);
+    for (const action of [{ kind: 'clearZones' }, { kind: 'clearManual' }, { kind: 'clearSelection', ids: ['a'], unitId: 'u' }] as const) {
+      const { message } = undoToast(1, action);
+      keys.add(message.key);
+      if (message.other) keys.add(message.other);
     }
     for (const group of SETTING_GROUPS) {
       keys.add(group.title);
