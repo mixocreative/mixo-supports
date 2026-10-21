@@ -21,7 +21,7 @@ import { meshBounds, type GeneratedSupportMesh, type Vector } from './supports/m
 import { problemInZone, type ZoneStamp } from './supports/zones';
 import { contactsInBrush, deleteCommands, paintSelection, pruneSelection, toggleSelection, type BrushMode } from './supports/selection';
 import { applyPreset, defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings, type SettingKey } from './supports/settings';
-import { resolveSettings, unitContacts, unitSupportMesh } from './supports/unitSupports';
+import { resolveSettings, unitContacts, unitRemovedCount, unitSupportMesh } from './supports/unitSupports';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
 type HistoryAction = { type: 'command'; command: SceneCommand } | { type: 'undo' } | { type: 'redo' };
@@ -679,7 +679,7 @@ export default function App() {
   const contactCounts = activeUnit ? {
     auto: unitContacts(activeUnit).filter((contact) => !contact.id.startsWith('manual-')).length,
     manual: activeUnit.manual.length,
-    removed: activeUnit.suppressed.length + activeUnit.deleted.length,
+    removed: unitRemovedCount(activeUnit),
   } : undefined;
   const selectedCount = scene.selectedUnitIds.length;
   const scopeLabel = selectedCount > 0 ? t('{n} selected', { n: selectedCount }) : t('all {n}', { n: scene.units.length });

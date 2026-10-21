@@ -1,6 +1,6 @@
 import { labelForIndex } from '../analysis/mesh';
 import type { ProgressCallback, SupportPoint } from '../analysis/types';
-import { composeContacts } from '../analysis/placement';
+import { composeContacts, hidingRemovals } from '../analysis/placement';
 import type { PrintUnit, SupportSettings } from '../state/project';
 import { applyTransform, inverseTransformMesh, transformDirection, transformPoint, type ModelTransform } from '../state/transform';
 import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from './mesh';
@@ -39,6 +39,22 @@ export function unitContacts(unit: PrintUnit): readonly SupportContact[] {
     contactCache.set(unit, contacts);
   }
   return contacts;
+}
+
+const removedCache = new WeakMap<PrintUnit, number>();
+
+/**
+ * How many of the unit's removals (suppressed and deleted IDs) hide a contact right now; one whose
+ * spot is gone after a regeneration, or that was made before any placement, is not counted.
+ */
+export function unitRemovedCount(unit: PrintUnit): number {
+  let count = removedCache.get(unit);
+  if (count === undefined) {
+    const settings = resolveSettings(unit.settings);
+    count = hidingRemovals(unit.placement?.points ?? [], unit.manual, unit.suppressed, settings.eraseRadius, unit.deleted, settings.scatterSpacing / 2).size;
+    removedCache.set(unit, count);
+  }
+  return count;
 }
 
 /**

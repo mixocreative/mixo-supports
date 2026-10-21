@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { composeContacts, generatePlacement } from './placement';
+import { composeContacts, generatePlacement, hidingRemovals } from './placement';
 import type { PlacementSettings, TriangleMesh } from './types';
 
 const squareOverhang: TriangleMesh = {
@@ -205,5 +205,29 @@ describe('placement toggles', () => {
     const result = generatePlacement(squareOverhang, { ...settings, includeDownward: false, reinforceEdges: false });
     expect(result.points.length).toBeGreaterThan(0);
     expect(new Set(result.points.map((point) => point.source))).toEqual(new Set(['island']));
+  });
+});
+
+describe('hidingRemovals', () => {
+  const point = (x: number, id = `auto-${Math.round(x * 100)}_100_0`) => ({ id, regionId: 0, position: [x, 1, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], source: 'interior' as const });
+  const auto = [point(0), point(1), point(3)];
+  const manual = [point(0.5, 'manual-a')];
+
+  it('lists only the removals that hide a contact', () => {
+    // auto-0 hides itself; auto-900 was never generated; manual-gone hides no manual contact.
+    expect([...hidingRemovals(auto, manual, ['auto-0_100_0', 'auto-900_100_0', 'manual-gone'])]).toEqual(['auto-0_100_0']);
+    // Within the erase radius a marker counts once for all it takes, a manual contact included.
+    expect([...hidingRemovals(auto, manual, ['auto-0_100_0'], 1.5)]).toEqual(['auto-0_100_0']);
+    // A marker whose spot moved away still counts while its radius reaches a contact.
+    expect([...hidingRemovals(auto, manual, ['auto-280_100_0'], 1)]).toEqual(['auto-280_100_0']);
+  });
+
+  it('counts exact deletions and moved deletions that still find a spot, not stale ones', () => {
+    expect([...hidingRemovals(auto, manual, [], 0, ['auto-100_100_0', 'auto-310_100_0', 'auto-2000_100_0'], 0.5)].sort())
+      .toEqual(['auto-100_100_0', 'auto-310_100_0']);
+  });
+
+  it('hides nothing without automatic contacts', () => {
+    expect(hidingRemovals([], [], ['auto-0_100_0'], 1.5, ['auto-100_100_0'], 1).size).toBe(0);
   });
 });

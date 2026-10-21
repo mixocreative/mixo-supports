@@ -101,12 +101,60 @@ export function composeContacts(
   deleted: readonly string[] = [],
   matchRadius = 0,
 ): SupportPoint[] {
+  return compose(auto, manual, suppressed, eraseRadius, deleted, matchRadius);
+}
+
+/**
+ * The `suppressed` and `deleted` IDs that hide at least one contact in `composeContacts` with
+ * the same arguments; a removal whose spot is gone (or that was never generated) hides nothing.
+ */
+export function hidingRemovals(
+  auto: readonly SupportPoint[],
+  manual: readonly SupportPoint[],
+  suppressed: readonly string[],
+  eraseRadius = 0,
+  deleted: readonly string[] = [],
+  matchRadius = 0,
+): Set<string> {
+  const hiding = new Set<string>();
+  compose(auto, manual, suppressed, eraseRadius, deleted, matchRadius, hiding);
+  return hiding;
+}
+
+/** `composeContacts`; with `hiding`, also collects every removal ID that hides a contact. */
+function compose(
+  auto: readonly SupportPoint[],
+  manual: readonly SupportPoint[],
+  suppressed: readonly string[],
+  eraseRadius: number,
+  deleted: readonly string[],
+  matchRadius: number,
+  hiding?: Set<string>,
+): SupportPoint[] {
   const hidden = new Set(suppressed);
-  const markers = suppressed.map(positionFromId).filter((point): point is Vector => point !== undefined);
-  const erased = (point: SupportPoint) => hidden.has(point.id)
-    || (eraseRadius > 0 && markers.some((marker) => distance(marker, point.position) < eraseRadius));
+  const markers = suppressed.flatMap((id) => {
+    const at = positionFromId(id);
+    return at ? [{ id, at }] : [];
+  });
+  const erased = (point: SupportPoint) => {
+    let gone = false;
+    if (hidden.has(point.id)) {
+      if (!hiding) return true;
+      hiding.add(point.id);
+      gone = true;
+    }
+    if (eraseRadius <= 0) return gone;
+    for (const marker of markers) {
+      if (!(distance(marker.at, point.position) < eraseRadius)) continue;
+      if (!hiding) return true;
+      hiding.add(marker.id);
+      gone = true;
+    }
+    return gone;
+  };
   const autoIds = new Set(auto.map((point) => point.id));
   const exact = new Set(deleted.filter((id) => autoIds.has(id)));
+  for (const id of exact) hiding?.add(id);
   let remainingAuto = auto.filter((point) => !erased(point) && !exact.has(point.id));
   // Deleted IDs absent from `auto` are from before the spots moved: drop the nearest one each.
   for (const id of deleted) {
@@ -118,7 +166,10 @@ export function composeContacts(
       const d = distance(target, point.position);
       if (d < nearestDistance) { nearest = point; nearestDistance = d; }
     }
-    if (nearest) remainingAuto = remainingAuto.filter((point) => point !== nearest);
+    if (nearest) {
+      hiding?.add(id);
+      remainingAuto = remainingAuto.filter((point) => point !== nearest);
+    }
   }
   return [...remainingAuto, ...manual.filter((point) => !erased(point))];
 }

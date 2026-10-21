@@ -4,7 +4,7 @@ import { identityTransform, type PrintUnit } from '../state/project';
 import { applyTransform } from '../state/transform';
 import { meshBounds } from './mesh';
 import { defaultSupportSettings } from './settings';
-import { resolveSettings, unitContacts, unitSupportMesh } from './unitSupports';
+import { resolveSettings, unitContacts, unitRemovedCount, unitSupportMesh } from './unitSupports';
 
 // A closed 10 mm cube: its underside (y = -5) is where the contacts sit.
 const source: TriangleMesh = {
@@ -42,6 +42,13 @@ describe('unit supports', () => {
     const zoned: PrintUnit = { ...unit, zones: [{ center: [0, -5, 0], radius: 1, normal: [0, -1, 0], kind: 'paint' }] };
     expect(unitContacts(zoned)).not.toBe(first);
     expect(unitContacts(zoned).map((contact) => contact.id)).toEqual(['manual-a']);
+  });
+
+  it('counts only the removals that hide a contact', () => {
+    expect(unitRemovedCount(unit)).toBe(1);
+    // A suppression of a spot that is gone and a deletion made before any placement hide nothing.
+    expect(unitRemovedCount({ ...unit, suppressed: ['auto-1', 'auto-9999_9999_9999'] })).toBe(1);
+    expect(unitRemovedCount({ ...unit, placement: undefined, deleted: ['auto-0'] })).toBe(0);
   });
 
   it('merges settings over defaults and composes contacts', () => {
