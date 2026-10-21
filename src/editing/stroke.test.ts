@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Vector } from '../core/vec3';
-import { brushFill, createStroke, zoneFill } from './stroke';
+import { createStroke, pathFill, zoneFill } from './stroke';
 
 describe('createStroke', () => {
   it('begins on the left button only', () => {
@@ -38,31 +38,27 @@ describe('createStroke', () => {
     const onEnd = vi.fn();
     const stroke = createStroke(onEnd);
     stroke.begin(0);
-    stroke.samples([0, 0, 0], brushFill(1));
+    stroke.samples([0, 0, 0], pathFill);
     expect(stroke.begin(2)).toBe(false);
     expect(onEnd).not.toHaveBeenCalled();
     expect(stroke.begin(0)).toBe(true);
     expect(onEnd).toHaveBeenCalledTimes(1);
     // The new stroke starts afresh: no gap filled from the old one.
-    expect(stroke.samples([5, 0, 0], brushFill(1))).toEqual([[5, 0, 0]]);
+    expect(stroke.samples([5, 0, 0], pathFill)).toEqual([[5, 0, 0]]);
   });
 
   it('samples nothing outside a stroke', () => {
-    expect(createStroke().samples([0, 0, 0], brushFill(1))).toEqual([]);
+    expect(createStroke().samples([0, 0, 0], pathFill)).toEqual([]);
   });
 });
 
-describe('Drag over fill (brushFill)', () => {
-  it('fills the gap of a fast drag and always paints the hit itself', () => {
+describe('Drag over fill (pathFill)', () => {
+  it('hands on the pointer path since the last event (the circle sweeps it), the point alone at the start', () => {
     const stroke = createStroke();
     stroke.begin(0);
-    expect(stroke.samples([0, 0, 0], brushFill(1))).toEqual([[0, 0, 0]]);
-    const jump = stroke.samples([3, 0, 0], brushFill(1));
-    expect(jump.at(-1)).toEqual([3, 0, 0]);
-    // Every point of the 3 mm jump lies within the 1 mm brush of some sample.
-    for (let x = 0; x <= 3; x += 0.25) expect(jump.some(([sx]) => Math.abs(sx - x) <= 1)).toBe(true);
-    // A short move paints only the hit.
-    expect(stroke.samples([3.2, 0, 0], brushFill(1))).toEqual([[3.2, 0, 0]]);
+    expect(stroke.samples([10, 20, 0], pathFill)).toEqual([[10, 20, 0]]);
+    expect(stroke.samples([80, 25, 0], pathFill)).toEqual([[10, 20, 0], [80, 25, 0]]);
+    expect(stroke.samples([81, 25, 0], pathFill)).toEqual([[80, 25, 0], [81, 25, 0]]);
   });
 });
 

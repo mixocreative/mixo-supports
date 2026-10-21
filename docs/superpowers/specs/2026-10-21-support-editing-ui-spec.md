@@ -25,7 +25,7 @@ tests) win. Numbers are millimetres, pixels or radians as stated.
 
 Session state (`EditSession`): `mode` (`off` | `edit` | `zones`), `zonesReturn` (`off` | `edit`),
 `activeUnitId`, `tool` (`add` | `select`), `selectStyle` (`click` | `brush` = "Drag over"),
-`brushMode` (`select` | `unselect`), `brushRadius` (mm, default 2, slider 0.5–10 step 0.5),
+`brushMode` (`select` | `unselect`), `brushRadius` (Drag over circle radius in screen px, default 24, slider 8–80 step 4),
 `zoneKind` (`paint` | `erase`), `zoneRadius` (mm, default 2, slider 0.5–10 step 0.5),
 `selection` (contact ids). Never in undo history.
 
@@ -114,13 +114,13 @@ Remove radius (setting `eraseRadius`, default 1.5 mm; formerly labelled "Erase r
 
 ## 4. Strokes (`createStroke`)
 
-- Starts on a **left** press on the active object's model or supports while a brush is on (Drag over, or zones). The host turns the camera orbit off for the stroke.
+- Zones: starts on a **left** press on the active object's model. Drag over: starts on a **left** press anywhere on the canvas (model, support, empty plate under the supports; HUD buttons are outside the canvas). The host turns the camera orbit off for the stroke; right and middle drags still orbit.
 - Ends on window pointerup, pointercancel, window blur, a pointer move with no left button held, the brush going away (tool/mode/object change), or unmount. `onEnd` runs once.
 - A zone stroke is one undo step, committed at the end (on the active object only, and only if still in zones).
 - Gap fill (hook `samples(point, fill)`):
-  - Drag over (`brushFill`): every hit paints; between two hits more than one radius and at most six radii apart, extra centres every ≤ r/2 (`stampsAlong`). Larger jumps (off the model and back) are not filled.
+  - Drag over (`pathFill`): the screen path since the last pointer event; the circle sweeps it as a capsule, so a fast drag skips nothing (exact, no spacing).
   - Zones (`zoneFill`): a stamp once the brush moved ≥ r/2 from the last stamp, with the same gap fill; filled stamps share the current hit's normal.
-- Drag over picks contacts within the brush radius whose normal faces the camera (`dot(normal, toCamera) > 0`), so it never reaches through a thin wall.
+- Drag over is screen space (`editing/screenBrush`): a circle of `brushRadius` px follows the pointer. Each support's body is reduced to axis segments per part (`bodySegments`: top ring centre → bottom ring centre of tip, neck, pillar, foot...; braces/raft/labels skipped), projected with the camera × object matrix (`projectBodies`, cached until the camera, object or canvas size changes). A support is hit when one of its projected segments comes within the radius of the swept path (`closestOnSegments`), and a part under the circle is visible: a ray from the camera to that 3D point (perspective-correct, `perspectiveParam`) hits no visible model nearer than 0.5 mm in front of it (`hiddenByModel`, `HIDE_TOLERANCE`). Only models occlude; supports never hide each other. Only ids the stroke would change are tested (`want`: unselected for Select, selected for Unselect). The hover preview and the paint use the same `brushHits`. In the tips view only the tips are bodies.
 
 ## 5. Status message keys (en / zh-Hant / ja)
 
@@ -130,7 +130,7 @@ From `editing/status.ts` and the App handlers. Translations live in `src/i18n.ts
 |---|---|---|
 | Support Edit Mode: click the model to add, right-click a support to remove. | 支撐編輯模式：點擊模型新增，右鍵點擊支撐移除。 | サポート編集モード：モデルをクリックで追加、サポートを右クリックで削除。 |
 | Support Edit Mode: click supports to select them, right-click a support to remove. | 支撐編輯模式：點擊支撐即可選取，右鍵點擊支撐移除。 | サポート編集モード：サポートをクリックで選択、サポートを右クリックで削除。 |
-| Support Edit Mode: drag over supports to select them, starting on the model. | 支撐編輯模式：從模型上開始拖曳經過支撐，即可選取。 | サポート編集モード：モデルの上からサポートをなぞって選択。 |
+| Support Edit Mode: drag the circle over supports to select them. Supports hidden behind the model are skipped. | 支撐編輯模式：拖曳圓圈經過支撐即可選取。被模型擋住的支撐不會選到。 | サポート編集モード：円をサポートの上でなぞって選択。モデルに隠れたサポートは選ばれません。 |
 | Paint where supports must not grow; drag on the model. | 在不要長出支撐的地方塗刷：在模型上拖曳。 | サポートを付けたくない場所を塗ります：モデル上をドラッグします。 |
 | Select an object to edit its supports. | 請選取一個物件來編輯它的支撐。 | サポートを編集するオブジェクトを選択してください。 |
 | Select an object first. | 請先選取一個物件。 | 先にオブジェクトを選択してください。 |
@@ -172,7 +172,7 @@ Note for the glossary (Task 12): ja counts supports with both 本 and 個.
 | Click hover over an unselected support | `#7f0019` | 0.45 see-through |
 | Drag over → Select preview (unselected under brush) | `#7f0019` | 0.45 see-through |
 | Drag over → Unselect preview (selected under brush, "turning back") | `#3b3631` | 0.45 see-through, taken off the solid red |
-| Drag over brush ring | Select `#7f0019`, Unselect `#3b3631` | 0.85 |
+| Drag over circle (DOM, `.brush-circle`) | Select `--red`, Unselect `--ink` border 1.5 px | fill 8 % |
 | Zone brush ring | Paint `#1d3461`, Erase `#3b3631` | 0.85 |
 | No-support zone layer | `#1d3461` | 0.55 in zones (`full`), 0.25 in Support Edit Mode (`faint`), per-vertex alpha, polygon offset −2 |
 | Check marker: island | `#b3261e` | 0.55, on top, radius min(2.5, 0.7 + √area / 10) |
@@ -185,7 +185,7 @@ Note for the glossary (Task 12): ja counts supports with both 本 and 個.
 
 - Click tolerance: 4 px pointer travel (`CLICK_TOLERANCE`).
 - Support Edit Mode canvas cursor: crosshair. Over the active object with a brush: a 24 × 24 brush icon, hot spot (3, 21), tip colour = Drag over red `#7f0019`, Paint zones blue `#1d3461`, Erase zones grey `#3b3631`; crosshair fallback.
-- Brush and zone radii: 0.5–10 mm, step 0.5, default 2.
+- Zone radius: 0.5–10 mm, step 0.5, default 2. Drag over circle radius: 8–80 px, step 4, default 24 (screen px: the same feel at any zoom, and defined over empty space where there is no depth).
 - Zone overlay refinement: edges ≤ 1 mm, at most 1 500 000 triangles; vertex grid cell 2 mm.
 
 ## 8. Camera numbers (`editing/view.ts`)

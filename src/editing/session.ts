@@ -16,7 +16,7 @@ export interface EditSession {
   tool: EditTool;
   selectStyle: SelectStyle;
   brushMode: BrushMode;
-  /** Drag-over reach in mm: a view setting, so the object's Remove radius stays untouched. */
+  /** Drag over circle radius in screen px (slider 8–80, step 4): a view setting, so the object's Remove radius stays untouched. */
   brushRadius: number;
   zoneKind: ZoneKind;
   /** Zone brush radius in mm. */
@@ -34,7 +34,7 @@ export const initialSession: EditSession = {
   tool: 'add',
   selectStyle: 'click',
   brushMode: 'select',
-  brushRadius: 2,
+  brushRadius: 24,
   zoneKind: 'paint',
   zoneRadius: 2,
   selection: NO_SELECTION,

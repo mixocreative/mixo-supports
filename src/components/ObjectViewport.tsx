@@ -11,12 +11,13 @@ import type { TriangleMesh } from '../core/analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
 import type { ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../core/supports/mesh';
-import { contactsInBrush, notSelected } from '../editing/selection';
+import { notSelected } from '../editing/selection';
+import { bodySegments, brushHits, hiddenByModel, projectBodies, type BodySegments } from '../editing/screenBrush';
 import type { BrushMode, EditMode, EditTool, SelectStyle, ZoneKind } from '../editing/types';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
 import { zoneOverlay } from '../core/supports/overlayMesh';
 import { belowPlate, boundsSphere, frameView, spotView } from '../editing/view';
-import { brushFill, createStroke, zoneFill } from '../editing/stroke';
+import { createStroke, pathFill, zoneFill, type Stroke } from '../editing/stroke';
 import { missAction, pickAction, type PickInput } from '../editing/pick';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../core/supports/zones';
 
@@ -59,13 +60,13 @@ export interface ObjectViewportProps {
    * tool switch would otherwise act with the previous tool; clicks read this instead of `editTool`.
    */
   liveTool?: () => { tool: EditTool; selectStyle: SelectStyle };
-  /** Present only while Select supports drags over supports (radius in mm). */
+  /** Present only while Select supports drags over supports (circle radius in screen px). */
   brush?: { radius: number; mode: BrushMode };
   /** Selected contact ids of the active object. */
   selection: ReadonlySet<string>;
   onToggleContact: (unitId: string, contactId: string) => void;
-  /** `center` in unit-local space; `facing` is the unit-local unit vector from `center` toward the camera. */
-  onPaint: (unitId: string, center: Vector, facing: Vector, mode: BrushMode) => void;
+  /** Drag over: the contacts whose supports the circle passed over (editing/screenBrush). */
+  onPaint: (unitId: string, ids: readonly string[], mode: BrushMode) => void;
   /** Present only in zones mode: the zone brush (radius in mm). */
   zoneBrush?: { radius: number; kind: ZoneKind };
   /** How strongly the no-support zone layer shows on the active object. */
@@ -92,7 +93,7 @@ const ZONE_OPACITY = { full: 0.55, faint: 0.25 } as const;
 const SEE_THROUGH = 0.45;
 /** Brush cursor over the active object: a brush icon (tip at the hot spot), crosshair where unsupported. */
 const brushCursor = (tip: string) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1f1b17" stroke-width="1.6" stroke-linejoin="round"><path d="M20.5 3.5 11 13l-1.9-1.9 9.5-9.5z" fill="#fbfaf7"/><path d="M9.1 11.1 11 13c0 3-2.4 5.6-7.5 7.5 0-4.6 1.8-8.6 5.6-9.4z" fill="${tip}"/></svg>`)}") 3 21, crosshair`;
-/** Drag over (red tip), Paint zones (blue) and Erase zones (grey). */
+/** Drag over (red tip, with its circle: `useScreenBrush`), Paint zones (blue) and Erase zones (grey). */
 const BRUSH_CURSOR = { select: brushCursor(PREVIEW.remove), paint: brushCursor(PREVIEW.zone), erase: brushCursor(PREVIEW.ring) };
 
 function toGeometry(mesh: TriangleMesh): THREE.BufferGeometry {
@@ -150,8 +151,6 @@ interface Hover {
   normal: THREE.Vector3;
   /** The click would remove (Ctrl, or a support under the pointer). */
   remove: boolean;
-  /** Drag over: unit-local unit vector from `point` toward the camera. */
-  facing?: THREE.Vector3;
 }
 
 function toVector(vector: THREE.Vector3): Vector {
@@ -379,6 +378,144 @@ interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMe
   onGroup?: (group: THREE.Group | null) => void;
 }
 
+/** Models hide supports from Drag over; supports never hide each other. */
+const OCCLUDER = { occluder: true };
+
+/**
+ * Drag over in screen space (rules: editing/screenBrush): a circle of `brush.radius` px follows
+ * the pointer over the canvas; supports of the active object whose body it passes over, and that
+ * are not hidden behind a model there, are previewed and, while the left button is held, painted.
+ * A stroke may start anywhere on the canvas (model, support or empty plate); right and middle
+ * drags still orbit. Projections are cached until the camera, the object or the canvas changes.
+ */
+function useScreenBrush(options: {
+  brush: { radius: number; mode: BrushMode } | undefined;
+  supports: GeneratedSupportMesh | undefined;
+  group: { current: THREE.Group | null };
+  selection: ReadonlySet<string>;
+  stroke: Stroke;
+  beginStroke: () => void;
+  onPaint: (ids: readonly string[], mode: BrushMode) => void;
+}): readonly string[] {
+  const gl = useThree((state) => state.gl);
+  const camera = useThree((state) => state.camera);
+  const scene = useThree((state) => state.scene);
+  const live = useRef(options);
+  live.current = options;
+  const [brushed, setBrushed] = useState<readonly string[]>([]);
+  const wanted = Boolean(options.brush);
+  const bodies = useMemo<BodySegments | undefined>(() => (wanted && options.supports ? bodySegments(options.supports) : undefined), [wanted, options.supports]);
+  const active = wanted && Boolean(bodies);
+  useEffect(() => {
+    if (!active || !bodies) return;
+    const canvas = gl.domElement;
+    const host = canvas.parentElement ?? canvas;
+    const circle = document.createElement('div');
+    circle.className = 'brush-circle';
+    circle.hidden = true;
+    host.appendChild(circle);
+    const raycaster = new THREE.Raycaster() as THREE.Raycaster & { firstHitOnly?: boolean };
+    raycaster.firstHitOnly = true;
+    const matrix = new THREE.Matrix4();
+    const world = new THREE.Vector3();
+    const direction = new THREE.Vector3();
+    let cache: { key: number[]; projected: Float32Array } | undefined;
+    let occluders: THREE.Object3D[] = [];
+    let shown: readonly string[] = [];
+    const show = (ids: readonly string[]) => {
+      if (ids.length === shown.length && ids.every((id, index) => id === shown[index])) return;
+      shown = ids;
+      setBrushed(ids);
+    };
+    const projection = (width: number, height: number) => {
+      const group = live.current.group.current;
+      if (!group) return undefined;
+      group.updateWorldMatrix(true, false);
+      camera.updateMatrixWorld();
+      matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(group.matrixWorld);
+      const key = [...matrix.elements, width, height];
+      if (!cache || cache.key.some((value, index) => value !== key[index])) cache = { key, projected: projectBodies(bodies, matrix.elements, width, height) };
+      return cache.projected;
+    };
+    const isVisible = (point: Vector) => {
+      const group = live.current.group.current;
+      if (!group || occluders.length === 0) return true;
+      world.set(point[0], point[1], point[2]).applyMatrix4(group.matrixWorld);
+      direction.subVectors(world, camera.position);
+      const distance = direction.length();
+      if (!(distance > 0)) return true;
+      raycaster.set(camera.position, direction.divideScalar(distance));
+      raycaster.far = distance;
+      const hit = raycaster.intersectObjects(occluders, false)[0];
+      return !hiddenByModel(distance, hit?.distance);
+    };
+    const visibleOccluders = () => {
+      const found: THREE.Object3D[] = [];
+      scene.traverseVisible((object) => { if (object.userData.occluder) found.push(object); });
+      return found;
+    };
+    const hits = (from: readonly [number, number] | undefined, to: readonly [number, number], width: number, height: number) => {
+      const { brush, selection } = live.current;
+      const projected = brush && projection(width, height);
+      if (!brush || !projected) return [];
+      occluders = visibleOccluders();
+      const adding = brush.mode === 'select';
+      return brushHits(bodies, projected, from, to, brush.radius, isVisible, (id) => selection.has(id) !== adding);
+    };
+    const hide = () => {
+      canvas.style.cursor = '';
+      circle.hidden = true;
+      show([]);
+    };
+    const handle = (event: PointerEvent, pressed = false) => {
+      const { brush, stroke } = live.current;
+      if (!brush) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      if (event.target !== canvas && !stroke.active) return hide();
+      canvas.style.cursor = BRUSH_CURSOR.select;
+      circle.hidden = false;
+      circle.dataset.mode = brush.mode;
+      circle.style.width = circle.style.height = `${brush.radius * 2}px`;
+      circle.style.transform = `translate(${x - brush.radius}px, ${y - brush.radius}px)`;
+      const state = pressed ? 'sample' : stroke.move((event.buttons & 1) !== 0);
+      if (state === 'sample') {
+        // The path since the last event: the circle sweeps it, so a fast drag skips nothing.
+        const samples = stroke.samples([x, y, 0], pathFill);
+        const to = samples[samples.length - 1]!;
+        const from = samples.length > 1 ? samples[0]! : undefined;
+        const ids = hits(from && [from[0], from[1]], [to[0], to[1]], rect.width, rect.height);
+        if (ids.length > 0) live.current.onPaint(ids, brush.mode);
+      }
+      show(hits(undefined, [x, y], rect.width, rect.height));
+    };
+    const move = (event: PointerEvent) => handle(event);
+    const down = (event: PointerEvent) => {
+      const { brush, stroke } = live.current;
+      if (!brush || !stroke.begin(event.button)) return;
+      live.current.beginStroke();
+      handle(event, true);
+    };
+    const leave = () => {
+      if (!live.current.stroke.active) hide();
+    };
+    // Capture on the canvas: runs before the orbit controls (listening on its parent) see the press.
+    canvas.addEventListener('pointerdown', down, { capture: true });
+    canvas.addEventListener('pointerleave', leave);
+    window.addEventListener('pointermove', move);
+    return () => {
+      canvas.removeEventListener('pointerdown', down, { capture: true });
+      canvas.removeEventListener('pointerleave', leave);
+      window.removeEventListener('pointermove', move);
+      circle.remove();
+      canvas.style.cursor = '';
+      setBrushed([]);
+    };
+  }, [active, bodies, gl, camera, scene]);
+  return active ? brushed : [];
+}
+
 function UnitObject(props: UnitObjectProps) {
   const { unit, editMode } = props;
   const editing = editMode !== 'off' && props.active;
@@ -413,18 +550,10 @@ function UnitObject(props: UnitObjectProps) {
   useEffect(leave, [editing, zoning, selecting, clickSelecting]);
   const doomed = useDoomed(unit, editing && hover?.remove ? hover.point : undefined);
   const selectedIds = useMemo(() => [...props.selection], [props.selection]);
-  const brushed = useMemo(() => (brush && hover?.facing ? contactsInBrush(contacts, toVector(hover.point), brush.radius, toVector(hover.facing)) : []), [brush, hover, contacts]);
-  // Drag over → Unselect previews the selected supports under the brush in see-through grey,
-  // taken off the solid red, so the ones about to turn back show.
-  const unselecting = brush?.mode === 'unselect';
-  const turningBack = useMemo(() => (unselecting ? brushed.filter((id) => props.selection.has(id)) : []), [unselecting, brushed, props.selection]);
-  // Drag over → Select previews only the supports it would add: a selected one keeps its solid red.
-  const brushedUnselected = useMemo(() => notSelected(brushed, props.selection), [brushed, props.selection]);
-  const solidIds = useMemo(() => (turningBack.length ? selectedIds.filter((id) => !turningBack.includes(id)) : selectedIds), [selectedIds, turningBack]);
 
   // Drag over and the zone brush: the canvas shows the brush cursor while the pointer is over this object.
   const gl = useThree((state) => state.gl);
-  const cursor = hover ? (zoneBrush ? BRUSH_CURSOR[zoneBrush.kind] : brush ? BRUSH_CURSOR.select : undefined) : undefined;
+  const cursor = hover && zoneBrush ? BRUSH_CURSOR[zoneBrush.kind] : undefined;
   useEffect(() => {
     if (!cursor) return;
     const canvas = gl.domElement;
@@ -453,31 +582,48 @@ function UnitObject(props: UnitObjectProps) {
     setStroke([]);
   };
   useEffect(() => () => void brushStroke.end(), [brushStroke]);
+  /** A stroke starts: the orbit is off and the release is caught anywhere until it ends. */
+  const beginStroke = () => {
+    if (controls) controls.enabled = false;
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    window.addEventListener('blur', release);
+  };
+  const groupRef = useRef<THREE.Group | null>(null);
+  const { onGroup } = props;
+  const setGroup = useCallback((group: THREE.Group | null) => {
+    groupRef.current = group;
+    onGroup?.(group);
+  }, [onGroup]);
+  const brushed = useScreenBrush({
+    brush,
+    supports,
+    group: groupRef,
+    selection: props.selection,
+    stroke: brushStroke,
+    beginStroke,
+    onPaint: (ids, mode) => props.onPaint(unit.id, ids, mode),
+  });
+  // Drag over → Unselect previews the selected supports under the brush in see-through grey,
+  // taken off the solid red, so the ones about to turn back show.
+  const unselecting = brush?.mode === 'unselect';
+  const turningBack = useMemo(() => (unselecting ? brushed.filter((id) => props.selection.has(id)) : []), [unselecting, brushed, props.selection]);
+  // Drag over → Select previews only the supports it would add: a selected one keeps its solid red.
+  const brushedUnselected = useMemo(() => notSelected(brushed, props.selection), [brushed, props.selection]);
+  const solidIds = useMemo(() => (turningBack.length ? selectedIds.filter((id) => !turningBack.includes(id)) : selectedIds), [selectedIds, turningBack]);
   // The brush going away mid-stroke (tool or mode changed, another object made active) ends the
   // stroke at once, so the orbit is back without waiting for the release.
   const brushing = Boolean(brush || zoneBrush);
   useEffect(() => {
     if (!brushing) brushStroke.end();
   }, [brushing, brushStroke]);
-  /** Unit-local point under the pointer, its surface normal and the direction to the camera. */
-  const brushHover = (event: ThreeEvent<PointerEvent>): Hover & { facing: THREE.Vector3 } => {
-    const point = event.object.worldToLocal(event.point.clone());
-    const facing = event.object.worldToLocal(event.camera.position.clone()).sub(point).normalize();
-    return { point, normal: event.face?.normal.clone() ?? new THREE.Vector3(0, -1, 0), remove: false, facing };
-  };
+  /** Zone brush: unit-local point under the pointer and its surface normal. */
   const paint = (event: ThreeEvent<PointerEvent>) => {
-    if (!brush && !zoneBrush) return;
-    const at = brushHover(event);
+    if (!zoneBrush) return;
+    const at: Hover = { point: event.object.worldToLocal(event.point.clone()), normal: event.face?.normal.clone() ?? new THREE.Vector3(0, -1, 0), remove: false };
     setHover(at);
     if (brushStroke.move((event.buttons & 1) !== 0) !== 'sample') return;
     const center = toVector(at.point);
-    if (brush) {
-      // A fast drag skips ahead between pointer events: paint the gap too, as a zone stroke fills it.
-      const facing = toVector(at.facing);
-      for (const sample of brushStroke.samples(center, brushFill(brush.radius))) props.onPaint(unit.id, sample, facing, brush.mode);
-      return;
-    }
-    if (!zoneBrush) return;
     const { radius, kind } = zoneBrush;
     // New stamps (a fast drag's gap filled) share this hit's normal.
     const centers = brushStroke.samples(center, zoneFill(radius));
@@ -486,21 +632,21 @@ function UnitObject(props: UnitObjectProps) {
     strokeStamps.current = [...strokeStamps.current, ...centers.map((between) => ({ center: between, radius, normal, kind }))];
     setStroke(strokeStamps.current);
   };
+  /** Zone strokes start on the model; Drag over strokes start anywhere (`useScreenBrush`). */
   const startStroke = (event: ThreeEvent<PointerEvent>) => {
-    if ((!brush && !zoneBrush) || !brushStroke.begin(event.button)) return;
+    if (brush) return event.stopPropagation();
+    if (!zoneBrush || !brushStroke.begin(event.button)) return;
     event.stopPropagation();
-    if (controls) controls.enabled = false;
-    window.addEventListener('pointerup', release);
-    window.addEventListener('pointercancel', release);
-    window.addEventListener('blur', release);
+    beginStroke();
     paint(event);
   };
 
   const hoverModel = (event: ThreeEvent<PointerEvent>) => {
     if (!editing) return;
     event.stopPropagation();
-    if (brush || zoneBrush) return paint(event);
-    if (zoning) return leave();
+    if (zoneBrush) return paint(event);
+    // Drag over previews through its own circle; the model under the pointer shows nothing.
+    if (brush || zoning) return leave();
     // Selecting previews supports only: the model under the pointer shows nothing.
     if (selecting) return leave();
     setHover({
@@ -513,7 +659,7 @@ function UnitObject(props: UnitObjectProps) {
     if (!editing || !supports || event.faceIndex == null) return;
     if (brush) {
       event.stopPropagation();
-      return paint(event);
+      return leave();
     }
     const contactId = contactAtTriangle(supports, event.faceIndex);
     const contact = contactId && contacts.find((candidate) => candidate.id === contactId);
@@ -568,10 +714,11 @@ function UnitObject(props: UnitObjectProps) {
     props.onRemoveContact(unit.id, contactId);
   };
 
-  return <group ref={props.onGroup} position={unit.transform.position} rotation={unit.transform.rotation} name={unit.id}>
+  return <group ref={setGroup} position={unit.transform.position} rotation={unit.transform.rotation} name={unit.id}>
     {model && <mesh
       geometry={model}
       visible={props.modelVisible}
+      userData={OCCLUDER}
       // Painting zones: other objects take no pointer events (a press passes through to the active one).
       raycast={editMode === 'zones' && !props.active ? () => undefined : acceleratedRaycast}
       onClick={(event) => clickModel(event, false)}
@@ -605,9 +752,9 @@ function UnitObject(props: UnitObjectProps) {
     >
       <meshStandardMaterial color={props.selected ? '#b59f78' : '#c8b896'} metalness={0} roughness={0.9} />
     </mesh>}
-    {editing && hover && <EditPreview hover={hover} unit={unit} {...(zoneBrush
+    {editing && hover && !brush && <EditPreview hover={hover} unit={unit} {...(zoneBrush
       ? { brush: { radius: zoneBrush.radius, color: zoneBrush.kind === 'paint' ? PREVIEW.zone : PREVIEW.ring } }
-      : brush ? { brush: { radius: brush.radius, color: brush.mode === 'select' ? PREVIEW.remove : PREVIEW.ring } } : {})} />}
+      : {})} />}
     {editing && !zoning && supports && supportGeometry && <>
       <SupportBodies supports={supports} geometry={supportGeometry} ids={solidIds} opacity={1} />
       <SupportBodies supports={supports} geometry={supportGeometry} ids={doomed} opacity={1} />

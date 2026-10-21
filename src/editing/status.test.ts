@@ -4,7 +4,7 @@ import { busyStatus, editStatus, missStatus, sessionStatus } from './status';
 
 const ADD = 'Support Edit Mode: click the model to add, right-click a support to remove.';
 const CLICK = 'Support Edit Mode: click supports to select them, right-click a support to remove.';
-const BRUSH = 'Support Edit Mode: drag over supports to select them, starting on the model.';
+const BRUSH = 'Support Edit Mode: drag the circle over supports to select them. Supports hidden behind the model are skipped.';
 const ZONES = 'Paint where supports must not grow; drag on the model.';
 
 const active = reduceSession(initialSession, { type: 'activeUnitChanged', id: 'u1' });

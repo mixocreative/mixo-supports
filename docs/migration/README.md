@@ -143,7 +143,7 @@ quoted here are the ones the code uses.
 - See-through previews (Click hover, Drag over under the brush): the same build at alpha 0.45
   with `disableDepthWrite`; Drag over → Unselect previews the selected ones under the brush in
   grey `#3b3631` and takes them off the solid red. A remove click's targets show solid red.
-- Which ids: `session.selection`, `contactsInBrush(contacts, center, radius, facing)` for the
+- Which ids: `session.selection`, `brushHits(bodySegments(shown), projectBodies(...), from, to, radiusPx, isVisible, want)` for the
   brush, `notSelected` to keep a selected support solid under a Select preview.
 
 ### 5.4 Tips only: `tipsOf`
@@ -218,7 +218,7 @@ Same as this app's `App.tsx` and `ObjectViewport.tsx`, with Babylon events:
   object shows `busyStatus(mode)`.
 - Strokes: `createStroke(onEnd)`; `begin(button)` on pointerdown on the active object, `move(leftHeld)`
   on pointermove, `end()` on window pointerup / pointercancel / blur; gap fill with
-  `samples(point, brushFill(radius))` or `zoneFill(radius)`.
+  `samples([x, y, 0], pathFill)` (Drag over, screen px) or `zoneFill(radius)`.
 - Undo toasts: `undoToast`, `toastAlive`, `UNDO_TOAST_MS` (6000 ms).
 - Errors: `errorStatus(context, error, { name })`; throw `CodedError` with a code where the host
   knows it (for example `too-large` from the budget check).

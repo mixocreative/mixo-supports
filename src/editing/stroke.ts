@@ -1,6 +1,5 @@
 import { nextStamp, stampsAlong } from '../core/supports/zones';
 import type { Vector } from '../core/vec3';
-import { brushSamples } from './selection';
 
 /**
  * Brush centres for one pointer hit, given the last centre laid in this stroke (undefined at its
@@ -61,10 +60,12 @@ export function createStroke(onEnd?: () => void): Stroke {
   return stroke;
 }
 
-/** Drag over: every hit paints, a fast drag's gap filled the way a zone stroke fills it. */
-export function brushFill(radius: number): StrokeFill {
-  return (last, point) => brushSamples(last, point, radius);
-}
+/**
+ * Drag over (screen space, z unused): the pointer path since the last event, as two points the
+ * brush circle sweeps (editing/screenBrush `brushHits`), so a fast drag skips nothing; the point
+ * alone at the stroke start.
+ */
+export const pathFill: StrokeFill = (last, point) => (last ? [last, point] : [point]);
 
 /** Zone brush: a stamp once the brush moved half a radius from the last one, the gap filled. */
 export function zoneFill(radius: number): StrokeFill {

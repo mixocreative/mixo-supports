@@ -10,7 +10,7 @@ export function editStatus(session: EditSession): StatusMessage | undefined {
   if (session.tool === 'add') return { key: 'Support Edit Mode: click the model to add, right-click a support to remove.' };
   return session.selectStyle === 'click'
     ? { key: 'Support Edit Mode: click supports to select them, right-click a support to remove.' }
-    : { key: 'Support Edit Mode: drag over supports to select them, starting on the model.' };
+    : { key: 'Support Edit Mode: drag the circle over supports to select them. Supports hidden behind the model are skipped.' };
 }
 
 /**

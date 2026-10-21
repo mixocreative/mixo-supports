@@ -1,34 +1,5 @@
 import type { SupportContact } from '../core/supports/mesh';
-import { dot, type Vector } from '../core/vec3';
-import { stampsAlong } from '../core/supports/zones';
 import type { BrushMode } from './types';
-
-// Ids of contacts within `radius` of `center`. `facing` is the unit-local direction from the
-// surface toward the camera; contacts turned away from it are skipped so a brush never
-// reaches through a thin wall to the far side.
-export function contactsInBrush(
-  contacts: readonly SupportContact[],
-  center: Vector,
-  radius: number,
-  facing?: Vector,
-): string[] {
-  const limit = radius * radius;
-  const ids: string[] = [];
-  for (const contact of contacts) {
-    if (facing && dot(contact.normal, facing) <= 0) continue;
-    const dx = contact.position[0] - center[0];
-    const dy = contact.position[1] - center[1];
-    const dz = contact.position[2] - center[2];
-    if (dx * dx + dy * dy + dz * dz <= limit) ids.push(contact.id);
-  }
-  return ids;
-}
-
-// Brush centres for one pointer move of a Drag over stroke: the gap since `last` filled the way a
-// zone stroke fills it (`stampsAlong`), so a fast drag skips no support, then `point` itself.
-export function brushSamples(last: Vector | undefined, point: Vector, radius: number): Vector[] {
-  return last ? [...stampsAlong(last, point, radius), point] : [point];
-}
 
 // `ids` without the selected ones (the same array when none is selected): a hover preview drawn
 // over a support already selected would hide its selected colour.

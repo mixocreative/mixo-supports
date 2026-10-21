@@ -30,7 +30,6 @@ import { meshBounds, type GeneratedSupportMesh } from './core/supports/mesh';
 import type { Vector } from './core/vec3';
 import { problemInZone, type ZoneStamp } from './core/supports/zones';
 import { deleteCommands } from './supports/selection';
-import { contactsInBrush } from './editing/selection';
 import { TIPS_START, tipsCamera, tipsShown, tipsToggle } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
 import { checkJobOf, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './supports/unitSupports';
@@ -638,12 +637,13 @@ export default function App() {
     send({ type: 'toggleContact', id: contactId });
   }, [send]);
 
-  const onPaint = useCallback((unitId: string, center: Vector, facing: Vector, mode: BrushMode) => {
+  const onPaint = useCallback((unitId: string, ids: readonly string[], mode: BrushMode) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
     if (sessionRef.current.mode !== 'edit' || !unit || unit.id !== sceneRef.current.activeUnitId) return;
-    const ids = contactsInBrush(unitContacts(unit), center, brushRadius, facing);
-    send({ type: 'paint', ids, mode });
-  }, [brushRadius, send]);
+    // A support deleted a moment ago can still be drawn until the mesh rebuilds.
+    const alive = new Set(unitContacts(unit).map((contact) => contact.id));
+    send({ type: 'paint', ids: ids.filter((id) => alive.has(id)), mode });
+  }, [send]);
 
   /** Clear selection (button or Esc): at once, with Undo on a toast when anything was selected. */
   const clearSelection = useCallback(() => {
@@ -957,7 +957,7 @@ export default function App() {
               </div>
               {editTool === 'select' && <div className="segmented" role="group" aria-label={t('How to select')}>
                 <button aria-pressed={selectStyle === 'click'} onClick={() => send({ type: 'setSelectStyle', style: 'click' })} {...hint('Click supports one at a time to select them')}>{t('Click')}</button>
-                <button aria-pressed={selectStyle === 'brush'} onClick={() => send({ type: 'setSelectStyle', style: 'brush' })} {...hint('Drag over supports to select many at once, starting on the model')}>{t('Drag over')}</button>
+                <button aria-pressed={selectStyle === 'brush'} onClick={() => send({ type: 'setSelectStyle', style: 'brush' })} {...hint('Drag over supports to select many at once, starting anywhere in the view')}>{t('Drag over')}</button>
               </div>}
               {editTool === 'select' && selectStyle === 'brush' && <>
                 <div className="segmented" role="group" aria-label={t('Dragging over supports')}>
@@ -966,8 +966,8 @@ export default function App() {
                 </div>
                 <label className="edit-size">
                   {t('Size')}
-                  <input type="range" min={0.5} max={10} step={0.5} value={brushRadius} onChange={(event) => send({ type: 'setBrushRadius', radius: Number(event.target.value) })} {...hint('How far Drag over reaches around the pointer')} />
-                  <output>{t('{n} mm', { n: brushRadius })}</output>
+                  <input type="range" min={8} max={80} step={4} value={brushRadius} onChange={(event) => send({ type: 'setBrushRadius', radius: Number(event.target.value) })} {...hint('Radius of the circle around the pointer, in screen pixels: supports it passes over are selected')} />
+                  <output>{t('{n} px', { n: brushRadius })}</output>
                 </label>
               </>}
               {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
