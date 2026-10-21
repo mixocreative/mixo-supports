@@ -11,13 +11,15 @@ import { transformFromObject, type ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../supports/mesh';
 import { contactsInBrush, type BrushMode } from '../supports/selection';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
+import type { ZoneStamp } from '../supports/zones';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
 /**
  * Support Edit Mode (Blender `mixo.support_place`): click the model to add a contact;
  * right-click or Ctrl+click a support, or the model near one, to remove it.
+ * `zones` paints no-support zones on the active object's surface instead.
  */
-export type EditMode = 'off' | 'edit';
+export type EditMode = 'off' | 'edit' | 'zones';
 /** Support Edit Mode tool: Add supports clicks the model to add; Select supports picks supports to act on. */
 export type EditTool = 'add' | 'select';
 
@@ -56,6 +58,12 @@ export interface ObjectViewportProps {
   onToggleContact: (unitId: string, contactId: string) => void;
   /** `center` in unit-local space; `facing` is the unit-local unit vector from `center` toward the camera. */
   onPaint: (unitId: string, center: Vector, facing: Vector, mode: BrushMode) => void;
+  /** Present only in zones mode: the zone brush (radius in mm). */
+  zoneBrush?: { radius: number; kind: 'paint' | 'erase' };
+  /** How strongly the no-support zone layer shows on the active object. */
+  showZones: 'off' | 'faint' | 'full';
+  /** One finished zone stroke on a unit, stamps in unit-local space. */
+  onZoneStroke: (unitId: string, stamps: ZoneStamp[]) => void;
   /** Support check findings to mark, positions in their unit's local frame. */
   problems: readonly (SupportProblem & { unitId: string })[];
   /** Point (plate space) the camera should turn to; a new `seq` repeats the move. */
@@ -546,6 +554,9 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       selection={props.selection}
       onToggleContact={props.onToggleContact}
       onPaint={props.onPaint}
+      {...(props.zoneBrush ? { zoneBrush: props.zoneBrush } : {})}
+      showZones={props.showZones}
+      onZoneStroke={props.onZoneStroke}
       problems={props.problems.filter((problem) => problem.unitId === unit.id)}
       {...(unit.id === activeId ? { onGroup: setActiveGroup } : {})}
     />)}

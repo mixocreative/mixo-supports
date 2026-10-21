@@ -18,6 +18,7 @@ import { emptyScene, type PrintScene, type PrintUnit, type SceneCommand, type Su
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
 import { exportUnits, planExport, type ExportKind } from './supports/export';
 import { meshBounds, type GeneratedSupportMesh, type Vector } from './supports/mesh';
+import type { ZoneStamp } from './supports/zones';
 import { contactsInBrush, deleteCommands, paintSelection, pruneSelection, toggleSelection, type BrushMode } from './supports/selection';
 import { applyPreset, defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings, type SettingKey } from './supports/settings';
 import { resolveSettings, unitContacts, unitSupportMesh } from './supports/unitSupports';
@@ -95,6 +96,10 @@ export default function App() {
   /** Drag-over reach in mm: a view setting, so the object's Erase radius stays untouched. */
   const [brushRadius, setBrushRadius] = useState(2);
   const [selection, setSelection] = useState<ReadonlySet<string>>(NO_SELECTION);
+  // No-support zones mode: brush view state, and the mode Done goes back to.
+  const [zoneKind, setZoneKind] = useState<'paint' | 'erase'>('paint');
+  const [zoneRadius, setZoneRadius] = useState(2);
+  const [zonesReturn, setZonesReturn] = useState<'off' | 'edit'>('off');
   const [focus, setFocus] = useState<{ point: [number, number, number]; seq: number }>();
   const [viewRequest, setViewRequest] = useState<ViewRequest>();
   const requestView = (kind: ViewRequest['kind']) => setViewRequest((current) => ({ kind, seq: (current?.seq ?? 0) + 1 }));
@@ -424,6 +429,7 @@ export default function App() {
     setStatus('Deleted 1 object (undo restores).', { n: ids.length }, 'Deleted {n} objects (undo restores).');
   }, [dispatch]);
   const toggleEditMode = useCallback(() => {
+    if (editModeRef.current === 'zones') return; // zones mode leaves through Done or Esc
     if (editModeRef.current !== 'off') {
       setEditMode('off');
       return setStatus('Support edits kept.');
@@ -439,8 +445,33 @@ export default function App() {
       ? 'Support Edit Mode: click supports to select them, right-click a support to remove.'
       : 'Support Edit Mode: drag over supports to select them, starting on the model.';
   useEffect(() => {
-    if (editMode !== 'off') setStatus(editToolStatus);
+    if (editMode === 'edit') setStatus(editToolStatus);
   }, [editMode, editToolStatus, setStatus]);
+
+  /** Enters zones mode for the active object; Done returns to `from`. */
+  const openZones = useCallback((from: 'off' | 'edit') => {
+    if (!sceneRef.current.activeUnitId) return setStatus('Select an object first.');
+    // From Edit Mode the floor it set stays: undo still stops where editing began.
+    if (editModeRef.current === 'off') undoFloor.current = historyRef.current.past.length;
+    setZonesReturn(from);
+    setEditMode('zones');
+    setStatus('Paint where supports must not grow; drag on the model.');
+  }, [setStatus]);
+  const closeZones = useCallback(() => {
+    setEditMode(zonesReturn); // back in Edit Mode, its tool sets the status line
+    if (zonesReturn === 'off') setStatus('No-support zones kept.');
+  }, [setStatus, zonesReturn]);
+  /** One stroke is one undo step, on the active object only. */
+  const onZoneStroke = useCallback((unitId: string, stamps: ZoneStamp[]) => {
+    if (editModeRef.current !== 'zones' || unitId !== sceneRef.current.activeUnitId || stamps.length === 0) return;
+    dispatch({ type: 'zones/add', unitId, stamps });
+    setStatus(stamps[stamps.length - 1]!.kind === 'paint' ? 'Zone painted: automatic supports inside are hidden.' : 'Zone erased.');
+  }, [dispatch, setStatus]);
+  const clearZones = useCallback((unitId: string) => {
+    if (!sceneRef.current.units.find((unit) => unit.id === unitId)?.zones.length) return;
+    dispatch({ type: 'zones/clear', unitId });
+    setStatus('No-support zones cleared.');
+  }, [dispatch, setStatus]);
 
   const fixProblem = useCallback((problem: UnitProblem) => {
     showProblem(problem);
@@ -458,7 +489,7 @@ export default function App() {
   const onSelect = useCallback((unitId: string | null, additive: boolean) => {
     const current = sceneRef.current;
     if (editModeRef.current !== 'off') {
-      if (unitId !== current.activeUnitId) setStatus('Finish editing supports first: press Esc or Done.');
+      if (unitId !== current.activeUnitId) setStatus(editModeRef.current === 'zones' ? 'Finish painting zones first: press Esc or Done.' : 'Finish editing supports first: press Esc or Done.');
       return;
     }
     if (unitId === null) return dispatch({ type: 'selection/set', unitIds: [] });
@@ -476,6 +507,7 @@ export default function App() {
   }, [dispatch]);
 
   const onAddContact = useCallback((unitId: string, point: [number, number, number], normal: [number, number, number]) => {
+    if (editModeRef.current === 'zones') return; // supports take no edits while painting zones
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
     if (!unit) return;
     const contact: SupportPoint = {
@@ -508,24 +540,27 @@ export default function App() {
   }, [dispatch, removeContact]);
 
   const onRemoveContact = useCallback((unitId: string, contactId: string) => {
+    if (editModeRef.current === 'zones') return;
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
     const contact = unit && unitContacts(unit).find((candidate) => candidate.id === contactId);
     if (unit && contact) eraseNear(unit, [...contact.position]);
   }, [eraseNear]);
 
   const onEditMiss = useCallback(() => {
+    if (editModeRef.current === 'zones') return;
     if (editTool === 'add') setStatus('Nothing under the cursor: click the model to add, right-click a support to remove.');
     else if (selectStyle === 'click') setStatus('No support here: click a support to select it.');
     else setStatus('Nothing under the cursor: start the drag on the model.');
   }, [editTool, selectStyle, setStatus]);
 
   const onErase = useCallback((unitId: string, point: [number, number, number]) => {
+    if (editModeRef.current === 'zones') return;
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
     if (unit) eraseNear(unit, inverseTransformPoint(unit.transform, point));
   }, [eraseNear]);
 
   const onToggleContact = useCallback((unitId: string, contactId: string) => {
-    if (unitId !== sceneRef.current.activeUnitId) return;
+    if (editModeRef.current !== 'edit' || unitId !== sceneRef.current.activeUnitId) return;
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
     // A support deleted a moment ago can still be under the cursor until the mesh rebuilds.
     if (!unit || !unitContacts(unit).some((contact) => contact.id === contactId)) return;
@@ -534,7 +569,7 @@ export default function App() {
 
   const onPaint = useCallback((unitId: string, center: Vector, facing: Vector, mode: BrushMode) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
-    if (!unit || unit.id !== sceneRef.current.activeUnitId) return;
+    if (editModeRef.current !== 'edit' || !unit || unit.id !== sceneRef.current.activeUnitId) return;
     const ids = contactsInBrush(unitContacts(unit), center, brushRadius, facing);
     setSelection((current) => paintSelection(current, ids, mode));
   }, [brushRadius]);
@@ -600,14 +635,17 @@ export default function App() {
         dispatchHistory({ type: 'redo' });
       } else if (event.key === 'Tab') {
         event.preventDefault();
-        toggleEditMode();
-      } else if (editMode !== 'off' && selection.size > 0 && (event.key === 'Delete' || event.key === 'Backspace')) {
+        if (editMode !== 'zones') toggleEditMode();
+      } else if (editMode === 'zones' && (event.key === 'Escape' || (event.key === 'Enter' && target?.tagName !== 'BUTTON'))) {
+        event.preventDefault();
+        closeZones();
+      } else if (editMode === 'edit' && selection.size > 0 && (event.key === 'Delete' || event.key === 'Backspace')) {
         event.preventDefault();
         deleteSelected();
-      } else if (editMode !== 'off' && selection.size > 0 && event.key === 'Escape') {
+      } else if (editMode === 'edit' && selection.size > 0 && event.key === 'Escape') {
         event.preventDefault();
         setSelection(NO_SELECTION);
-      } else if (editMode !== 'off' && (event.key === 'Escape' || (event.key === 'Enter' && target?.tagName !== 'BUTTON'))) {
+      } else if (editMode === 'edit' && (event.key === 'Escape' || (event.key === 'Enter' && target?.tagName !== 'BUTTON'))) {
         event.preventDefault();
         toggleEditMode();
       } else if (event.key === 'Delete' && editMode === 'off') {
@@ -620,7 +658,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [deleteSelected, deleteUnits, editMode, selection, toggleEditMode, undo]);
+  }, [closeZones, deleteSelected, deleteUnits, editMode, selection, toggleEditMode, undo]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -692,10 +730,18 @@ export default function App() {
         </section>
         <section>
           <h3>{t('Edit supports')}</h3>
-          <button className={editMode === 'off' ? '' : 'primary'} aria-pressed={editMode !== 'off'} onClick={toggleEditMode} disabled={editMode === 'off' && !activeUnit}>
-            {editMode === 'off' ? t('Enter Support Edit Mode') : t('Done editing')}
+          <button className={editMode === 'edit' ? 'primary' : ''} aria-pressed={editMode === 'edit'} onClick={toggleEditMode} disabled={editMode === 'zones' || (editMode === 'off' && !activeUnit)}>
+            {editMode === 'edit' ? t('Done editing') : t('Enter Support Edit Mode')}
           </button>
           <p className="help">{activeUnit ? t('Add or remove supports by clicking the model. Tab toggles.') : t('Select an object first.')}</p>
+        </section>
+        <section>
+          <h3>{t('No-support zones')}{activeUnit && <small className="count">{plural(activeUnit.zones.length, '1 zone', '{n} zones')}</small>}</h3>
+          <div className="row">
+            <button onClick={() => openZones(editMode === 'edit' ? 'edit' : 'off')} disabled={!activeUnit || editMode === 'zones'}>{t('Paint zones')}</button>
+            <button className="danger" onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length}>{t('Clear')}</button>
+          </div>
+          <p className="help">{t('Paint where supports must not grow. Manual supports stay.')}</p>
         </section>
         <section>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
@@ -722,7 +768,7 @@ export default function App() {
         </section>
       </aside>
       <section
-        className={`viewport${isDraggingOver ? ' viewport--dropping' : ''}${editMode === 'off' ? '' : ' viewport--editing'}`}
+        className={`viewport${isDraggingOver ? ' viewport--dropping' : ''}${editMode === 'off' ? '' : ' viewport--editing'}${editMode === 'zones' ? ' viewport--zones' : ''}`}
         onDragOver={(event) => { event.preventDefault(); setIsDraggingOver(true); }}
         onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDraggingOver(false); }}
         onDrop={dropImport}
@@ -741,10 +787,13 @@ export default function App() {
           onErase={onErase}
           onEditMiss={onEditMiss}
           editTool={editTool}
-          {...(editTool === 'select' && selectStyle === 'brush' ? { brush: { radius: brushRadius, mode: brushMode } } : {})}
+          {...(editMode === 'edit' && editTool === 'select' && selectStyle === 'brush' ? { brush: { radius: brushRadius, mode: brushMode } } : {})}
           selection={selection}
           onToggleContact={onToggleContact}
           onPaint={onPaint}
+          {...(editMode === 'zones' ? { zoneBrush: { radius: zoneRadius, kind: zoneKind } } : {})}
+          showZones={editMode === 'zones' ? 'full' : editMode === 'edit' ? 'faint' : 'off'}
+          onZoneStroke={onZoneStroke}
           problems={currentProblems}
           {...(focus ? { focus } : {})}
           {...(viewRequest ? { viewRequest } : {})}
@@ -770,6 +819,29 @@ export default function App() {
             {t('Edit supports')}
           </button>
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
+        </> : editMode === 'zones' ? <>
+          <div className="edit-frame" aria-hidden="true" />
+          <div className="edit-badge" role="status">
+            {t('Painting no-support zones')}<span>{activeUnit?.name}</span>
+          </div>
+          <div className="edit-bar">
+            <div className="edit-row">
+              <div className="segmented" role="group" aria-label={t('Zone brush')}>
+                <button aria-pressed={zoneKind === 'paint'} onClick={() => setZoneKind('paint')}>{t('Paint')}</button>
+                <button aria-pressed={zoneKind === 'erase'} onClick={() => setZoneKind('erase')}>{t('Erase')}</button>
+              </div>
+              <label className="edit-size">
+                {t('Brush size')}
+                <input type="range" min={0.5} max={10} step={0.5} value={zoneRadius} onChange={(event) => setZoneRadius(Number(event.target.value))} />
+                <output>{t('{n} mm', { n: zoneRadius })}</output>
+              </label>
+              <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
+            </div>
+            <div className="edit-row">
+              <button className="danger" onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length}>{t('Clear all zones')}</button>
+              <button className="primary edit-done" onClick={closeZones}>{t('Done')} <kbd>Esc</kbd></button>
+            </div>
+          </div>
         </> : <>
           <div className="edit-frame" aria-hidden="true" />
           <div className="edit-badge" role="status">
@@ -802,6 +874,7 @@ export default function App() {
               <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
             </div>
             <div className="edit-row">
+              <button onClick={() => openZones('edit')}>{t('Edit no-support zones →')}</button>
               {selection.size > 0 && <>
                 <span className="edit-count">{t('{n} selected', { n: selection.size })}</span>
                 <button className="danger" onClick={deleteSelected}>{t('Delete')}</button>

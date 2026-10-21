@@ -351,6 +351,26 @@ const ZH: Dictionary = {
   'Resolution': '解析度',
   'Auto snap': '自動吸附',
   'Erase radius': '移除半徑',
+  // No-support zones
+  'No-support zones': '免支撐區',
+  '1 zone': '1 個區域',
+  '{n} zones': '{n} 個區域',
+  'Paint zones': '塗刷區域',
+  'Clear': '清除',
+  'Paint where supports must not grow. Manual supports stay.': '在不要長出支撐的地方塗刷。手動支撐會保留。',
+  'Painting no-support zones': '正在塗刷免支撐區',
+  'Zone brush': '區域筆刷',
+  'Paint': '塗刷',
+  'Erase': '擦除',
+  'Brush size': '筆刷大小',
+  'Clear all zones': '清除全部區域',
+  'Edit no-support zones →': '編輯免支撐區 →',
+  'Paint where supports must not grow; drag on the model.': '在不要長出支撐的地方塗刷：在模型上拖曳。',
+  'Zone painted: automatic supports inside are hidden.': '已塗刷區域：區域內的自動支撐已隱藏。',
+  'Zone erased.': '已擦除區域。',
+  'No-support zones kept.': '已保留免支撐區。',
+  'No-support zones cleared.': '已清除免支撐區。',
+  'Finish painting zones first: press Esc or Done.': '請先完成塗刷免支撐區：按 Esc 或「完成」。',
 };
 
 const JA: Dictionary = {
@@ -624,6 +644,26 @@ const JA: Dictionary = {
   'Resolution': '解像度',
   'Auto snap': '自動スナップ',
   'Erase radius': '削除半径',
+  // No-support zones
+  'No-support zones': 'サポート禁止エリア',
+  '1 zone': '1 エリア',
+  '{n} zones': '{n} エリア',
+  'Paint zones': 'エリアを塗る',
+  'Clear': 'クリア',
+  'Paint where supports must not grow. Manual supports stay.': 'サポートを付けたくない場所を塗ります。手動サポートは残ります。',
+  'Painting no-support zones': 'サポート禁止エリアを塗装中',
+  'Zone brush': 'エリアブラシ',
+  'Paint': '塗る',
+  'Erase': '消す',
+  'Brush size': 'ブラシサイズ',
+  'Clear all zones': 'すべてのエリアを消去',
+  'Edit no-support zones →': 'サポート禁止エリアを編集 →',
+  'Paint where supports must not grow; drag on the model.': 'サポートを付けたくない場所を塗ります：モデル上をドラッグします。',
+  'Zone painted: automatic supports inside are hidden.': 'エリアを塗りました：中の自動サポートは非表示になります。',
+  'Zone erased.': 'エリアを消しました。',
+  'No-support zones kept.': 'サポート禁止エリアを保持しました。',
+  'No-support zones cleared.': 'サポート禁止エリアを消去しました。',
+  'Finish painting zones first: press Esc or Done.': '先にエリアの塗装を終了してください：Esc か「完了」を押します。',
 };
 
 export const DICTIONARY: Record<Exclude<Lang, 'en'>, Dictionary> = { 'zh-Hant': ZH, ja: JA };
