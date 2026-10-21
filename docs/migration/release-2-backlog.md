@@ -1,5 +1,7 @@
 # Release 2 backlog (from Release 1 ledgers, 2026-10-21)
 
+**Status: done — shipped in Release 2 (main 3ba55e8, 2026-10-21). Kept as history; open items moved to `release-3-backlog.md`.**
+
 Source of truth for the migration-prep branch. Deferred minors, parked findings and rulings.
 
 - | T1 self | "manual" by id prefix vs selection's unit.manual membership | Ruling below |
