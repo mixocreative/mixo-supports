@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import edgeOrder from '../../../tools/blender-parity/edge_order_stages.json';
 import stages from '../../../tools/blender-parity/ridge_stages.json';
 import { vertexNormals } from '../analysis/vertexNormals';
 import { legacyRidgeMidpoints, meshEdges } from '../analysis/legacyRidges';
@@ -9,6 +10,9 @@ type Vector = [number, number, number];
 
 /** Ridge midpoints in only one of the two results, all of them ambiguous-convexity edges. */
 const AMBIGUOUS: Record<30 | 45 | 60, number> = { 30: 2, 45: 0, 60: 0 };
+/** meshEdges on the 1000+ face dump. */
+const PINNED_ORDER = { count: 2189, first: [[7, 47], [7, 45], [45, 47], [8, 51]], fingerprint: 525089928 };
+
 /** Stage results bit for bit vs explained ties, pinned so a drift shows. */
 const PINNED: Record<30 | 45 | 60, { merge: number[]; snap: number[]; keep: number[] }> = {
   30: { merge: [14, 15], snap: [27, 2], keep: [28, 1] },
@@ -81,4 +85,35 @@ describe('Blender legacy ridges (v-ridge, stage by stage)', () => {
       expect(stage.kept.Edge!.every((value, k) => value > 0 || stage.kept.Vertical![k]! > 0)).toBe(true);
     });
   }
+});
+
+/**
+ * An R of 1000+ faces (tools/blender-parity/edge_order_dump.py: the v-ridge scaled 1.25,
+ * Spacing 2). Blender splits mesh_calc_edges over 8 hash maps there; the web keeps its own
+ * first-use order by design (README "Defined tie rules"). The edge set must equal Blender's,
+ * and the web order is pinned. Faces and edges are base64 little-endian Uint16 arrays.
+ */
+describe('Edge order on a 1000+ face R', () => {
+  const u16 = (text: string) => {
+    const bytes = Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
+    return Array.from(new Uint16Array(bytes.buffer, 0, bytes.length / 2));
+  };
+  const corners = u16(edgeOrder.corners);
+  let offset = 0;
+  const faces = [...edgeOrder.faceSizes].map((size) => corners.slice(offset, (offset += Number(size))));
+  const flat = u16(edgeOrder.edges);
+  const blender = Array.from({ length: flat.length / 2 }, (_, k) => [flat[2 * k]!, flat[2 * k + 1]!] as [number, number]);
+  const ours = meshEdges(faces);
+  /** FNV-1a over the edge sequence. */
+  const fingerprint = (edges: readonly (readonly number[])[]) => edges.flat().reduce((hash, value) => Math.imul(hash ^ value, 16777619) >>> 0, 2166136261);
+
+  it("has Blender's edges, in the web's first-use order", () => {
+    expect(faces.length).toBeGreaterThanOrEqual(1000);
+    expect(offset).toBe(corners.length);
+    const key = ([a, b]: readonly number[]) => `${a},${b}`;
+    expect(ours.map(key).sort()).toEqual(blender.map(key).sort());
+    expect({ count: ours.length, first: ours.slice(0, 4), fingerprint: fingerprint(ours) }).toEqual(PINNED_ORDER);
+    // The orders do differ here (Blender's 8-map split); the merge input order follows the web's.
+    expect(fingerprint(ours)).not.toBe(fingerprint(blender));
+  });
 });
