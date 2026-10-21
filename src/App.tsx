@@ -9,7 +9,7 @@ import { AnalysisClient } from './workers/analysisClient';
 import { ImportClient } from './workers/importClient';
 import { SupportMeshClient, type MeshProgress } from './workers/meshClient';
 import type { MeshMode } from './workers/meshProtocol';
-import ObjectViewport, { acceptModelFile, type EditMode, type EditTool, type GizmoMode } from './components/ObjectViewport';
+import ObjectViewport, { acceptModelFile, type EditMode, type EditTool, type GizmoMode, type ViewRequest } from './components/ObjectViewport';
 import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
 import { createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
@@ -96,7 +96,8 @@ export default function App() {
   const [brushRadius, setBrushRadius] = useState(2);
   const [selection, setSelection] = useState<ReadonlySet<string>>(NO_SELECTION);
   const [focus, setFocus] = useState<{ point: [number, number, number]; seq: number }>();
-  const [bottomView, setBottomView] = useState<{ seq: number }>();
+  const [viewRequest, setViewRequest] = useState<ViewRequest>();
+  const requestView = (kind: ViewRequest['kind']) => setViewRequest((current) => ({ kind, seq: (current?.seq ?? 0) + 1 }));
   // Contact tips view (Blender: Only Tip + Ctrl+Numpad 7): view only, settings and export untouched.
   const [tipsOnly, setTipsOnly] = useState(false);
   const [belowPlate, setBelowPlate] = useState(false);
@@ -732,7 +733,7 @@ export default function App() {
           onPaint={onPaint}
           problems={currentProblems}
           {...(focus ? { focus } : {})}
-          {...(bottomView ? { bottomView } : {})}
+          {...(viewRequest ? { viewRequest } : {})}
           tipsOnly={tipsOnly}
           onBelowPlate={setBelowPlate}
         />
@@ -744,7 +745,8 @@ export default function App() {
             disabled={belowPlate}
             title={t(belowPlate ? 'Below the plate: only contact tips show. Orbit above it for full supports.' : 'Show only the contact tips: no pillars, braces or raft. Export stays full.')}
           >{t('Tips only')}</button>
-          <button onClick={() => setBottomView((current) => ({ seq: (current?.seq ?? 0) + 1 }))} disabled={scene.units.length === 0} title={t('Look straight up at the selection to check contact points')}>{t('Bottom view')}</button>
+          <button onClick={() => requestView('fit')} disabled={scene.units.length === 0} title={t('Frame the selection from the current angle')}>{t('Fit view')}</button>
+          <button onClick={() => requestView('bottom')} disabled={scene.units.length === 0} title={t('Look straight up at the selection to check contact points')}>{t('Bottom view')}</button>
         </div>
         {isDraggingOver && <div className="viewport-drop-overlay">{t('Drop to import')}</div>}
         <ProgressBar tasks={[...tasks.values()]} />

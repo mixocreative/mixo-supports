@@ -61,7 +61,7 @@ export interface ObjectViewportProps {
   /** Point (plate space) the camera should turn to; a new `seq` repeats the move. */
   focus?: { point: Vector; seq: number };
   /** A new `seq` turns the camera to look straight up at the selection (or every object). */
-  bottomView?: { seq: number };
+  viewRequest?: ViewRequest;
   /** Show only the contact tips; the view also does so on its own from below the plate. */
   tipsOnly: boolean;
   /** The camera went below the plate (or back above it). */
@@ -207,12 +207,16 @@ function ProblemMarkers({ problems }: { problems: readonly SupportProblem[] }) {
   </group>;
 }
 
+/** `bottom` looks straight up at the selection; `fit` frames it from the current angle. */
+export interface ViewRequest { kind: 'bottom' | 'fit'; seq: number }
+
 /**
- * Looks straight up at the selected objects (every object when none is selected), framing
- * them; below the plate the view shows only the contact tips (Blender: Ctrl+Numpad 7).
- * The grid draws its top side only, so it never hides the view from below.
+ * Frames the selected objects (every object when none is selected): `bottom` looks straight
+ * up at them, so the view shows only the contact tips (Blender: Ctrl+Numpad 7); `fit` keeps
+ * the current viewing direction. The grid draws its top side only, so it never hides the
+ * view from below.
  */
-function BottomCamera({ view, unitIds }: { view?: { seq: number }; unitIds: readonly string[] }) {
+function ViewCamera({ view, unitIds }: { view?: ViewRequest; unitIds: readonly string[] }) {
   const controls = useThree((state) => state.controls) as unknown as { target: THREE.Vector3; update(): void } | null;
   const camera = useThree((state) => state.camera) as THREE.PerspectiveCamera;
   const scene = useThree((state) => state.scene);
@@ -226,8 +230,14 @@ function BottomCamera({ view, unitIds }: { view?: { seq: number }; unitIds: read
     if (box.isEmpty()) return;
     const sphere = box.getBoundingSphere(new THREE.Sphere());
     const distance = Math.max(sphere.radius, 1) / Math.sin(THREE.MathUtils.degToRad(camera.fov) / 2) * 1.15;
-    // A hair off vertical keeps the orbit's up axis defined: front of the plate at the bottom.
-    camera.position.set(sphere.center.x, sphere.center.y - distance, sphere.center.z + distance * 1e-3);
+    if (view.kind === 'bottom') {
+      // A hair off vertical keeps the orbit's up axis defined: front of the plate at the bottom.
+      camera.position.set(sphere.center.x, sphere.center.y - distance, sphere.center.z + distance * 1e-3);
+    } else {
+      const direction = camera.position.clone().sub(controls.target);
+      if (direction.lengthSq() === 0) direction.set(70, 60, 90);
+      camera.position.copy(sphere.center).add(direction.normalize().multiplyScalar(distance));
+    }
     controls.target.copy(sphere.center);
     controls.update();
   }, [view?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -261,7 +271,7 @@ function FocusCamera({ focus }: { focus?: { point: Vector; seq: number } }) {
   return null;
 }
 
-interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMeshes' | 'gizmoMode' | 'onTransform' | 'problems' | 'focus' | 'bottomView' | 'tipsOnly' | 'onBelowPlate'> {
+interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMeshes' | 'gizmoMode' | 'onTransform' | 'problems' | 'focus' | 'viewRequest' | 'tipsOnly' | 'onBelowPlate'> {
   problems: readonly SupportProblem[];
   unit: PrintUnit;
   supports?: GeneratedSupportMesh;
@@ -503,7 +513,7 @@ export default function ObjectViewport(props: ObjectViewportProps) {
     <OrbitControls makeDefault enabled={!dragging} />
     <FocusCamera focus={props.focus} />
     <PlateSide onChange={plateSide} />
-    <BottomCamera view={props.bottomView} unitIds={scene.selectedUnitIds.length > 0 ? scene.selectedUnitIds : scene.units.map((unit) => unit.id)} />
+    <ViewCamera view={props.viewRequest} unitIds={scene.selectedUnitIds.length > 0 ? scene.selectedUnitIds : scene.units.map((unit) => unit.id)} />
     {scene.units.map((unit) => <UnitObject
       key={unit.id}
       unit={unit}
