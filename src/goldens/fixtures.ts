@@ -4,12 +4,28 @@ import { importStlUnit } from '../state/import';
 
 type Vector = [number, number, number];
 
+/**
+ * Settings a golden runs with: defaults, Auto Tree, Roof, Low-poly preview (preview and export
+ * meshes differ), and Ridge angle 30 / 60 degrees.
+ */
+export type GoldenVariant = 'default' | 'tree' | 'roof' | 'low-poly' | 'ridge-30' | 'ridge-60';
+
 /** A golden model: unit-local mesh (as import produces it) and the rotation the unit is given. */
 export interface GoldenFixture {
   name: string;
   mesh: TriangleMesh;
   rotation: Vector;
+  variants: readonly GoldenVariant[];
+  /**
+   * Variants whose golden a later task is expected to change on purpose, and why. Every other
+   * golden must stay identical.
+   */
+  expectedChanges?: Partial<Record<GoldenVariant, string>>;
+  /** Behaviour pinned as-is that is worth knowing about when a golden is read. */
+  notes?: string;
 }
+
+const STANDARD: readonly GoldenVariant[] = ['default', 'tree', 'roof'];
 
 /**
  * A 10 mm cube with a 6 mm shelf cantilevered off one side (the cube of the unit tests plus an
@@ -45,6 +61,27 @@ function thinWallSlab(): TriangleMesh {
   // Same corner order and winding as the unit-test cube: bottom 0-3, top 4-7.
   const indices = [0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0];
   return { positions: new Float32Array(corners.flat()), indices: new Uint32Array(indices) };
+}
+
+/**
+ * A downward V-ridge (keel): a triangular prism whose two lower faces lean 26 degrees from
+ * straight down, so their normals are 52 degrees apart. Both faces are overhang (Overhang angle
+ * 50) and the ridge between them is sharper than Blender's fixed 45 degrees, so it gets
+ * `sharp-ridge` anchors. 52 degrees sits between the 30 and 60 degree Ridge angle variants.
+ */
+function vRidge(): TriangleMesh {
+  const [half, length] = [8, 6];
+  const height = round6(half * Math.tan(26 * Math.PI / 180));
+  // Profile in x/y, counter-clockwise from +z: apex, right top, left top.
+  const profile: [number, number][] = [[0, 0], [half, height], [-half, height]];
+  const positions: number[] = [];
+  for (const z of [-length, length]) for (const [x, y] of profile) positions.push(x, y, z);
+  const indices = [3, 4, 5, 0, 2, 1];
+  for (let k = 0; k < 3; k += 1) {
+    const next = (k + 1) % 3;
+    indices.push(k, next, 3 + next, k, 3 + next, 3 + k);
+  }
+  return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
 }
 
 /**
@@ -130,8 +167,21 @@ function normalize(a: Vector): Vector {
 }
 
 export const GOLDEN_FIXTURES: readonly GoldenFixture[] = [
-  { name: 'cube-overhang', mesh: cubeWithOverhang(), rotation: [0, 0, 0] },
+  { name: 'cube-overhang', mesh: cubeWithOverhang(), rotation: [0, 0, 0], variants: [...STANDARD, 'low-poly'] },
   // Tilted on two axes so placement, support and check run through the unit transform.
-  { name: 'knot', mesh: torusKnot(), rotation: [0.4, 0, 0.25] },
-  { name: 'thin-slab', mesh: thinWallSlab(), rotation: [0, 0, 0] },
+  { name: 'knot', mesh: torusKnot(), rotation: [0.4, 0, 0.25], variants: STANDARD },
+  {
+    name: 'thin-slab', mesh: thinWallSlab(), rotation: [0, 0, 0], variants: STANDARD,
+    notes: 'The check reports overhang spots even with every contact: the Blender-faithful Poisson scatter '
+      + '(Density Max = (1/Spacing)^4, 1/16 per mm² at Spacing 2) leaves gaps wider than the check\'s '
+      + 'COVER_FACTOR x Spacing (3 mm) on this 288 mm² flat underside. Both follow their definitions; not a bug.',
+  },
+  {
+    name: 'v-ridge', mesh: vRidge(), rotation: [0, 0, 0], variants: ['default', 'ridge-30', 'ridge-60'],
+    // Ridge anchors ignore Ridge angle today (edgeAnchors SHARP_ANGLE is a fixed 45 degrees).
+    expectedChanges: {
+      'ridge-30': 'Task 2 (Ridge angle bug): may change once Ridge angle reaches the ridge test',
+      'ridge-60': 'Task 2 (Ridge angle bug): expected to lose its sharp-ridge anchors (52 < 60 degrees)',
+    },
+  },
 ];

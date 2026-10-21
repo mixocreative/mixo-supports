@@ -8,15 +8,12 @@ import { encodeStl, planExport } from '../supports/export';
 import { contactAtTriangle, meshBounds, type GeneratedSupportMesh } from '../supports/mesh';
 import { defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings } from '../supports/settings';
 import { unitContacts, unitSupportMesh } from '../supports/unitSupports';
-import type { GoldenFixture } from './fixtures';
+import type { GoldenFixture, GoldenVariant } from './fixtures';
 
 /**
  * Golden snapshots: the whole support pipeline (placement, support mesh, export, check) run the
  * way the app runs it on fixed models, reduced to exact JSON. Later refactors must reproduce it.
  */
-
-export type GoldenVariant = 'default' | 'tree' | 'roof';
-export const GOLDEN_VARIANTS: readonly GoldenVariant[] = ['default', 'tree', 'roof'];
 
 /** Triangles sampled for `contactAtTriangle`. */
 const PICK_SAMPLES = 20;
@@ -25,6 +22,9 @@ function variantSettings(variant: GoldenVariant): LiveSupportSettings {
   const base: LiveSupportSettings = { ...defaultSupportSettings, roofSeededModes: [] };
   if (variant === 'tree') return updateSetting(base, 'scatterAutoTree', true);
   if (variant === 'roof') return setRoofMode(base, 'ROOF');
+  if (variant === 'low-poly') return updateSetting(base, 'lowPolyMode', true);
+  if (variant === 'ridge-30') return updateSetting(base, 'scatterRidgeAngle', 30);
+  if (variant === 'ridge-60') return updateSetting(base, 'scatterRidgeAngle', 60);
   return base;
 }
 
@@ -172,6 +172,17 @@ export type GoldenSnapshot = ReturnType<typeof goldenSnapshot>;
 
 export function goldenName(fixture: GoldenFixture, variant: GoldenVariant): string {
   return `${fixture.name}.${variant}`;
+}
+
+/**
+ * Throws on any number that JSON cannot hold (NaN, Infinity), which `JSON.stringify` would
+ * otherwise turn into null and so compare equal to a stored null.
+ */
+export function assertFinite(value: unknown, path = '$'): void {
+  if (typeof value === 'number' && !Number.isFinite(value)) throw new Error(`${path} is ${value}`);
+  if (value !== null && typeof value === 'object') {
+    for (const [key, item] of Object.entries(value)) assertFinite(item, `${path}.${key}`);
+  }
 }
 
 /**
