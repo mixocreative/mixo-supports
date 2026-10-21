@@ -114,7 +114,7 @@ the workers move to mixomesh unchanged. "Jobs and workers" below has the app's p
   `admit`; the job shows as "Queued" until admitted. See "Budgets & heavy meshes".
 - **Failures never die silently.** A job that runs past its timeout fails with
   `WorkerTaskError` code `timeout`; a worker crash (`onerror`) fails with code `crashed`
-  (message "`<name>` crashed") and the other jobs of that persistent worker with `restarted`; no
+  (the error event's message, else "`<name>` crashed") and the other jobs of that persistent worker with `restarted`; no
   Web Worker gives `unavailable`, and a reply for another revision `stale`. The next run starts a
   fresh worker. `workers/jobErrors.ts` (`codedJobError`) maps these and the budget refusals onto
   the error codes of `editing/errors.ts` (`timeout`, `worker-stopped`, `too-large`,
