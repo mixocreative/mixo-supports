@@ -211,9 +211,12 @@ Babylon.js is left-handed by default. Two options, pick one per app:
    Babylon's `Matrix` is also column-major in memory (`m[12..14]` translation), so
    `Matrix.FromArray(placementMatrix(p))` works. Rotation: build from our matrix, not from
    `rotation` Euler (Babylon's `rotation` applies Y, X, Z; ours is X, Y, Z).
-2. Keep Babylon left-handed and mirror once at the boundary: negate Z of every position and
-   normal, swap two indices per triangle to keep outward winding, and convert placements with
-   `S · M · S` (S = diag(1, 1, −1, 1)). Never mix the two.
+2. Keep Babylon left-handed and mirror once at the boundary (`src/core/handedness.ts`): negate
+   Z of every position and normal, keep the indices (the mirror already reverses the winding,
+   which is what Babylon's default CounterClockWise side orientation expects in a left-handed
+   scene; swapping indices too turns meshes inside out), and convert placements with
+   `S · M · S` (S = diag(1, 1, −1, 1)). Never mix the two. mixomesh uses this option; see
+   `docs/migration/README.md`.
 
 Picking in Babylon must reproduce: nearest hit first, `pass` falls through to the next hit
 (supports → model behind), click tolerance 4 px, and tips-view picking against the tips mesh.

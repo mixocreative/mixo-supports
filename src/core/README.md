@@ -10,7 +10,8 @@ read `src/goldens/`).
 
 See `conventions.ts`: +Y up, millimetres, right-handed, counter-clockwise outward triangles, Euler
 'XYZ' in radians. Vectors are plain `[x, y, z]` tuples (`Vector` in `vec3.ts`). A host with other
-conventions converts at its boundary.
+conventions converts at its boundary: a left-handed host (Babylon.js by default) uses
+`handedness.ts`, which mirrors Z and nothing else (see "Public API").
 
 ## Modules
 
@@ -18,6 +19,7 @@ conventions converts at its boundary.
 |---|---|
 | `vec3.ts` | Shared vector helpers (`add`, `subtract`, `scale`, `dot`, `cross`, `length`, `lengthSq`, `distance`, `distanceSq`, `normalize`) |
 | `conventions.ts` | Coordinate convention constants |
+| `handedness.ts` | Mirror to and from a left-handed Y-up host (meshes, vectors, matrices) |
 | `transform.ts` | Placement matrix (Euler XYZ), inverse, point/direction/positions transforms (three.js-exact arithmetic) |
 | `analysis/types.ts` | `TriangleMesh`, placement settings and results |
 | `analysis/mesh.ts` | Downward-face classification, overhang limits, regions, labels |
@@ -36,6 +38,75 @@ conventions converts at its boundary.
 | `supports/autotree.ts`, `supports/roof.ts`, `supports/raft.ts` | Tree layout, roof cage, raft outline |
 | `supports/labelFont.ts`, `supports/labelFont.json` | Label letters (Inter Regular, OFL-1.1) |
 | `supports/zones.ts`, `supports/overlayMesh.ts` | No-support zones and their overlay mesh |
+
+## Public API
+
+What a host calls, in the order a support job runs. Everything is synchronous and pure (no
+globals, inputs never changed in place); run the slow calls in a worker (see "Worker contract").
+Long calls take an optional `onProgress(fraction, stage)` (`ProgressCallback`, fraction in [0, 1]).
+
+| Step | Call (module) | In → out |
+|---|---|---|
+| Settings | `defaultSupportSettings`, `applyPreset`, `updateSetting`, `setRoofMode`, `settingLimits`, `presetValues` (`supports/settings.ts`) | `LiveSupportSettings`, one immutable object per change |
+| Placement settings | `toPlacementSettings(settings)` (`supports/settings.ts`) | `PlacementSettings` |
+| Place | `generatePlacement(mesh, placementSettings, onProgress?)` (`analysis/placement.ts`) | `TriangleMesh` in the placement frame → `PlacementResult` (`points` with ids `auto-<x>_<y>_<z>` on a 0.01 mm grid, `regions`, flat contact arrays) |
+| Compose | `composeContacts(auto, manual, suppressed, eraseRadius?, deleted?, matchRadius?)`, `hidingRemovals(...)` (`analysis/placement.ts`); `zonedAt` (`supports/zones.ts`) drops automatic contacts inside no-support zones | the contacts that remain after manual adds, removals and zones |
+| Build | `buildSupportMesh(contacts, settings, options?)` (`supports/mesh.ts`) | `SupportContact[]` in plate space (Y up, plate y = 0) → `GeneratedSupportMesh` (positions, indices, `parts`, `components`) |
+| Pick | `contactAtTriangle(mesh, triangle)` (`supports/mesh.ts`) | triangle index of a hit → owning contact id, or `undefined` (braces, raft, roof, label) |
+| Tips view | `tipsOf(mesh)` (`supports/mesh.ts`) | tips and necks only, sharing the vertices; `contactAtTriangle` works on the result |
+| Check | `checkSupports(mesh, contacts, checkSettings, onProgress?)` (`analysis/supportCheck.ts`) | `SupportProblem[]` (islands, uncovered overhangs; at most 50, largest first) |
+| Zone layer | `zoneOverlay(mesh, maxEdge, maxTriangles, cellSize)` (`supports/overlayMesh.ts`), `zonedVertices`, `stampVertices`, `stampsAlong`, `nextStamp`, `sameStamp` (`supports/zones.ts`) | per-vertex zoned flags for drawing the layer, brush stamps along a stroke |
+| Placement math | `placementMatrix`, `invertMatrix`, `applyToPoint`, `applyToDirection`, `transformPositions` (`transform.ts`) | object-local ↔ plate space |
+| Host frame | `toLeftHanded`, `fromLeftHanded`, `toLeftHandedVector`, `fromLeftHandedVector`, `toLeftHandedMatrix`, `fromLeftHandedMatrix` (`handedness.ts`) | core frame ↔ left-handed host frame |
+| Labels | `labelForIndex(index)` (`analysis/mesh.ts`) | the raft letter of the n-th object (A … Z, AA, AB, …) |
+
+`buildSupportMesh` with `mode: 'export'` ignores the preview options (`previewMode`
+`ONLY_TIP`, `lowPolyMode`) and builds full geometry; `tipsOf` is a view of a built mesh and does
+not rebuild. Today the app adapter `src/supports/unitSupports.ts` (`unitSupportMesh`) turns a
+`PrintUnit` into these calls: contacts and model into plate space at the generation transform,
+build, then back into the object's local space.
+
+The editing rules (mode, keys, picks, strokes, selection, status, camera) are in
+`src/editing/` and specified in `docs/superpowers/specs/2026-10-21-support-editing-ui-spec.md`.
+How mixomesh uses both: `docs/migration/README.md`.
+
+## Worker contract
+
+The core never spawns workers; the host runs the slow calls (placement, support mesh, check,
+export) off the main thread. The app's workers under `src/workers/` show the contract a host
+keeps:
+
+- **Messages.** Each request carries a `jobId`. The worker answers with `progress` messages
+  (`fraction`, `stage`; the analysis and mesh workers send at most one per 60 ms, plus the final
+  1) and then exactly one of a result or `{ kind: 'error', message }`. Protocols: `analysisProtocol.ts` (`place` → `placed`,
+  `check` → `checked`), `meshProtocol.ts` (`build` → `result`, `export` → `exported`, plus
+  `started`, `dropped`, `need-source`, and `forget` to free a unit).
+- **Big buffers move once.** Analysis requests transfer the model (`positions.buffer`,
+  `indices.buffer`; the sender keeps no copy) and placement results come back transferred. The mesh
+  client copies each unit's model to the worker once, keyed by `sourceToken`; later builds send
+  settings only, which keeps the worker's remesh caches warm. A worker without the model (after
+  a restart) answers `need-source` and the client sends it again. Built meshes and STL buffers
+  come back transferred.
+- **Latest wins.** A new job with the same key (analysis: `place:<unit>`, `check:<unit>`; mesh:
+  unit and mode) replaces a queued one, which resolves `undefined` (`dropped`). A running
+  analysis job is stopped by replacing its worker at once; a running build only once it has
+  run 800 ms (`RESTART_AFTER_MS`), so short builds finish and keep the caches.
+- **Pool.** Analysis: `analysisPoolSize()` workers, max(1, min(3, ⌊cores / 2⌋)), one job per
+  worker. Mesh: one worker.
+- **Failures never die silently.** A worker crash (`onerror`) rejects its jobs ("The analysis
+  worker stopped.", "Support building failed in the background worker.", "The import worker
+  stopped.") and the next request starts a fresh worker; `editing/errors.ts`
+  (`errorCode`, `errorStatus`) turns any failure into a coded, translated status line that says
+  what to do next (`worker-stopped`, `timeout`, …).
+
+## Budgets & heavy meshes: filled after lane B
+
+> **Placeholder.** Lane B (workers, heavy meshes, progress UI) is still landing. Triangle
+> budgets, pre-parse refusal, memory limits and the progress UI are written here after it
+> merges, from its code. Until then, no numbers here are authoritative. The shared cross-app
+> contract is mixomesh's heavy-mesh spec,
+> `S:\ai\mixomesh\docs\superpowers\specs\2026-10-21-heavy-mesh-handling.md` (branch
+> `feat/heavy-mesh`).
 
 ## Not yet portable
 
