@@ -125,6 +125,7 @@ export function placeImportedUnits(
       manual: [],
       suppressed: [],
       deleted: [],
+      zones: [],
     };
   });
 }

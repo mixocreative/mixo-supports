@@ -20,9 +20,20 @@ const unit: PrintUnit = {
   manual: [point('manual-a', -3)],
   suppressed: ['auto-1'],
   deleted: [],
+  zones: [],
 };
 
 describe('unit supports', () => {
+  it('hides automatic contacts inside a no-support zone but keeps manual ones', () => {
+    const zoned: PrintUnit = {
+      ...unit,
+      suppressed: [],
+      manual: [point('manual-a', 0)],
+      zones: [{ center: [0, -5, 0], radius: 1, normal: [0, -1, 0], kind: 'paint' }],
+    };
+    expect(unitContacts(zoned).map((contact) => contact.id)).toEqual(['auto-1', 'manual-a']);
+  });
+
   it('merges settings over defaults and composes contacts', () => {
     expect(resolveSettings({ preset: 'HEAVY', touchDiameter: 1 })).toMatchObject({ preset: 'HEAVY', touchDiameter: 1, raftEnabled: true });
     expect(unitContacts(unit).map((contact) => contact.id)).toEqual(['auto-0', 'manual-a']);

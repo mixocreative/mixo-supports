@@ -1,4 +1,5 @@
 import type { PlacementResult, Region, SupportPoint, TriangleMesh } from '../analysis/types';
+import type { ZoneStamp } from '../supports/zones';
 import type { ModelTransform } from './transform';
 
 export { identityTransform } from './transform';
@@ -32,6 +33,8 @@ export interface PrintUnit {
   suppressed: string[];
   /** Exact removals by contact ID; unlike `suppressed` they never take neighbours with them. */
   deleted: string[];
+  /** Ordered brush stamps of no-support zones (the last covering stamp wins); automatic contacts inside are dropped. */
+  zones: ZoneStamp[];
 }
 
 export interface PrintScene {
@@ -59,7 +62,9 @@ export type SceneCommand =
   | { type: 'manual/remove'; unitId: string; pointId: string }
   | { type: 'suppression/add'; unitId: string; pointId: string }
   | { type: 'suppression/remove'; unitId: string; pointId: string }
-  | { type: 'deletion/add'; unitId: string; pointIds: string[] };
+  | { type: 'deletion/add'; unitId: string; pointIds: string[] }
+  | { type: 'zones/add'; unitId: string; stamps: ZoneStamp[] }
+  | { type: 'zones/clear'; unitId: string };
 
 export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScene {
   switch (command.type) {
@@ -112,6 +117,12 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
         ...unit,
         deleted: [...unit.deleted, ...new Set(command.pointIds.filter((id) => !unit.deleted.includes(id)))],
       }));
+    case 'zones/add':
+      if (command.stamps.length === 0) return scene;
+      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, zones: [...unit.zones, ...(cloneJsonValue(command.stamps) as unknown as ZoneStamp[])] }));
+    case 'zones/clear':
+      if (scene.units.find((unit) => unit.id === command.unitId)?.zones.length === 0) return scene;
+      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, zones: [] }));
   }
 }
 
@@ -179,6 +190,7 @@ function normalizeUnit(unit: PrintUnit): PrintUnit {
     manual: cloneJsonValue(unit.manual) as unknown as SupportPoint[],
     suppressed: cloneJsonValue(unit.suppressed) as string[],
     deleted: cloneJsonValue(unit.deleted ?? []) as string[],
+    zones: cloneJsonValue(unit.zones ?? []) as unknown as ZoneStamp[],
   };
 }
 

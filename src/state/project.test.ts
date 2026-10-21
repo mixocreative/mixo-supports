@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Object3D } from 'three';
 import type { SupportPoint, TriangleMesh } from '../analysis/types';
+import type { ZoneStamp } from '../supports/zones';
 import { deserializeScene, emptyScene, identityTransform, reduceScene, serializeScene, type PrintScene, type PrintUnit } from './project';
 
 const source: TriangleMesh = {
@@ -27,6 +28,7 @@ const unitA: PrintUnit = {
   manual: [],
   suppressed: [],
   deleted: [],
+  zones: [],
 };
 
 describe('reduceScene', () => {
@@ -83,6 +85,29 @@ describe('reduceScene', () => {
     const deleted = reduceScene(scene, { type: 'deletion/add', unitId: 'unit-a', pointIds: ['auto-a', 'auto-b', 'auto-a'] });
     expect(deleted.units[0]!.deleted).toEqual(['auto-a', 'auto-b']);
     expect(reduceScene(deleted, { type: 'supports/clear-manual', unitId: 'unit-a' }).units[0]!.deleted).toEqual([]);
+  });
+
+  it('appends zone stamps in order, clears them, and keeps them through clear-manual', () => {
+    const a: ZoneStamp = { center: [0, 0, 0], radius: 1, normal: [0, 1, 0], kind: 'paint' };
+    const b: ZoneStamp = { center: [1, 0, 0], radius: 1, normal: [0, 1, 0], kind: 'erase' };
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: unitA });
+    const one = reduceScene(scene, { type: 'zones/add', unitId: 'unit-a', stamps: [a] });
+    const two = reduceScene(one, { type: 'zones/add', unitId: 'unit-a', stamps: [b] });
+    expect(two.units[0]!.zones).toEqual([a, b]);
+    expect(reduceScene(two, { type: 'supports/clear-manual', unitId: 'unit-a' }).units[0]!.zones).toEqual([a, b]);
+    expect(reduceScene(two, { type: 'zones/clear', unitId: 'unit-a' }).units[0]!.zones).toEqual([]);
+  });
+
+  it('treats empty zone adds and clearing no zones as no-ops', () => {
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: unitA });
+    expect(reduceScene(scene, { type: 'zones/add', unitId: 'unit-a', stamps: [] })).toBe(scene);
+    expect(reduceScene(scene, { type: 'zones/clear', unitId: 'unit-a' })).toBe(scene);
+  });
+
+  it('normalizes a unit without zones to an empty list', () => {
+    const { zones: _zones, ...legacy } = unitA;
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: legacy as PrintUnit });
+    expect(scene.units[0]!.zones).toEqual([]);
   });
 
   it('rejects runtime objects from settings and support payloads while retaining JSON-safe scenes', () => {
