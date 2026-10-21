@@ -9,22 +9,14 @@ import type { TriangleMesh } from '../core/analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
 import { transformFromObject, type ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../core/supports/mesh';
-import { brushSamples, contactsInBrush, notSelected, type BrushMode } from '../supports/selection';
+import { brushSamples, contactsInBrush, notSelected } from '../editing/selection';
+import type { BrushMode, EditMode, EditTool, ZoneKind } from '../editing/types';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
 import { zoneOverlay } from '../core/supports/overlayMesh';
 import { fitDirection } from '../editing/view';
 import { nextStamp, sameStamp, stampsAlong, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../core/supports/zones';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
-/**
- * Support Edit Mode (Blender `mixo.support_place`): click the model to add a contact;
- * right-click or Ctrl+click a support, or the model near one, to remove it.
- * `zones` paints no-support zones on the active object's surface instead.
- */
-export type EditMode = 'off' | 'edit' | 'zones';
-/** Support Edit Mode tool: Add supports clicks the model to add; Select supports picks supports to act on. */
-export type EditTool = 'add' | 'select';
-
 type Vector = [number, number, number];
 
 export function acceptModelFile(file: File): boolean {
@@ -61,7 +53,7 @@ export interface ObjectViewportProps {
   /** `center` in unit-local space; `facing` is the unit-local unit vector from `center` toward the camera. */
   onPaint: (unitId: string, center: Vector, facing: Vector, mode: BrushMode) => void;
   /** Present only in zones mode: the zone brush (radius in mm). */
-  zoneBrush?: { radius: number; kind: 'paint' | 'erase' };
+  zoneBrush?: { radius: number; kind: ZoneKind };
   /** How strongly the no-support zone layer shows on the active object. */
   showZones: 'off' | 'faint' | 'full';
   /** One finished zone stroke on a unit, stamps in unit-local space. */
