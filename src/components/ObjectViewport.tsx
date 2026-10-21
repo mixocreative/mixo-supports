@@ -314,7 +314,7 @@ function UnitObject(props: UnitObjectProps) {
   const endStroke = useRef<(() => void) | null>(null);
   useEffect(() => () => endStroke.current?.(), []);
   /** Unit-local point under the pointer, its surface normal and the direction to the camera. */
-  const brushHover = (event: ThreeEvent<PointerEvent>): Hover => {
+  const brushHover = (event: ThreeEvent<PointerEvent>): Hover & { facing: THREE.Vector3 } => {
     const point = event.object.worldToLocal(event.point.clone());
     const facing = event.object.worldToLocal(event.camera.position.clone()).sub(point).normalize();
     return { point, normal: event.face?.normal.clone() ?? new THREE.Vector3(0, -1, 0), remove: false, facing };
@@ -323,7 +323,9 @@ function UnitObject(props: UnitObjectProps) {
     if (!brush) return;
     const at = brushHover(event);
     setHover(at);
-    if (endStroke.current) props.onPaint(unit.id, toVector(at.point), toVector(at.facing!), brush.mode);
+    // A release the window never saw (focus lost, cancelled pointer) ends the stroke here.
+    if (endStroke.current && (event.buttons & 1) === 0) endStroke.current();
+    if (endStroke.current) props.onPaint(unit.id, toVector(at.point), toVector(at.facing), brush.mode);
   };
   const startStroke = (event: ThreeEvent<PointerEvent>) => {
     if (!brush || event.button !== 0) return;
@@ -331,12 +333,16 @@ function UnitObject(props: UnitObjectProps) {
     if (controls) controls.enabled = false;
     const end = () => {
       window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      window.removeEventListener('blur', end);
       endStroke.current = null;
       if (controls) controls.enabled = true;
     };
     endStroke.current?.();
     endStroke.current = end;
     window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    window.addEventListener('blur', end);
     paint(event);
   };
 
