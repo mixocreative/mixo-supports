@@ -101,19 +101,53 @@
 
 ---
 
-### Task 5: Module split for the mixomesh port (no behaviour change)
+### Task 5: Editing rules out of App (keys, session, status)
 
-Owner: support generation, the support edit UI and the tips-only preview will be ported to mixomesh, so they must be clean, modular and well structured.
+Owner: mixomesh (Babylon.js) will re-implement this UI, so behaviour must live in framework-free modules with React as a thin layer. Source: `.superpowers/sdd/2026-10-21-no-support-zones/babylon-review.md` §6 and §8 (file:line map of every rule). No behaviour change.
 
 **Files:**
-- Create: `src/components/viewport/SupportBodies.tsx`, `src/components/viewport/EditPreview.tsx`, `src/components/viewport/useSurfaceStroke.ts`, `src/components/viewport/ViewCamera.tsx` (with `PlateSide`), `src/components/viewport/ZoneLayer.tsx` (if Task 3 left it inline), plus a short `src/components/viewport/README.md` listing each module's props and what it depends on
-- Modify: `src/components/ObjectViewport.tsx` (imports instead of inline definitions)
+- Create: `src/editing/keys.ts`, `src/editing/session.ts`, `src/editing/status.ts` (+ `*.test.ts` each)
+- Modify: `src/App.tsx` (consume them)
 
 **Interfaces:**
-- Produces: the same components/hooks with explicit props; `useSurfaceStroke({ enabled, onSample, onEnd })` owns pointer-down/move/up + window `pointerup`/`pointercancel`/`blur` + OrbitControls disable/enable + cursor, shared by Drag over select and zone painting (no duplicated stroke code).
-- No module imports App, scene commands or i18n; colours come in as props or a small exported constant.
+- `keys.ts`: `keyAction(input: { key: string; ctrl: boolean; shift: boolean; targetTag: string; mode: EditMode; hasSelection: boolean }): KeyAction` where `KeyAction` is a tagged union (`undo`, `redo`, `toggleEdit`, `deleteSelection`, `clearSelection`, `leaveMode`, `deleteObjects`, `gizmo`, `none`) plus whether to `preventDefault`. Table test covering every current row of App's key handler (mode × key × guard).
+- `session.ts`: `EditSession` state (`mode`, `zonesReturn`, `tool`, `selectStyle`, `brushMode`, `brushRadius`, `zoneKind`, `zoneRadius`, `selection`) + `reduceSession(state, event)` for mode enter/leave/return, tool changes, selection toggle/paint/prune/clear, active-object change; tests for each lifetime rule (clear on mode change and object change, prune keeps identity). The undo floor stays in App (it is history), set from the session's transitions.
+- `status.ts`: message keys as data — `editStatus(session): { key: string; vars?: Record<string, unknown> }` for entering/switching tools and modes; tests.
+- No module imports React, three, DOM or i18n; `EditMode`/tool types move to `src/editing/types.ts` and ObjectViewport imports them from there.
 
-- [ ] **Step 1:** Move each piece; keep behaviour identical. `ObjectViewport.tsx` should shrink to scene setup + `UnitObject` wiring.
-- [ ] **Step 2: Run** `npx tsc --noEmit -p . && npx vitest run && npm run build` — Expected: clean, all pass.
-- [ ] **Step 3: Browser smoke** (dev server 5199; stop after): Drag over selects and Delete works; zone paint/erase works; Tips only, Fit view, Bottom view work.
-- [ ] **Step 4: Commit** `git commit -m "refactor: support edit viewport pieces into modules for the mixomesh port"`.
+- [ ] **Step 1:** Write the table/unit tests first (RED), then extract; App's listener and state call the modules.
+- [ ] **Step 2: Run** `npx tsc --noEmit -p . && npx vitest run` — Expected: clean, all pass.
+- [ ] **Step 3: Browser smoke** (5199; stop after): Tab/Esc/Enter/Delete/Backspace behave as before in off/edit/zones; select + Delete; zones round-trip.
+- [ ] **Step 4: Commit** `git commit -m "refactor: editing keys, session and status as framework-free modules"`.
+
+---
+
+### Task 6: Viewport rules out of ObjectViewport (stroke, view, pick)
+
+**Files:**
+- Create: `src/editing/stroke.ts`, `src/editing/view.ts`, `src/editing/pick.ts` (+ tests)
+- Modify: `src/components/ObjectViewport.tsx`
+
+**Interfaces:**
+- `stroke.ts`: a tiny state machine `createStroke()` → `{ begin(button): boolean; move(buttonsHeld: boolean): 'sample' | 'end' | 'idle'; end(): boolean }` used by BOTH Drag over select and zone painting (one path); the R3F layer only wires DOM/window events and OrbitControls to it. Tests: non-left begin ignored, end on release/cancel/blur/no-button move, end idempotent.
+- `view.ts`: `frameView(bounds: { center: Vector; radius: number }, fovDeg: number, kind: 'bottom' | 'fit', current?: { position: Vector; target: Vector }): { position: Vector; target: Vector }` and `belowPlate(cameraY: number): boolean`; numeric tests (bottom = straight below with the 1e-3 offset; fit keeps direction; zero-direction fallback (70,60,90)).
+- `pick.ts`: which action a pointer event means, as data — `pickAction({ tool, selectStyle, mode, button, ctrl, meta, hit: 'support' | 'model' | 'none', contactId? })` → `add | erase | removeContact | toggle | strokeStart | miss | none`; table tests mirroring current behaviour.
+- No React/three/DOM imports in these modules.
+
+- [ ] **Step 1:** Tests first (RED), then extract and wire.
+- [ ] **Step 2: Run** `npx tsc --noEmit -p . && npx vitest run && npm run build`.
+- [ ] **Step 3: Browser smoke:** Drag over select + Delete, click select, right-click remove, zone paint/erase, Tips only, Fit view, Bottom view.
+- [ ] **Step 4: Commit** `git commit -m "refactor: stroke, view and pick rules as framework-free modules"`.
+
+---
+
+### Task 7: Transform math without three, and the UI spec addendum
+
+**Files:**
+- Create: `src/math/transform.ts` (+ test); `docs/superpowers/specs/2026-10-21-support-editing-ui-spec.md`
+- Modify: `src/state/transform.ts` (use `src/math/transform.ts`; no three import)
+
+- [ ] **Step 1:** `math/transform.ts`: Euler XYZ → matrix, apply to points/directions, inverse — exactly what `state/transform.ts` uses three for today. Test: equality (1e-9) against the current three-based output on 50 seeded random transforms (write the test before swapping).
+- [ ] **Step 2:** UI spec for a Babylon re-implementation: mode/tool state diagram (from `session.ts`), key table (from `keys.ts`), pick table (from `pick.ts`), status message keys + EN/zh-Hant/ja, colour/opacity table (selection red solid/see-through, unselect grey, zone blue full/faint, ring colours, frame colours), brush cursor + click tolerance, camera framing numbers, coordinate conventions (Y-up, mm, right-handed, CCW outward; Babylon needs `useRightHandedSystem` or one mirror adapter; Euler XYZ).
+- [ ] **Step 3: Run** `npx tsc --noEmit -p . && npx vitest run && npm run build`.
+- [ ] **Step 4: Commit** `git commit -m "refactor: transform math without three; support editing UI spec"`.
