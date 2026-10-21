@@ -15,7 +15,7 @@ import ObjectViewport, { acceptModelFile, type GizmoMode, type ViewRequest } fro
 import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
 import { hint } from './components/hint';
-import { createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
+import { canUndo as historyCanUndo, createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
 import { gltfRawMeshes, placeImportedUnits } from './state/import';
 import { setDisplayMesh, setPrebuiltBvh } from './state/meshExtras';
 import { detectRuntime, memoryInfo } from './state/runtime';
@@ -123,7 +123,8 @@ export default function App() {
   // Like Blender's Support Edit Mode, undo inside the mode stops at the scene it was entered with.
   const historyRef = useRef(history);
   historyRef.current = history;
-  const undoFloor = useRef(0);
+  /** The scene the mode was entered with (a snapshot, so it survives the history cap). */
+  const undoFloor = useRef<PrintScene | undefined>(undefined);
   const send = useCallback((event: SessionEvent) => {
     const previous = sessionRef.current;
     const next = reduceSession(previous, event);
@@ -132,16 +133,18 @@ export default function App() {
       if (refusal) setStatusMessage(refusal);
       return;
     }
-    if (startsEditing(previous, next)) undoFloor.current = historyRef.current.past.length;
+    if (startsEditing(previous, next)) undoFloor.current = historyRef.current.present;
     sessionRef.current = next;
     setSession(next);
     const message = sessionStatus(previous, next, event);
     if (message) setStatusMessage(message);
   }, []);
-  const canUndo = history.past.length > (editMode === 'off' ? 0 : undoFloor.current);
-  const undo = useCallback(() => {
-    const floor = sessionRef.current.mode === 'off' ? 0 : undoFloor.current;
-    if (historyRef.current.past.length > floor) dispatchHistory({ type: 'undo' });
+  const canUndo = historyCanUndo(history, editMode === 'off' ? undefined : undoFloor.current);
+  /** Steps back unless the mode's floor stops it; false when nothing was undone. */
+  const undo = useCallback((): boolean => {
+    if (!historyCanUndo(historyRef.current, sessionRef.current.mode === 'off' ? undefined : undoFloor.current)) return false;
+    dispatchHistory({ type: 'undo' });
+    return true;
   }, []);
   // Destructive actions run at once and offer Undo on a toast (editing/toast) instead of asking first.
   const [toast, setToast] = useState<UndoToastState>();
@@ -643,12 +646,15 @@ export default function App() {
     const current = toast;
     setToast(undefined);
     if (!current) return;
-    if (current.action.kind !== 'clearSelection') return undo();
+    if (current.action.kind !== 'clearSelection') {
+      if (!undo()) setStatus('Nothing to undo here: leave the mode to undo earlier steps.');
+      return;
+    }
     // Supports deleted since are not selected again.
     const unit = sceneRef.current.units.find((candidate) => candidate.id === sessionRef.current.activeUnitId);
     const alive = new Set(unit ? unitContacts(unit).map((contact) => contact.id) : []);
     send({ type: 'restoreSelection', ids: current.action.ids.filter((id) => alive.has(id)) });
-  }, [send, toast, undo]);
+  }, [send, setStatus, toast, undo]);
   // The toast goes once its Undo would undo something else (a later edit, undo, leaving the mode).
   useEffect(() => {
     if (!toast) return;

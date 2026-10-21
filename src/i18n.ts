@@ -524,6 +524,8 @@ const ZH: Dictionary = {
   '{name} ({n} triangles) needs more memory than this device can give the editor. Simplify or split the model, then import it again.': '{name}（{n} 個三角面）所需記憶體超出此裝置能提供給編輯器的上限。請簡化或分割模型後再匯入。',
   'The plate would hold {n} triangles with {name}; the limit is {limit}. Delete or simplify an object first, then import again.': '加入 {name} 後底板上將有 {n} 個三角面，上限為 {limit}。請先刪除或簡化一個物件，再重新匯入。',
   'Generating supports for {n} triangles at once needs more memory than this device can give the editor. Generate fewer objects at a time, or simplify the models.': '同時為 {n} 個三角面產生支撐所需記憶體超出此裝置能提供給編輯器的上限。請一次為較少物件產生支撐，或簡化模型。',
+  // Release 2 final fixes
+  'Nothing to undo here: leave the mode to undo earlier steps.': '這裡沒有可復原的步驟：離開模式後即可復原更早的步驟。',
 };
 
 const JA: Dictionary = {
@@ -968,6 +970,8 @@ const JA: Dictionary = {
   '{name} ({n} triangles) needs more memory than this device can give the editor. Simplify or split the model, then import it again.': '{name}（三角形 {n} 個）には、このデバイスがエディターに割り当てられる以上のメモリが必要です。モデルを簡略化するか分割してから、もう一度読み込んでください。',
   'The plate would hold {n} triangles with {name}; the limit is {limit}. Delete or simplify an object first, then import again.': '{name} を加えるとプレート上の三角形が {n} 個になり、上限の {limit} を超えます。先にオブジェクトを削除するか簡略化してから、もう一度読み込んでください。',
   'Generating supports for {n} triangles at once needs more memory than this device can give the editor. Generate fewer objects at a time, or simplify the models.': '三角形 {n} 個分のサポートを一度に生成するには、このデバイスがエディターに割り当てられる以上のメモリが必要です。一度に生成するオブジェクトを減らすか、モデルを簡略化してください。',
+  // Release 2 final fixes
+  'Nothing to undo here: leave the mode to undo earlier steps.': 'ここでは元に戻せる操作がありません。モードを終了すると、それより前の操作を元に戻せます。',
 };
 
 export const DICTIONARY: Record<Exclude<Lang, 'en'>, Dictionary> = { 'zh-Hant': ZH, ja: JA };

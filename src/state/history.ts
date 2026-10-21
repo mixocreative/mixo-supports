@@ -24,6 +24,16 @@ export function withSceneCommand(history: SceneHistory, command: SceneCommand): 
   return { past: [...history.past, history.present].slice(-HISTORY_LIMIT), present, future: [] };
 }
 
+/**
+ * Whether Undo can step back. `floor` is the scene a mode (Support Edit Mode, zones) was entered
+ * with: undo inside the mode stops there. It is the snapshot itself, never an index into `past`,
+ * so it holds once the cap starts dropping old steps; when the cap has dropped the floor, every
+ * step left was made inside the mode.
+ */
+export function canUndo(history: SceneHistory, floor?: PrintScene): boolean {
+  return history.past.length > 0 && history.present !== floor;
+}
+
 export function undoScene(history: SceneHistory): SceneHistory {
   const previous = history.past.at(-1);
   if (previous === undefined) return history;
