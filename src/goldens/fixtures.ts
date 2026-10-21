@@ -1,6 +1,5 @@
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import type { TriangleMesh } from '../core/analysis/types';
-import { importStlUnit } from '../state/import';
+import { importStl } from '../state/import';
 
 type Vector = [number, number, number];
 
@@ -124,10 +123,10 @@ function torusKnot(): TriangleMesh {
   // Wind outward (positive volume) whatever the frame's handedness came out as.
   const volume = triangles.reduce((sum, [a, b, c]) => sum + dot(a, cross(b, c)), 0);
   const soup = volume > 0 ? triangles : triangles.map(([a, b, c]) => [a, c, b] as [Vector, Vector, Vector]);
-  return importStlUnit(new STLLoader().parse(binaryStl(soup)), 'knot.stl').mesh;
+  return importStl(binaryStl(soup), 'knot.stl').mesh;
 }
 
-/** Binary STL of a triangle soup (normals left zero; STLLoader recomputes nothing from them). */
+/** Binary STL of a triangle soup (normals left zero; the import recomputes nothing from them). */
 function binaryStl(triangles: readonly [Vector, Vector, Vector][]): ArrayBuffer {
   const buffer = new ArrayBuffer(84 + triangles.length * 50);
   const view = new DataView(buffer);

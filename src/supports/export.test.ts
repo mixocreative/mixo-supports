@@ -1,5 +1,4 @@
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-import { importStlUnit } from '../state/import';
+import { importStl } from '../state/import';
 import { describe, expect, it } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import { emptyScene, type PrintScene, type PrintUnit } from '../state/project';
@@ -82,7 +81,7 @@ describe('support export', () => {
     const view = new DataView(stl);
     // Third vertex (web y = 5) is STL z = 5.
     expect([view.getFloat32(84 + 36, true), view.getFloat32(84 + 40, true), view.getFloat32(84 + 44, true)].map((v) => v + 0)).toEqual([0, 0, 5]);
-    const imported = importStlUnit(new STLLoader().parse(stl), 'tall.stl').mesh;
+    const imported = importStl(stl, 'tall.stl').mesh;
     expect(Array.from(imported.positions).map((v) => Math.round(v * 1e6) / 1e6 + 0)).toEqual(Array.from(tall.positions));
   });
 

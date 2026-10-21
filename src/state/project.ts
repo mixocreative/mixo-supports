@@ -50,7 +50,8 @@ export const emptyScene: PrintScene = {
 
 export type SceneCommand =
   | { type: 'batch'; commands: SceneCommand[] }
-  | { type: 'unit/add'; unit: PrintUnit }
+  /** `owned`: the caller hands the unit's mesh arrays over (nothing else holds them), so they are not copied. */
+  | { type: 'unit/add'; unit: PrintUnit; owned?: boolean }
   | { type: 'unit/remove'; unitId: string }
   | { type: 'supports/clear-manual'; unitId: string }
   | { type: 'supports/set'; unitId: string; placement?: PlacementResult; supports?: SupportMesh }
@@ -71,7 +72,7 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
     case 'batch':
       return command.commands.reduce(reduceScene, scene);
     case 'unit/add':
-      return { ...scene, units: [...scene.units, normalizeUnit(command.unit)] };
+      return { ...scene, units: [...scene.units, normalizeUnit(command.unit, !command.owned)] };
     case 'unit/remove': {
       if (!scene.units.some((unit) => unit.id === command.unitId)) return scene;
       const remaining = {
@@ -150,7 +151,7 @@ function withoutActiveUnit(scene: PrintScene): PrintScene {
 /** Produces an independent, validated scene suitable for a history snapshot. */
 export function normalizeScene(scene: PrintScene): PrintScene {
   return {
-    units: scene.units.map(normalizeUnit),
+    units: scene.units.map((unit) => normalizeUnit(unit)),
     selectedUnitIds: scene.selectedUnitIds.map((id) => normalizeString(id, 'selected unit id')),
     ...(scene.activeUnitId === undefined ? {} : { activeUnitId: normalizeString(scene.activeUnitId, 'active unit id') }),
   };
@@ -177,10 +178,10 @@ export function sceneJsonReviver(_key: string, value: unknown): unknown {
     : new Uint32Array(value.values);
 }
 
-function normalizeUnit(unit: PrintUnit): PrintUnit {
+function normalizeUnit(unit: PrintUnit, copyMesh = true): PrintUnit {
   return {
     ...unit,
-    source: cloneMesh(unit.source, 'source'),
+    source: copyMesh ? cloneMesh(unit.source, 'source') : checkedMesh(unit.source, 'source'),
     id: normalizeString(unit.id, 'unit id'),
     name: normalizeString(unit.name, 'unit name'),
     transform: cloneTransform(unit.transform),
@@ -199,10 +200,16 @@ function normalizeSupportMesh(mesh: SupportMesh): SupportMesh {
 }
 
 function cloneMesh(mesh: TriangleMesh, label: string): TriangleMesh {
+  const checked = checkedMesh(mesh, label);
+  return { positions: new Float32Array(checked.positions), indices: new Uint32Array(checked.indices) };
+}
+
+/** The mesh itself after the same type check (a heavy mesh handed over is not copied). */
+function checkedMesh(mesh: TriangleMesh, label: string): TriangleMesh {
   if (!(mesh.positions instanceof Float32Array) || !(mesh.indices instanceof Uint32Array)) {
     throw new TypeError(`${label} must contain typed-array mesh data`);
   }
-  return { positions: new Float32Array(mesh.positions), indices: new Uint32Array(mesh.indices) };
+  return mesh;
 }
 
 function normalizePlacement(placement: PlacementResult): PlacementResult {

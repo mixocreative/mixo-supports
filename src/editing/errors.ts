@@ -1,7 +1,7 @@
 import type { StatusMessage } from './types';
 
 /** What went wrong, independent of the language it is shown in. */
-export const ERROR_CODES = ['non-finite', 'no-mesh', 'file-type', 'too-large', 'timeout', 'worker-stopped', 'unknown'] as const;
+export const ERROR_CODES = ['non-finite', 'no-mesh', 'file-type', 'bad-stl', 'too-large', 'out-of-memory', 'plate-full', 'timeout', 'worker-stopped', 'unknown'] as const;
 export type ErrorCode = typeof ERROR_CODES[number];
 
 /** The job that failed. */
@@ -36,7 +36,10 @@ const IMPORT: Record<ErrorCode, string> = {
   'non-finite': '{name} has broken vertex positions (not numbers). Repair the model or export it again, then import it.',
   'no-mesh': '{name} contains no mesh. Export it again with the mesh included, then import it.',
   'file-type': 'Only STL, GLB and glTF files can be imported. Choose a file of one of these types.',
+  'bad-stl': '{name} is a damaged STL file: its size does not match its triangles. Export it again, then import it.',
   'too-large': '{name} is too large to edit here: {n} triangles, the limit is {limit}. Simplify the model, then import it again.',
+  'out-of-memory': '{name} ({n} triangles) needs more memory than this device can give the editor. Simplify or split the model, then import it again.',
+  'plate-full': 'The plate would hold {n} triangles with {name}; the limit is {limit}. Delete or simplify an object first, then import again.',
   timeout: 'Importing {name} took too long and was stopped. Try again; if it happens again, simplify the model.',
   'worker-stopped': 'The import stopped unexpectedly while reading {name}. Import it again; if it stops again, the file may be too large or damaged: simplify it or export it again.',
   unknown: 'Could not read {name} as STL, GLB or glTF ({error}). Check the file or export it again, then import it.',
@@ -62,6 +65,9 @@ const FAILED: Record<Exclude<ErrorContext, 'import'>, string> = {
   export: 'Export failed ({error}). Nothing was saved; try again, or export one object at a time.',
 };
 
+// Memory refusals outside import: Generate checks what the jobs would need before it starts.
+const MEMORY = 'Generating supports for {n} triangles at once needs more memory than this device can give the editor. Generate fewer objects at a time, or simplify the models.';
+
 /** The status line for a failed job. `name` is the file (import) or object concerned. */
 export function errorStatus(context: ErrorContext, error: unknown, vars: { name?: string } = {}): StatusMessage {
   const code = errorCode(error);
@@ -69,7 +75,7 @@ export function errorStatus(context: ErrorContext, error: unknown, vars: { name?
   const raw = error instanceof Error ? error.message : String(error);
   let key: string;
   if (context === 'import') key = IMPORT[code];
-  else key = code === 'timeout' ? TIMEOUT[context] : code === 'worker-stopped' ? STOPPED[context] : FAILED[context];
+  else key = code === 'timeout' ? TIMEOUT[context] : code === 'worker-stopped' ? STOPPED[context] : code === 'out-of-memory' ? MEMORY : FAILED[context];
   const filled: Record<string, string | number> = { ...(vars.name !== undefined ? { name: vars.name } : {}), ...coded };
   // The raw message only fills a message that asks for it (errors the app does not know yet).
   if (key.includes('{error}')) filled.error = raw;

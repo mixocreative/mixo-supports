@@ -2,7 +2,9 @@ import { Grid, OrbitControls, TransformControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
+import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree, MeshBVH } from 'three-mesh-bvh';
+import { FULL_TIER_MAX } from '../core/budget';
+import { displayMesh, prebuiltBvh } from '../state/meshExtras';
 import { TransformControls as TransformControlsImpl } from 'three-stdlib';
 import type { SupportProblem } from '../core/analysis/supportCheck';
 import type { TriangleMesh } from '../core/analysis/types';
@@ -124,12 +126,16 @@ function useGeometry(mesh: TriangleMesh | undefined, bvh: boolean): THREE.Buffer
     if (!geometry || !bvh) return;
     geometry.computeBoundsTree = computeBoundsTree;
     geometry.disposeBoundsTree = disposeBoundsTree;
+    // A model's index comes built by the import worker (never on the main thread); read-only, so
+    // geometries of the same mesh can share it.
+    const prebuilt = mesh && prebuiltBvh(mesh);
+    if (prebuilt) geometry.boundsTree = MeshBVH.deserialize({ ...prebuilt, index: mesh.indices } as unknown as Parameters<typeof MeshBVH.deserialize>[0], geometry, { setIndex: false });
     // Indirect: a default build reorders the index buffer in place (it is the mesh's own
     // array), which breaks the triangle → support contact lookup and mutates scene data.
     // (0.7.8 supports the option; its typings do not list it yet.)
-    geometry.computeBoundsTree({ indirect: true } as Parameters<typeof computeBoundsTree>[0]);
+    else geometry.computeBoundsTree({ indirect: true } as Parameters<typeof computeBoundsTree>[0]);
     return () => geometry.disposeBoundsTree?.();
-  }, [geometry, bvh]);
+  }, [geometry, bvh]); // eslint-disable-line react-hooks/exhaustive-deps
   return geometry;
 }
 
@@ -239,7 +245,9 @@ function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMesh; geo
   const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute; zoned: Uint8Array; grid: VertexGrid | undefined; applied: readonly ZoneStamp[] }>();
   useEffect(() => {
     // The refinement and grid are cached per model mesh; only the GPU copy is made per mount.
-    const { mesh: refined, grid } = zoneOverlay(mesh, OVERLAY_MAX_EDGE, OVERLAY_MAX_TRIANGLES, ZONE_GRID_CELL);
+    // A large model (heavy-mesh tier "large") is not refined: its faces are fine enough, and the copy would cost too much.
+    const large = mesh.indices.length / 3 >= FULL_TIER_MAX;
+    const { mesh: refined, grid } = zoneOverlay(mesh, large ? Infinity : OVERLAY_MAX_EDGE, OVERLAY_MAX_TRIANGLES, ZONE_GRID_CELL);
     const shared = refined === mesh;
     const sub = shared ? new THREE.BufferGeometry() : toGeometry(refined);
     if (shared) {
@@ -373,7 +381,9 @@ function UnitObject(props: UnitObjectProps) {
   // The tips view draws (and picks) only the contact tips of the built supports.
   const tips = useMemo(() => (props.tipsView && props.supports ? tipsOf(props.supports) : undefined), [props.tipsView, props.supports]);
   const supports = tips ?? props.supports;
-  const model = useGeometry(unit.source, true);
+  // A heavy model draws its simplified copy (it takes no hand edits); supports and export use the full one.
+  const shown = displayMesh(unit.source);
+  const model = useGeometry(shown, true);
   // Painting zones: supports are drawn but take no pointer events (presses reach the model).
   const zoning = editing && editMode === 'zones';
   const supportGeometry = useGeometry(supports, editing && !zoning);
@@ -571,7 +581,7 @@ function UnitObject(props: UnitObjectProps) {
         wireframe={props.wireframe}
       />
     </mesh>}
-    {model && editing && props.showZones !== 'off' && zones.length > 0 && <group visible={props.modelVisible}>
+    {model && editing && shown === unit.source && props.showZones !== 'off' && zones.length > 0 && <group visible={props.modelVisible}>
       <ZoneLayer mesh={unit.source} geometry={model} zones={zones} opacity={ZONE_OPACITY[props.showZones]} />
     </group>}
     {supportGeometry && <mesh

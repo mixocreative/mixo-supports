@@ -19,6 +19,13 @@ conventions converts at its boundary: a left-handed host (Babylon.js by default)
 |---|---|
 | `vec3.ts` | Shared vector helpers (`add`, `subtract`, `scale`, `dot`, `cross`, `length`, `lengthSq`, `distance`, `distanceSq`, `normalize`) |
 | `conventions.ts` | Coordinate convention constants |
+| `jobs.ts` | `SupportJob`, `PlacementJob`, `CheckJob`: plain job inputs (unit-local mesh, transform, settings, contact edits, label), and `jobContacts` (final contacts from the edits) |
+| `budget.ts` | Heavy-mesh budgets (warn 1x, refuse 4x per runtime), tiers (full / large / heavy), `assertTriangleCapacity`, memory estimate and cap |
+| `decimate.ts` | Deterministic vertex-clustering simplification, for the display copy of a heavy mesh only |
+| `jobGate.ts` | `TriangleGate`: heavy jobs start only while running triangles plus their own fit the limit |
+| `import/stl.ts` | Chunked binary/ASCII STL straight into a welded Y-up mesh (identical to three's STLLoader + rotateX + mergeVertices) |
+| `import/weld.ts` | Typed-array vertex weld (open addressing, no string keys), bit-identical to `mergeVertices(geometry, 1e-4)` |
+| `import/estimate.ts` | Triangle count before parsing: binary STL exact from size, ASCII STL sampled, glTF/GLB from the JSON |
 | `handedness.ts` | Mirror to and from a left-handed Y-up host (meshes, vectors, matrices) |
 | `transform.ts` | Placement matrix (Euler XYZ), inverse, point/direction/positions transforms (three.js-exact arithmetic) |
 | `analysis/types.ts` | `TriangleMesh`, placement settings and results |
@@ -99,14 +106,47 @@ keeps:
   (`errorCode`, `errorStatus`) turns any failure into a coded, translated status line that says
   what to do next (`worker-stopped`, `timeout`, …).
 
-## Budgets & heavy meshes: filled after lane B
+## Budgets & heavy meshes
 
-> **Placeholder.** Lane B (workers, heavy meshes, progress UI) is still landing. Triangle
-> budgets, pre-parse refusal, memory limits and the progress UI are written here after it
-> merges, from its code. Until then, no numbers here are authoritative. The shared cross-app
-> contract is mixomesh's heavy-mesh spec,
-> `S:\ai\mixomesh\docs\superpowers\specs\2026-10-21-heavy-mesh-handling.md` (branch
-> `feat/heavy-mesh`).
+Shared cross-app contract: mixomesh's heavy-mesh spec,
+`S:\ai\mixomesh\docs\superpowers\specs\2026-10-21-heavy-mesh-handling.md` (branch `feat/heavy-mesh`).
+Measurements and fixtures: `docs/migration/2026-10-21-heavy-mesh-mixosupports.md`
+(`scripts/make-heavy-meshes.ts`, `scripts/measure-heavy.mjs`).
+
+**Budgets** (`budget.ts`), web and desktop alike: warn above **1.5M** triangles, refuse above
+**6M** (4x). Import is cheap (10M imports in 10 s with no main-thread block); Generate costs about
+**850 MiB of renderer memory per million triangles** (2M → 1.89 GB, 5M → 4.13 GB) and a 10M
+placement stopped the tab at 6.5 GB, so the limit follows generation. A desktop shell runs the same
+Chromium renderer. (mixomesh, import and editing only, measured 2.5M / 10M web.)
+
+**Tiers** (`meshTier`): *full* (< 300k) everything; *large* (≤ 1.5M) Tips only at import, no zone
+overlay refinement; *heavy* (> 1.5M) a decimated display copy (`decimate.ts`, ≤ budget / 2), Edit
+Mode and zones off with a plain message; supports and export always use the full mesh in workers.
+
+**Refusals**, all as shared error codes (`src/editing/errors.ts`, translated, with the next step):
+- before parsing (`import/estimate.ts`): binary STL exact from the size (header count when its
+  records fit, as STLLoader), ASCII STL sampled (refused only past x1.25), glTF/GLB from the JSON →
+  `too-large`; checked again on the parsed mesh in the import worker;
+- import memory: about 56 B per triangle against the browser's heap limit / half the device memory /
+  1 GiB → `out-of-memory`;
+- plate: the plate's triangles plus the new file's over 6M → `plate-full`;
+- Generate: the triangles that can run at once (at most 6M, see the gate) x 850 MiB/M over half of
+  `navigator.deviceMemory`, only when it reports less than 8 GB (it is clamped at 8, so 8 or missing
+  means unknown or large and the 6M gate alone applies) → `out-of-memory`.
+
+**Job gate** (`jobGate.ts`): placement, preview builds and exports start only while the triangles of
+the running ones plus their own stay within 6M; otherwise they wait, shown as "Queued". First in,
+first out; a job alone always starts.
+
+**Progress** (`src/workers/jobActivity.ts`, `src/components/JobActivity.tsx`): every WorkerTask job
+reports to one list. NN/g timing (400 ms delay, 500 ms minimum, elapsed after 10 s, time left once
+stable), Cancel except for preview builds (they are replaced automatically), failures through
+`errorStatus` with the worker's error code and values carried across `serveTask`/`WorkerTask`.
+
+**Memory model:** one CPU copy per mesh (the scene's `TriangleMesh`; the import hands its arrays over
+without a copy); analysis jobs carry a transferred copy; the preview worker's token cache is capped
+at 512 MiB of model bytes; import and export workers live only for their job; the pick index is
+built in the import worker.
 
 ## Not yet portable
 
@@ -114,7 +154,8 @@ Kept outside `src/core` because they import app modules or three.js:
 
 | Module | Reason |
 |---|---|
-| `src/supports/unitSupports.ts` | App glue: `PrintUnit`/`SupportSettings` (state/project) and three-based `state/transform`. Task 8 makes it the only `PrintUnit → SupportJob` adapter. |
+| `src/supports/unitSupports.ts` | App glue: the only `PrintUnit` → `SupportJob` / `PlacementJob` / `CheckJob` adapter, plus the per-unit caches the UI reads. |
+| `src/supports/jobRunner.ts` | Runs the core jobs (any thread). Uses `state/transform` (three-free since Task 7); can move into the core by switching to `core/transform.ts`. |
 | `src/supports/selection.ts` | `deleteCommands` returns `SceneCommand`s for `PrintUnit` (state/project). The pure selection rules (toggle, paint, prune, brush) live in `src/editing/selection.ts`. |
 | `src/supports/export.ts` | `PrintScene`/`PrintUnit` and `state/transform` (three). |
 | `src/supports/zones.test.ts` | Tests core `zones.ts` but builds orientations with `state/transform` (app module; three-free since Task 7). Could move by switching it to `core/transform.ts`. |
@@ -200,3 +241,16 @@ For a stricter process, someone who has not seen the old code can re-implement f
 `tools/fonts/LICENSE-Inter.txt`; version, hashes and the reason the static file is used are in
 `tools/fonts/README.md`. The add-on's MIXO_Label uses the same file. This replaces Blender's
 built-in "Bfont", whose licence could not be established.
+
+## Jobs and workers
+
+The app runs the jobs in Web Workers through `src/workers/WorkerTask.ts`, a port of mixomesh's
+`WorkerTask`/`serveTask` contract (factory injection, progress, AbortSignal, timeout, revision echo,
+crash isolation, fallback); worker factories live only in `src/workers/factories.ts`.
+
+Model copies: placement and check jobs carry a copy of the model that is transferred to the worker
+and dropped with the job. The preview support-mesh worker keeps one model per unit in a token cache
+(`src/workers/sourceCache.ts`) so rebuilds keep their remesh caches warm; entries are freed when the
+unit is removed (`forget`, which also drops that unit's queued builds) and the cache caps model
+bytes at 512 MiB (least recently used first; an evicted model is sent again on demand). The remesh
+and raft caches derived from a model are not counted; they go with the evicted model. Exports run in a per-job worker that ends with the export.

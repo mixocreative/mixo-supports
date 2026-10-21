@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { CodedError, ERROR_CONTEXTS, errorCode, errorStatus } from './editing/errors';
+import { CapacityError } from './core/budget';
 import { weldRawMesh } from './state/import';
+import { codedJobError } from './workers/jobErrors';
+import { WorkerTaskError } from './workers/WorkerTask';
 
 declare global {
   interface ImportMeta {
@@ -26,11 +29,15 @@ describe('job errors reach the status line as codes', () => {
     expect(errorStatus('import', thrown, { name: 'part.glb' }).vars).toEqual({ name: 'part.glb' });
   });
 
-  it('every worker crash message the clients send is a worker-stopped code', () => {
-    const messages = Object.values(WORKER_CLIENTS).flatMap((code) => [...code.matchAll(/'([^'\n]*\bworker\b[^'\n]*)'/gi)].map((match) => match[1]!))
-      .filter((text) => / /.test(text) && !/\.ts$/.test(text));
-    expect(messages.length).toBeGreaterThanOrEqual(3);
-    for (const message of messages) expect(errorCode(new Error(message)), message).toBe('worker-stopped');
+  it('every worker failure reaches the status line as a code (WorkerTask codes, budget refusals)', () => {
+    // The clients run on WorkerTask: a crash or restart is a WorkerTaskError code, mapped by codedJobError.
+    expect(errorCode(codedJobError(new WorkerTaskError('Support building crashed', 'crashed')))).toBe('worker-stopped');
+    expect(errorCode(codedJobError(new WorkerTaskError('Import restarted: x', 'restarted')))).toBe('worker-stopped');
+    expect(errorCode(codedJobError(new WorkerTaskError('Import timed out after 300000 ms', 'timeout')))).toBe('timeout');
+    const refused = codedJobError(new CapacityError('big.stl', 9_991_920, 6_000_000, 'web'));
+    expect(errorStatus('import', refused, { name: 'big.stl' })).toEqual({ key: expect.stringContaining('{n}'), vars: { name: 'big.stl', n: (9_991_920).toLocaleString(), limit: (6_000_000).toLocaleString() } });
+    // No client keeps a hand-written crash message of its own any more.
+    for (const [file, code] of Object.entries(WORKER_CLIENTS)) expect(code, file).not.toMatch(/'[^'\n]*\bworker (stopped|failed)\b/i);
   });
 
   it('a stopped worker never asks for a page reload (the scene is not saved) and shows no raw English', () => {

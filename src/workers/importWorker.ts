@@ -1,39 +1,46 @@
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-import { importStlUnit, weldRawMesh, type ImportedMesh, type RawMesh } from '../state/import';
+import type { TriangleMesh } from '../core/analysis/types';
+import { StlWelder } from '../core/import/stl';
+import { named, weldRawMesh } from '../state/import';
+import type { ImportTask, PreparedMesh } from './importProtocol';
+import { buffers, prepare, type Progress } from './prepareImport';
+import { serveTask, transferable } from './serveTask';
 
-export type ImportRequest =
-  | { kind: 'stl'; jobId: number; name: string; buffer: ArrayBuffer }
-  | { kind: 'weld'; jobId: number; meshes: RawMesh[] };
+/** A File is read in slices this big, so the whole file never sits in memory at once. */
+const CHUNK_BYTES = 16 * 1024 * 1024;
 
-export type ImportResponse =
-  | { kind: 'progress'; jobId: number; fraction: number; stage: string }
-  | { kind: 'imported'; jobId: number; meshes: ImportedMesh[] }
-  | { kind: 'error'; jobId: number; message: string };
-
-const workerScope = self as unknown as {
-  onmessage: ((event: MessageEvent<ImportRequest>) => void) | null;
-  postMessage(message: ImportResponse, transfer: Transferable[]): void;
-};
-
-/** STL parsing and vertex welding, the slow parts of an import, off the main thread. */
-workerScope.onmessage = ({ data }: MessageEvent<ImportRequest>) => {
-  const progress = (fraction: number, stage: string) => workerScope.postMessage({ kind: 'progress', jobId: data.jobId, fraction, stage }, []);
-  try {
-    let meshes: ImportedMesh[];
-    if (data.kind === 'stl') {
-      progress(0.1, 'Parsing STL');
-      const geometry = new STLLoader().parse(data.buffer);
-      progress(0.5, 'Welding vertices');
-      meshes = [importStlUnit(geometry, data.name)];
-    } else {
-      meshes = data.meshes.map((raw, k) => {
-        progress(0.1 + 0.9 * k / data.meshes.length, 'Welding vertices');
-        return weldRawMesh(raw);
-      });
-    }
-    progress(1, 'Done');
-    workerScope.postMessage({ kind: 'imported', jobId: data.jobId, meshes }, meshes.flatMap(({ mesh }) => [mesh.positions.buffer, mesh.indices.buffer]));
-  } catch (error) {
-    workerScope.postMessage({ kind: 'error', jobId: data.jobId, message: error instanceof Error ? error.message : String(error) }, []);
+async function readStl(file: Blob, name: string, progress: Progress): Promise<TriangleMesh> {
+  const head = new Uint8Array(await file.slice(0, 84).arrayBuffer());
+  const welder = named(name, () => new StlWelder(head, file.size));
+  for (let offset = 0; offset < file.size; offset += CHUNK_BYTES) {
+    progress(0.7 * offset / file.size, 'Reading file');
+    const chunk = new Uint8Array(await file.slice(offset, offset + CHUNK_BYTES).arrayBuffer());
+    named(name, () => welder.push(chunk));
   }
-};
+  progress(0.7, 'Welding vertices');
+  return named(name, () => welder.finish());
+}
+
+/** STL reading and welding, glTF welding, display copies and pick indices, off the main thread. */
+serveTask<ImportTask, PreparedMesh[]>(async (task, { progress: post }) => {
+  let last = 0;
+  const progress: Progress = (fraction, stage) => {
+    const now = performance.now();
+    if (now - last < 60 && fraction < 1) return;
+    last = now;
+    post({ fraction, stage });
+  };
+  let prepared: PreparedMesh[];
+  if (task.kind === 'stl') {
+    const name = task.name.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
+    const mesh = await readStl(task.file, name, progress);
+    prepared = [prepare({ name, mesh }, task.runtime, progress, 0.75, 1)];
+  } else {
+    const share = 1 / task.meshes.length;
+    prepared = task.meshes.map((raw, k) => {
+      progress(k * share, 'Welding vertices');
+      return prepare(weldRawMesh(raw), task.runtime, progress, (k + 0.5) * share, (k + 1) * share);
+    });
+  }
+  progress(1, 'Done');
+  return transferable(prepared, buffers(prepared));
+});

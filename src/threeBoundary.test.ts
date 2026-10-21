@@ -12,10 +12,9 @@ declare global {
 const SOURCES = import.meta.glob<string>(['./**/*.ts', './**/*.tsx', '!./**/*.test.ts', '!./**/*.test.tsx'], { query: '?raw', import: 'default', eager: true });
 const VIEW_LAYER = /^\.\/components\//;
 const LOADER_EXCEPTIONS: Record<string, string> = {
-  './state/import.ts': 'STL/glTF parsing and the three weld (lane B replaces the weld, Task 9)',
-  './workers/importWorker.ts': 'hosts the STL loader off the main thread',
+  './state/import.ts': 'walks the GLTFLoader scene graph (gltfRawMeshes) and takes BufferGeometry inputs in tests (geometryToMesh); the weld is typed-array (src/core/import)',
+  './workers/prepareImport.ts': 'builds the pick index (three-mesh-bvh on a BufferGeometry) in the import worker',
   './App.tsx': 'parses glTF with GLTFLoader on the main thread before the import worker welds it',
-  './goldens/fixtures.ts': 'test fixtures read back through the STL import',
 };
 const THREE_IMPORT = /\b(?:import|export)\s[^'"`;]*?\sfrom\s*['"](three|three\/[^'"]*|@react-three\/[^'"]*|three-mesh-bvh|three-stdlib)['"]/;
 
