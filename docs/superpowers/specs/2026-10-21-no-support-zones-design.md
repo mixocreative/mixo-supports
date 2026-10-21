@@ -20,7 +20,7 @@ works before or after Generate; auto supports inside a zone disappear; manual su
 ## Flow and UI
 
 - Left panel, a section **No-support zones** between "Edit supports" and "Supports for …":
-  `{n} zones` count (muted) · **Paint zones** · **Clear** (`.danger` outline, disabled when none).
+  "Painted" or "None" (muted, never a count: one stroke is many stamps) · **Paint zones** · **Clear** (`.danger` outline, disabled when none).
   Help line: "Paint where supports must not grow. Manual supports stay."
 - **Paint zones** enters zones mode for the active object (needs an active object, like Edit Mode).
   Viewport: blue hairline frame, blue badge "Painting no-support zones · {object}", bar top right:

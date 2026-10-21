@@ -353,8 +353,7 @@ const ZH: Dictionary = {
   'Erase radius': '移除半徑',
   // No-support zones
   'No-support zones': '免支撐區',
-  '1 zone': '1 個區域',
-  '{n} zones': '{n} 個區域',
+  'Painted': '已塗刷',
   'Paint zones': '塗刷區域',
   'Clear': '清除',
   'Paint where supports must not grow. Manual supports stay.': '在不要長出支撐的地方塗刷。手動支撐會保留。',
@@ -646,8 +645,7 @@ const JA: Dictionary = {
   'Erase radius': '削除半径',
   // No-support zones
   'No-support zones': 'サポート禁止エリア',
-  '1 zone': '1 エリア',
-  '{n} zones': '{n} エリア',
+  'Painted': '塗装済み',
   'Paint zones': 'エリアを塗る',
   'Clear': 'クリア',
   'Paint where supports must not grow. Manual supports stay.': 'サポートを付けたくない場所を塗ります。手動サポートは残ります。',

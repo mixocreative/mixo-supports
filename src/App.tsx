@@ -736,7 +736,7 @@ export default function App() {
           <p className="help">{activeUnit ? t('Add or remove supports by clicking the model. Tab toggles.') : t('Select an object first.')}</p>
         </section>
         <section>
-          <h3>{t('No-support zones')}{activeUnit && <small className="count">{plural(activeUnit.zones.length, '1 zone', '{n} zones')}</small>}</h3>
+          <h3>{t('No-support zones')}{activeUnit && <small className="count">{activeUnit.zones.length ? t('Painted') : t('None')}</small>}</h3>
           <div className="row">
             <button onClick={() => openZones(editMode === 'edit' ? 'edit' : 'off')} disabled={!activeUnit || editMode === 'zones'}>{t('Paint zones')}</button>
             <button className="danger" onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length}>{t('Clear')}</button>
