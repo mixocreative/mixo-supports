@@ -783,7 +783,7 @@ export default function App() {
             <div className="edit-row">
               {selection.size > 0 && <>
                 <span className="edit-count">{t('{n} selected', { n: selection.size })}</span>
-                <button className="primary" onClick={deleteSelected}>{t('Delete')}</button>
+                <button className="danger" onClick={deleteSelected}>{t('Delete')}</button>
                 <button onClick={() => setSelection(NO_SELECTION)}>{t('Clear selection')}</button>
               </>}
               <button className="primary edit-done" onClick={toggleEditMode}>{t('Done')} <kbd>Esc</kbd></button>

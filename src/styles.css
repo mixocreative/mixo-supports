@@ -10,6 +10,7 @@
   --kraft: #b59f78;
   --red: #7f0019;
   --red-hover: #96102b;
+  --danger: #b3261e;
   /* Owner's call: Regenerate is deep blue so it never reads as the first Generate. */
   --blue: #1d3461;
   --blue-hover: #284579;
@@ -49,6 +50,8 @@ button:focus-visible, input:focus-visible, summary:focus-visible, .drop:focus-wi
 .primary { background: var(--red); border-color: var(--red); color: #fff; font-weight: 500; }
 .primary:hover:not(:disabled) { background: var(--red-hover); border-color: var(--red-hover); }
 .primary:disabled { color: #fff; }
+.danger { color: var(--danger); border-color: var(--danger); background: transparent; } /* never a red fill */
+.danger:hover:not(:disabled) { border-color: var(--danger); background: var(--sunken); }
 .primary.regen { background: var(--blue); border-color: var(--blue); }
 .primary.regen:hover:not(:disabled) { background: var(--blue-hover); border-color: var(--blue-hover); }
 button.active, button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
