@@ -17,6 +17,11 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* Traditional Chinese uses Taiwan glyph forms; the Japanese face would draw kanji forms. */
+:root:lang(zh-Hant), [lang="zh-Hant"] {
+  font-family: 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', 'Zen Kaku Gothic New', system-ui, sans-serif;
+}
+
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 1080px; background: var(--paper); }
 button, input { font: inherit; color: inherit; }
@@ -105,6 +110,7 @@ h3 { font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: .06
   border-radius: 0;
   background: transparent;
   text-transform: capitalize;
+  white-space: nowrap;
 }
 .segmented button + button { border-left: 1px solid var(--line); }
 .segmented button:hover:not(:disabled) { background: var(--sunken); }
@@ -269,9 +275,10 @@ kbd {
 /* ---- Settings ------------------------------------------------------------ */
 .settings { border: 0; margin: 0; padding: 0; min-width: 0; }
 .settings:disabled { opacity: .5; }
-.field-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; font-size: 12.5px; }
-.field-row > span:first-child { flex: 1; min-width: 0; }
-.field-row .segmented { flex: 0 0 64%; }
+.field-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin: 8px 0; font-size: 12.5px; }
+.field-row > span:first-child { flex: 1 0 auto; white-space: nowrap; }
+/* Longer labels (Japanese katakana) push the choice onto its own line instead of breaking words. */
+.field-row .segmented { flex: 1 0 64%; max-width: 100%; }
 .number { display: flex; align-items: center; gap: 6px; }
 .number input, .field-row .text {
   width: 70px;
@@ -326,3 +333,6 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 .panel .unit.active, .panel .unit.active:hover:not(:disabled) { background: var(--sunken); color: var(--ink); border: 0; }
 .panel, .units { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .segmented button.active:hover:not(:disabled), .segmented button[aria-pressed='true']:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+
+/* ---- Language switch ------------------------------------------------------ */
+.segmented.lang button { padding: 6px 10px; font-size: 12px; }

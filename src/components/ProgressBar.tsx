@@ -1,7 +1,9 @@
+import { t, translateMessage, type Message } from '../i18n';
+
 export interface ProgressTask {
-  /** What is running, e.g. "Building supports for A mushroom". */
-  label: string;
-  /** Current step, e.g. "Sampling surface normals". */
+  /** What is running, e.g. "Building supports for {name}". */
+  label: Message;
+  /** Current step as an i18n key, e.g. "Sampling surface normals". */
   stage: string;
   /** 0 to 1. */
   fraction: number;
@@ -16,14 +18,15 @@ export default function ProgressBar({ tasks }: { tasks: readonly ProgressTask[] 
   const overall = tasks.reduce((sum, task) => sum + Math.min(1, Math.max(0, task.fraction)), 0) / tasks.length;
   const percent = Math.round(overall * 100);
   const [first] = tasks;
-  const more = tasks.length > 1 ? ` (and ${tasks.length - 1} more)` : '';
+  const label = translateMessage(first!.label);
+  const caption = tasks.length > 1 ? t('{label} (and {n} more)', { label, n: tasks.length - 1 }) : label;
   return <div className="progress" role="status" aria-live="polite">
-    <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label={first!.label}>
+    <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label={label}>
       <div className="progress-fill" style={{ width: `${Math.max(percent, 2)}%` }} />
     </div>
     <p className="progress-caption">
-      <span>{first!.label}{more}</span>
-      <span className="progress-stage">{first!.stage}</span>
+      <span>{caption}</span>
+      <span className="progress-stage">{t(first!.stage)}</span>
       <span className="progress-percent">{percent}%</span>
     </p>
   </div>;

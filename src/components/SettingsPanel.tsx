@@ -1,5 +1,6 @@
 import type { LiveSupportSettings, PresetName, RoofMode, SettingKey } from '../supports/settings';
 import { settingLimits } from '../supports/settings';
+import { t } from '../i18n';
 
 type NumberKey = keyof typeof settingLimits;
 type BooleanKey = { [K in SettingKey]: LiveSupportSettings[K] extends boolean ? K : never }[SettingKey];
@@ -23,7 +24,7 @@ const deg = (key: NumberKey, label: string): Field => ({ kind: 'number', key, la
 const int = (key: NumberKey, label: string): Field => ({ kind: 'number', key, label, step: 1 });
 const bool = (key: BooleanKey, label: string, hint?: string): Field => ({ kind: 'boolean', key, label, ...(hint ? { hint } : {}) });
 
-/** Field layout mirrors the Blender Resin UV "SLA Supports" panel. */
+/** Field layout mirrors the Blender Resin UV "SLA Supports" panel. Titles, labels and hints are i18n keys. */
 export const SETTING_GROUPS: Group[] = [
   {
     title: 'Auto placement', open: true, fields: [
@@ -48,6 +49,9 @@ export const SETTING_GROUPS: Group[] = [
   { title: 'Advanced', fields: [{ kind: 'preview', key: 'previewMode', label: 'Preview mode' }, bool('lowPolyMode', 'Low poly mode'), int('resolution', 'Resolution'), bool('autoSnap', 'Auto snap'), mm('eraseRadius', 'Erase radius')] },
 ];
 
+export const PRESET_LABELS = { LIGHT: 'Light', MIDDLE: 'Middle', HEAVY: 'Heavy' } as const;
+export const ROOF_LABELS = { OFF: 'Off', ROOF: 'Roof', CAGE: 'Cage' } as const;
+
 export interface SettingsPanelProps {
   settings: LiveSupportSettings;
   autoLabel: string;
@@ -60,32 +64,32 @@ export interface SettingsPanelProps {
 export default function SettingsPanel({ settings, autoLabel, disabled, onChange, onPreset, onRoofMode }: SettingsPanelProps) {
   return <fieldset className="settings" disabled={disabled}>
     <div className="field-row">
-      <span>Preset</span>
+      <span>{t('Preset')}</span>
       <div className="segmented">
-        {(['LIGHT', 'MIDDLE', 'HEAVY'] as const).map((preset) => <button key={preset} type="button" className={settings.preset === preset ? 'active' : ''} aria-pressed={settings.preset === preset} onClick={() => onPreset(preset)}>{preset.toLowerCase()}</button>)}
-        <button type="button" disabled className={settings.preset === 'CUSTOM' ? 'active custom' : 'custom'}>custom</button>
+        {(['LIGHT', 'MIDDLE', 'HEAVY'] as const).map((preset) => <button key={preset} type="button" className={settings.preset === preset ? 'active' : ''} aria-pressed={settings.preset === preset} onClick={() => onPreset(preset)}>{t(PRESET_LABELS[preset])}</button>)}
+        <button type="button" disabled className={settings.preset === 'CUSTOM' ? 'active custom' : 'custom'}>{t('Custom')}</button>
       </div>
     </div>
-    <NumberField label="Lift height" unit="mm" step={0.5} value={settings.liftHeight} onChange={(value) => onChange('liftHeight', value)} hint="Lowest model point above the plate" />
+    <NumberField label={t('Lift height')} unit="mm" step={0.5} value={settings.liftHeight} onChange={(value) => onChange('liftHeight', value)} hint={t('Lowest model point above the plate')} />
     <div className="field-row">
-      <span>Roof / cage</span>
+      <span>{t('Roof / cage')}</span>
       <div className="segmented">
-        {(['OFF', 'ROOF', 'CAGE'] as const).map((mode) => <button key={mode} type="button" className={settings.roofMode === mode ? 'active' : ''} aria-pressed={settings.roofMode === mode} onClick={() => onRoofMode(mode)}>{mode.toLowerCase()}</button>)}
+        {(['OFF', 'ROOF', 'CAGE'] as const).map((mode) => <button key={mode} type="button" className={settings.roofMode === mode ? 'active' : ''} aria-pressed={settings.roofMode === mode} onClick={() => onRoofMode(mode)}>{t(ROOF_LABELS[mode])}</button>)}
       </div>
     </div>
     {SETTING_GROUPS.filter((group) => !group.when || group.when(settings)).map((group) => <details key={group.title} open={group.open}>
-      <summary>{group.title}</summary>
+      <summary>{t(group.title)}</summary>
       {group.fields.map((field) => {
         switch (field.kind) {
           case 'number':
-            return <NumberField key={field.key} label={field.label} unit={field.unit} step={field.step ?? 0.1} value={settings[field.key]} hint={field.hint} onChange={(value) => onChange(field.key, value)} />;
+            return <NumberField key={field.key} label={t(field.label)} unit={field.unit} step={field.step ?? 0.1} value={settings[field.key]} hint={field.hint && t(field.hint)} onChange={(value) => onChange(field.key, value)} />;
           case 'boolean':
-            return <label key={field.key} className="check" title={field.hint}><input type="checkbox" checked={settings[field.key]} onChange={(event) => onChange(field.key, event.target.checked)} /> {field.label}</label>;
+            return <label key={field.key} className="check" title={field.hint && t(field.hint)}><input type="checkbox" checked={settings[field.key]} onChange={(event) => onChange(field.key, event.target.checked)} /> {t(field.label)}</label>;
           case 'text':
-            return <label key={field.key} className="field-row"><span>{field.label}</span><input className="text" maxLength={4} value={settings.labelText} placeholder={`${field.placeholder} (${autoLabel})`} onChange={(event) => onChange('labelText', event.target.value.toUpperCase())} /></label>;
+            return <label key={field.key} className="field-row"><span>{t(field.label)}</span><input className="text" maxLength={4} value={settings.labelText} placeholder={`${t(field.placeholder)} (${autoLabel})`} onChange={(event) => onChange('labelText', event.target.value.toUpperCase())} /></label>;
           case 'preview':
-            return <div key={field.key} className="field-row"><span>{field.label}</span><div className="segmented">
-              {(['FULL', 'ONLY_TIP'] as const).map((mode) => <button key={mode} type="button" className={settings.previewMode === mode ? 'active' : ''} onClick={() => onChange('previewMode', mode)}>{mode === 'FULL' ? 'full' : 'only tip'}</button>)}
+            return <div key={field.key} className="field-row"><span>{t(field.label)}</span><div className="segmented">
+              {(['FULL', 'ONLY_TIP'] as const).map((mode) => <button key={mode} type="button" className={settings.previewMode === mode ? 'active' : ''} onClick={() => onChange('previewMode', mode)}>{t(mode === 'FULL' ? 'Full' : 'Only tip')}</button>)}
             </div></div>;
         }
       })}

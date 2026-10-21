@@ -32,7 +32,20 @@ After every implementation task, record: the completed requirement; changed file
 - Results: `npm test` 14 files, 132 tests pass. All 19 cases match on every compared dimension; 3-6 of 17 supports per 45-degree case are turned/shortened by SLASG pillar repulsion (0 at 30 degrees) and are counted, not compared.
 - Next step: read SLASG's neck/pillar node group in Blender to replicate pillar repulsion, then tighten the test to compare every support.
 
-## Latest completed step (Support Edit Mode)
+## Latest completed step (UI languages)
+
+`src/i18n.ts`: English, Traditional Chinese (Taiwan) and Japanese. English text is the key;
+`t(key, vars)`, `plural(n, one, other)`; status lines are stored as `Message` (key + vars) so they
+re-translate on switch; worker progress stages are keys (`STAGE_KEYS`) translated in ProgressBar.
+Language = saved choice (localStorage `mixo-supports.lang`), else browser language, else English;
+switch in the header. Chinese terms follow the Blender add-on's zh_HANT dictionary. `i18n.test.ts`
+fails when a UI literal, setting label or stage lacks a translation or a placeholder differs.
+
+Pending, awaiting the owner's go: contact-tip types for web and add-on (see the chat plan:
+Contact shape None/Sphere as in Chitubox; tip shape Cone/Pyramid/Cylinder/Cross/Cube as in
+Chitubox + Lychee).
+
+## Previous step (Support Edit Mode)
 
 Port of Blender `mixo.support_place`: one toggle (viewport "Edit supports" button, sidebar
 button, Tab); Esc / Enter / Done exit. Red frame, "Support Edit Mode · unit" badge and key bar

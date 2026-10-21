@@ -1,0 +1,89 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { SETTING_GROUPS } from './components/SettingsPanel';
+import { DICTIONARY, STAGE_KEYS, detectLanguage, plural, setLanguage, t, translateMessage } from './i18n';
+
+declare global {
+  interface ImportMeta {
+    glob<T>(patterns: string[], options: { query: string; import: string; eager: true }): Record<string, T>;
+  }
+}
+
+/** Source text of every non-test module, keyed './path'. */
+const SOURCES = import.meta.glob<string>(['./**/*.ts', './**/*.tsx', '!./**/*.test.ts', '!./**/*.test.tsx'], { query: '?raw', import: 'default', eager: true });
+const UI_FILES = ['./App.tsx', './components/SettingsPanel.tsx', './components/ProgressBar.tsx', './components/ObjectViewport.tsx'];
+/** Quoted literals in UI files that are not shown to the user. */
+const NOT_UI = new Set(['Tab', 'Escape', 'Enter', 'Delete', 'Unit', 'Mixo supports']);
+
+/** Single-quoted literals that read like UI text: a lowercase letter and a space or capital start. */
+function uiLiterals(code: string): string[] {
+  return [...code.matchAll(/'((?:[^'\\\n]|\\.)+)'/g)].map((match) => match[1]!)
+    .filter((text) => /[a-z]/.test(text) && (/^[A-Z{]/.test(text) || / /.test(text)))
+    // Not code between two literals, a path, a MIME type or a lowercase class list.
+    .filter((text) => !/[=()<>]|^[\s}.,/]|^\w+\/|^[a-z -]+$/.test(text));
+}
+
+describe('i18n', () => {
+  afterEach(() => setLanguage('en'));
+
+  it('translates every UI string into Chinese and Japanese', () => {
+    const keys = new Set<string>([...STAGE_KEYS]);
+    for (const file of UI_FILES) {
+      const code = SOURCES[file]!.replace(/^import .*$/gm, '');
+      uiLiterals(code).filter((text) => !NOT_UI.has(text) && !text.includes('${')).forEach((text) => keys.add(text));
+    }
+    for (const group of SETTING_GROUPS) {
+      keys.add(group.title);
+      for (const field of group.fields) {
+        keys.add(field.label);
+        if ('hint' in field && field.hint) keys.add(field.hint);
+        if (field.kind === 'text') keys.add(field.placeholder);
+      }
+    }
+    expect(keys.size).toBeGreaterThan(150);
+    for (const [lang, dictionary] of Object.entries(DICTIONARY)) {
+      expect([...keys].filter((key) => !(key in dictionary)), lang).toEqual([]);
+    }
+  });
+
+  it('knows every progress stage the workers post', () => {
+    const stages = new Set<string>();
+    for (const code of Object.values(SOURCES)) {
+      for (const match of code.matchAll(/[pP]rogress\??\.?\(\s*[^,()]+(?:\([^)]*\))?[^,()]*,\s*'([^']+)'/g)) stages.add(match[1]!);
+    }
+    expect(stages.size).toBeGreaterThan(5);
+    expect([...stages].filter((stage) => !(STAGE_KEYS as readonly string[]).includes(stage))).toEqual([]);
+  });
+
+  it('keeps the same placeholders in every translation', () => {
+    for (const [lang, dictionary] of Object.entries(DICTIONARY)) {
+      for (const [key, value] of Object.entries(dictionary)) {
+        const names = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
+        expect(names(value), `${lang}: ${key}`).toEqual(names(key));
+      }
+    }
+  });
+
+  it('fills placeholders, picks plurals and falls back to English', () => {
+    expect(t('{n} triangles', { n: 12 })).toBe('12 triangles');
+    expect(plural(1, '1 unit', '{n} units')).toBe('1 unit');
+    expect(plural(3, '1 unit', '{n} units')).toBe('3 units');
+    setLanguage('ja');
+    expect(t('{n} units', { n: 3 })).toBe('3 ユニット');
+    expect(translateMessage({ key: 'Deleted 1 unit (undo restores).', vars: { n: 2 }, other: 'Deleted {n} units (undo restores).' })).toBe('2 ユニットを削除しました（元に戻せます）。');
+    expect(t('Not a key')).toBe('Not a key');
+    setLanguage('zh-Hant');
+    expect(t('Support Edit Mode')).toBe('支撐編輯模式');
+  });
+
+  it('detects the language from storage, then the browser', () => {
+    const languages = (list: string[]) => Object.defineProperty(globalThis, 'navigator', { value: { languages: list, language: list[0] }, configurable: true });
+    languages(['ja-JP', 'en']);
+    expect(detectLanguage()).toBe('ja');
+    languages(['zh-TW']);
+    expect(detectLanguage()).toBe('zh-Hant');
+    languages(['de-DE', 'zh-CN']);
+    expect(detectLanguage()).toBe('zh-Hant');
+    languages(['fr']);
+    expect(detectLanguage()).toBe('en');
+  });
+});

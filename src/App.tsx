@@ -17,6 +17,7 @@ import { buildExportJobs, encodeStl, exportUnits, type ExportKind } from './supp
 import { meshBounds, type GeneratedSupportMesh } from './supports/mesh';
 import { applyPreset, defaultSupportSettings, setRoofMode, toPlacementSettings, updateSetting, type LiveSupportSettings, type SettingKey } from './supports/settings';
 import { resolveSettings, unitContacts, unitSupportMesh } from './supports/unitSupports';
+import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
 type HistoryAction = { type: 'command'; command: SceneCommand } | { type: 'undo' } | { type: 'redo' };
 
@@ -32,6 +33,7 @@ const PLACEMENT_KEYS: ReadonlySet<SettingKey> = new Set<SettingKey>([
 ]);
 const REGENERATE_DELAY_MS = 350;
 
+// Labels are i18n keys, translated where shown.
 const EXPORTS: { kind: ExportKind; label: string }[] = [
   { kind: 'active-printable', label: 'Active unit with model' },
   { kind: 'active-supports', label: 'Active unit, supports only' },
@@ -55,7 +57,14 @@ export default function App() {
   sceneRef.current = scene;
   const dispatch = useCallback((command: SceneCommand) => dispatchHistory({ type: 'command', command }), []);
 
-  const [status, setStatus] = useState('Drop STL, GLB or glTF files to begin. Every mesh becomes a print unit.');
+  const [lang, setLang] = useState<Lang>(detectLanguage);
+  setLanguage(lang);
+  const chooseLanguage = (next: Lang) => {
+    setLanguage(next, true);
+    setLang(next);
+  };
+  const [status, setStatusMessage] = useState<Message>({ key: 'Drop STL, GLB or glTF files to begin. Every mesh becomes a print unit.' });
+  const setStatus = useCallback((key: string, vars?: Message['vars'], other?: string) => setStatusMessage({ key, ...(vars ? { vars } : {}), ...(other ? { other } : {}) }), []);
   const [editMode, setEditMode] = useState<EditMode>('off');
   const editModeRef = useRef(editMode);
   editModeRef.current = editMode;
@@ -109,7 +118,7 @@ export default function App() {
   const client = useCallback(() => {
     meshClient.current ??= new SupportMeshClient(
       (progress: MeshProgress) => setTask(`mesh:${progress.mode}:${progress.unitId}`, {
-        label: `${progress.mode === 'export' ? 'Preparing export for' : 'Building supports for'} ${unitName(progress.unitId)}`,
+        label: { key: progress.mode === 'export' ? 'Preparing export for {name}' : 'Building supports for {name}', vars: { name: unitName(progress.unitId) } },
         stage: progress.stage,
         fraction: progress.fraction,
       }),
@@ -135,11 +144,11 @@ export default function App() {
         setSupportMeshes((current) => new Map(current).set(unit.id, empty));
         return;
       }
-      setTask(`mesh:preview:${unit.id}`, { label: `Building supports for ${unitName(unit.id)}`, stage: 'Queued', fraction: 0 });
+      setTask(`mesh:preview:${unit.id}`, { label: { key: 'Building supports for {name}', vars: { name: unitName(unit.id) } }, stage: 'Queued', fraction: 0 });
       client().build(unit, index, 'preview').then((mesh) => {
         if (!mesh || requested.current.get(unit.id)?.unit !== unit) return;
         setSupportMeshes((current) => new Map(current).set(unit.id, mesh));
-      }, (error: Error) => setStatus(`Support building failed: ${error.message}`));
+      }, (error: Error) => setStatus('Support building failed: {error}', { error: error.message }));
     });
   }, [scene.units, client, setTask, unitName]);
 
@@ -153,7 +162,7 @@ export default function App() {
     const job = pending.current.get(response.unitId);
     if (response.kind === 'progress') {
       if (job?.revision === response.revision) {
-        setTask(`placement:${response.unitId}`, { label: `Placing contacts on ${unitName(response.unitId)}`, stage: response.stage, fraction: response.fraction });
+        setTask(`placement:${response.unitId}`, { label: { key: 'Placing contacts on {name}', vars: { name: unitName(response.unitId) } }, stage: response.stage, fraction: response.fraction });
       }
       return;
     }
@@ -184,7 +193,7 @@ export default function App() {
       },
     ] });
     const unit = sceneRef.current.units.find((candidate) => candidate.id === response.unitId);
-    setStatus(`${unit?.name ?? 'Unit'}: ${points.length} automatic contacts generated.`);
+    setStatus('{name}: {n} automatic contacts generated.', { name: unit?.name ?? t('Unit'), n: points.length });
   }, [dispatch, setTask, unitName]);
 
   const worker = useCallback(() => {
@@ -225,10 +234,10 @@ export default function App() {
       pending.current.set(unit.id, job);
       const request: PlacementWorkerRequest = { jobId: ++jobId.current, unitId: unit.id, revision: job.revision, mesh, settings: toPlacementSettings(settings) };
       worker().postMessage(request, [mesh.positions.buffer, mesh.indices.buffer]);
-      setTask(`placement:${unit.id}`, { label: `Placing contacts on ${unitName(unit.id)}`, stage: 'Queued', fraction: 0 });
+      setTask(`placement:${unit.id}`, { label: { key: 'Placing contacts on {name}', vars: { name: unitName(unit.id) } }, stage: 'Queued', fraction: 0 });
     }
     setPendingCount(pending.current.size);
-    setStatus(`Analysing overhangs for ${units.length} unit${units.length === 1 ? '' : 's'}.`);
+    setStatus('Analysing overhangs for 1 unit.', { n: units.length }, 'Analysing overhangs for {n} units.');
   }, [setTask, targets, unitName, worker]);
 
   const regenerateTimer = useRef<number | undefined>(undefined);
@@ -271,9 +280,9 @@ export default function App() {
         ...added.map((unit) => ({ type: 'unit/add' as const, unit })),
         { type: 'selection/set', unitIds: added.map((unit) => unit.id), activeUnitId: added[0]!.id },
       ] });
-      setStatus(`Imported ${added.length} print unit${added.length === 1 ? '' : 's'}. Generate to place supports.`);
+      setStatus('Imported 1 print unit. Generate to place supports.', { n: added.length }, 'Imported {n} print units. Generate to place supports.');
     } catch (error) {
-      setStatus(`Import error: ${error instanceof Error ? error.message : 'unsupported model'}`);
+      setStatus('Import error: {error}', { error: error instanceof Error ? error.message : t('unsupported model') });
     }
   }, [dispatch]);
 
@@ -297,7 +306,8 @@ export default function App() {
   const removeSupports = () => {
     setEditMode('off');
     const count = forTargets((unit) => (unit.supports ? { type: 'supports/remove', unitId: unit.id } : undefined));
-    setStatus(count ? `Removed supports from ${count} unit${count === 1 ? '' : 's'}; models untouched, manual edits kept for regeneration.` : 'No supports to remove.');
+    if (count) setStatus('Removed supports from 1 unit; models untouched, manual edits kept for regeneration.', { n: count }, 'Removed supports from {n} units; models untouched, manual edits kept for regeneration.');
+    else setStatus('No supports to remove.');
   };
   const clearManual = () => {
     const count = forTargets((unit) => (unit.manual.length || unit.suppressed.length ? { type: 'supports/clear-manual', unitId: unit.id } : undefined));
@@ -307,7 +317,7 @@ export default function App() {
     const ids = sceneRef.current.selectedUnitIds;
     if (ids.length === 0) return;
     dispatch({ type: 'batch', commands: ids.map((unitId) => ({ type: 'unit/remove' as const, unitId })) });
-    setStatus(`Deleted ${ids.length} unit${ids.length === 1 ? '' : 's'} (undo restores).`);
+    setStatus('Deleted 1 unit (undo restores).', { n: ids.length }, 'Deleted {n} units (undo restores).');
   }, [dispatch]);
   const toggleEditMode = useCallback(() => {
     if (editModeRef.current !== 'off') {
@@ -367,9 +377,9 @@ export default function App() {
   const eraseNear = useCallback((unit: PrintUnit, local: [number, number, number]) => {
     const radius = resolveSettings(unit.settings).eraseRadius;
     const hits = unitContacts(unit).filter((contact) => Math.hypot(...contact.position.map((value, axis) => value - local[axis]!)) <= radius);
-    if (hits.length === 0) return setStatus(`No support here: right-click a support, or the model within ${radius} mm of one.`);
+    if (hits.length === 0) return setStatus('No support here: right-click a support, or the model within {radius} mm of one.', { radius });
     dispatch({ type: 'batch', commands: hits.map((contact) => removeContact(unit, contact.id)) });
-    setStatus(`Removed ${hits.length} support${hits.length === 1 ? '' : 's'}; removals persist through regeneration.`);
+    setStatus('Removed 1 support; removals persist through regeneration.', { n: hits.length }, 'Removed {n} supports; removals persist through regeneration.');
   }, [dispatch, removeContact]);
 
   const onRemoveContact = useCallback((unitId: string, contactId: string) => {
@@ -398,7 +408,7 @@ export default function App() {
       meshes = new Map(built.filter((entry): entry is readonly [string, GeneratedSupportMesh] => entry[1] !== undefined));
     } catch (error) {
       setExporting(false);
-      return setStatus(`Export failed: ${error instanceof Error ? error.message : 'support building error'}`);
+      return setStatus('Export failed: {error}', { error: error instanceof Error ? error.message : t('support building error') });
     }
     setExporting(false);
     const jobs = buildExportJobs(current, { kind }, meshes);
@@ -411,7 +421,7 @@ export default function App() {
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
-    setStatus(`Exported ${jobs.map((job) => job.fileName).join(', ')}.`);
+    setStatus('Exported {files}.', { files: jobs.map((job) => job.fileName).join(', ') });
   };
 
   // ---- Keyboard ------------------------------------------------------------------------
@@ -457,67 +467,70 @@ export default function App() {
     removed: activeUnit.suppressed.length,
   } : undefined;
   const selectedCount = scene.selectedUnitIds.length;
-  const scopeLabel = selectedCount > 0 ? `${selectedCount} selected` : `all ${scene.units.length}`;
+  const scopeLabel = selectedCount > 0 ? t('{n} selected', { n: selectedCount }) : t('all {n}', { n: scene.units.length });
 
   return <main>
     <header>
-      <div className="brand"><h1>Resin Support Studio</h1><small>Mixo supports</small></div>
+      <div className="brand"><h1>{t('Resin Support Studio')}</h1><small>Mixo supports</small></div>
       <div className="header-actions">
-        <div className="toolbar-group">
-          <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">Undo</button>
-          <button onClick={() => dispatchHistory({ type: 'redo' })} disabled={history.future.length === 0} title="Redo (Ctrl+Shift+Z)">Redo</button>
+        <div className="segmented lang" role="group" aria-label={t('Language')}>
+          {LANGS.map((entry) => <button key={entry.lang} lang={entry.lang} className={lang === entry.lang ? 'active' : ''} aria-pressed={lang === entry.lang} onClick={() => chooseLanguage(entry.lang)}>{entry.label}</button>)}
         </div>
         <div className="toolbar-group">
-          <button onClick={() => setModelVisible((visible) => !visible)}>{modelVisible ? 'Hide' : 'Show'} models</button>
-          <button onClick={() => setWireframe((value) => !value)}>{wireframe ? 'Solid' : 'Wireframe'}</button>
+          <button onClick={undo} disabled={!canUndo} title={t('Undo (Ctrl+Z)')}>{t('Undo')}</button>
+          <button onClick={() => dispatchHistory({ type: 'redo' })} disabled={history.future.length === 0} title={t('Redo (Ctrl+Shift+Z)')}>{t('Redo')}</button>
         </div>
-        <button className="primary" onClick={() => generate()} disabled={scene.units.length === 0}>{pendingCount > 0 ? 'Generating supports' : `Generate supports for ${scopeLabel}`}</button>
+        <div className="toolbar-group">
+          <button onClick={() => setModelVisible((visible) => !visible)}>{modelVisible ? t('Hide models') : t('Show models')}</button>
+          <button onClick={() => setWireframe((value) => !value)}>{wireframe ? t('Solid') : t('Wireframe')}</button>
+        </div>
+        <button className="primary" onClick={() => generate()} disabled={scene.units.length === 0}>{pendingCount > 0 ? t('Generating supports') : t('Generate supports for {scope}', { scope: scopeLabel })}</button>
       </div>
     </header>
     <section className="workspace">
       <aside className="panel left">
         <label className="drop">
           <input type="file" multiple accept=".stl,.glb,.gltf" onChange={(event) => { void importFiles([...(event.target.files ?? [])]); event.target.value = ''; }} />
-          <strong>Import models</strong>
-          <small>STL, GLB or glTF. Files stay on this device.</small>
+          <strong>{t('Import models')}</strong>
+          <small>{t('STL, GLB or glTF. Files stay on this device.')}</small>
         </label>
         <section>
-          <h3>Print units</h3>
-          {scene.units.length === 0 ? <p className="help">Each STL, and each mesh inside a glTF, becomes its own unit.</p> : <ul className="units">
+          <h3>{t('Print units')}</h3>
+          {scene.units.length === 0 ? <p className="help">{t('Each STL, and each mesh inside a glTF, becomes its own unit.')}</p> : <ul className="units">
             {scene.units.map((unit, index) => {
               const selected = scene.selectedUnitIds.includes(unit.id);
               return <li key={unit.id}>
                 <button className={`unit${selected ? ' selected' : ''}${unit.id === scene.activeUnitId ? ' active' : ''}`} onClick={(event) => onSelect(unit.id, event.shiftKey || event.ctrlKey || event.metaKey)}>
                   <b>{resolveSettings(unit.settings).labelText || labelForIndex(index)}</b>
                   <span>{unit.name}</span>
-                  <small>{unit.supports ? `${unitContacts(unit).length} supports` : 'No supports yet'}</small>
+                  <small>{unit.supports ? plural(unitContacts(unit).length, '1 support', '{n} supports') : t('No supports yet')}</small>
                 </button>
               </li>;
             })}
           </ul>}
           <div className="row">
-            <button onClick={() => dispatch({ type: 'selection/set', unitIds: scene.units.map((unit) => unit.id), ...(scene.units[0] ? { activeUnitId: scene.activeUnitId ?? scene.units[0].id } : {}) })} disabled={scene.units.length === 0}>Select all</button>
-            <button onClick={deleteUnits} disabled={selectedCount === 0}>Delete</button>
+            <button onClick={() => dispatch({ type: 'selection/set', unitIds: scene.units.map((unit) => unit.id), ...(scene.units[0] ? { activeUnitId: scene.activeUnitId ?? scene.units[0].id } : {}) })} disabled={scene.units.length === 0}>{t('Select all')}</button>
+            <button onClick={deleteUnits} disabled={selectedCount === 0}>{t('Delete')}</button>
           </div>
         </section>
         <section>
-          <h3>Object</h3>
+          <h3>{t('Object')}</h3>
           <div className="segmented">
-            {(['none', 'translate', 'rotate'] as const).map((mode) => <button key={mode} className={gizmoMode === mode ? 'active' : ''} aria-pressed={gizmoMode === mode} onClick={() => setGizmoMode(mode)} disabled={editMode !== 'off'}>{mode === 'none' ? 'select' : mode === 'translate' ? 'move' : 'rotate'}</button>)}
+            {(['none', 'translate', 'rotate'] as const).map((mode) => <button key={mode} className={gizmoMode === mode ? 'active' : ''} aria-pressed={gizmoMode === mode} onClick={() => setGizmoMode(mode)} disabled={editMode !== 'off'}>{t(mode === 'none' ? 'Select' : mode === 'translate' ? 'Move' : 'Rotate')}</button>)}
           </div>
         </section>
         <section>
-          <h3>Edit supports</h3>
+          <h3>{t('Edit supports')}</h3>
           <button className={editMode === 'off' ? '' : 'primary'} aria-pressed={editMode !== 'off'} onClick={toggleEditMode} disabled={editMode === 'off' && !activeUnit}>
-            {editMode === 'off' ? 'Enter Support Edit Mode' : 'Done editing'}
+            {editMode === 'off' ? t('Enter Support Edit Mode') : t('Done editing')}
           </button>
-          <p className="help">{activeUnit ? 'Add or remove supports by clicking the model. Tab toggles.' : 'Select a unit first.'}</p>
+          <p className="help">{activeUnit ? t('Add or remove supports by clicking the model. Tab toggles.') : t('Select a unit first.')}</p>
         </section>
         <section>
-          <h3>Supports for {scopeLabel}</h3>
-          <button onClick={() => generate()} disabled={scene.units.length === 0}>Regenerate</button>
-          <button onClick={clearManual} disabled={scene.units.length === 0}>Clear manual edits</button>
-          <button onClick={removeSupports} disabled={scene.units.length === 0}>Remove supports</button>
+          <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
+          <button onClick={() => generate()} disabled={scene.units.length === 0}>{t('Regenerate')}</button>
+          <button onClick={clearManual} disabled={scene.units.length === 0}>{t('Clear manual edits')}</button>
+          <button onClick={removeSupports} disabled={scene.units.length === 0}>{t('Remove supports')}</button>
         </section>
       </aside>
       <section
@@ -540,28 +553,28 @@ export default function App() {
           onErase={onErase}
           onEditMiss={onEditMiss}
         />
-        {isDraggingOver && <div className="viewport-drop-overlay">Drop to import</div>}
+        {isDraggingOver && <div className="viewport-drop-overlay">{t('Drop to import')}</div>}
         <ProgressBar tasks={[...tasks.values()]} />
         {editMode === 'off' ? <>
-          <div className="viewport-object-status">{activeUnit ? activeUnit.name : 'Nothing selected'}</div>
-          <button className="viewport-edit-toggle" onClick={toggleEditMode} disabled={!activeUnit} title={activeUnit ? 'Add or remove supports by clicking (Tab)' : 'Select a unit first'}>
-            Edit supports
+          <div className="viewport-object-status">{activeUnit ? activeUnit.name : t('Nothing selected')}</div>
+          <button className="viewport-edit-toggle" onClick={toggleEditMode} disabled={!activeUnit} title={activeUnit ? t('Add or remove supports by clicking (Tab)') : t('Select a unit first.')}>
+            {t('Edit supports')}
           </button>
-          <div className="viewport-note">Millimetres. Build plate at zero.</div>
+          <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : <>
           <div className="edit-frame" aria-hidden="true" />
-          <div className="edit-badge" role="status">Support Edit Mode<span>{activeUnit?.name}</span></div>
+          <div className="edit-badge" role="status">{t('Support Edit Mode')}<span>{activeUnit?.name}</span></div>
           <div className="edit-bar">
-            <span><kbd>Click</kbd> add</span>
-            <span><kbd>Right-click</kbd> / <kbd>Ctrl</kbd>+<kbd>Click</kbd> remove</span>
-            <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</span>
-            <button className="primary" onClick={toggleEditMode}>Done <kbd>Esc</kbd></button>
+            <span><kbd>{t('Click')}</kbd> {t('add')}</span>
+            <span><kbd>{t('Right-click')}</kbd> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd> {t('remove')}</span>
+            <span><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
+            <button className="primary" onClick={toggleEditMode}>{t('Done')} <kbd>Esc</kbd></button>
           </div>
         </>}
       </section>
       <aside className="panel right">
-        <h2>Support settings{activeUnit ? <small>{activeUnit.name}{selectedCount > 1 ? ` and ${selectedCount - 1} more` : ''}</small> : null}</h2>
-        {!activeUnit && <p className="help">Select a unit to edit its settings. Changes apply to every selected unit.</p>}
+        <h2>{t('Support settings')}{activeUnit ? <small>{activeUnit.name}{selectedCount > 1 ? ` ${t('and {n} more', { n: selectedCount - 1 })}` : ''}</small> : null}</h2>
+        {!activeUnit && <p className="help">{t('Select a unit to edit its settings. Changes apply to every selected unit.')}</p>}
         <SettingsPanel
           settings={activeSettings}
           autoLabel={activeIndex >= 0 ? labelForIndex(activeIndex) : 'A'}
@@ -571,17 +584,17 @@ export default function App() {
           onRoofMode={(mode) => changeSettings((settings) => setRoofMode(settings, mode), false)}
         />
         <section className="export">
-          <h3>Export STL</h3>
-          {EXPORTS.map((entry) => <button key={entry.kind} onClick={() => void runExport(entry.kind)} disabled={scene.units.length === 0 || exporting}>{entry.label}</button>)}
-          <p className="help">Exports match the viewport at full resolution. Source models are never changed.</p>
+          <h3>{t('Export STL')}</h3>
+          {EXPORTS.map((entry) => <button key={entry.kind} onClick={() => void runExport(entry.kind)} disabled={scene.units.length === 0 || exporting}>{t(entry.label)}</button>)}
+          <p className="help">{t('Exports match the viewport at full resolution. Source models are never changed.')}</p>
         </section>
       </aside>
     </section>
     <footer>
-      <span>{scene.units.length} unit{scene.units.length === 1 ? '' : 's'}</span>
-      {activeUnit && <span>{(activeUnit.source.indices.length / 3).toLocaleString()} triangles</span>}
-      {contactCounts && <span>{contactCounts.auto} automatic, {contactCounts.manual} manual, {contactCounts.removed} removed</span>}
-      <strong>{status}</strong>
+      <span>{plural(scene.units.length, '1 unit', '{n} units')}</span>
+      {activeUnit && <span>{t('{n} triangles', { n: (activeUnit.source.indices.length / 3).toLocaleString() })}</span>}
+      {contactCounts && <span>{t('{auto} automatic, {manual} manual, {removed} removed', contactCounts)}</span>}
+      <strong>{translateMessage(status)}</strong>
     </footer>
   </main>;
 }
