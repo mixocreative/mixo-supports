@@ -56,6 +56,15 @@ describe('support export', () => {
     expect(whole[0]!.parts.length).toBeGreaterThan(scene.units.length);
   });
 
+  it('never plans a supports part for a unit whose contacts are all gone (no empty STL)', () => {
+    const emptied: PrintUnit = { ...unit('unit-a', 'Part', 0), deleted: ['auto-0'] };
+    const bare = { ...scene, units: [emptied, scene.units[1]!, scene.units[2]!] };
+    expect(planExport(bare, 'active-supports')).toEqual([]);
+    expect(planExport(bare, 'active-printable')).toEqual([{ fileName: 'Part-printable.stl', parts: [{ unitId: 'unit-a', content: 'model' }] }]);
+    expect(planExport(bare, 'separate-supports').map((file) => file.parts)).toEqual([[{ unitId: 'unit-b', content: 'supports' }]]);
+    expect(planExport({ ...bare, units: [emptied], activeUnitId: 'unit-a' }, 'separate-supports')).toEqual([]);
+  });
+
   it('places geometry with the current unit transform and the plate at y = 0', () => {
     const [model, supports] = parts('active-printable');
     expect(meshBounds(applyTransform(model!.mesh, model!.transform)).min[1]).toBeCloseTo(5);

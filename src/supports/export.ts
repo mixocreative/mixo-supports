@@ -1,6 +1,7 @@
 import type { ProgressCallback, TriangleMesh } from '../core/analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
 import { transformPoint, type ModelTransform } from '../state/transform';
+import { unitContacts } from './unitSupports';
 
 export type ExportKind =
   | 'active-printable'
@@ -33,13 +34,16 @@ export function exportUnits(scene: PrintScene, kind: ExportKind): [PrintUnit, nu
   return indexed;
 }
 
-/** Files of an export: one per unit for the separate modes, otherwise one for the plate. */
+/**
+ * Files of an export: one per unit for the separate modes, otherwise one for the plate. A unit
+ * without a live contact (all deleted or zoned out) has no supports part, so no file is empty.
+ */
 export function planExport(scene: PrintScene, kind: ExportKind): ExportFilePlan[] {
   const supportsOnly = kind.endsWith('supports');
   const suffix = supportsOnly ? 'supports' : 'printable';
   const partsOf = (unit: PrintUnit): ExportPartPlan[] => [
     ...(supportsOnly ? [] : [{ unitId: unit.id, content: 'model' as const }]),
-    ...(unit.supports ? [{ unitId: unit.id, content: 'supports' as const }] : []),
+    ...(unit.supports && unitContacts(unit).length > 0 ? [{ unitId: unit.id, content: 'supports' as const }] : []),
   ];
   const units = exportUnits(scene, kind).map(([unit]) => unit);
   if (kind === 'whole-printable') {

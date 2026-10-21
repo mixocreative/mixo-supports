@@ -48,13 +48,15 @@ function exportFiles(task: Extract<MeshTask, { kind: 'export' }>, models: Map<st
     supports.set(unitId, runSupportJob({ ...job, mesh: models.get(unitId)! }, progress));
   });
   const byId = new Map<string, ExportUnitPayload>(task.units.map((payload) => [payload.unitId, payload]));
-  const files = task.files.map((file, k) => {
+  const files = task.files.flatMap((file, k) => {
     const parts: ExportPart[] = file.parts.map((part) => ({
       mesh: part.content === 'model' ? models.get(part.unitId)! : supports.get(part.unitId)!,
       transform: byId.get(part.unitId)!.transform,
     })).filter((part) => part.mesh.indices.length > 0);
+    // Backstop to planExport: a file with no triangles is never written.
+    if (parts.length === 0) return [];
     const progress = throttled(post, (fraction) => 0.8 + 0.2 * (k + fraction) / task.files.length);
-    return { fileName: file.fileName, buffer: encodeStl(parts, progress) };
+    return [{ fileName: file.fileName, buffer: encodeStl(parts, progress) }];
   });
   return transferable<MeshTaskResult>({ kind: 'files', files }, files.map((file) => file.buffer));
 }

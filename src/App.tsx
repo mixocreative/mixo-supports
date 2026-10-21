@@ -679,7 +679,14 @@ export default function App() {
   const runExport = async (kind: ExportKind) => {
     const current = sceneRef.current;
     const files = planExport(current, kind);
-    if (files.length === 0) return setStatus(kind.startsWith('active') && !current.activeUnitId ? 'Select an object to export.' : 'Nothing to export for this mode.');
+    if (files.length === 0) {
+      if (kind.startsWith('active') && !current.activeUnitId) return setStatus('Select an object to export.');
+      // Supports only, and every unit in scope had its contacts deleted or zoned out.
+      const emptied = exportUnits(current, kind).filter(([unit]) => unit.supports);
+      if (kind.endsWith('supports') && emptied.length === 1) return setStatus('Nothing to export: {name} has no supports left.', { name: emptied[0]![0].name });
+      if (kind.endsWith('supports') && emptied.length > 1) return setStatus('Nothing to export: no object in this export has supports left.');
+      return setStatus('Nothing to export for this mode.');
+    }
     const used = new Set(files.flatMap((file) => file.parts.map((part) => part.unitId)));
     const units = exportUnits(current, kind).filter(([unit]) => used.has(unit.id));
     setExporting(true);
@@ -690,6 +697,8 @@ export default function App() {
     try {
       const jobs = units.map(([unit, index]) => ({ unitId: unit.id, job: supportJobOf(unit, index, 'export'), transform: unit.transform }));
       const written = await exporter().exportFiles(jobs, files, label, () => {});
+      // Nothing came back (every file was empty, or the job was dropped): never report success.
+      if (written.length === 0) return setStatus('Nothing to export for this mode.');
       for (const file of written) {
         const url = URL.createObjectURL(new Blob([file.buffer], { type: 'model/stl' }));
         const anchor = document.createElement('a');

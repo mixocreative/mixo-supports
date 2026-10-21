@@ -526,6 +526,8 @@ const ZH: Dictionary = {
   'Generating supports for {n} triangles at once needs more memory than this device can give the editor. Generate fewer objects at a time, or simplify the models.': '同時為 {n} 個三角面產生支撐所需記憶體超出此裝置能提供給編輯器的上限。請一次為較少物件產生支撐，或簡化模型。',
   // Release 2 final fixes
   'Nothing to undo here: leave the mode to undo earlier steps.': '這裡沒有可復原的步驟：離開模式後即可復原更早的步驟。',
+  'Nothing to export: {name} has no supports left.': '沒有可匯出的內容：{name} 已沒有任何支撐。',
+  'Nothing to export: no object in this export has supports left.': '沒有可匯出的內容：這次匯出的物件都已沒有支撐。',
 };
 
 const JA: Dictionary = {
@@ -972,6 +974,8 @@ const JA: Dictionary = {
   'Generating supports for {n} triangles at once needs more memory than this device can give the editor. Generate fewer objects at a time, or simplify the models.': '三角形 {n} 個分のサポートを一度に生成するには、このデバイスがエディターに割り当てられる以上のメモリが必要です。一度に生成するオブジェクトを減らすか、モデルを簡略化してください。',
   // Release 2 final fixes
   'Nothing to undo here: leave the mode to undo earlier steps.': 'ここでは元に戻せる操作がありません。モードを終了すると、それより前の操作を元に戻せます。',
+  'Nothing to export: {name} has no supports left.': '書き出すものがありません：{name} にはサポートが残っていません。',
+  'Nothing to export: no object in this export has supports left.': '書き出すものがありません：書き出し対象のオブジェクトにはサポートが残っていません。',
 };
 
 export const DICTIONARY: Record<Exclude<Lang, 'en'>, Dictionary> = { 'zh-Hant': ZH, ja: JA };
