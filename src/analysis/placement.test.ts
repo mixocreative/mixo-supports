@@ -184,6 +184,20 @@ describe('exact deletions', () => {
     const auto = [point(0), point(0.6)];
     expect(composeContacts(auto, [], ['auto-0_100_0'], 0.5, ['auto-0_100_0'], 1).map((p) => p.id)).toEqual(['auto-60_100_0']);
   });
+
+  it('a deleted id that matches nothing hides nothing', () => {
+    const auto = [point(2), point(3)];
+    expect(composeContacts(auto, [], [], 0, ['auto-0_100_0'], 1).map((p) => p.id)).toEqual(['auto-200_100_0', 'auto-300_100_0']);
+  });
+
+  it('deleted ids competing for one nearest contact each drop at most one marker', () => {
+    // Both ids are nearest to 0.3: the first takes it, the second falls to the next in range.
+    const moved = [point(0.3), point(0.6)];
+    expect(composeContacts(moved, [], [], 0, ['auto-0_100_0', 'auto-10_100_0'], 1)).toEqual([]);
+    // With nothing else in range the second id hides nothing more.
+    expect(composeContacts([point(0.3), point(3)], [], [], 0, ['auto-0_100_0', 'auto-10_100_0'], 1).map((p) => p.id))
+      .toEqual(['auto-300_100_0']);
+  });
 });
 
 describe('placement toggles', () => {

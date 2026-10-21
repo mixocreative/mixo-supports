@@ -526,6 +526,9 @@ export default function App() {
 
   const onToggleContact = useCallback((unitId: string, contactId: string) => {
     if (unitId !== sceneRef.current.activeUnitId) return;
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
+    // A support deleted a moment ago can still be under the cursor until the mesh rebuilds.
+    if (!unit || !unitContacts(unit).some((contact) => contact.id === contactId)) return;
     setSelection((current) => toggleSelection(current, contactId));
   }, []);
 
@@ -539,10 +542,13 @@ export default function App() {
   // Exactly the selected supports go, in one undo step; the tool stays as it was.
   const deleteSelected = useCallback(() => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
-    if (!unit || selection.size === 0) return;
-    dispatch({ type: 'batch', commands: deleteCommands(unit, [...selection]) });
+    if (!unit) return;
+    const alive = new Set(unitContacts(unit).map((contact) => contact.id));
+    const ids = [...selection].filter((id) => alive.has(id));
     setSelection(NO_SELECTION);
-    setStatus('Deleted 1 support.', { n: selection.size }, 'Deleted {n} supports.');
+    if (ids.length === 0) return;
+    dispatch({ type: 'batch', commands: deleteCommands(unit, ids) });
+    setStatus('Deleted 1 support.', { n: ids.length }, 'Deleted {n} supports.');
   }, [dispatch, selection, setStatus]);
 
   const [exporting, setExporting] = useState(false);
@@ -601,7 +607,7 @@ export default function App() {
       } else if (editMode !== 'off' && selection.size > 0 && event.key === 'Escape') {
         event.preventDefault();
         setSelection(NO_SELECTION);
-      } else if (editMode !== 'off' && (event.key === 'Escape' || event.key === 'Enter')) {
+      } else if (editMode !== 'off' && (event.key === 'Escape' || (event.key === 'Enter' && target?.tagName !== 'BUTTON'))) {
         event.preventDefault();
         toggleEditMode();
       } else if (event.key === 'Delete' && editMode === 'off') {

@@ -158,10 +158,16 @@ function EditPreview({ hover, unit, brush }: { hover: Hover; unit: PrintUnit; br
  */
 function SupportBodies({ supports, geometry, ids, opacity, color = PREVIEW.remove }: { supports: GeneratedSupportMesh; geometry: THREE.BufferGeometry; ids: readonly string[]; opacity: number; color?: string }) {
   const key = ids.join(',');
-  const bodies = useMemo(() => {
+  // Built in the effect, not memoised: the cleanup strips the shared attributes, so a geometry
+  // must never outlive its effect (StrictMode runs mount, cleanup, mount on the same render).
+  const [bodies, setBodies] = useState<THREE.BufferGeometry>();
+  useEffect(() => {
     const wanted = new Set(ids);
     const parts = supports.components.filter((component) => component.contactId && wanted.has(component.contactId));
-    if (parts.length === 0) return undefined;
+    if (parts.length === 0) {
+      setBodies(undefined);
+      return;
+    }
     const index = new Uint32Array(parts.reduce((total, part) => total + part.count, 0));
     let offset = 0;
     for (const part of parts) {
@@ -172,15 +178,14 @@ function SupportBodies({ supports, geometry, ids, opacity, color = PREVIEW.remov
     sub.setAttribute('position', geometry.getAttribute('position'));
     sub.setAttribute('normal', geometry.getAttribute('normal'));
     sub.setIndex(new THREE.BufferAttribute(index, 1));
-    return sub;
+    setBodies(sub);
+    return () => {
+      // Disposing frees the GPU buffers of every attribute still attached: keep the shared ones.
+      sub.deleteAttribute('position');
+      sub.deleteAttribute('normal');
+      sub.dispose();
+    };
   }, [key, supports, geometry]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => {
-    if (!bodies) return;
-    // Disposing frees the GPU buffers of every attribute still attached: keep the shared ones.
-    bodies.deleteAttribute('position');
-    bodies.deleteAttribute('normal');
-    bodies.dispose();
-  }, [bodies]);
   if (!bodies) return null;
   const seeThrough = opacity < 1;
   // Drawn over the support it covers (polygon offset) and never pickable.
