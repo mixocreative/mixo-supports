@@ -395,7 +395,6 @@ export default function App() {
   const importFiles = useCallback(async (files: readonly File[]) => {
     const accepted = files.filter(acceptModelFile);
     if (accepted.length === 0) return setStatusMessage(errorStatus('import', new CodedError('file-type', 'file-type')));
-    send({ type: 'leave' });
     /** The file being read, named in an error. */
     let reading = accepted[0]!.name;
     // One controller for the whole drop: Cancel (in the activity list) stops it and nothing is added.
@@ -446,6 +445,8 @@ export default function App() {
         units = [...units, ...placed];
         added.push(...placed);
       }
+      // Only an import that adds something ends Support Edit Mode or zones; a refused one leaves them.
+      send({ type: 'leave' });
       dispatch({ type: 'batch', commands: [
         // Handed over: the worker's fresh arrays, also the keys of their display copy and pick index.
         ...added.map((unit) => ({ type: 'unit/add' as const, unit, owned: true })),
