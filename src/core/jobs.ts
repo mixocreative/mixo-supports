@@ -116,7 +116,7 @@ function landsInZone(zones: readonly ZoneStamp[], settings: Readonly<LiveSupport
     const position = applyToPoint(matrix, ...contact.position);
     // The column drops straight down from at most one Connection Length beside the contact.
     const reach = settings.neckLength;
-    const near = painted.some((stamp) => stamp.center[1] < position[1] && Math.hypot(stamp.center[0] - position[0], stamp.center[2] - position[2]) <= stamp.radius + reach);
+    const near = painted.some((stamp) => stamp.center[1] - stamp.radius < position[1] && Math.hypot(stamp.center[0] - position[0], stamp.center[2] - position[2]) <= stamp.radius + reach);
     if (!near) return false;
     ray ??= landingRay(model, frame, matrix);
     const hit = ray({ ...contact, position, normal: applyToDirection(matrix, ...contact.normal) }, settings);

@@ -91,22 +91,51 @@ export function projectPoint(m: Matrix4, p: Vector, width: number, height: numbe
   return [(cx / w + 1) * 0.5 * width, (1 - cy / w) * 0.5 * height, w];
 }
 
+/** Floats per projected segment: ax, ay, aw, bx, by, bw (canvas px and clip w), t0, t1. */
+export const PROJECTED_STRIDE = 8;
+/** Clip w a segment is cut at where it reaches behind the camera. */
+const NEAR_W = 1e-2;
+
 /**
- * Every body segment on the canvas: 6 floats each (ax, ay, aw, bx, by, bw); NaN when an end is
- * behind the camera. Cheap (two matrix products per segment); the host redoes it only when the
- * camera, the object or the canvas size changed.
+ * Every body segment on the canvas (`PROJECTED_STRIDE` floats each): its ends in canvas px with
+ * their clip w, and the 3D parameter range [t0, t1] they stand for. A segment that reaches behind
+ * the camera is cut where it crosses the camera plane (so the visible stretch still selects); one
+ * wholly behind it is NaN. Cheap (two matrix products per segment); the host redoes it only when
+ * the camera, the object or the canvas size changed.
  */
 export function projectBodies(bodies: BodySegments, m: Matrix4, width: number, height: number): Float32Array {
   const { points } = bodies;
-  const out = new Float32Array(points.length);
-  const p: Vector = [0, 0, 0];
-  for (let i = 0; i < points.length; i += 3) {
-    p[0] = points[i]!;
-    p[1] = points[i + 1]!;
-    p[2] = points[i + 2]!;
-    const screen = projectPoint(m, p, width, height);
-    if (screen) out.set(screen, i);
-    else out.fill(NaN, i, i + 3);
+  const count = points.length / 6;
+  const out = new Float32Array(count * PROJECTED_STRIDE);
+  const a: Vector = [0, 0, 0];
+  const b: Vector = [0, 0, 0];
+  const w = (p: Vector) => m[3]! * p[0] + m[7]! * p[1] + m[11]! * p[2] + m[15]!;
+  for (let segment = 0; segment < count; segment++) {
+    const i = segment * 6;
+    const o = segment * PROJECTED_STRIDE;
+    a[0] = points[i]!; a[1] = points[i + 1]!; a[2] = points[i + 2]!;
+    b[0] = points[i + 3]!; b[1] = points[i + 4]!; b[2] = points[i + 5]!;
+    const wa = w(a);
+    const wb = w(b);
+    let t0 = 0;
+    let t1 = 1;
+    if (!(wa > NEAR_W) && !(wb > NEAR_W)) {
+      out.fill(NaN, o, o + PROJECTED_STRIDE);
+      continue;
+    }
+    if (!(wa > NEAR_W)) t0 = (NEAR_W - wa) / (wb - wa);
+    else if (!(wb > NEAR_W)) t1 = (NEAR_W - wa) / (wb - wa);
+    const lerp = (t: number): Vector => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    const start = projectPoint(m, t0 === 0 ? a : lerp(t0), width, height);
+    const end = projectPoint(m, t1 === 1 ? b : lerp(t1), width, height);
+    if (!start || !end) {
+      out.fill(NaN, o, o + PROJECTED_STRIDE);
+      continue;
+    }
+    out.set(start, o);
+    out.set(end, o + 3);
+    out[o + 6] = t0;
+    out[o + 7] = t1;
   }
   return out;
 }
@@ -158,12 +187,19 @@ export function hiddenByModel(pointDistance: number, hitDistance: number | undef
   return hitDistance !== undefined && hitDistance < pointDistance - tolerance;
 }
 
+/** Spots tested along one part's stretch under the circle after its closest point: both ends and the middle. */
+const SPOTS = 3;
+/** A stretch under the circle shorter than this (px) is settled by its closest point alone. */
+const SHORT_STRETCH = 6;
+
 /**
  * Contact ids whose support body the brush circle (radius px) touches on its path from `from`
  * (the previous pointer position in this stroke; undefined for a lone circle) to `to`, counting
- * only parts under the circle that `isVisible` (unit-local point: not hidden behind the model).
- * `want` filters ids before any visibility test (the ones a stroke would change), so the costly
- * test runs only where it matters.
+ * only parts under the circle that `isVisible` (unit-local point, with the segment index and 3D
+ * parameter for caching: see `cachedVisibility`). Per support, the closest point of every part
+ * under the circle is tested first (one ray settles most visible supports), then the ends and the
+ * middle of each part's stretch under the circle, so a visible stretch near a model silhouette
+ * still counts. `want` filters ids before any visibility test (the ones a stroke would change).
  */
 export function brushHits(
   bodies: BodySegments,
@@ -171,9 +207,28 @@ export function brushHits(
   from: Point2 | undefined,
   to: Point2,
   radius: number,
-  isVisible: (point: Vector) => boolean,
+  isVisible: (point: Vector, segment: number, t: number) => boolean,
   want?: (id: string) => boolean,
 ): string[] {
+  return brushHitsFrom(0, bodies, projected, from, to, radius, isVisible, want).hits;
+}
+
+/**
+ * `brushHits` in slices: starts at support index `start` and stops before the next support once
+ * `stop()` says the time is up; `next` is where to go on (the support count when done). A host
+ * keeps its frames short by carrying the rest of a step over to the next frame.
+ */
+export function brushHitsFrom(
+  start: number,
+  bodies: BodySegments,
+  projected: Float32Array,
+  from: Point2 | undefined,
+  to: Point2,
+  radius: number,
+  isVisible: (point: Vector, segment: number, t: number) => boolean,
+  want?: (id: string) => boolean,
+  stop?: () => boolean,
+): { hits: string[]; next: number } {
   const [cx, cy] = from ?? to;
   const [dx, dy] = to;
   const limit = radius * radius;
@@ -184,19 +239,25 @@ export function brushHits(
   const { ids, first, points } = bodies;
   const hits: string[] = [];
   const sample: Vector = [0, 0, 0];
-  const visibleAt = (segment: number, t: number) => {
-    const o = segment * 6;
-    sample[0] = points[o]! + (points[o + 3]! - points[o]!) * t;
-    sample[1] = points[o + 1]! + (points[o + 4]! - points[o + 1]!) * t;
-    sample[2] = points[o + 2]! + (points[o + 5]! - points[o + 2]!) * t;
-    return isVisible(sample);
+  const visibleAt = (segment: number, s: number) => {
+    const o = segment * PROJECTED_STRIDE;
+    const t0 = projected[o + 6]!;
+    const t = t0 + (projected[o + 7]! - t0) * perspectiveParam(s, projected[o + 2]!, projected[o + 5]!);
+    const p = segment * 6;
+    sample[0] = points[p]! + (points[p + 3]! - points[p]!) * t;
+    sample[1] = points[p + 1]! + (points[p + 4]! - points[p + 1]!) * t;
+    sample[2] = points[p + 2]! + (points[p + 5]! - points[p + 2]!) * t;
+    return isVisible(sample, segment, t);
   };
-  for (let contact = 0; contact < ids.length; contact++) {
+  /** Parts of the current support under the circle, with the closest parameter on each. */
+  const under: { segment: number; s: number }[] = [];
+  for (let contact = start; contact < ids.length; contact++) {
+    if (stop && contact > start && stop()) return { hits, next: contact };
     const id = ids[contact]!;
     if (want && !want(id)) continue;
-    let hit = false;
-    for (let segment = first[contact]!; segment < first[contact + 1]! && !hit; segment++) {
-      const o = segment * 6;
+    under.length = 0;
+    for (let segment = first[contact]!; segment < first[contact + 1]!; segment++) {
+      const o = segment * PROJECTED_STRIDE;
       const ax = projected[o]!;
       const ay = projected[o + 1]!;
       const bx = projected[o + 3]!;
@@ -204,15 +265,60 @@ export function brushHits(
       // NaN (behind the camera) fails every comparison below.
       if (!(Math.max(ax, bx) >= minX && Math.min(ax, bx) <= maxX && Math.max(ay, by) >= minY && Math.min(ay, by) <= maxY)) continue;
       const closest = closestOnSegments(ax, ay, bx, by, cx, cy, dx, dy);
-      if (!(closest.distance2 <= limit)) continue;
-      const aw = projected[o + 2]!;
-      const bw = projected[o + 5]!;
-      // The closest point, then either end that lies under the circle's path too.
-      hit = visibleAt(segment, perspectiveParam(closest.s, aw, bw))
-        || (closest.s !== 0 && toSegment(ax, ay, cx, cy, dx, dy).distance2 <= limit && visibleAt(segment, 0))
-        || (closest.s !== 1 && toSegment(bx, by, cx, cy, dx, dy).distance2 <= limit && visibleAt(segment, 1));
+      if (closest.distance2 <= limit) under.push({ segment, s: closest.s });
+    }
+    if (under.length === 0) continue;
+    let hit = under.some(({ segment, s }) => visibleAt(segment, s));
+    for (let k = 0; k < under.length && !hit; k++) {
+      const { segment, s: middle } = under[k]!;
+      const o = segment * PROJECTED_STRIDE;
+      const ax = projected[o]!;
+      const ay = projected[o + 1]!;
+      const bx = projected[o + 3]!;
+      const by = projected[o + 4]!;
+      // The stretch under the circle's path is one interval of s around the closest point (distance
+      // to a segment is convex along a line): find its ends by bisection.
+      const inside = (s: number) => toSegment(ax + (bx - ax) * s, ay + (by - ay) * s, cx, cy, dx, dy).distance2 <= limit;
+      const edge = (inner: number, outer: number) => {
+        if (inside(outer)) return outer;
+        for (let step = 0; step < 10; step++) {
+          const half = (inner + outer) / 2;
+          if (inside(half)) inner = half;
+          else outer = half;
+        }
+        return inner;
+      };
+      const s0 = edge(middle, 0);
+      const s1 = edge(middle, 1);
+      // A short stretch (tips, necks, a part crossing the circle's rim) is settled by its closest point.
+      if (Math.hypot(bx - ax, by - ay) * (s1 - s0) < SHORT_STRETCH) continue;
+      for (let spot = 0; spot < SPOTS && !hit; spot++) {
+        const s = s0 + ((s1 - s0) * spot) / (SPOTS - 1);
+        if (Math.abs(s - middle) > 1e-6) hit = visibleAt(segment, s);
+      }
     }
     if (hit) hits.push(id);
   }
-  return hits;
+  return { hits, next: ids.length };
+}
+
+/** Spots per part the visibility cache tells apart (t quantised to 1/8: a few millimetres on a long pillar). */
+const CACHE_STEPS = 8;
+
+/**
+ * Remembers `test` per part and spot, for as long as the camera and the model stand still (a
+ * stroke: the orbit is off): each ray is cast once however often the circle passes. The host
+ * clears it when the projection changes.
+ */
+export function cachedVisibility(test: (point: Vector) => boolean): { isVisible: (point: Vector, segment: number, t: number) => boolean; clear: () => void } {
+  const known = new Map<number, boolean>();
+  return {
+    isVisible(point, segment, t) {
+      const key = segment * (CACHE_STEPS + 1) + Math.round(Math.min(1, Math.max(0, t)) * CACHE_STEPS);
+      let visible = known.get(key);
+      if (visible === undefined) known.set(key, (visible = test(point)));
+      return visible;
+    },
+    clear: () => known.clear(),
+  };
 }

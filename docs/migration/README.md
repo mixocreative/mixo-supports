@@ -220,7 +220,7 @@ Same as this app's `App.tsx` and `ObjectViewport.tsx`, with Babylon events:
   object shows `busyStatus(mode)`.
 - Strokes: `createStroke(onEnd)`; `begin(button)` on pointerdown on the active object, `move(leftHeld)`
   on pointermove, `end()` on window pointerup / pointercancel / blur; gap fill with
-  `samples([x, y, 0], pathFill)` (Drag over, screen px) or `zoneFill(radius)`.
+  `zoneFill(radius)` (zones); Drag over keeps its own screen path (UI spec section 4).
 - Undo toasts: `undoToast`, `toastAlive`, `UNDO_TOAST_MS` (6000 ms).
 - Errors: `errorStatus(context, error, { name })`; throw `CodedError` with a code where the host
   knows it (for example `too-large` from the budget check).

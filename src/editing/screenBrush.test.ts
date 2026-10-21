@@ -4,6 +4,8 @@ import type { Vector } from '../core/vec3';
 import {
   bodySegments,
   brushHits,
+  brushHitsFrom,
+  cachedVisibility,
   closestOnSegments,
   hiddenByModel,
   HIDE_TOLERANCE,
@@ -179,9 +181,66 @@ describe('brushHits', () => {
     expect(asked.every((point) => point[0] === 2)).toBe(true);
   });
 
-  it('skips parts behind the camera', () => {
+  it('skips parts wholly behind the camera', () => {
     const m = perspective();
     const body = bodies({ behind: [[[0, 0, 5], [0, 1, 5]]], ahead: [[[0, 0, -5], [0, 1, -5]]] });
     expect(brushHits(body, projectBodies(body, m, 200, 200), undefined, [100, 95], 10, everyVisible)).toEqual(['ahead']);
+  });
+
+  it('clips a part that reaches behind the camera, so its visible stretch still selects (and the right 3D point is tested)', () => {
+    const m = perspective();
+    // A pillar from 4 mm ahead of the camera to 4 mm behind it, 1 mm below the eye line.
+    const body = bodies({ long: [[[0, -1, -4], [0, -1, 4]]] });
+    const projected = projectBodies(body, m, 200, 200);
+    const [x, y] = projectPoint(m, [0, -1, -2], 200, 200)!;
+    const asked: Vector[] = [];
+    expect(brushHits(body, projected, undefined, [x, y], 3, (point) => { asked.push([...point] as Vector); return true; })).toEqual(['long']);
+    expect(asked.every((point) => point[2] < 0)).toBe(true);
+    expect(asked[0]![2]).toBeCloseTo(-2, 1);
+  });
+
+  it('tests more of a part than its closest point: a stretch visible under the circle selects even when the closest point is hidden', () => {
+    // A long horizontal part across the circle; only x > 1.5 mm is visible (the model covers the rest).
+    const body = bodies({ rim: [[[-20, 10, 0], [20, 10, 0]]] });
+    const visible = (point: Vector) => point[0] > 1.5;
+    expect(hits(body, undefined, [50, 40], 4, visible)).toEqual(['rim']);
+    expect(hits(body, undefined, [50, 40], 1, visible)).toEqual([]);
+    // A stretch under 6 px is settled by its closest point alone (cost bound on dense plates).
+    expect(hits(body, undefined, [50, 40], 2.5, visible)).toEqual([]);
+  });
+});
+
+describe('brushHitsFrom (time slices)', () => {
+  it('stops when told and goes on where it stopped, with the same result as one pass', () => {
+    const row = Object.fromEntries([-20, -10, 0, 10, 20].map((x) => [`c${x}`, pillar(x)]));
+    const body = bodies(row);
+    const projected = projectBodies(body, FRONT, SIZE, SIZE);
+    const whole = brushHits(body, projected, [25, 40], [75, 40], 2, everyVisible);
+    let calls = 0;
+    const sliced: string[] = [];
+    let next = 0;
+    while (next < body.ids.length) {
+      const part = brushHitsFrom(next, body, projected, [25, 40], [75, 40], 2, everyVisible, undefined, () => ++calls % 2 === 0);
+      sliced.push(...part.hits);
+      expect(part.next).toBeGreaterThan(next);
+      next = part.next;
+    }
+    expect(sliced).toEqual(whole);
+    expect(whole.length).toBe(5);
+  });
+});
+
+describe('cachedVisibility', () => {
+  it('asks once per part and spot (t to 1/8) until cleared, so a stroke pays each ray once', () => {
+    let calls = 0;
+    const cache = cachedVisibility(() => { calls += 1; return calls % 2 === 1; });
+    expect(cache.isVisible([0, 0, 0], 3, 0.5)).toBe(true);
+    expect(cache.isVisible([0, 0, 0], 3, 0.51)).toBe(true);
+    expect(calls).toBe(1);
+    expect(cache.isVisible([0, 0, 0], 4, 0.5)).toBe(false);
+    expect(calls).toBe(2);
+    cache.clear();
+    expect(cache.isVisible([0, 0, 0], 3, 0.5)).toBe(true);
+    expect(calls).toBe(3);
   });
 });

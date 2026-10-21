@@ -66,6 +66,25 @@ describe('jobContacts: landing on a no-support zone', () => {
     expect(ids([paint([0, 9, 0])], { position: [30, 2, -10], rotation: [0, 0, 0] })).toEqual(['auto-slab', 'manual-shelf']);
   });
 
+  it('casts down the plate, not unit-local Y: a unit stood up 90 degrees about X', () => {
+    // The same shelf over slab, built along local -Z; Rx(90°) maps local (x, y, z) to plate (x, -z, y).
+    const standing = boxes([[-20, -20, -9], [20, 20, -5]], [[-5, -5, -24], [5, 5, -20]]);
+    const point = (id: string, position: V): SupportPoint => ({ id, regionId: 0, position, normal: [0, 0, 1], source: 'interior' });
+    const upright = { position: [0, 0, 0] as V, rotation: [Math.PI / 2, 0, 0] as V };
+    const zones = [{ center: [0, 0, -9] as V, radius: 3, normal: [0, 0, -1] as V, kind: 'paint' as const }];
+    const inputs: ContactInputs = { points: [point('auto-shelf', [0, 0, -20])], manual: [], suppressed: [], deleted: [], zones };
+    expect(jobContacts(inputs, settings, { model: standing, frame: upright }).map((contact) => contact.id)).toEqual([]);
+    // Lying flat (no rotation) the shelf is beside the slab, not over it: nothing lands in the zone.
+    expect(jobContacts(inputs, settings, { model: standing, frame: { position: [0, 0, 0], rotation: [0, 0, 0] } }).map((contact) => contact.id)).toEqual(['auto-shelf']);
+  });
+
+  it('a stamp centred a little above the contact but reaching down over its landing still counts', () => {
+    // A short drop: shelf underside at y = 12 over the slab top at y = 9; the stamp centre sits at y = 12.5 on a slope edge.
+    const low = boxes([[-20, 5, -20], [20, 9, 20]], [[-5, 12, -5], [5, 16, 5]]);
+    const inputs: ContactInputs = { points: [under('auto-low', [0, 12, 0])], manual: [], suppressed: [], deleted: [], zones: [{ center: [0, 12.5, 0], radius: 4, normal: [0, 1, 0], kind: 'paint' }] };
+    expect(jobContacts(inputs, { ...settings, neckLength: 1 }, { model: low, frame: { position: [0, 0, 0], rotation: [0, 0, 0] } }).map((contact) => contact.id)).toEqual([]);
+  });
+
   it('without a model (no supports generated) only the contact itself is tested', () => {
     expect(jobContacts(shelfInputs([paint([0, 9, 0])]), settings).map((contact) => contact.id)).toEqual(['auto-shelf', 'auto-slab', 'manual-shelf']);
   });

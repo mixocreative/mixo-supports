@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Vector } from '../core/vec3';
-import { createStroke, pathFill, zoneFill } from './stroke';
+import { createStroke, zoneFill } from './stroke';
 
 describe('createStroke', () => {
   it('begins on the left button only', () => {
@@ -38,27 +38,17 @@ describe('createStroke', () => {
     const onEnd = vi.fn();
     const stroke = createStroke(onEnd);
     stroke.begin(0);
-    stroke.samples([0, 0, 0], pathFill);
+    stroke.samples([0, 0, 0], zoneFill(1));
     expect(stroke.begin(2)).toBe(false);
     expect(onEnd).not.toHaveBeenCalled();
     expect(stroke.begin(0)).toBe(true);
     expect(onEnd).toHaveBeenCalledTimes(1);
     // The new stroke starts afresh: no gap filled from the old one.
-    expect(stroke.samples([5, 0, 0], pathFill)).toEqual([[5, 0, 0]]);
+    expect(stroke.samples([5, 0, 0], zoneFill(1))).toEqual([[5, 0, 0]]);
   });
 
   it('samples nothing outside a stroke', () => {
-    expect(createStroke().samples([0, 0, 0], pathFill)).toEqual([]);
-  });
-});
-
-describe('Drag over fill (pathFill)', () => {
-  it('hands on the pointer path since the last event (the circle sweeps it), the point alone at the start', () => {
-    const stroke = createStroke();
-    stroke.begin(0);
-    expect(stroke.samples([10, 20, 0], pathFill)).toEqual([[10, 20, 0]]);
-    expect(stroke.samples([80, 25, 0], pathFill)).toEqual([[10, 20, 0], [80, 25, 0]]);
-    expect(stroke.samples([81, 25, 0], pathFill)).toEqual([[80, 25, 0], [81, 25, 0]]);
+    expect(createStroke().samples([0, 0, 0], zoneFill(1))).toEqual([]);
   });
 });
 

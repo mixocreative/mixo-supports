@@ -444,7 +444,8 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 /* Viewport tools keep the app's button sizes; segments get room for their words. */
 .edit-bar .segmented button { padding: 6px 10px; }
 /* Tips only forced on below the plate: disabled, yet it still reads as on; its title says why. */
-.viewport-view button[aria-pressed='true']:disabled { opacity: 1; color: var(--paper); cursor: default; }
+.viewport-view button[aria-pressed='true']:disabled,
+.viewport-view button[aria-pressed='true'][aria-disabled='true'] { opacity: 1; color: var(--paper); cursor: default; }
 .edit-size { display: flex; gap: 8px; align-items: center; }
 /* Viewport tool hit areas stay at least 24 px tall (NN/g, WCAG 2.5.8): the slider gets a full row. */
 .edit-size input { width: 96px; height: 24px; margin: 0; accent-color: var(--ink); }

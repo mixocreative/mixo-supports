@@ -905,8 +905,9 @@ export default function App() {
           <button
             className={tipsOn ? 'active' : ''}
             aria-pressed={tipsOn}
-            onClick={() => setTips((state) => tipsToggle(state, largeTips))}
-            disabled={editMode === 'zones'}
+            // Zones force the tips view: the button stays focusable (its hint says why) but does nothing.
+            onClick={() => { if (editMode !== 'zones') setTips((state) => tipsToggle(state, largeTips)); }}
+            aria-disabled={editMode === 'zones'}
             {...hint(editMode === 'zones' ? 'While painting no-support zones only the contact tips show, so the surface stays visible.' : tipsOn ? 'Only contact tips show. Turns on by itself below the plate; click to switch off. Export stays full.' : 'Show only the contact tips: no pillars, braces or raft. Turns on by itself below the plate. Export stays full.')}
           >{t('Tips only')}</button>
           <button onClick={() => requestView('fit')} disabled={scene.units.length === 0} {...hint('Frame the selection from the current angle')}>{t('Fit view')}</button>

@@ -12,12 +12,12 @@ import type { PrintScene, PrintUnit } from '../state/project';
 import type { ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../core/supports/mesh';
 import { notSelected } from '../editing/selection';
-import { bodySegments, brushHits, hiddenByModel, projectBodies, type BodySegments } from '../editing/screenBrush';
+import { bodySegments, brushHitsFrom, cachedVisibility, hiddenByModel, projectBodies, type BodySegments } from '../editing/screenBrush';
 import type { BrushMode, EditMode, EditTool, SelectStyle, ZoneKind } from '../editing/types';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
 import { zoneOverlay } from '../core/supports/overlayMesh';
 import { belowPlate, boundsSphere, frameView, spotView } from '../editing/view';
-import { createStroke, pathFill, zoneFill, type Stroke } from '../editing/stroke';
+import { createStroke, zoneFill, type Stroke } from '../editing/stroke';
 import { missAction, pickAction, type PickInput } from '../editing/pick';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../core/supports/zones';
 
@@ -378,6 +378,8 @@ interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMe
   onGroup?: (group: THREE.Group | null) => void;
 }
 
+/** Most ms of Drag over hit tests per animation frame; the rest waits for the next frame. */
+const FRAME_BUDGET = 8;
 /** Models hide supports from Drag over; supports never hide each other. */
 const OCCLUDER = { occluder: true };
 
@@ -414,63 +416,131 @@ function useScreenBrush(options: {
     circle.className = 'brush-circle';
     circle.hidden = true;
     host.appendChild(circle);
-    const raycaster = new THREE.Raycaster() as THREE.Raycaster & { firstHitOnly?: boolean };
-    raycaster.firstHitOnly = true;
+    const ray = new THREE.Ray();
     const matrix = new THREE.Matrix4();
     const world = new THREE.Vector3();
     const direction = new THREE.Vector3();
-    let cache: { key: number[]; projected: Float32Array } | undefined;
-    let occluders: THREE.Object3D[] = [];
+    let projection: { key: number[]; projected: Float32Array } | undefined;
+    /** Visible models with their pick index and world → model matrix (rigid, so distances carry over). */
+    let occluders: { bvh: MeshBVH; inverse: THREE.Matrix4; side: THREE.Side }[] = [];
     let shown: readonly string[] = [];
     const show = (ids: readonly string[]) => {
       if (ids.length === shown.length && ids.every((id, index) => id === shown[index])) return;
       shown = ids;
       setBrushed(ids);
     };
-    const projection = (width: number, height: number) => {
-      const group = live.current.group.current;
-      if (!group) return undefined;
-      group.updateWorldMatrix(true, false);
-      camera.updateMatrixWorld();
-      matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(group.matrixWorld);
-      const key = [...matrix.elements, width, height];
-      if (!cache || cache.key.some((value, index) => value !== key[index])) cache = { key, projected: projectBodies(bodies, matrix.elements, width, height) };
-      return cache.projected;
-    };
-    const isVisible = (point: Vector) => {
+    /** One ray from the camera to a unit-local point against the visible models. */
+    const rayVisible = (point: Vector) => {
       const group = live.current.group.current;
       if (!group || occluders.length === 0) return true;
       world.set(point[0], point[1], point[2]).applyMatrix4(group.matrixWorld);
       direction.subVectors(world, camera.position);
       const distance = direction.length();
       if (!(distance > 0)) return true;
-      raycaster.set(camera.position, direction.divideScalar(distance));
-      raycaster.far = distance;
-      const hit = raycaster.intersectObjects(occluders, false)[0];
-      return !hiddenByModel(distance, hit?.distance);
+      direction.divideScalar(distance);
+      let nearest: number | undefined;
+      for (const { bvh, inverse, side } of occluders) {
+        ray.origin.copy(camera.position).applyMatrix4(inverse);
+        ray.direction.copy(direction).transformDirection(inverse);
+        const hit = bvh.raycastFirst(ray, side, 0, nearest ?? distance);
+        if (hit && (nearest === undefined || hit.distance < nearest)) nearest = hit.distance;
+      }
+      return !hiddenByModel(distance, nearest);
+    };
+    // Rays are remembered while the camera and the object stand still (always, during a stroke).
+    const visibility = cachedVisibility(rayVisible);
+    const project = (width: number, height: number) => {
+      const group = live.current.group.current;
+      if (!group) return undefined;
+      group.updateWorldMatrix(true, false);
+      camera.updateMatrixWorld();
+      matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(group.matrixWorld);
+      const key = [...matrix.elements, width, height];
+      if (!projection || projection.key.some((value, index) => value !== key[index])) {
+        projection = { key, projected: projectBodies(bodies, matrix.elements, width, height) };
+        visibility.clear();
+      }
+      return projection.projected;
     };
     const visibleOccluders = () => {
-      const found: THREE.Object3D[] = [];
-      scene.traverseVisible((object) => { if (object.userData.occluder) found.push(object); });
+      const found: typeof occluders = [];
+      scene.traverseVisible((object) => {
+        const mesh = object as THREE.Mesh;
+        const bvh = object.userData.occluder && (mesh.geometry as BvhGeometry | undefined)?.boundsTree;
+        if (!bvh) return;
+        object.updateWorldMatrix(true, false);
+        found.push({ bvh: bvh as MeshBVH, inverse: object.matrixWorld.clone().invert(), side: (mesh.material as THREE.Material).side });
+      });
       return found;
     };
-    const hits = (from: readonly [number, number] | undefined, to: readonly [number, number], width: number, height: number) => {
+
+    // Pointer events only queue work. Each animation frame runs at most FRAME_BUDGET ms of hit tests
+    // and carries the rest over (`brushHitsFrom`), so a dense plate stays smooth; a stroke's queue
+    // is finished in later frames even after the release.
+    let size = { width: 0, height: 0 };
+    /** Stroke steps still to test: path from → to, from support index `next`. */
+    let steps: { from: [number, number] | undefined; to: [number, number]; next: number }[] = [];
+    let last: [number, number] | undefined;
+    /** The hover circle being tested, the support index reached and what it found so far. */
+    let hover: { at: [number, number]; next: number; found: string[] } | undefined;
+    /** Ids this stroke already painted: never tested again, though the selection prop lags a render. */
+    const strokePainted = new Set<string>();
+    let frame = 0;
+    const flush = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
       const { brush, selection } = live.current;
-      const projected = brush && projection(width, height);
-      if (!brush || !projected) return [];
-      occluders = visibleOccluders();
-      const adding = brush.mode === 'select';
-      return brushHits(bodies, projected, from, to, brush.radius, isVisible, (id) => selection.has(id) !== adding);
+      if (!brush || (steps.length === 0 && !hover)) return;
+      const started = performance.now();
+      const stop = () => performance.now() - started > FRAME_BUDGET;
+      const projected = project(size.width, size.height);
+      if (projected) {
+        occluders = visibleOccluders();
+        const adding = brush.mode === 'select';
+        const want = (id: string) => selection.has(id) !== adding;
+        if (steps.length > 0) {
+          // A stroke: the circle sweeps every queued step; painted ids are the preview too.
+          const painted: string[] = [];
+          while (steps.length > 0) {
+            const step = steps[0]!;
+            const part = brushHitsFrom(step.next, bodies, projected, step.from, step.to, brush.radius, visibility.isVisible, (id) => !strokePainted.has(id) && want(id), stop);
+            for (const id of part.hits) {
+              painted.push(id);
+              strokePainted.add(id);
+            }
+            if (part.next < bodies.ids.length) {
+              step.next = part.next;
+              break;
+            }
+            steps.shift();
+          }
+          if (painted.length > 0) live.current.onPaint(painted, brush.mode);
+        } else if (hover) {
+          const part = brushHitsFrom(hover.next, bodies, projected, undefined, hover.at, brush.radius, visibility.isVisible, want, stop);
+          hover.found.push(...part.hits);
+          hover.next = part.next;
+          show([...hover.found]);
+          if (part.next >= bodies.ids.length) hover = undefined;
+        }
+      }
+      // Dev builds time each frame of hit tests (read with performance.getEntriesByName('mixo-brush-frame')).
+      if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) performance.measure('mixo-brush-frame', { start: started });
+      if (steps.length > 0 || hover) schedule();
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(flush);
     };
     const hide = () => {
       canvas.style.cursor = '';
       circle.hidden = true;
+      hover = undefined;
       show([]);
     };
     const handle = (event: PointerEvent, pressed = false) => {
       const { brush, stroke } = live.current;
       if (!brush) return;
       const rect = canvas.getBoundingClientRect();
+      size = { width: rect.width, height: rect.height };
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
       if (event.target !== canvas && !stroke.active) return hide();
@@ -481,20 +551,22 @@ function useScreenBrush(options: {
       circle.style.transform = `translate(${x - brush.radius}px, ${y - brush.radius}px)`;
       const state = pressed ? 'sample' : stroke.move((event.buttons & 1) !== 0);
       if (state === 'sample') {
-        // The path since the last event: the circle sweeps it, so a fast drag skips nothing.
-        const samples = stroke.samples([x, y, 0], pathFill);
-        const to = samples[samples.length - 1]!;
-        const from = samples.length > 1 ? samples[0]! : undefined;
-        const ids = hits(from && [from[0], from[1]], [to[0], to[1]], rect.width, rect.height);
-        if (ids.length > 0) live.current.onPaint(ids, brush.mode);
+        steps.push({ from: last, to: [x, y], next: 0 });
+        last = [x, y];
+      } else if (state === 'idle') {
+        hover = { at: [x, y], next: 0, found: [] };
       }
-      show(hits(undefined, [x, y], rect.width, rect.height));
+      schedule();
     };
     const move = (event: PointerEvent) => handle(event);
     const down = (event: PointerEvent) => {
       const { brush, stroke } = live.current;
       if (!brush || !stroke.begin(event.button)) return;
       live.current.beginStroke();
+      last = undefined;
+      hover = undefined;
+      strokePainted.clear();
+      show([]);
       handle(event, true);
     };
     const leave = () => {
@@ -505,6 +577,7 @@ function useScreenBrush(options: {
     canvas.addEventListener('pointerleave', leave);
     window.addEventListener('pointermove', move);
     return () => {
+      if (frame) cancelAnimationFrame(frame);
       canvas.removeEventListener('pointerdown', down, { capture: true });
       canvas.removeEventListener('pointerleave', leave);
       window.removeEventListener('pointermove', move);
