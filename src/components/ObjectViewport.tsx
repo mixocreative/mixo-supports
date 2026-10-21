@@ -11,7 +11,8 @@ import { transformFromObject, type ModelTransform } from '../state/transform';
 import { contactAtTriangle, tipsOf, type GeneratedSupportMesh } from '../supports/mesh';
 import { contactsInBrush, type BrushMode } from '../supports/selection';
 import { resolveSettings, unitContacts } from '../supports/unitSupports';
-import { nextStamp, sameStamp, stampVertices, zonedVertices, type ZoneStamp } from '../supports/zones';
+import { refineForOverlay } from '../supports/overlayMesh';
+import { buildVertexGrid, nextStamp, sameStamp, stampsAlong, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../supports/zones';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
 /**
@@ -206,49 +207,63 @@ function SupportBodies({ supports, geometry, ids, opacity, color = PREVIEW.remov
   </mesh>;
 }
 
+/** Overlay refinement: edges up to 1 mm so a 2 mm brush dab shows on coarse faces, within a triangle budget. */
+const OVERLAY_MAX_EDGE = 1;
+const OVERLAY_MAX_TRIANGLES = 1_500_000;
+/** Vertex grid cell size (mm), about a brush size. */
+const ZONE_GRID_CELL = 2;
+
 /**
- * The no-support zones on the model surface, see-through blue over the model it covers. Shares
- * the model's vertices; its own colour attribute carries alpha 1 on zoned vertices, 0 elsewhere.
+ * The no-support zones on the model surface, see-through blue over the model it covers. Drawn on
+ * a finer copy of the model when its faces are too coarse for a brush dab (else it shares the
+ * model's vertices); its own colour attribute carries alpha 1 on zoned vertices, 0 elsewhere.
  * A `zones` list that starts with the stamps already laid (a stroke in progress, or the stroke
  * just committed as saved copies) lays just the new stamps; any other change (undo, erase all, a
- * new model) recomputes every vertex.
+ * new model) recomputes every vertex. A vertex grid built once per model keeps both cheap.
  */
-function ZoneLayer({ geometry, zones, opacity }: { geometry: THREE.BufferGeometry; zones: readonly ZoneStamp[]; opacity: number }) {
+function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; zones: readonly ZoneStamp[]; opacity: number }) {
   // Built in the effect for the same reason as `SupportBodies`: the cleanup strips shared attributes.
-  const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute; zoned: Uint8Array; applied: readonly ZoneStamp[] }>();
+  const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute; zoned: Uint8Array; grid: VertexGrid; applied: readonly ZoneStamp[] }>();
   useEffect(() => {
-    const count = geometry.getAttribute('position').count;
-    const sub = new THREE.BufferGeometry();
-    sub.setAttribute('position', geometry.getAttribute('position'));
-    sub.setAttribute('normal', geometry.getAttribute('normal'));
-    sub.setIndex(geometry.getIndex());
+    const refined = refineForOverlay(mesh, OVERLAY_MAX_EDGE, OVERLAY_MAX_TRIANGLES);
+    const shared = refined === mesh;
+    const sub = shared ? new THREE.BufferGeometry() : toGeometry(refined);
+    if (shared) {
+      sub.setAttribute('position', geometry.getAttribute('position'));
+      sub.setAttribute('normal', geometry.getAttribute('normal'));
+      sub.setIndex(geometry.getIndex());
+    }
+    const count = sub.getAttribute('position').count;
     // White RGB (the material sets the blue); alpha per vertex.
     const colors = new THREE.BufferAttribute(new Uint8Array(count * 4).fill(255), 4, true);
     sub.setAttribute('color', colors);
-    setLayer({ geometry: sub, colors, zoned: new Uint8Array(count), applied: [] });
+    const grid = buildVertexGrid(sub.getAttribute('position').array as Float32Array, ZONE_GRID_CELL);
+    setLayer({ geometry: sub, colors, zoned: new Uint8Array(count), grid, applied: [] });
     return () => {
-      sub.deleteAttribute('position');
-      sub.deleteAttribute('normal');
-      sub.setIndex(null);
+      if (shared) {
+        sub.deleteAttribute('position');
+        sub.deleteAttribute('normal');
+        sub.setIndex(null);
+      }
       sub.dispose();
     };
-  }, [geometry]);
+  }, [mesh, geometry]);
   useEffect(() => {
-    const positions = geometry.getAttribute('position').array as Float32Array;
-    const normals = geometry.getAttribute('normal').array as Float32Array;
-    // A new model geometry runs this once on the old layer before the rebuilt one arrives: skip it.
-    if (!layer || layer.zoned.length !== positions.length / 3) return;
+    // A new model can run this once on the old layer (its shared attributes already stripped) before the rebuilt one arrives: skip it.
+    if (!layer?.geometry.getAttribute('position')) return;
+    const positions = layer.geometry.getAttribute('position').array as Float32Array;
+    const normals = layer.geometry.getAttribute('normal').array as Float32Array;
     const done = layer.applied;
     if (done.length <= zones.length && done.every((stamp, index) => sameStamp(zones[index]!, stamp))) {
-      for (let index = done.length; index < zones.length; index++) stampVertices(zones[index]!, positions, normals, layer.zoned);
+      for (let index = done.length; index < zones.length; index++) stampVertices(zones[index]!, positions, normals, layer.zoned, layer.grid);
     } else {
-      zonedVertices(zones, positions, normals, layer.zoned);
+      zonedVertices(zones, positions, normals, layer.zoned, layer.grid);
     }
     layer.applied = zones;
     const rgba = layer.colors.array as Uint8Array;
     for (let v = 0; v < layer.zoned.length; v++) rgba[v * 4 + 3] = layer.zoned[v] ? 255 : 0;
     layer.colors.needsUpdate = true;
-  }, [layer, zones, geometry]);
+  }, [layer, zones]);
   if (!layer) return null;
   // Drawn over the model (polygon offset), never pickable.
   return <mesh geometry={layer.geometry} raycast={() => undefined} renderOrder={16}>
@@ -420,8 +435,13 @@ function UnitObject(props: UnitObjectProps) {
     if (brush) return props.onPaint(unit.id, toVector(at.point), toVector(at.facing), brush.mode);
     if (!zoneBrush) return;
     const center = toVector(at.point);
-    if (!nextStamp(strokeStamps.current.at(-1)?.center, center, zoneBrush.radius)) return;
-    strokeStamps.current = [...strokeStamps.current, { center, radius: zoneBrush.radius, normal: toVector(at.normal.clone().normalize()), kind: zoneBrush.kind }];
+    const last = strokeStamps.current.at(-1)?.center;
+    if (!nextStamp(last, center, zoneBrush.radius)) return;
+    // A fast drag skips ahead between pointer events: fill the gap (stamps share this hit's normal).
+    const normal = toVector(at.normal.clone().normalize());
+    const fill = last ? stampsAlong(last, center, zoneBrush.radius) : [];
+    const { radius, kind } = zoneBrush;
+    strokeStamps.current = [...strokeStamps.current, ...fill.map((between) => ({ center: between, radius, normal, kind })), { center, radius, normal, kind }];
     setStroke(strokeStamps.current);
   };
   const startStroke = (event: ThreeEvent<PointerEvent>) => {
@@ -530,7 +550,7 @@ function UnitObject(props: UnitObjectProps) {
       />
     </mesh>}
     {model && editing && props.showZones !== 'off' && zones.length > 0 && <group visible={props.modelVisible}>
-      <ZoneLayer geometry={model} zones={zones} opacity={ZONE_OPACITY[props.showZones]} />
+      <ZoneLayer mesh={unit.source} geometry={model} zones={zones} opacity={ZONE_OPACITY[props.showZones]} />
     </group>}
     {supportGeometry && <mesh
       geometry={supportGeometry}
