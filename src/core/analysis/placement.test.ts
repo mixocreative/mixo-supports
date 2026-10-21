@@ -257,6 +257,22 @@ describe('Ridge angle', () => {
     expect(at30).not.toEqual(keelPoints(60, false));
   });
 
+  it('gives legacy ridge points their surface normal, not straight down (Low Poly preview tips follow it)', () => {
+    // One face straight down, one 60 degrees off it: the fold's vertex normal leans 30 degrees.
+    const fold: TriangleMesh = {
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1, 0, Math.sin(Math.PI / 3), -0.5]),
+      indices: new Uint32Array([0, 1, 2, 0, 3, 1]),
+    };
+    const ridges = generatePlacement(fold, { ...keelSettings, spacing: 0.1, sharpEdgeAngleDegrees: 30, reinforceEdges: false })
+      .points.filter((point) => point.source === 'sharp-ridge');
+    expect(ridges.length).toBeGreaterThan(0);
+    for (const { normal } of ridges) {
+      expect(Math.hypot(...normal)).toBeCloseTo(1, 5);
+      expect(normal[1]).toBeCloseTo(-Math.cos(Math.PI / 6), 5);
+      expect(normal[2]).toBeCloseTo(-0.5, 5);
+    }
+  });
+
   it('leaves the island stream alone while Reinforce overhang edges is on', () => {
     const islands = (degrees: number) => keelPoints(degrees, true).filter((point) => point.source === 'island');
     expect(islands(30)).toEqual(islands(60));

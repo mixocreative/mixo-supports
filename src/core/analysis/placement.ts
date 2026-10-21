@@ -301,6 +301,8 @@ export function minimaStages(remesh: Remesh, settings: PlacementSettings): {
   snapped: Vector[];
   kept: Vector[];
   keptVertical: boolean[];
+  /** Web axes: the true normal of the R vertex each kept point sampled (an edge contact's surface normal). */
+  keptNormals: Vector[];
 } {
   const f = Math.fround;
   const count = remesh.vertices.length;
@@ -328,7 +330,7 @@ export function minimaStages(remesh: Remesh, settings: PlacementSettings): {
   const merged = clusterMeans(points, clusters);
   const candidateIndex = new NearestPoint(points);
   const snapped = merged.map((centre) => candidateIndex.nearestHit(centre).co);
-  const keep = downwardMask(snapped, blender, normals, settings.overhangAngleDegrees);
+  const { keep, nearest } = downwardTest(snapped, blender, normals, settings.overhangAngleDegrees);
   const kept = snapped.filter((_, k) => keep[k]);
   const keptVertical = clusters.filter((_, k) => keep[k]).map((cluster) => cluster.some((index) => index < candidates.length));
   const toWeb = ([x, y, z]: Vector): Vector => [x, z, -y];
@@ -340,6 +342,7 @@ export function minimaStages(remesh: Remesh, settings: PlacementSettings): {
     snapped: snapped.map(toWeb),
     kept: kept.map(toWeb),
     keptVertical,
+    keptNormals: nearest.filter((_, k) => keep[k]).map((vertex) => toWeb(normals[vertex]!)),
   };
 }
 
@@ -362,24 +365,32 @@ export function clusterMeans(points: readonly Vector[], clusters: readonly (read
  * its nearest R vertex is within Overhang angle of -Z.
  */
 export function downwardMask(points: readonly Vector[], vertices: readonly Vector[], normals: readonly Vector[], overhangAngleDegrees: number): boolean[] {
+  return downwardTest(points, vertices, normals, overhangAngleDegrees).keep;
+}
+
+/** `downwardMask`, with the nearest R vertex each point sampled (-1 for none). */
+function downwardTest(points: readonly Vector[], vertices: readonly Vector[], normals: readonly Vector[], overhangAngleDegrees: number): { keep: boolean[]; nearest: number[] } {
   const f = Math.fround;
   const vertexIndex = new NearestPoint(vertices);
   const limit = f(overhangAngleDegrees * Math.PI / 180);
-  return points.map((point) => {
-    const nearest = vertexIndex.nearest(point);
-    if (nearest < 0) return false; // no vertices, or a NaN point
-    const down = f(-normals[nearest]![2]);
+  const nearest = points.map((point) => vertexIndex.nearest(point));
+  const keep = nearest.map((vertex) => {
+    if (vertex < 0) return false; // no vertices, or a NaN point
+    const down = f(-normals[vertex]![2]);
     const angle = down <= -1 ? f(Math.PI) : down >= 1 ? 0 : f(Math.acos(down));
     return !(angle > limit);
   });
+  return { keep, nearest };
 }
 
 /** Island minima (vertical contacts) and, with Reinforce overhang edges off, legacy ridge points (edge contacts). */
 function minimaOnRemesh(remesh: Remesh, settings: PlacementSettings): Candidate[] {
   const stages = minimaStages(remesh, settings);
+  // Vertical contacts point straight down; edge contacts carry their surface normal, which a
+  // Low Poly preview (no remesh to sample) uses for the tip as the export samples it from R.
   return stages.kept.map((position, k) => (stages.keptVertical[k]
     ? { regionId: -1, position, normal: [0, -1, 0], source: 'island' }
-    : { regionId: -1, position, normal: [0, -1, 0], source: 'sharp-ridge' }));
+    : { regionId: -1, position, normal: stages.keptNormals[k]!, source: 'sharp-ridge' }));
 }
 
 class SpatialHash {
