@@ -74,18 +74,23 @@ export interface VertexGrid {
 /**
  * Buckets the vertices into cubes of `cellSize` (about a brush size). When that would need more
  * than `maxCells` cells the cells grow until it does not, which keeps the memory bounded.
+ * No grid (undefined) for a non-finite coordinate or a cell size that is not a positive number:
+ * the cells could never be sized, so callers visit every vertex instead.
  */
-export function buildVertexGrid(positions: Float32Array, cellSize = 2, maxCells = Math.max(1 << 16, Math.min(positions.length, 1 << 22))): VertexGrid {
+export function buildVertexGrid(positions: Float32Array, cellSize = 2, maxCells = Math.max(1 << 16, Math.min(positions.length, 1 << 22))): VertexGrid | undefined {
   const count = positions.length / 3;
   const min: Vector = [Infinity, Infinity, Infinity];
   const max: Vector = [-Infinity, -Infinity, -Infinity];
+  let finite = true;
   for (let i = 0; i < positions.length; i += 3) {
     for (let axis = 0; axis < 3; axis++) {
       const value = positions[i + axis]!;
+      if (!Number.isFinite(value)) finite = false;
       if (value < min[axis]!) min[axis] = value;
       if (value > max[axis]!) max[axis] = value;
     }
   }
+  if (!finite || !(cellSize > 0) || !Number.isFinite(cellSize)) return undefined;
   if (count === 0) return { cellSize, min: [0, 0, 0], dims: [1, 1, 1], cellStart: new Uint32Array(2), cellVertices: new Uint32Array(0) };
   const dimsFor = (size: number): [number, number, number] => [0, 1, 2].map((axis) => Math.max(1, Math.floor((max[axis]! - min[axis]!) / size) + 1)) as [number, number, number];
   let dims = dimsFor(cellSize);

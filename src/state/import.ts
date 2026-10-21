@@ -73,7 +73,7 @@ export function weldRawMesh(raw: RawMesh): ImportedMesh {
   geometry.setAttribute('position', new BufferAttribute(raw.positions, 3));
   if (raw.indices) geometry.setIndex(new BufferAttribute(raw.indices, 1));
   geometry.applyMatrix4(new Matrix4().fromArray(raw.matrix));
-  return { name: raw.name, mesh: geometryToMesh(geometry) };
+  return { name: raw.name, mesh: geometryToMesh(assertFinite(geometry, raw.name)) };
 }
 
 /** Every mesh in a glTF scene becomes its own print unit, with its world transform baked in. */
@@ -83,7 +83,19 @@ export function importGltfUnits(gltf: { scene: Object3D }, fileName: string): Im
 
 /** STL is Z-up (slicers, CAD, Blender); the editor is Y-up: web (x, y, z) = STL (x, z, -y). */
 export function importStlUnit(geometry: BufferGeometry, fileName: string): ImportedMesh {
-  return { name: baseName(fileName), mesh: geometryToMesh(geometry.clone().rotateX(-Math.PI / 2)) };
+  const name = baseName(fileName);
+  return { name, mesh: geometryToMesh(assertFinite(geometry.clone().rotateX(-Math.PI / 2), name)) };
+}
+
+/**
+ * The geometry itself, or an import error when a coordinate is NaN or infinite. Checked before
+ * welding, which would quietly merge such a vertex into another one.
+ */
+function assertFinite(geometry: BufferGeometry, name: string): BufferGeometry {
+  if (!(geometry.getAttribute('position').array as Float32Array).every(Number.isFinite)) {
+    throw new Error(`${name} has vertex coordinates that are not finite numbers (NaN or infinity); repair or re-export the model`);
+  }
+  return geometry;
 }
 
 /**

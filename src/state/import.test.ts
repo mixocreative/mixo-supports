@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BoxGeometry, BufferGeometry, Float32BufferAttribute, Group, Mesh } from 'three';
-import { geometryToMesh, importGltfUnits, placeImportedUnits } from './import';
+import { geometryToMesh, importGltfUnits, importStlUnit, placeImportedUnits, weldRawMesh } from './import';
 import { identityTransform, type PrintUnit } from './project';
 import { meshBounds } from '../supports/mesh';
 import { applyTransform } from './transform';
@@ -13,6 +13,26 @@ describe('geometryToMesh', () => {
 
     expect(mesh.positions.length / 3).toBe(4);
     expect(mesh.indices.length).toBe(6);
+  });
+});
+
+describe('non-finite vertices', () => {
+  const triangle = (bad: number) => [0, 0, 0, 1, 0, 0, 0, bad, 1];
+
+  it('rejects an STL or glTF mesh with a NaN or infinite coordinate, naming the file', () => {
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      const geometry = new BufferGeometry();
+      geometry.setAttribute('position', new Float32BufferAttribute(triangle(bad), 3));
+      expect(() => importStlUnit(geometry, 'C:/models/broken.stl')).toThrow(/^broken has vertex coordinates that are not finite numbers/);
+      expect(() => weldRawMesh({ name: 'Part 1', positions: new Float32Array(triangle(bad)), matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }))
+        .toThrow(/^Part 1 has vertex coordinates/);
+    }
+  });
+
+  it('accepts finite coordinates', () => {
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new Float32BufferAttribute(triangle(1), 3));
+    expect(importStlUnit(geometry, 'ok.stl').mesh.indices.length).toBe(3);
   });
 });
 

@@ -111,7 +111,7 @@ describe('buildVertexGrid', () => {
   }));
 
   it('lists every vertex exactly once', () => {
-    const grid = buildVertexGrid(positions, 2);
+    const grid = buildVertexGrid(positions, 2)!;
     expect(grid.cellVertices.length).toBe(count);
     expect([...grid.cellVertices].sort((a, b) => a - b)).toEqual(Array.from({ length: count }, (_, v) => v));
   });
@@ -127,7 +127,7 @@ describe('buildVertexGrid', () => {
   });
 
   it('caps the cell count by growing the cells, and stays exact', () => {
-    const grid = buildVertexGrid(positions, 0.01, 1000);
+    const grid = buildVertexGrid(positions, 0.01, 1000)!;
     expect(grid.cellStart.length - 1).toBeLessThanOrEqual(1000);
     expect([...zonedVertices(zones, positions, normals, undefined, grid)]).toEqual([...zonedVertices(zones, positions, normals)]);
   });
@@ -135,9 +135,20 @@ describe('buildVertexGrid', () => {
   it('handles an empty vertex list and stamps outside the bounds', () => {
     const empty = buildVertexGrid(new Float32Array(0), 2);
     expect([...stampVertices(zones[0]!, new Float32Array(0), new Float32Array(0), new Uint8Array(0), empty)]).toEqual([]);
-    const grid = buildVertexGrid(positions, 2);
+    const grid = buildVertexGrid(positions, 2)!;
     const far: ZoneStamp = { center: [1000, 1000, 1000], radius: 2, normal: [0, 1, 0], kind: 'paint' };
     expect(stampVertices(far, positions, normals, new Uint8Array(count), grid).every((value) => value === 0)).toBe(true);
+  });
+
+  it('builds no grid for non-finite coordinates or a cell size of zero or less (callers visit every vertex)', () => {
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      const broken = positions.slice();
+      broken[301] = bad;
+      expect(buildVertexGrid(broken, 2)).toBeUndefined();
+    }
+    for (const size of [0, -1, NaN, Infinity]) expect(buildVertexGrid(positions, size)).toBeUndefined();
+    const brute = zonedVertices(zones, positions, normals);
+    expect([...zonedVertices(zones, positions, normals, undefined, buildVertexGrid(positions, 0))]).toEqual([...brute]);
   });
 });
 
