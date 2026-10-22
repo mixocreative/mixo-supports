@@ -61,7 +61,7 @@ Long calls take an optional `onProgress(fraction, stage)` (`ProgressCallback`, f
 | Settings | `defaultSupportSettings`, `applyPreset`, `updateSetting`, `setRoofMode`, `settingLimits`, `presetValues` (`supports/settings.ts`) | `LiveSupportSettings`, one immutable object per change |
 | Placement settings | `toPlacementSettings(settings)` (`supports/settings.ts`) | `PlacementSettings` |
 | Place | `generatePlacement(mesh, placementSettings, onProgress?)` (`analysis/placement.ts`) | `TriangleMesh` in the placement frame → `PlacementResult` (`points` with ids `auto-<x>_<y>_<z>` on a 0.01 mm grid, `regions`, flat contact arrays) |
-| Compose | `composeContacts(auto, manual, suppressed, eraseRadius?, deleted?, matchRadius?)`, `hidingRemovals(...)` (`analysis/placement.ts`); `zonedAt` (`supports/zones.ts`) drops automatic contacts inside no-support zones | the contacts that remain after manual adds, removals and zones |
+| Compose | `composeContacts(auto, manual, deleted?)`, `hidingRemovals(auto, deleted)`, `remapDeleted` (`analysis/placement.ts`); `zonedAt` (`supports/zones.ts`) drops automatic contacts inside no-support zones | the contacts that remain after manual adds, removals and zones |
 | Build | `buildSupportMesh(contacts, settings, options?)` (`supports/mesh.ts`) | `SupportContact[]` in plate space (Y up, plate y = 0) → `GeneratedSupportMesh` (positions, indices, `parts`, `components`) |
 | Pick | `contactAtTriangle(mesh, triangle)` (`supports/meshQuery.ts`) | triangle index of a hit → owning contact id, or `undefined` (braces, raft, roof, label) |
 | Tips view | `tipsOf(mesh)` (`supports/meshQuery.ts`) | tips and necks only, sharing the vertices; `contactAtTriangle` works on the result |

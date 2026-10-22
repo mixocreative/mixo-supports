@@ -397,8 +397,9 @@ class SpatialHash {
 
 /**
  * Automatic IDs encode the contact position (0.01 mm grid), like Blender's removed-point
- * markers: a suppression keeps hiding the same spot after any regeneration and simply
- * stops matching when that spot is no longer sampled.
+ * markers: a deletion keeps hiding the same spot after any regeneration and simply stops
+ * matching when that spot is no longer sampled. placementCommands names them from the
+ * unit-local position, so the id and the stored position share a frame.
  */
 export function positionId(position: Vector): string {
   return `auto-${position.map((value) => Math.round(value * 100)).join('_')}`;
