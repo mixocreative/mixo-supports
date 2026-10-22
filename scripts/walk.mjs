@@ -268,6 +268,11 @@ async function walk(url, scratch) {
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  const outside = [];
+  page.on('request', (r) => {
+    const u = new URL(r.url());
+    if (/^https?:$/.test(u.protocol) && u.hostname !== '127.0.0.1' && u.hostname !== 'localhost') outside.push(r.url());
+  });
   const d = makeDriver(page);
   try {
     let early;
@@ -522,6 +527,7 @@ async function walk(url, scratch) {
     await page.screenshot({ path: path.join(scratch, 'walk-error.png') }).catch(() => {});
     note(`screenshot ${path.join(scratch, 'walk-error.png')}`);
   }
+  check('h no request leaves localhost', outside.length === 0, outside.length ? outside.slice(0, 3).join(' || ') : '0 external requests');
   check('h no console errors or warnings', errors.length === 0, errors.length ? errors.slice(0, 3).join(' || ') : '0 messages');
 }
 
