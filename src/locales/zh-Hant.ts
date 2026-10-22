@@ -337,7 +337,7 @@ export const zhHant: Dictionary = {
   'Click the model to add a support; right-click or Ctrl+click a support to remove it': '點擊模型新增支撐；右鍵或 Ctrl+點擊支撐即可移除',
   'Pick supports to delete several at once': '選取多個支撐，一次刪除',
   'Click supports one at a time to select them': '逐一點擊支撐來選取',
-  'Drag over supports to select many at once, starting anywhere in the view': '拖曳經過支撐，一次選取多個；可從檢視中任何位置開始',
+  'Drag over the model or its supports to select many at once. A drag that starts on empty space turns the view': '在模型或支撐上拖曳，一次選取多個。從空白處開始拖曳則會轉動視角',
   'Dragging adds supports to the selection': '拖曳時把支撐加入選取',
   'Dragging takes supports out of the selection': '拖曳時把支撐移出選取',
   'Radius of the circle around the pointer, in screen pixels: supports it passes over are selected': '游標周圍圓圈的半徑（螢幕像素）：圓圈經過的支撐會被選取',

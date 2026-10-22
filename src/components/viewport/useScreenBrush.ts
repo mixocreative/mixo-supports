@@ -10,8 +10,39 @@ import { bodySegments, brushHitsFrom, cachedVisibility, hiddenByModel, projectBo
 import type { Stroke } from '../../editing/stroke';
 import type { BrushMode } from '../../editing/types';
 
-/** Models hide supports from Drag over; supports never hide each other. */
-export const OCCLUDER = { occluder: true };
+/**
+ * Marks on the model mesh and the support mesh of an object (their `userData`). Models hide
+ * supports from Drag over, supports never hide each other; a stroke starts only on one of the
+ * two (`strokeStart`), a press anywhere else orbits.
+ */
+export const MODEL_MESH = { occluder: true, strokeStart: 'model' };
+export const SUPPORT_MESH = { strokeStart: 'support' };
+
+/** Samples around the pointer (as shares of the circle's radius) that may reach a support: a support is thin. */
+const SUPPORT_REACH = [1, 0.5] as const;
+const AROUND = 8;
+
+/**
+ * Whether a press at canvas point `at` is on the object: its model or a support under the pointer, or
+ * a support the circle reaches (a support is a thin line, so the circle grabs it from nearby;
+ * a support behind the model does not count, the model in front is what is under the pointer).
+ */
+function onObject(root: THREE.Object3D, camera: THREE.Camera, size: { width: number; height: number }, at: readonly [number, number], radius: number): boolean {
+  const targets: THREE.Object3D[] = [];
+  root.traverseVisible((object) => {
+    if (object.userData.strokeStart) targets.push(object);
+  });
+  if (targets.length === 0) return false;
+  const raycaster = new THREE.Raycaster() as THREE.Raycaster & { firstHitOnly?: boolean };
+  raycaster.firstHitOnly = true;
+  const first = (x: number, y: number): unknown => {
+    raycaster.setFromCamera(new THREE.Vector2((x / size.width) * 2 - 1, 1 - (y / size.height) * 2), camera);
+    return raycaster.intersectObjects(targets, false)[0]?.object.userData.strokeStart;
+  };
+  if (first(at[0], at[1])) return true;
+  return SUPPORT_REACH.some((share) => Array.from({ length: AROUND }, (_, step) => (step * Math.PI * 2) / AROUND)
+    .some((angle) => first(at[0] + Math.cos(angle) * radius * share, at[1] + Math.sin(angle) * radius * share) === 'support'));
+}
 
 /** A visible model with its pick index and world → model matrix (rigid, so distances carry over). */
 type Occluder = { bvh: MeshBVH; inverse: THREE.Matrix4; side: THREE.Side };
@@ -92,8 +123,8 @@ const measureBrushFrame = import.meta.env?.DEV ? (start: number) => void perform
  * Drag over in screen space (hit rules: editing/screenBrush; pointer rules: editing/dragOver; frame loop: editing/brushScheduler):
  * a circle of `brush.radius` px follows the pointer over the canvas; supports of the active object
  * whose body it passes over, and that are not hidden behind a model there, are previewed and,
- * while the left button is held, painted. A stroke may start anywhere on the canvas (model,
- * support or empty plate); right and middle drags still orbit.
+ * while the left button is held, painted. A stroke starts only on the model or a support (a press
+ * on empty space orbits, and shows no circle); right and middle drags always orbit.
  */
 export function useScreenBrush(options: {
   brush: Brush | undefined;
@@ -147,6 +178,10 @@ export function useScreenBrush(options: {
       view.resize(rect.width, rect.height);
       return [event.clientX - rect.left, event.clientY - rect.top] as const;
     };
+    const objectAt = (at: readonly [number, number], radius: number) => {
+      const root = live.current.options.group.current;
+      return Boolean(root) && onObject(root!, camera, { width: canvas.clientWidth, height: canvas.clientHeight }, at, radius);
+    };
     const show = ([x, y]: readonly [number, number], brush: Brush) => {
       setOver(true);
       circle.hidden = false;
@@ -162,14 +197,18 @@ export function useScreenBrush(options: {
       const { brush } = live.current.options;
       if (!brush) return;
       const at = locate(event);
-      if (dragOver.move(at, { held: (event.buttons & 1) !== 0, onCanvas: event.target === canvas }, brush)) show(at, brush);
+      const held = (event.buttons & 1) !== 0;
+      const onCanvas = event.target === canvas;
+      // The rays are cast only when the answer matters: a stroke runs on, and an orbit shows nothing.
+      const over = onCanvas && !held && !options.stroke.active && objectAt(at, brush.radius);
+      if (dragOver.move(at, { held, onCanvas, onObject: over || options.stroke.active }, brush)) show(at, brush);
       else hide();
     };
     const down = (event: PointerEvent) => {
       const { brush } = live.current.options;
       if (!brush) return;
       const at = locate(event);
-      if (dragOver.down(event.button, at, brush)) show(at, brush);
+      if (dragOver.down(event.button, at, brush, event.button === 0 && objectAt(at, brush.radius))) show(at, brush);
     };
     const leave = () => {
       if (!dragOver.leave()) hide();
@@ -185,6 +224,6 @@ export function useScreenBrush(options: {
       circle.remove();
       setOver(false);
     };
-  }, [view, gl, dragOver]);
+  }, [view, gl, camera, dragOver, options.stroke]);
   return { brushed: bodies ? brushed : [], over };
 }

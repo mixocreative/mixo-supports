@@ -18,7 +18,7 @@ import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
 import { type Hover, EditPreview, SupportBodies, ZoneLayer, useDoomed, ProblemMarkers, useSelectionColors } from './supportLayers';
 import type { ObjectViewportProps } from './types';
-import { OCCLUDER, useScreenBrush } from './useScreenBrush';
+import { MODEL_MESH, SUPPORT_MESH, useScreenBrush } from './useScreenBrush';
 
 function toVector(vector: THREE.Vector3): Vector {
   return [vector.x, vector.y, vector.z];
@@ -146,7 +146,7 @@ export function UnitObject(props: UnitObjectProps) {
     strokeStamps.current = [...strokeStamps.current, ...centers.map((between) => ({ center: between, radius, normal, kind }))];
     setStroke(strokeStamps.current);
   };
-  /** Zone strokes start on the model; Drag over strokes start anywhere (`useScreenBrush`). */
+  /** Zone strokes start on the model; Drag over strokes start on the model or a support (`useScreenBrush`). */
   const startStroke = (event: ThreeEvent<PointerEvent>) => {
     if (brush) return event.stopPropagation();
     if (!zoneBrush || !brushStroke.begin(event.button)) return;
@@ -228,7 +228,7 @@ export function UnitObject(props: UnitObjectProps) {
     {model && <mesh
       geometry={model}
       visible={props.modelVisible}
-      userData={OCCLUDER}
+      userData={MODEL_MESH}
       // Painting zones: other objects take no pointer events (a press passes through to the active one).
       raycast={gesture.kind === 'zones' && !props.active ? () => undefined : acceleratedRaycast}
       onClick={(event) => clickModel(event, false)}
@@ -250,6 +250,7 @@ export function UnitObject(props: UnitObjectProps) {
     </group>}
     {supportGeometry && <mesh
       geometry={supportGeometry}
+      userData={SUPPORT_MESH}
       raycast={zoning ? () => undefined : acceleratedRaycast}
       // Supports take pointer events only while edited (not while painting zones), so they cost no raycasts otherwise.
       {...(editing && !zoning ? {

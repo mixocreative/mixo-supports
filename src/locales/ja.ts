@@ -333,7 +333,7 @@ export const ja: Dictionary = {
   'Click the model to add a support; right-click or Ctrl+click a support to remove it': 'モデルをクリックでサポートを追加。サポートを右クリックまたは Ctrl+クリックで削除します',
   'Pick supports to delete several at once': '複数のサポートを選んで一度に削除します',
   'Click supports one at a time to select them': 'サポートを 1 本ずつクリックして選択します',
-  'Drag over supports to select many at once, starting anywhere in the view': 'サポートをなぞって、まとめて選択します。ビューのどこからでも始められます',
+  'Drag over the model or its supports to select many at once. A drag that starts on empty space turns the view': 'モデルやサポートの上をなぞって、まとめて選択します。何もない場所から始めたドラッグはビューを回転します',
   'Dragging adds supports to the selection': 'なぞったサポートを選択に追加します',
   'Dragging takes supports out of the selection': 'なぞったサポートを選択から外します',
   'Radius of the circle around the pointer, in screen pixels: supports it passes over are selected': 'ポインター周りの円の半径（画面のピクセル）：円が通ったサポートが選択されます',

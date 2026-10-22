@@ -58,7 +58,7 @@ export function EditBar({ gesture, unitName, ui, clickReach, send, run }: {
         {gesture.kind !== 'add' && <Segmented className="tool-choice" label={t('How to select')} value={gesture.kind === 'drag' ? 'brush' : 'click'} onChange={(style) => send({ type: 'setSelectStyle', style })} options={[
           { value: 'click', icon: <PointerIcon />, label: t('Click'), hint: 'Click supports one at a time to select them' },
           {
-            value: 'brush', icon: <BrushIcon />, label: t('Drag over'), hint: 'Drag over supports to select many at once, starting anywhere in the view',
+            value: 'brush', icon: <BrushIcon />, label: t('Drag over'), hint: 'Drag over the model or its supports to select many at once. A drag that starts on empty space turns the view',
             // The tool's own size, under it: shown only while Drag over is the way to select.
             under: gesture.kind === 'drag' && <RangeField
               layout="stack" label="Circle size" unit="{n} px" hint="Radius of the circle around the pointer, in screen pixels: supports it passes over are selected"

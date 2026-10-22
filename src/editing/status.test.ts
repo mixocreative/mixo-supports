@@ -87,7 +87,7 @@ describe('missStatus', () => {
     expect(missStatus(at({ mode: 'edit', tool: 'select', selectStyle: 'click' }))).toEqual({ key: 'No support here: click a support to select it.' });
   });
 
-  it('says nothing in Drag over: a stroke may start anywhere, and a tap there already selected what the circle covers', () => {
+  it('says nothing in Drag over: a press on empty space turns the view, and a tap on the object already selected what the circle covers', () => {
     expect(missStatus(at({ mode: 'edit', tool: 'select', selectStyle: 'brush' }))).toBeUndefined();
   });
 

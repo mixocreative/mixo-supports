@@ -17,7 +17,7 @@ const gestureStatus = (press: Gesture): string | undefined => (press.kind === 'n
 
 /**
  * A Support Edit Mode click that hit neither the model nor a support: what to click instead.
- * Nothing in Drag over: a stroke may start anywhere, and a tap already selected what the circle covered.
+ * Nothing in Drag over: a press on empty space turns the view, and a tap on the object already selected what the circle covered.
  */
 const MISS_STATUS = {
   add: 'Nothing under the cursor: click the model to add, right-click a support to remove.',

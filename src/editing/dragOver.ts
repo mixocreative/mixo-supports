@@ -2,10 +2,14 @@ import type { Brush, BrushScheduler } from './brushScheduler';
 import type { Stroke } from './stroke';
 import type { Point } from './strokeQueue';
 
-/** A pointer move: whether the left button is held and whether the pointer is over the canvas. */
+/**
+ * A pointer move: whether the left button is held, whether the pointer is over the canvas, and
+ * whether it is over the model or a support (the places a stroke may start).
+ */
 export interface PointerState {
   held: boolean;
   onCanvas: boolean;
+  onObject: boolean;
 }
 
 /**
@@ -14,12 +18,17 @@ export interface PointerState {
  * and shows the circle where these say it shows.
  */
 export interface DragOver {
-  /** A press: the left button starts a stroke (`onStrokeStart`) sampled first at `at`. False for other buttons. */
-  down(button: number, at: Point, brush: Brush): boolean;
+  /**
+   * A press: the left button starts a stroke (`onStrokeStart`) sampled first at `at`, when it
+   * lands on the model or a support (`onObject`). False for other buttons and for a press on
+   * empty space, which is left to the camera: it orbits.
+   */
+  down(button: number, at: Point, brush: Brush, onObject: boolean): boolean;
   /**
    * A move: samples the stroke while the left button is held, otherwise previews a hover. False
-   * when the pointer is off the canvas outside a stroke: the hover is cleared and the circle hides.
-   * A stroke keeps going off the canvas.
+   * outside a stroke when the pointer is off the canvas or off the model and its supports, or the
+   * button is held on an orbit (the hover is cleared and the circle hides). A stroke keeps going
+   * off the canvas and off the model.
    */
   move(at: Point, pointer: PointerState, brush: Brush): boolean;
   /** The pointer left the canvas: outside a stroke the hover is cleared and the circle hides (false). */
@@ -28,15 +37,19 @@ export interface DragOver {
 
 export function createDragOver(stroke: Stroke, scheduler: BrushScheduler, onStrokeStart: () => void): DragOver {
   return {
-    down(button, at, brush) {
+    down(button, at, brush, onObject) {
+      if (!onObject) {
+        stroke.end();
+        return false;
+      }
       if (!stroke.begin(button)) return false;
       onStrokeStart();
       scheduler.press();
       scheduler.sample(at, brush);
       return true;
     },
-    move(at, { held, onCanvas }, brush) {
-      if (!onCanvas && !stroke.active) {
+    move(at, { held, onCanvas, onObject }, brush) {
+      if (!stroke.active && (!onCanvas || !onObject || held)) {
         scheduler.clearHover();
         return false;
       }

@@ -11,13 +11,13 @@ const brushCursor = (tip: string) => `url("data:image/svg+xml,${encodeURICompone
 /** Drag over (red tip, with its circle: `useScreenBrush`), Paint zones (blue) and Erase zones (grey). */
 const BRUSH_CURSOR = { select: brushCursor(PREVIEW.remove), paint: brushCursor(PREVIEW.zone), erase: brushCursor(PREVIEW.ring) };
 
-/** The canvas cursor: the brush icon while a brush is over the object, the arrow of Click, else crosshair in the edit modes. */
+/** The canvas cursor: the brush icon while a brush is over the object, the arrow of Click, else crosshair in the edit modes (a hand over empty space in Drag over, where a drag orbits). */
 export function canvasCursor(gesture: Gesture, overBrush: boolean): string {
   switch (gesture.kind) {
     case 'none': return '';
     case 'pick': return 'default';
     case 'add': return 'crosshair';
     case 'zones': return overBrush ? BRUSH_CURSOR[gesture.brush.kind] : 'crosshair';
-    case 'drag': return overBrush ? BRUSH_CURSOR.select : 'crosshair';
+    case 'drag': return overBrush ? BRUSH_CURSOR.select : 'grab';
   }
 }

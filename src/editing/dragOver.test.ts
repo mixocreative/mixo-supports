@@ -108,16 +108,20 @@ function rig(options: { bodies?: BodySegments; hidden?: (x: number) => boolean }
   };
   const dragOver = createDragOver(stroke, scheduler, () => {});
   /** True when the circle shows at `at`. */
-  const move = (at: Point, held: boolean, onCanvas = true) => Boolean(view && brush && dragOver.move(at, { held, onCanvas }, brush));
+  const move = (at: Point, held: boolean, onCanvas = true, onObject = true) => Boolean(view && brush && dragOver.move(at, { held, onCanvas, onObject }, brush));
   return {
     log,
     get selection() { return [...selection].sort(); },
     get preview() { return preview; },
     hover(at: Point) { return move(at, false); },
     offCanvas(at: Point) { return move(at, false, false); },
+    /** Over the canvas but off the model and its supports. */
+    overEmpty(at: Point) { return move(at, false, true, false); },
+    /** A held move off the model (a stroke goes on; an orbit shows no circle). */
+    dragOff(at: Point) { return move(at, true, true, false); },
     /** True when the circle still shows. */
     leave() { return Boolean(view && dragOver.leave()); },
-    press(at: Point) { if (view && brush) dragOver.down(0, at, brush); },
+    press(at: Point, onObject = true) { return Boolean(view && brush && dragOver.down(0, at, brush, onObject)); },
     drag(at: Point) { return move(at, true); },
     release() { stroke.end(); },
     /** A straight drag in `moves` pointer steps, one frame after each. */
@@ -307,5 +311,29 @@ describe('Drag over pipeline (characterization)', () => {
     expect(view.drag([150, 30])).toBe(true);
     view.release();
     expect(view.offCanvas([150, 30])).toBe(false);
+  });
+
+  it('a press on empty space starts no stroke (the camera orbits), and the circle stays hidden over empty space and during an orbit', () => {
+    const view = rig();
+    expect(view.press([5, 30], false)).toBe(false);
+    view.drag([60, 30]);
+    view.release();
+    view.settle();
+    expect(view.selection).toEqual([]);
+    expect(view.preview).toEqual([]);
+    expect(view.overEmpty([50, 30])).toBe(false);
+    expect(view.preview).toEqual([]);
+    // Held without a stroke: an orbit that passes over the model shows no circle.
+    expect(view.drag([50, 30])).toBe(false);
+    expect(view.hover([50, 30])).toBe(true);
+  });
+
+  it('a stroke that started on the model keeps selecting after the pointer leaves it', () => {
+    const view = rig();
+    expect(view.press([5, 30], true)).toBe(true);
+    expect(view.dragOff([95, 30])).toBe(true);
+    view.release();
+    view.settle();
+    expect(view.selection.length).toBeGreaterThan(0);
   });
 });
