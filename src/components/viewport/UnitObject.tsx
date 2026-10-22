@@ -16,7 +16,7 @@ import type { PrintUnit } from '../../state/project';
 import { unitContacts } from '../../supports/unitSupports';
 import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
-import { type Hover, EditPreview, SupportBodies, ZoneLayer, useDoomed, ProblemMarkers, useSelectionColors } from './supportLayers';
+import { type Hover, EditPreview, SupportBodies, ZoneLayer, useDoomed, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
 import type { ObjectViewportProps } from './types';
 import { MODEL_MESH, SUPPORT_MESH, useScreenBrush } from './useScreenBrush';
 
@@ -278,6 +278,7 @@ export function UnitObject(props: UnitObjectProps) {
       {pointed && !props.selection.has(pointed) && <SupportBodies supports={supports} geometry={supportGeometry} ids={[pointed]} opacity={SEE_THROUGH} />}
       <SupportBodies supports={supports} geometry={supportGeometry} ids={preview.ghost} opacity={SEE_THROUGH} color={PREVIEW[preview.ghostTone]} />
     </>}
+    {editing && !zoning && <CustomisedMarks unit={unit} contacts={contacts} />}
     {props.problems.length > 0 && <ProblemMarkers problems={props.problems} />}
   </group>;
 }

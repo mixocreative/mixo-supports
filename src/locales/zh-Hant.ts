@@ -116,6 +116,7 @@ export const zhHant: Dictionary = {
   'Support shape · {n} selected': '支撐形狀 · 已選取 {n} 個',
   'Changes apply to the selected supports only.': '變更只會套用到選取的支撐。',
   'Selected supports have different values. Enter a value to set them all.': '選取的支撐數值不同。輸入數值即可全部設為相同。',
+  'Supports with their own settings carry a ring.': '有自訂設定的支撐會加上圓環標記。',
   'Reset to defaults': '恢復預設',
   'Give the selected supports the default settings again. Undo brings their own values back': '讓選取的支撐改回預設設定。復原可找回原本的數值',
   'None of the selected supports has settings of its own.': '選取的支撐都沒有自訂設定。',

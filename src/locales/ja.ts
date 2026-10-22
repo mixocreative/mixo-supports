@@ -113,6 +113,7 @@ export const ja: Dictionary = {
   'Support shape · {n} selected': 'サポート形状 · 選択中 {n} 本',
   'Changes apply to the selected supports only.': '変更は選択中のサポートにだけ適用されます。',
   'Selected supports have different values. Enter a value to set them all.': '選択中のサポートで値が異なります。値を入力するとすべてに適用されます。',
+  'Supports with their own settings carry a ring.': '個別の設定を持つサポートには輪の印が付きます。',
   'Reset to defaults': '既定に戻す',
   'Give the selected supports the default settings again. Undo brings their own values back': '選択中のサポートを既定の設定に戻します。「元に戻す」で元の値を復元できます',
   'None of the selected supports has settings of its own.': '選択中のサポートに個別の設定はありません。',

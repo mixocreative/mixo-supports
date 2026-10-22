@@ -5,6 +5,7 @@ import type { SupportProblem } from '../../core/analysis/supportCheck';
 import type { TriangleMesh } from '../../core/analysis/types';
 import type { GeneratedSupportMesh, SupportContact } from '../../core/supports/mesh';
 import { zoneOverlay } from '../../core/supports/overlayMesh';
+import { contactRadius, withShape } from '../../core/supports/settings';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
 import { contactToRemove } from '../../editing/removal';
 import { contactVertexRuns, selectionDelta } from '../../editing/selectionHighlight';
@@ -167,6 +168,35 @@ export function useDoomed(unit: PrintUnit, contacts: readonly SupportContact[], 
   if (!point) return [];
   const hit = contactToRemove(contacts, point.toArray(), eraseRadius);
   return hit ? [hit.id] : [];
+}
+
+/**
+ * The altered mark (docs/design/ui-structure.md 11.2 rule 7): a small ring flat on the surface
+ * around the tip of each support with settings of its own, in the ink grey. A shape and no new
+ * hue, so it reads in grey scale and stays beside the selected red. One draw call for all of them.
+ */
+export function CustomisedMarks({ unit, contacts }: { unit: PrintUnit; contacts: readonly SupportContact[] }) {
+  const settings = useMemo(() => resolveSettings(unit.settings), [unit.settings]);
+  const marked = useMemo(() => contacts.filter((contact) => unit.contactSettings[contact.id] !== undefined), [contacts, unit.contactSettings]);
+  const ref = useRef<THREE.InstancedMesh>(null);
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    const turn = new THREE.Quaternion();
+    const matrix = new THREE.Matrix4();
+    marked.forEach((contact, index) => {
+      const radius = Math.max(0.7, contactRadius(withShape(settings, unit.contactSettings[contact.id])) * 3);
+      turn.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(...contact.normal).normalize());
+      mesh.setMatrixAt(index, matrix.compose(new THREE.Vector3(...contact.position), turn, new THREE.Vector3(radius, radius, radius)));
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+  }, [marked, settings, unit.contactSettings]);
+  if (marked.length === 0) return null;
+  // Keyed by count: an instanced mesh cannot grow. Drawn through the model like the check markers; never pickable.
+  return <instancedMesh key={marked.length} ref={ref} args={[undefined, undefined, marked.length]} raycast={() => undefined} frustumCulled={false} renderOrder={22}>
+    <torusGeometry args={[1, 0.09, 6, 28]} />
+    <meshBasicMaterial color={PREVIEW.ring} depthTest={false} transparent opacity={0.9} />
+  </instancedMesh>;
 }
 
 /** Support check findings, drawn through the model so hidden spots still show. */

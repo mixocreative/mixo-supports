@@ -85,6 +85,7 @@ export function EditBar({ gesture, unitName, ui, clickReach, send, run }: {
         {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
         <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{gesture.kind === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
         <span className="edit-hint"><KeyCaps shortcut={resolve('history.undo', ui).shortcut!} /> {t('undo')}</span>
+        {ui.customisedActive > 0 && <span className="edit-hint">{t('Supports with their own settings carry a ring.')}</span>}
         {ui.selection > 0 && <span className="edit-count">{t('{n} selected', { n: ui.selection })}</span>}
         {EDIT_BAR_COMMANDS.map((id) => resolve(id, ui)).filter((command) => command.visible).map((command) => <CommandButton key={command.id} command={command} run={run} />)}
         <DoneButton ui={ui} run={run} />

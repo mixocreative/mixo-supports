@@ -135,6 +135,26 @@ describe('per-support settings', () => {
     expect(geometryOf(mixed, 'auto-0')).not.toEqual(geometryOf(plain, 'auto-0'));
   });
 
+  it('draws the tips view of a support, landing end included, from its own neck and shape', () => {
+    const box = (y0: number, y1: number, h: number): number[] => [-h, y0, -h, h, y0, -h, h, y1, -h, -h, y1, -h, -h, y0, h, h, y0, h, h, y1, h, -h, y1, h];
+    const faces = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [3, 7, 6, 2], [0, 4, 7, 3], [1, 2, 6, 5]];
+    const quads = (base: number) => faces.flatMap(([a, b, c, d]) => [base + a!, base + b!, base + c!, base + a!, base + c!, base + d!]);
+    const model: TriangleMesh = { positions: new Float32Array([...box(5, 9, 20), ...box(20, 24, 5)]), indices: new Uint32Array([...quads(0), ...quads(8)]) };
+    const plain = { ...defaultSupportSettings, roofSeededModes: [], lowPolyMode: true } as LiveSupportSettings;
+    const shelf: SupportContact = { id: 'shelf', position: [0, 20, 0], normal: [0, -1, 0] };
+    const own = { neckLength: 5, pointDiameter: 0.8 };
+    const viaOwn = tipsOf(buildSupportMesh([{ ...shelf, shape: own }], plain, { model }));
+    const viaObject = tipsOf(buildSupportMesh([shelf], { ...plain, ...own }, { model }));
+    const viaDefault = tipsOf(buildSupportMesh([shelf], plain, { model }));
+    expect(Array.from(viaOwn.positions)).toEqual(Array.from(viaObject.positions));
+    expect(viaOwn.components.map((component) => component.landingReach)).toEqual(viaObject.components.map((component) => component.landingReach));
+    expect(Array.from(viaOwn.indices)).toEqual(Array.from(viaObject.indices));
+    expect(Array.from(viaOwn.positions)).not.toEqual(Array.from(viaDefault.positions));
+    // The tips-only build of the same support agrees too.
+    const only = { ...plain, previewMode: 'ONLY_TIP' } as LiveSupportSettings;
+    expect(Array.from(buildSupportMesh([{ ...shelf, shape: own }], only, { model }).positions)).toEqual(Array.from(buildSupportMesh([shelf], { ...only, ...own }, { model }).positions));
+  });
+
   it('keeps a support with its own values out of tree merges', () => {
     const pair: SupportContact[] = [contact, { ...neighbour, id: 'auto-2', position: [1.5, 10, 0] }];
     const treeSettings = { ...settings, scatterAutoTree: true };
