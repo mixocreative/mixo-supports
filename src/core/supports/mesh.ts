@@ -458,7 +458,6 @@ export function filletPolyline(nodes: readonly CurveNode[], radius: number, coun
 export function trussSegments(columns: readonly Column[], settings: Readonly<LiveSupportSettings>): [Vector, Vector][] {
   // Blender sorts by x + y (Z-up); web z is Blender -y.
   const order = columns.map((column, index) => ({ column, index })).sort((a, b) => (a.column.x - a.column.z) - (b.column.x - b.column.z) || a.index - b.index).map(({ column }) => column);
-  const base = settings.baseHeight;
   const rise = (d: number) => d * Math.tan(Math.PI / 2 - settings.trussAngle * Math.PI / 180);
   const segments: [Vector, Vector][] = [];
   order.forEach((own, i) => {
@@ -478,8 +477,8 @@ export function trussSegments(columns: readonly Column[], settings: Readonly<Liv
     const step = rise(distance);
     const rows = Math.ceil(top / (step + settings.trussSpacing)) + 1;
     for (let y = 0; y < rows; y += 1) {
-      const partnerY = base + (y + (y % 2)) * step + settings.trussSpacing * (y + 1);
-      const ownY = base + (y + 1 - (y % 2)) * step + settings.trussSpacing * (y + 1);
+      const partnerY = partner.bottom + (y + (y % 2)) * step + settings.trussSpacing * (y + 1);
+      const ownY = own.bottom + (y + 1 - (y % 2)) * step + settings.trussSpacing * (y + 1);
       if (partnerY > partner.top - settings.trussTopSpacing || ownY > own.top - settings.trussTopSpacing) continue;
       segments.push([[partner.x, partnerY, partner.z], [own.x, ownY, own.z]]);
     }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TriangleMesh } from '../analysis/types';
-import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from './mesh';
+import { buildSupportMesh, trussSegments, type GeneratedSupportMesh, type SupportContact } from './mesh';
 import { contactAtTriangle, meshBounds, tipsOf } from './meshQuery';
 import { defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings } from './settings';
 
@@ -142,6 +142,36 @@ describe('per-support settings', () => {
     const apart = buildSupportMesh([{ ...pair[0]!, shape: { touchDiameter: 1 } }, pair[1]!], treeSettings);
     expect(apart.parts).not.toContain('tree-branch');
     expect(apart.components.filter((component) => component.part === 'foot').map((component) => component.contactId)).toEqual(['auto-0', 'auto-2']);
+  });
+});
+
+describe('braces on supports with their own foot', () => {
+  const braced = { ...settings, trussEnabled: true, trussSpacing: 2, trussMinHeight: 3, trussTopSpacing: 0 };
+
+  it('anchor each brace end at its own column foot', () => {
+    const columns = [{ x: 0, z: 0, bottom: 1.2, top: 20 }, { x: 4, z: 0, bottom: 3.2, top: 20 }];
+    const segments = trussSegments(columns, braced);
+    expect(segments.length).toBeGreaterThan(0);
+    const rise = 4 * Math.tan(Math.PI / 2 - braced.trussAngle * Math.PI / 180);
+    const [partner, own] = segments[0]!;
+    expect(own[0]).toBeCloseTo(0);
+    expect(partner[0]).toBeCloseTo(4);
+    // Row 0 joins the partner at level 0 to the own pillar at level 1, each above its own foot.
+    expect(partner[1]).toBeCloseTo(3.2 + 2);
+    expect(own[1]).toBeCloseTo(1.2 + rise + 2);
+  });
+
+  it('build braces from the overridden foot of a column', () => {
+    const pair: SupportContact[] = [{ ...contact, shape: { baseHeight: 3 } }, neighbour];
+    const mesh = buildSupportMesh(pair.map((c) => ({ ...c, position: [c.position[0], 40, 0] as [number, number, number] })), braced);
+    const plain = buildSupportMesh(pair.map((c) => ({ id: c.id, position: [c.position[0], 40, 0] as [number, number, number], normal: c.normal })), braced);
+    const lowest = (m: GeneratedSupportMesh) => Math.min(...m.components.filter((component) => component.part === 'brace').map((component) => {
+      let low = Infinity;
+      for (let i = component.start; i < component.start + component.count; i += 1) low = Math.min(low, m.positions[m.indices[i]! * 3 + 1]!);
+      return low;
+    }));
+    expect(mesh.parts).toContain('brace');
+    expect(lowest(mesh)).not.toBeCloseTo(lowest(plain), 2);
   });
 });
 
