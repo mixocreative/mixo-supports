@@ -13,8 +13,6 @@ export function toGeometry(mesh: TriangleMesh): THREE.BufferGeometry {
   return geometry;
 }
 
-export type BvhGeometry = THREE.BufferGeometry & { boundsTree?: unknown; computeBoundsTree?: typeof computeBoundsTree; disposeBoundsTree?: typeof disposeBoundsTree };
-
 /**
  * GPU geometry for a mesh, freed when the mesh changes or the view unmounts. With `bvh` a
  * bounding volume hierarchy makes pointer raycasts cheap on big meshes (models always;
@@ -25,13 +23,13 @@ export function useGeometry(mesh: TriangleMesh | undefined, bvh: boolean): THREE
   // on one render, and a memoised geometry would live on after the cleanup disposed it. A layout
   // effect, so the render with the new geometry follows before any frame is drawn; until then
   // (a new mesh) there is none, never one of another mesh.
-  const [built, setBuilt] = useState<{ mesh: TriangleMesh; geometry: BvhGeometry }>();
+  const [built, setBuilt] = useState<{ mesh: TriangleMesh; geometry: THREE.BufferGeometry }>();
   useLayoutEffect(() => {
     if (!mesh || mesh.indices.length === 0) {
       setBuilt(undefined);
       return;
     }
-    const next = { mesh, geometry: toGeometry(mesh) as BvhGeometry };
+    const next = { mesh, geometry: toGeometry(mesh) };
     setBuilt(next);
     return () => next.geometry.dispose();
   }, [mesh]);

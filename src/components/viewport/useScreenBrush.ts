@@ -10,7 +10,6 @@ import { bodySegments, brushHitsFrom, cachedVisibility, hiddenByModel, projectBo
 import type { Stroke } from '../../editing/stroke';
 import type { BrushMode } from '../../editing/types';
 import { BRUSH_CURSOR } from './style';
-import type { BvhGeometry } from './geometry';
 
 /** Models hide supports from Drag over; supports never hide each other. */
 export const OCCLUDER = { occluder: true };
@@ -66,10 +65,10 @@ function screenBrushView(bodies: BodySegments, camera: THREE.Camera, scene: THRE
     const found: Occluder[] = [];
     scene.traverseVisible((object) => {
       const mesh = object as THREE.Mesh;
-      const bvh = object.userData.occluder && (mesh.geometry as BvhGeometry | undefined)?.boundsTree;
+      const bvh = object.userData.occluder ? mesh.geometry?.boundsTree : undefined;
       if (!bvh) return;
       object.updateWorldMatrix(true, false);
-      found.push({ bvh: bvh as MeshBVH, inverse: object.matrixWorld.clone().invert(), side: (mesh.material as THREE.Material).side });
+      found.push({ bvh, inverse: object.matrixWorld.clone().invert(), side: (mesh.material as THREE.Material).side });
     });
     return found;
   };
