@@ -82,6 +82,19 @@ npm run build    # type-check and production build into dist/
 
 Every push to `main` is deployed to GitHub Pages.
 
+### Browser walk
+
+```bash
+npm run walk     # about 3.5 minutes, exit code 1 on any FAIL
+```
+
+`scripts/walk.mjs` starts Vite itself on a free port (from 5260, strict), drives headless Chromium with `playwright-core` through the editor on `scripts/fixtures/knot.stl`, prints one PASS or FAIL line per check with its numbers, and always stops Vite. No AI is involved. It needs a Chromium that Playwright installed; if it says none was found, run `npx playwright-core install chromium` once (the script never downloads anything).
+
+It checks that: Generate gives the same automatic count and Drag over strokes give fixed selection counts (Delete and Undo included, and a stroke from Bottom view); a Drag over stroke skips supports hidden behind the model, and Hide models brings them back; a zone painted where columns land removes those supports from the count and from the drawn mesh together; the exported supports-only STL has as many triangles as the build on screen after a zone and a Delete; a right-click remove followed by an add at the same spot keeps the manual support through Undo and Redo; per-support Point Ø, a changed default, Reset and Undo behave; switching Select to Unselect mid-queue (CPU throttled) ends where the two steps one after the other do; Drag over pressed while the first build is still running says so; and the console stays free of errors and warnings.
+
+The counts are baselines measured at 1440x900 with software GL (`BASE` in the script). Update them in the same commit as any change that moves the generator or the brush on purpose.
+
+
 | Path | What lives there |
 |---|---|
 | `src/core/` | Portable support core (no React/three/DOM): `supports/` settings and presets, support mesh, tree topology, raft; `analysis/` placement (downward faces, islands, edges), clean-room nearest-point, merge-by-distance and vertex-normal modules (Task 10), support check; shared `vec3` and conventions. See [src/core/README.md](src/core/README.md) |
