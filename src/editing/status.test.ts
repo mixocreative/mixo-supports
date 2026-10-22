@@ -81,6 +81,31 @@ describe('missStatus', () => {
   });
 });
 
+describe('editStatus and missStatus over every mode and tool (table)', () => {
+  const MISS_ADD = 'Nothing under the cursor: click the model to add, right-click a support to remove.';
+  const MISS_CLICK = 'No support here: click a support to select it.';
+  const table: [EditSession['mode'], EditSession['tool'], EditSession['selectStyle'], string | undefined, string | undefined][] = [
+    // mode, tool, select style, editStatus, missStatus
+    ['off', 'add', 'click', undefined, undefined],
+    ['off', 'add', 'brush', undefined, undefined],
+    ['off', 'select', 'click', undefined, undefined],
+    ['off', 'select', 'brush', undefined, undefined],
+    ['edit', 'add', 'click', ADD, MISS_ADD],
+    ['edit', 'add', 'brush', ADD, MISS_ADD],
+    ['edit', 'select', 'click', CLICK, MISS_CLICK],
+    ['edit', 'select', 'brush', BRUSH, undefined],
+    ['zones', 'add', 'click', ZONES, undefined],
+    ['zones', 'add', 'brush', ZONES, undefined],
+    ['zones', 'select', 'click', ZONES, undefined],
+    ['zones', 'select', 'brush', ZONES, undefined],
+  ];
+  it.each(table)('%s / %s / %s', (mode, tool, selectStyle, edit, miss) => {
+    const session = at({ mode, tool, selectStyle });
+    expect(editStatus(session)?.key).toBe(edit);
+    expect(missStatus(session)?.key).toBe(miss);
+  });
+});
+
 describe('busyStatus', () => {
   it('tells the user to finish the mode first', () => {
     expect(busyStatus('zones')).toEqual({ key: 'Finish painting zones first: press Esc or Done.' });

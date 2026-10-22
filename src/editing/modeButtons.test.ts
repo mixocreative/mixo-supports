@@ -39,3 +39,22 @@ describe('mode buttons: the entry button becomes the exit button', () => {
     expect(editModeButton('zones', true)).toMatchObject({ label: 'Enter Support Edit Mode', pressed: false, disabled: true });
   });
 });
+
+describe('mode buttons over every mode, with and without an editable active object (table)', () => {
+  const EXIT_EDIT = { label: 'Exit Support Edit Mode', hint: 'Finish editing supports (Esc or Tab)', pressed: true, disabled: false, event: { type: 'toggleEdit' } };
+  const enterEdit = (disabled: boolean) => ({ label: 'Enter Support Edit Mode', hint: 'Add or remove supports by clicking (Tab)', pressed: false, disabled, event: { type: 'toggleEdit' } });
+  const EXIT_ZONES = { label: 'Exit no-support zones', hint: 'Finish painting zones (Esc or Enter)', pressed: true, disabled: false, event: { type: 'closeZones' } };
+  const paintZones = (disabled: boolean, from: 'off' | 'edit') => ({ label: 'Paint zones', hint: 'Paint areas of the model where automatic supports must not grow', pressed: false, disabled, event: { type: 'openZones', from } });
+  const table = [
+    ['off', true, enterEdit(false), paintZones(false, 'off')],
+    ['off', false, enterEdit(true), paintZones(true, 'off')],
+    ['edit', true, EXIT_EDIT, paintZones(false, 'edit')],
+    ['edit', false, EXIT_EDIT, paintZones(true, 'edit')],
+    ['zones', true, enterEdit(true), EXIT_ZONES],
+    ['zones', false, enterEdit(true), EXIT_ZONES],
+  ] as const;
+  it.each(table)('%s, editable %s', (mode, canEnter, edit, zones) => {
+    expect(editModeButton(mode, canEnter)).toEqual(edit);
+    expect(zonesButton(mode, canEnter)).toEqual(zones);
+  });
+});

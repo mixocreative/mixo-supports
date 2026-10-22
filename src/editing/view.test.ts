@@ -156,6 +156,29 @@ describe('Tips only (tipsShown, tipsCamera, tipsToggle)', () => {
     for (const [state, autoAbove, next] of table) expect(tipsToggle(state, autoAbove), JSON.stringify([state, autoAbove])).toEqual(next);
   });
 
+  it('what shows and what a click leaves, over every state, large model and zones (table)', () => {
+    const rows: string[] = [];
+    for (const manual of [null, true, false]) for (const below of [false, true]) for (const large of [false, true]) for (const zones of [false, true]) {
+      const state = at(manual, below);
+      const next = tipsToggle(state, large);
+      rows.push(`${manual} ${below} ${large} ${zones} -> ${tipsShown(state, large, zones)} ${next.manual} ${next.below}`);
+    }
+    expect(rows).toEqual([
+      'null false false false -> false true false', 'null false false true -> true true false',
+      'null false true false -> true false false', 'null false true true -> true false false',
+      'null true false false -> true false true', 'null true false true -> true false true',
+      'null true true false -> true false true', 'null true true true -> true false true',
+      'true false false false -> true false false', 'true false false true -> true false false',
+      'true false true false -> true false false', 'true false true true -> true false false',
+      'true true false false -> true false true', 'true true false true -> true false true',
+      'true true true false -> true false true', 'true true true true -> true false true',
+      'false false false false -> false true false', 'false false false true -> true true false',
+      'false false true false -> false true false', 'false false true true -> true true false',
+      'false true false false -> false true true', 'false true false true -> true true true',
+      'false true true false -> false true true', 'false true true true -> true true true',
+    ]);
+  });
+
   it('walks the owner story: Bottom view turns tips on, a click turns them off, Fit view keeps them off, orbiting above and back turns them on again', () => {
     let state = TIPS_START;
     state = tipsToggle(state); // on above the plate
