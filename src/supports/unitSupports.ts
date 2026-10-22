@@ -1,6 +1,6 @@
 import { labelForIndex } from '../core/analysis/mesh';
 import type { PlacementResult, ProgressCallback, SupportPoint } from '../core/analysis/types';
-import { hidingRemovals } from '../core/analysis/placement';
+import { hidingRemovals, positionId, remapDeleted } from '../core/analysis/placement';
 import { jobContacts, type CheckJob, type ContactInputs, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
 import type { GeneratedSupportMesh, SupportContact } from '../core/supports/mesh';
 import { defaultSupportSettings, toPlacementSettings, type LiveSupportSettings } from '../core/supports/settings';
@@ -85,7 +85,7 @@ export function unitRemovedCount(unit: PrintUnit): number {
   let count = removedCache.get(unit);
   if (count === undefined) {
     const settings = resolveSettings(unit.settings);
-    count = hidingRemovals(unit.placement?.points ?? [], unit.manual, unit.suppressed, settings.eraseRadius, unit.deleted, settings.scatterSpacing / 2).size;
+    count = hidingRemovals(unit.placement?.points ?? [], unit.manual, unit.suppressed, settings.eraseRadius, unit.deleted).size;
     removedCache.set(unit, count);
   }
   return count;
@@ -166,16 +166,17 @@ export function unitLowestY(unit: PrintUnit): number {
  * plate. Undefined when the unit was rotated since `orientation` was analysed: its contacts face
  * the old way, so the caller places again rather than undo the rotation.
  */
-export function placementCommands(unit: PrintUnit, orientation: JobTransform, result: Pick<PlacementResult, 'points' | 'regions'>, liftHeight: number): SceneCommand[] | undefined {
+export function placementCommands(unit: PrintUnit, orientation: JobTransform, result: Pick<PlacementResult, 'points' | 'regions'>, liftHeight: number, matchRadius: number): SceneCommand[] | undefined {
   if (unit.transform.rotation.some((angle, axis) => angle !== orientation.rotation[axis])) return undefined;
   const [x, y, z] = unit.transform.position;
   const transform: ModelTransform = { position: [x, y + liftHeight - unitLowestY(unit), z], rotation: [...unit.transform.rotation] };
-  // Contacts come back in the turned frame; unit-local space is that frame turned back.
-  const points = result.points.map((point): SupportPoint => ({
-    ...point,
-    position: inverseTransformPoint(orientation, point.position),
-    normal: inverseTransformDirection(orientation, point.normal),
-  }));
+  // Contacts come back in the turned frame; unit-local space is that frame turned back. Their IDs
+  // are re-derived from the unit-local position, so an ID and the stored position share one frame.
+  const points = result.points.map((point): SupportPoint => {
+    const position = inverseTransformPoint(orientation, point.position);
+    return { ...point, id: positionId(position), position, normal: inverseTransformDirection(orientation, point.normal) };
+  });
+  const deleted = remapDeleted(unit.deleted, points, matchRadius);
   return [
     { type: 'transform/set', unitId: unit.id, transform },
     {
@@ -189,5 +190,6 @@ export function placementCommands(unit: PrintUnit, orientation: JobTransform, re
       },
       supports: { kind: 'live', data: { transform: { position: [...transform.position], rotation: [...transform.rotation] } } },
     },
+    { type: 'deletion/set', unitId: unit.id, pointIds: deleted },
   ];
 }

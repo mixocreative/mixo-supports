@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { composeContacts, generatePlacement, hidingRemovals } from './placement';
+import { composeContacts, generatePlacement, hidingRemovals, remapDeleted } from './placement';
 import type { PlacementSettings, TriangleMesh } from './types';
 import { GOLDEN_FIXTURES } from '../../goldens/fixtures';
 
@@ -170,34 +170,32 @@ describe('exact deletions', () => {
   it('hides exactly the deleted automatic contact, never its neighbours or manual ones', () => {
     const auto = [point(0), point(1), point(3)];
     const manual = [{ ...point(0.5, 'manual-a') }];
-    expect(composeContacts(auto, manual, [], 1.5, ['auto-0_100_0'], 1).map((p) => p.id))
+    expect(composeContacts(auto, manual, [], 1.5, ['auto-0_100_0']).map((p) => p.id))
       .toEqual(['auto-100_100_0', 'auto-300_100_0', 'manual-a']);
   });
 
-  it('after spots move, hides only the single nearest automatic contact within the match radius', () => {
+  it('after spots move, remapDeleted names the single nearest new contact within the match radius', () => {
     const moved = [point(0.3), point(0.6), point(3)];
-    expect(composeContacts(moved, [], [], 0, ['auto-0_100_0'], 1).map((p) => p.id))
-      .toEqual(['auto-60_100_0', 'auto-300_100_0']);
-    expect(composeContacts([point(2)], [], [], 0, ['auto-0_100_0'], 1).map((p) => p.id)).toEqual(['auto-200_100_0']);
+    expect(remapDeleted(['auto-0_100_0'], moved, 1)).toEqual(['auto-30_100_0']);
+    expect(composeContacts(moved, [], [], 0, remapDeleted(['auto-0_100_0'], moved, 1)).map((p) => p.id)).toEqual(['auto-60_100_0', 'auto-300_100_0']);
+    // Nothing in range: the id is kept for a later placement, and hides nothing now.
+    expect(remapDeleted(['auto-0_100_0'], [point(2)], 1)).toEqual(['auto-0_100_0']);
   });
 
   it('a contact both erased by a marker and deleted never takes a neighbour with it', () => {
     const auto = [point(0), point(0.6)];
-    expect(composeContacts(auto, [], ['auto-0_100_0'], 0.5, ['auto-0_100_0'], 1).map((p) => p.id)).toEqual(['auto-60_100_0']);
+    expect(composeContacts(auto, [], ['auto-0_100_0'], 0.5, ['auto-0_100_0']).map((p) => p.id)).toEqual(['auto-60_100_0']);
   });
 
   it('a deleted id that matches nothing hides nothing', () => {
     const auto = [point(2), point(3)];
-    expect(composeContacts(auto, [], [], 0, ['auto-0_100_0'], 1).map((p) => p.id)).toEqual(['auto-200_100_0', 'auto-300_100_0']);
+    expect(composeContacts(auto, [], [], 0, ['auto-0_100_0']).map((p) => p.id)).toEqual(['auto-200_100_0', 'auto-300_100_0']);
   });
 
-  it('deleted ids competing for one nearest contact each drop at most one marker', () => {
-    // Both ids are nearest to 0.3: the first takes it, the second falls to the next in range.
+  it('deleted ids competing for one nearest contact each claim a different one', () => {
     const moved = [point(0.3), point(0.6)];
-    expect(composeContacts(moved, [], [], 0, ['auto-0_100_0', 'auto-10_100_0'], 1)).toEqual([]);
-    // With nothing else in range the second id hides nothing more.
-    expect(composeContacts([point(0.3), point(3)], [], [], 0, ['auto-0_100_0', 'auto-10_100_0'], 1).map((p) => p.id))
-      .toEqual(['auto-300_100_0']);
+    expect(remapDeleted(['auto-0_100_0', 'auto-10_100_0'], moved, 1)).toEqual(['auto-30_100_0', 'auto-60_100_0']);
+    expect(remapDeleted(['auto-0_100_0', 'auto-10_100_0'], [point(0.3), point(3)], 1)).toEqual(['auto-30_100_0', 'auto-10_100_0']);
   });
 });
 
@@ -223,13 +221,13 @@ describe('hidingRemovals', () => {
     expect([...hidingRemovals(auto, manual, ['auto-280_100_0'], 1)]).toEqual(['auto-280_100_0']);
   });
 
-  it('counts exact deletions and moved deletions that still find a spot, not stale ones', () => {
-    expect([...hidingRemovals(auto, manual, [], 0, ['auto-100_100_0', 'auto-310_100_0', 'auto-2000_100_0'], 0.5)].sort())
-      .toEqual(['auto-100_100_0', 'auto-310_100_0']);
+  it('counts exact deletions, not stale ones', () => {
+    expect([...hidingRemovals(auto, manual, [], 0, ['auto-100_100_0', 'auto-310_100_0', 'auto-2000_100_0'])])
+      .toEqual(['auto-100_100_0']);
   });
 
   it('hides nothing without automatic contacts', () => {
-    expect(hidingRemovals([], [], ['auto-0_100_0'], 1.5, ['auto-100_100_0'], 1).size).toBe(0);
+    expect(hidingRemovals([], [], ['auto-0_100_0'], 1.5, ['auto-100_100_0']).size).toBe(0);
   });
 });
 

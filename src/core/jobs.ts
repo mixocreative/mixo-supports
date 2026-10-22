@@ -72,8 +72,8 @@ const CONTACT_KIND: Record<SupportPoint['source'], NonNullable<SupportContact['k
  * plus manual (manual contacts ignore zones and never join Auto Tree branches). A support that
  * lands in a zone is the support build's call: it reports those contacts as `dropped`.
  */
-export function jobContacts(inputs: ContactInputs, settings: Pick<LiveSupportSettings, 'eraseRadius' | 'scatterSpacing'>): SupportContact[] {
-  return composeContacts(inputs.points, inputs.manual, inputs.suppressed, settings.eraseRadius, inputs.deleted, settings.scatterSpacing / 2)
+export function jobContacts(inputs: ContactInputs, settings: Pick<LiveSupportSettings, 'eraseRadius'>): SupportContact[] {
+  return composeContacts(inputs.points, inputs.manual, inputs.suppressed, settings.eraseRadius, inputs.deleted)
     .map(({ id, position, normal, source }) => ({ id, position, normal, kind: CONTACT_KIND[source], origin: id.startsWith('manual-') ? 'manual' as const : 'auto' as const }))
     .filter((contact) => contact.origin === 'manual' || !zonedAt(inputs.zones, contact.position, contact.normal));
 }

@@ -113,12 +113,12 @@ describe('placementCommands (a finished placement meets the unit as it is now)',
   it('keeps a move made while the placement ran and lifts the model to Lift Height', async () => {
     const { placementCommands } = await import('./unitSupports');
     const moved: PrintUnit = { ...unit, transform: { position: [30, 10, -4], rotation: [0, 0, 0] } };
-    const commands = placementCommands(moved, requested, result, lift)!;
+    const commands = placementCommands(moved, requested, result, lift, 1.5)!;
     expect(commands[0]).toEqual({ type: 'transform/set', unitId: 'unit-a', transform: { position: [30, 10, -4], rotation: [0, 0, 0] } });
     expect(commands[1]).toMatchObject({ type: 'supports/set', unitId: 'unit-a', supports: { kind: 'live', data: { transform: { position: [30, 10, -4], rotation: [0, 0, 0] } } } });
     // Lowest point (local y = -5) at the plate plus Lift Height.
     const low: PrintUnit = { ...unit, transform: { position: [30, 2, -4], rotation: [0, 0, 0] } };
-    expect(placementCommands(low, requested, result, lift)![0]).toMatchObject({ transform: { position: [30, 10, -4] } });
+    expect(placementCommands(low, requested, result, lift, 1.5)![0]).toMatchObject({ transform: { position: [30, 10, -4] } });
   });
 
   it('maps contacts back to unit-local space through the requested orientation', async () => {
@@ -126,7 +126,7 @@ describe('placementCommands (a finished placement meets the unit as it is now)',
     const turned = { position: [0, 0, 0] as [number, number, number], rotation: [Math.PI, 0, 0] as [number, number, number] };
     const now: PrintUnit = { ...unit, transform: { position: [0, 10, 0], rotation: [Math.PI, 0, 0] } };
     const placed = { points: [{ ...point('auto-0', 2), position: [2, 5, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number] }], regions: [] };
-    const set = placementCommands(now, turned, placed, lift)![1] as { placement: { points: { position: number[]; normal: number[] }[] } };
+    const set = placementCommands(now, turned, placed, lift, 1.5)![1] as { placement: { points: { position: number[]; normal: number[] }[] } };
     expect(set.placement.points[0]!.position.map((v) => Math.round(v * 1e6) / 1e6 + 0)).toEqual([2, -5, 0]);
     expect(set.placement.points[0]!.normal.map((v) => Math.round(v * 1e6) / 1e6 + 0)).toEqual([0, 1, 0]);
   });
@@ -134,6 +134,38 @@ describe('placementCommands (a finished placement meets the unit as it is now)',
   it('applies nothing when the unit was rotated meanwhile (its contacts face the old way)', async () => {
     const { placementCommands } = await import('./unitSupports');
     const rotated: PrintUnit = { ...unit, transform: { position: [0, 10, 0], rotation: [0, 0.5, 0] } };
-    expect(placementCommands(rotated, requested, result, lift)).toBeUndefined();
+    expect(placementCommands(rotated, requested, result, lift, 1.5)).toBeUndefined();
+  });
+});
+
+describe('deleted contacts after Regenerate on a rotated unit', () => {
+  it('hide the contact nearest the deleted one, in the unit-local frame', async () => {
+    const { placementCommands, orientationOf } = await import('./unitSupports');
+    const { reduceScene, emptyScene } = await import('../state/project');
+    const { transformPoint } = await import('../state/transform');
+    const { deleteCommands } = await import('./selection');
+    const rotated = { position: [0, 10, 0] as [number, number, number], rotation: [0, Math.PI / 2, 0] as [number, number, number] };
+    const base: PrintUnit = { ...unit, transform: rotated, placement: undefined, supports: undefined, manual: [], suppressed: [], deleted: [] };
+    const orientation = orientationOf(base);
+    const idOf = (p: readonly number[]) => `auto-${p.map((v) => Math.round(v * 100)).join('_')}`;
+    // Placement reports contacts in the turned frame, named by that frame, as runPlacementJob does.
+    const placed = (xs: number[]) => ({
+      points: xs.map((x) => {
+        const turned = transformPoint(orientation, [x, -5, 0]);
+        return { id: idOf(turned), regionId: 0, position: turned, normal: [0, -1, 0] as [number, number, number], source: 'interior' as const };
+      }),
+      regions: [],
+    });
+    const spacing = 3;
+    const apply = (scene: ReturnType<typeof reduceScene>, xs: number[]) => {
+      const now = scene.units[0]!;
+      return reduceScene(scene, { type: 'batch', commands: placementCommands(now, orientation, placed(xs), 5, spacing / 2)! });
+    };
+    let scene = apply(reduceScene(emptyScene, { type: 'unit/add', unit: base }), [0, 3, 6]);
+    const middle = unitContacts(scene.units[0]!, undefined).find((contact) => Math.abs(contact.position[0] - 3) < 0.01)!;
+    scene = reduceScene(scene, { type: 'batch', commands: deleteCommands(scene.units[0]!, [middle.id]) });
+    expect(unitContacts(scene.units[0]!, undefined).map((contact) => Math.round(contact.position[0]))).toEqual([0, 6]);
+    scene = apply(scene, [0.2, 3.2, 6.2]);
+    expect(unitContacts(scene.units[0]!, undefined).map((contact) => Math.round(contact.position[0]))).toEqual([0, 6]);
   });
 });

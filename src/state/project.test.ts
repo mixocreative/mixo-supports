@@ -123,6 +123,19 @@ describe('reduceScene', () => {
     expect(scene.units[0]).toMatchObject({ manual: [], suppressed: [], deleted: [], zones: [] });
   });
 
+  it('re-keys a project saved with turned-frame automatic ids, and its removals with it', () => {
+    const at = (id: string, x: number): SupportPoint => ({ ...contact, id, position: [x, -5, 0] });
+    const legacy: PrintUnit = {
+      ...unitA,
+      placement: { ...unitA.placement!, points: [at('auto-0_500_-300', 3), at('auto-0_500_-600', 6)] },
+      deleted: ['auto-0_500_-300', 'auto-9_9_9'],
+    };
+    const scene = deserializeScene(serializeScene(reduceScene(emptyScene, { type: 'unit/add', unit: legacy })));
+    expect(scene.units[0]!.placement!.points.map((point) => point.id)).toEqual(['auto-300_-500_0', 'auto-600_-500_0']);
+    expect(scene.units[0]!.deleted).toEqual(['auto-300_-500_0', 'auto-9_9_9']);
+    expect(deserializeScene(serializeScene(scene)).units[0]).toEqual(scene.units[0]);
+  });
+
   it('rejects runtime objects from settings and support payloads while retaining JSON-safe scenes', () => {
     const scene = reduceScene(emptyScene, { type: 'unit/add', unit: { ...unitA, supports: undefined, placement: undefined } });
 

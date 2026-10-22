@@ -1,4 +1,5 @@
 import type { PlacementResult, Region, SupportPoint, TriangleMesh } from '../core/analysis/types';
+import { rekeyPoints } from '../core/analysis/placement';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { ModelTransform } from './transform';
 
@@ -64,6 +65,7 @@ export type SceneCommand =
   | { type: 'suppression/add'; unitId: string; pointId: string }
   | { type: 'suppression/remove'; unitId: string; pointId: string }
   | { type: 'deletion/add'; unitId: string; pointIds: string[] }
+  | { type: 'deletion/set'; unitId: string; pointIds: string[] }
   | { type: 'zones/add'; unitId: string; stamps: ZoneStamp[] }
   | { type: 'zones/clear'; unitId: string };
 
@@ -118,6 +120,8 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
         ...unit,
         deleted: [...unit.deleted, ...new Set(command.pointIds.filter((id) => !unit.deleted.includes(id)))],
       }));
+    case 'deletion/set':
+      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, deleted: [...new Set(command.pointIds)] }));
     case 'zones/add':
       if (command.stamps.length === 0) return scene;
       return updateUnit(scene, command.unitId, (unit) => ({ ...unit, zones: [...unit.zones, ...(cloneJsonValue(command.stamps) as unknown as ZoneStamp[])] }));
@@ -178,8 +182,21 @@ export function sceneJsonReviver(_key: string, value: unknown): unknown {
     : new Uint32Array(value.values);
 }
 
+/**
+ * Saved projects before 11.0 (b) named automatic contacts from the turned frame while storing
+ * unit-local positions. Re-key them from the stored position and follow the removal lists, so id
+ * and position share a frame. A no-op on a unit already keyed that way.
+ */
+function rekeyLegacyIds(unit: PrintUnit): PrintUnit {
+  if (!unit.placement) return unit;
+  const { points, ids } = rekeyPoints(unit.placement.points);
+  if (ids.size === 0) return unit;
+  const follow = (list: string[]) => [...new Set(list.map((id) => ids.get(id) ?? id))];
+  return { ...unit, placement: { ...unit.placement, points }, suppressed: follow(unit.suppressed), deleted: follow(unit.deleted) };
+}
+
 function normalizeUnit(unit: PrintUnit, copyMesh = true): PrintUnit {
-  return {
+  return rekeyLegacyIds({
     ...unit,
     source: copyMesh ? cloneMesh(unit.source, 'source') : checkedMesh(unit.source, 'source'),
     id: normalizeString(unit.id, 'unit id'),
@@ -192,7 +209,7 @@ function normalizeUnit(unit: PrintUnit, copyMesh = true): PrintUnit {
     suppressed: cloneJsonValue(unit.suppressed ?? []) as string[],
     deleted: cloneJsonValue(unit.deleted ?? []) as string[],
     zones: cloneJsonValue(unit.zones ?? []) as unknown as ZoneStamp[],
-  };
+  });
 }
 
 function normalizeSupportMesh(mesh: SupportMesh): SupportMesh {

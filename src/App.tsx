@@ -342,7 +342,7 @@ export default function App() {
         // Applied to the unit as it is now: a move made meanwhile stays, and the lowest model point
         // sits Lift Height above the plate (y = 0) where the supports stand. A rotation made
         // meanwhile turned the contacts away: place again for the new orientation.
-        const commands = placementCommands(now, orientation, result, settings.liftHeight);
+        const commands = placementCommands(now, orientation, result, settings.liftHeight, settings.scatterSpacing / 2);
         if (!commands) {
           generate([unit.id]);
           setStatus('{name} was rotated while its contacts were placed: placing them again.', { name: unit.name });

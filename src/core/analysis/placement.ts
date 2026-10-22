@@ -95,8 +95,8 @@ export function generatePlacement(mesh: TriangleMesh, settings: PlacementSetting
  * IDs are hidden.
  *
  * `deleted` lists exact removals, applied after that and never touching neighbours or manual
- * contacts: an automatic contact with the ID is dropped; if spots have since moved, the
- * nearest remaining automatic contact closer than `matchRadius` to the ID's position is.
+ * contacts. An ID that names no automatic contact hides nothing (`remapDeleted` re-keys them
+ * when placement lands).
  */
 export function composeContacts(
   auto: readonly SupportPoint[],
@@ -104,9 +104,8 @@ export function composeContacts(
   suppressed: readonly string[],
   eraseRadius = 0,
   deleted: readonly string[] = [],
-  matchRadius = 0,
 ): SupportPoint[] {
-  return compose(auto, manual, suppressed, eraseRadius, deleted, matchRadius);
+  return compose(auto, manual, suppressed, eraseRadius, deleted);
 }
 
 /**
@@ -119,10 +118,9 @@ export function hidingRemovals(
   suppressed: readonly string[],
   eraseRadius = 0,
   deleted: readonly string[] = [],
-  matchRadius = 0,
 ): Set<string> {
   const hiding = new Set<string>();
-  compose(auto, manual, suppressed, eraseRadius, deleted, matchRadius, hiding);
+  compose(auto, manual, suppressed, eraseRadius, deleted, hiding);
   return hiding;
 }
 
@@ -133,7 +131,6 @@ function compose(
   suppressed: readonly string[],
   eraseRadius: number,
   deleted: readonly string[],
-  matchRadius: number,
   hiding?: Set<string>,
 ): SupportPoint[] {
   const hidden = new Set(suppressed);
@@ -157,26 +154,56 @@ function compose(
     }
     return gone;
   };
-  const autoIds = new Set(auto.map((point) => point.id));
-  const exact = new Set(deleted.filter((id) => autoIds.has(id)));
-  for (const id of exact) hiding?.add(id);
-  let remainingAuto = auto.filter((point) => !erased(point) && !exact.has(point.id));
-  // Deleted IDs absent from `auto` are from before the spots moved: drop the nearest one each.
+  const exact = new Set(deleted);
+  const remainingAuto = auto.filter((point) => {
+    if (exact.has(point.id)) {
+      hiding?.add(point.id);
+      return false;
+    }
+    return !erased(point);
+  });
+  return [...remainingAuto, ...manual.filter((point) => !erased(point))];
+}
+
+/**
+ * Re-keys removed IDs for a fresh placement: an ID that names a new contact stays; one that does
+ * not becomes the ID of the nearest still-unclaimed new contact within `matchRadius` of its
+ * encoded spot (the spots moved a little); one with no such neighbour is kept, in case a later
+ * placement samples that spot again. Both sides are unit-local, so the match is exact afterwards.
+ */
+export function remapDeleted(deleted: readonly string[], points: readonly SupportPoint[], matchRadius: number): string[] {
+  const ids = new Set(points.map((point) => point.id));
+  const claimed = new Set(deleted.filter((id) => ids.has(id)));
+  const out = new Set<string>();
   for (const id of deleted) {
-    const target = exact.has(id) ? undefined : positionFromId(id);
-    if (!target) continue;
+    if (claimed.has(id)) { out.add(id); continue; }
+    const target = positionFromId(id);
     let nearest: SupportPoint | undefined;
     let nearestDistance = matchRadius;
-    for (const point of remainingAuto) {
-      const d = distance(target, point.position);
-      if (d < nearestDistance) { nearest = point; nearestDistance = d; }
+    if (target) {
+      for (const point of points) {
+        if (claimed.has(point.id)) continue;
+        const d = distance(target, point.position);
+        if (d < nearestDistance) { nearest = point; nearestDistance = d; }
+      }
     }
-    if (nearest) {
-      hiding?.add(id);
-      remainingAuto = remainingAuto.filter((point) => point !== nearest);
-    }
+    if (nearest) claimed.add(nearest.id);
+    out.add(nearest ? nearest.id : id);
   }
-  return [...remainingAuto, ...manual.filter((point) => !erased(point))];
+  return [...out];
+}
+
+/** Gives every automatic contact the ID its stored position encodes; `ids` maps each changed old ID to its new one. */
+export function rekeyPoints(points: readonly SupportPoint[]): { points: SupportPoint[]; ids: Map<string, string> } {
+  const ids = new Map<string, string>();
+  const out = points.map((point) => {
+    if (!positionFromId(point.id)) return point;
+    const id = positionId(point.position);
+    if (id === point.id) return point;
+    ids.set(point.id, id);
+    return { ...point, id };
+  });
+  return { points: out, ids };
 }
 
 /** Position encoded in an automatic contact ID (0.01 mm grid), if it is one. */
@@ -421,7 +448,7 @@ class SpatialHash {
  * markers: a suppression keeps hiding the same spot after any regeneration and simply
  * stops matching when that spot is no longer sampled.
  */
-function positionId(position: Vector): string {
+export function positionId(position: Vector): string {
   return `auto-${position.map((value) => Math.round(value * 100)).join('_')}`;
 }
 
