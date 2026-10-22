@@ -173,15 +173,15 @@ export default function SettingsPanel({ settings, autoLabel, disabled, onChange,
     <div className="field-row" title={t('Chitubox support preset. Editing any value switches to Custom')}>
       <span>{t('Preset')}</span>
       <div className="segmented">
-        {(['LIGHT', 'MIDDLE', 'HEAVY'] as const).map((preset) => <button key={preset} type="button" className={settings.preset === preset ? 'active' : ''} aria-pressed={settings.preset === preset} onClick={() => onPreset(preset)} {...hint(PRESET_HINTS[preset])}>{t(PRESET_LABELS[preset])}</button>)}
-        <button type="button" disabled className={settings.preset === 'CUSTOM' ? 'active custom' : 'custom'} {...hint('Values edited by hand')}>{t('Custom')}</button>
+        {(['LIGHT', 'MIDDLE', 'HEAVY'] as const).map((preset) => <button key={preset} type="button" aria-pressed={settings.preset === preset} onClick={() => onPreset(preset)} {...hint(PRESET_HINTS[preset])}>{t(PRESET_LABELS[preset])}</button>)}
+        <button type="button" disabled className={settings.preset === 'CUSTOM' ? 'custom on' : 'custom'} {...hint('Values edited by hand')}>{t('Custom')}</button>
       </div>
     </div>
     <NumberField label={t('Lift height')} unit="mm" step={0.5} limits={settingLimits.liftHeight} value={settings.liftHeight} onChange={(value) => onChange('liftHeight', value)} hint={t('Lowest model point above the plate')} />
     <div className="field-row" title={t('Structure above or around the model. Each mode gets its defaults the first time it is used')}>
       <span>{t('Roof / cage')}</span>
       <div className="segmented">
-        {(['OFF', 'ROOF', 'CAGE'] as const).map((mode) => <button key={mode} type="button" className={settings.roofMode === mode ? 'active' : ''} aria-pressed={settings.roofMode === mode} onClick={() => onRoofMode(mode)} {...hint(ROOF_HINTS[mode])}>{t(ROOF_LABELS[mode])}</button>)}
+        {(['OFF', 'ROOF', 'CAGE'] as const).map((mode) => <button key={mode} type="button" aria-pressed={settings.roofMode === mode} onClick={() => onRoofMode(mode)} {...hint(ROOF_HINTS[mode])}>{t(ROOF_LABELS[mode])}</button>)}
       </div>
     </div>
     {SETTING_GROUPS.filter((group) => !group.when || group.when(settings)).map((group) => <details key={group.title} open={group.open}>
@@ -196,11 +196,11 @@ export default function SettingsPanel({ settings, autoLabel, disabled, onChange,
             return <label key={field.key} className="field-row" title={t(field.hint)}><span>{t(field.label)}</span><input className="text" maxLength={4} value={settings.labelText} placeholder={`${t(field.placeholder)} (${autoLabel})`} aria-description={t(field.hint)} onChange={(event) => onChange('labelText', event.target.value.toUpperCase())} /></label>;
           case 'choice':
             return <div key={field.key} className="field-row" title={t(field.hint)}><span>{t(field.label)}</span><div className="segmented" role="group" aria-label={t(field.label)} aria-description={t(field.hint)}>
-              {field.options.map((option) => <button key={option.value} type="button" className={settings[field.key] === option.value ? 'active' : ''} aria-pressed={settings[field.key] === option.value} onClick={() => onChange(field.key, option.value as LiveSupportSettings[ChoiceKey])}>{t(option.label)}</button>)}
+              {field.options.map((option) => <button key={option.value} type="button" aria-pressed={settings[field.key] === option.value} onClick={() => onChange(field.key, option.value as LiveSupportSettings[ChoiceKey])}>{t(option.label)}</button>)}
             </div></div>;
           case 'preview':
             return <div key={field.key} className="field-row" title={t(field.hint)}><span>{t(field.label)}</span><div className="segmented" role="group" aria-label={t(field.label)} aria-description={t(field.hint)}>
-              {(['FULL', 'ONLY_TIP'] as const).map((mode) => <button key={mode} type="button" className={settings.previewMode === mode ? 'active' : ''} aria-pressed={settings.previewMode === mode} onClick={() => onChange('previewMode', mode)}>{t(mode === 'FULL' ? 'Full' : 'Only tip')}</button>)}
+              {(['FULL', 'ONLY_TIP'] as const).map((mode) => <button key={mode} type="button" aria-pressed={settings.previewMode === mode} onClick={() => onChange('previewMode', mode)}>{t(mode === 'FULL' ? 'Full' : 'Only tip')}</button>)}
             </div></div>;
         }
       })}

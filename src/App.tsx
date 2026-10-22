@@ -831,7 +831,7 @@ export default function App() {
       <div className="brand"><h1><BrandLogo /></h1><small>{t('Resin Support Studio')}</small></div>
       <div className="header-actions">
         <div className="segmented lang" role="group" aria-label={t('Language')}>
-          {LANGS.map((entry) => <button key={entry.lang} lang={entry.lang} className={lang === entry.lang ? 'active' : ''} aria-pressed={lang === entry.lang} onClick={() => chooseLanguage(entry.lang)} title={entry.name}>{entry.label}</button>)}
+          {LANGS.map((entry) => <button key={entry.lang} lang={entry.lang} aria-pressed={lang === entry.lang} onClick={() => chooseLanguage(entry.lang)} title={entry.name}>{entry.label}</button>)}
         </div>
         <div className="toolbar-group">
           <button onClick={undo} disabled={!canUndo} {...hint('Undo (Ctrl+Z)')}>{t('Undo')}</button>
@@ -874,7 +874,7 @@ export default function App() {
         <section>
           <h3>{t('Transform')}</h3>
           <div className="segmented">
-            {(['none', 'translate', 'rotate'] as const).map((mode) => <button key={mode} className={gizmoMode === mode ? 'active' : ''} aria-pressed={gizmoMode === mode} onClick={() => setGizmoMode(mode)} disabled={editMode !== 'off'} {...hint(mode === 'none' ? 'Select objects without a gizmo' : mode === 'translate' ? 'Move the active object with the gizmo (G)' : 'Rotate the active object with the gizmo (R)')}>{t(mode === 'none' ? 'Select' : mode === 'translate' ? 'Move' : 'Rotate')}</button>)}
+            {(['none', 'translate', 'rotate'] as const).map((mode) => <button key={mode} aria-pressed={gizmoMode === mode} onClick={() => setGizmoMode(mode)} disabled={editMode !== 'off'} {...hint(mode === 'none' ? 'Select objects without a gizmo' : mode === 'translate' ? 'Move the active object with the gizmo (G)' : 'Rotate the active object with the gizmo (R)')}>{t(mode === 'none' ? 'Select' : mode === 'translate' ? 'Move' : 'Rotate')}</button>)}
           </div>
         </section>
         <section>
@@ -949,7 +949,6 @@ export default function App() {
         />
         <div className="viewport-view" role="group" aria-label={t('View')}>
           <button
-            className={tipsOn ? 'active' : ''}
             aria-pressed={tipsOn}
             // Zones force the tips view: the button stays focusable (its hint says why) but does nothing.
             onClick={() => { if (editMode !== 'zones') setTips((state) => tipsToggle(state, largeTips)); }}

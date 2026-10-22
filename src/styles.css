@@ -55,9 +55,6 @@ button:focus-visible, input:focus-visible, summary:focus-visible, .drop:focus-wi
 .danger:hover:not(:disabled) { border-color: var(--danger); background: var(--sunken); }
 .primary.regen { background: var(--blue); border-color: var(--blue); }
 .primary.regen:hover:not(:disabled) { background: var(--blue-hover); border-color: var(--blue-hover); }
-button.active, button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
-/* A pressed toggle stays ink under the pointer (a primary keeps its own hover). */
-button.active:not(.primary):hover:not(:disabled), button[aria-pressed='true']:not(.primary):hover:not(:disabled) { background: var(--ink); border-color: var(--ink); }
 
 /* ---- Header -------------------------------------------------------------- */
 header {
@@ -130,9 +127,25 @@ h3 { display: flex; align-items: center; min-height: 26px; margin: 0 0 10px; pad
 }
 .segmented button + button { border-left: 1px solid var(--line); }
 .segmented button:hover:not(:disabled) { background: var(--sunken); }
-.segmented button.active, .segmented button[aria-pressed='true'] { background: var(--ink); color: var(--paper); }
 .segmented .custom:disabled { opacity: 1; cursor: default; color: var(--muted); }
-.segmented .custom.active { background: var(--sunken); color: var(--ink); }
+.segmented .custom.on { background: var(--sunken); color: var(--ink); }
+/* Big icon + text choice between two ways of using a tool (Select supports: Click | Drag over). */
+.tool-choice { display: flex; gap: 4px; align-items: flex-start; }
+/* A tool button with its own option under it (Drag over → Circle size). */
+.tool-stack { display: flex; flex-direction: column; gap: 4px; }
+.tool-choice button {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 40px; margin: 0; padding: 0 14px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); color: var(--ink);
+  font-size: 13px; font-weight: 500; white-space: nowrap;
+}
+.tool-choice button svg { width: 19px; height: 19px; flex: none; }
+.tool-choice button:hover:not([aria-pressed='true']) { background: var(--sunken); }
+/* Pressed, the one style of every toggle and button group (after the groups, so it wins over their resting fill). */
+button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+/* A pressed toggle stays ink under the pointer (a primary keeps its own hover). */
+button[aria-pressed='true']:not(.primary):hover:not(:disabled) { background: var(--ink); border-color: var(--ink); }
 .row { display: flex; gap: 6px; margin-top: 8px; }
 .row button { flex: 1; }
 
@@ -264,27 +277,12 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
   white-space: nowrap;
 }
 .edit-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 16px; align-items: center; }
-/* Big icon + text choice between two ways of using a tool (Select supports: Click | Drag over). */
-.tool-choice { display: flex; gap: 4px; align-items: flex-start; }
-/* A tool button with its own option under it (Drag over → Circle size). */
-.tool-stack { display: flex; flex-direction: column; gap: 4px; }
 .tool-option { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: var(--ink); }
 .tool-option-head { display: flex; justify-content: space-between; gap: 8px; }
 .tool-option output { color: var(--muted); font-variant-numeric: tabular-nums; }
 .tool-option input[type='range'] { width: 100%; margin: 0; accent-color: var(--ink); }
 /* The circle at the centre of the view while its size slider moves. */
 .brush-circle.brush-circle--preview { left: 50%; top: 50%; transform: translate(-50%, -50%); }
-.tool-choice button {
-  display: inline-flex; align-items: center; gap: 8px;
-  height: 40px; margin: 0; padding: 0 14px;
-  border: 1px solid var(--line); border-radius: var(--radius);
-  background: var(--surface); color: var(--ink);
-  font-size: 13px; font-weight: 500; white-space: nowrap;
-}
-.tool-choice button svg { width: 19px; height: 19px; flex: none; }
-.tool-choice button:hover:not([aria-pressed='true']) { background: var(--sunken); }
-.tool-choice button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
-.tool-choice button:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
 /* One-line guidance inside the edit bar (zones above the plate). */
 .edit-note { margin: 0; max-width: 100%; white-space: normal; text-align: right; color: var(--muted); }
 kbd {
@@ -427,7 +425,6 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 }
 .panel .unit.active, .panel .unit.active:hover:not(:disabled) { background: var(--sunken); color: var(--ink); border: 0; border-left: 2px solid var(--ink); }
 .panel, .units { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
-.segmented button.active:hover:not(:disabled), .segmented button[aria-pressed='true']:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
 
 /* ---- Language switch ------------------------------------------------------ */
 .segmented.lang button { padding: 6px 10px; font-size: 12px; }
@@ -453,8 +450,7 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 /* ---- Edit bar tools and selection ---------------------------------------- */
 /* Viewport tools keep the app's button sizes; segments get room for their words. */
 .edit-bar .segmented button { padding: 6px 10px; }
-/* Tips only forced on below the plate: disabled, yet it still reads as on; its title says why. */
-.viewport-view button[aria-pressed='true']:disabled,
+/* Tips only forced on while painting zones: it does nothing, yet it still reads as on; its title says why. */
 .viewport-view button[aria-pressed='true'][aria-disabled='true'] { opacity: 1; color: var(--paper); cursor: default; }
 .edit-size { display: flex; gap: 8px; align-items: center; }
 /* Viewport tool hit areas stay at least 24 px tall (NN/g, WCAG 2.5.8): the slider gets a full row. */
