@@ -1,10 +1,29 @@
 import type { SupportContact } from '../core/supports/mesh';
 import type { BrushMode } from './types';
 
-// `ids` without the selected ones (the same array when none is selected): a hover preview drawn
-// over a support already selected would hide its selected colour.
-export function notSelected(ids: readonly string[], selected: ReadonlySet<string>): readonly string[] {
-  return ids.some((id) => selected.has(id)) ? ids.filter((id) => !selected.has(id)) : ids;
+/** What Drag over draws over the selection while the circle hovers. */
+export interface BrushPreview {
+  /** Supports drawn selected (solid red). */
+  solid: ReadonlySet<string>;
+  /** Supports drawn see-through: the ones the circle would change. */
+  ghost: readonly string[];
+  /** Red for the ones Select would add, grey for the ones Unselect would take out. */
+  ghostTone: 'remove' | 'ring';
+}
+
+/**
+ * The hover preview for the supports under the circle (`brushed`). Select shows only the ones it
+ * would add: a selected one keeps its solid red. Unselect shows the selected ones under the
+ * circle in grey, taken off the solid red. The filters matter for the render after a commit,
+ * while `brushed` still holds what the hover found against the older selection.
+ */
+export function brushPreview(selection: ReadonlySet<string>, brushed: readonly string[], mode: BrushMode | undefined): BrushPreview {
+  if (mode !== 'unselect') return { solid: selection, ghost: brushed.filter((id) => !selection.has(id)), ghostTone: 'remove' };
+  const ghost = brushed.filter((id) => selection.has(id));
+  if (ghost.length === 0) return { solid: selection, ghost, ghostTone: 'ring' };
+  const solid = new Set(selection);
+  for (const id of ghost) solid.delete(id);
+  return { solid, ghost, ghostTone: 'ring' };
 }
 
 export function paintSelection(

@@ -12,7 +12,7 @@ import type { PrintScene, PrintUnit } from '../state/project';
 import type { ModelTransform } from '../state/transform';
 import type { GeneratedSupportMesh, SupportContact } from '../core/supports/mesh';
 import { contactAtTriangle, tipsOf } from '../core/supports/meshQuery';
-import { notSelected } from '../editing/selection';
+import { brushPreview } from '../editing/selection';
 import { contactVertexRuns, frameBudget, selectionDelta } from '../editing/selectionPaint';
 import { createStrokeQueue, type StrokeQueue } from '../editing/strokeQueue';
 import { bodySegments, brushHitsFrom, cachedVisibility, hiddenByModel, projectBodies, type BodySegments } from '../editing/screenBrush';
@@ -609,12 +609,11 @@ function linearBytes(css: string): [number, number, number] {
  * and uploads just those ranges, instead of building a mesh of the selected bodies per paint.
  * Returns whether the mesh is coloured this way (Support Edit Mode, outside zones).
  */
-function useSelectionColors(geometry: THREE.BufferGeometry | undefined, supports: GeneratedSupportMesh | undefined, on: boolean, solidIds: readonly string[], baseColor: string): boolean {
+function useSelectionColors(geometry: THREE.BufferGeometry | undefined, supports: GeneratedSupportMesh | undefined, on: boolean, solid: ReadonlySet<string>, baseColor: string): boolean {
   const runs = useMemo(() => (on && supports ? contactVertexRuns(supports) : undefined), [on, supports]);
   const drawn = useRef<{ geometry?: THREE.BufferGeometry; base: string; ids: ReadonlySet<string> }>({ base: '', ids: new Set() });
   useLayoutEffect(() => {
     if (!geometry || !runs) return;
-    const solid = new Set(solidIds);
     const count = geometry.getAttribute('position').count;
     let colors = geometry.getAttribute('color') as THREE.BufferAttribute | undefined;
     const fresh = !colors || colors.count !== count;
@@ -646,7 +645,7 @@ function useSelectionColors(geometry: THREE.BufferGeometry | undefined, supports
     if (delta && ranges.length <= MAX_RANGES) for (const [start, end] of ranges) colors.addUpdateRange(start * 3, (end - start) * 3);
     colors.needsUpdate = true;
     drawn.current = { geometry, base: baseColor, ids: solid };
-  }, [geometry, runs, solidIds, baseColor]);
+  }, [geometry, runs, solid, baseColor]);
   return Boolean(geometry && runs);
 }
 
@@ -684,7 +683,6 @@ function UnitObject(props: UnitObjectProps) {
   };
   useEffect(leave, [editing, zoning, selecting, clickSelecting]);
   const doomed = useDoomed(unit, contacts, editing && hover?.remove ? hover.point : undefined);
-  const selectedIds = useMemo(() => [...props.selection], [props.selection]);
 
   // Drag over and the zone brush: the canvas shows the brush cursor while the pointer is over this object.
   const gl = useThree((state) => state.gl);
@@ -740,14 +738,8 @@ function UnitObject(props: UnitObjectProps) {
     beginStroke,
     onPaint: (ids, mode) => props.onPaint(unit.id, ids, mode),
   });
-  // Drag over → Unselect previews the selected supports under the brush in see-through grey,
-  // taken off the solid red, so the ones about to turn back show.
-  const unselecting = brush?.mode === 'unselect';
-  const turningBack = useMemo(() => (unselecting ? brushed.filter((id) => props.selection.has(id)) : []), [unselecting, brushed, props.selection]);
-  // Drag over → Select previews only the supports it would add: a selected one keeps its solid red.
-  const brushedUnselected = useMemo(() => notSelected(brushed, props.selection), [brushed, props.selection]);
-  const solidIds = useMemo(() => (turningBack.length ? selectedIds.filter((id) => !turningBack.includes(id)) : selectedIds), [selectedIds, turningBack]);
-  const selectionColored = useSelectionColors(supportGeometry, supports, editing && !zoning, solidIds, supportColor);
+  const preview = useMemo(() => brushPreview(props.selection, brushed, brush?.mode), [props.selection, brushed, brush?.mode]);
+  const selectionColored = useSelectionColors(supportGeometry, supports, editing && !zoning, preview.solid, supportColor);
   // The brush going away mid-stroke (tool or mode changed, another object made active) ends the
   // stroke at once, so the orbit is back without waiting for the release.
   const brushing = Boolean(brush || zoneBrush);
@@ -897,9 +889,7 @@ function UnitObject(props: UnitObjectProps) {
     {editing && !zoning && supports && supportGeometry && <>
       <SupportBodies supports={supports} geometry={supportGeometry} ids={doomed} opacity={1} />
       {pointed && !props.selection.has(pointed) && <SupportBodies supports={supports} geometry={supportGeometry} ids={[pointed]} opacity={SEE_THROUGH} />}
-      {unselecting
-        ? <SupportBodies supports={supports} geometry={supportGeometry} ids={turningBack} opacity={SEE_THROUGH} color={PREVIEW.ring} />
-        : <SupportBodies supports={supports} geometry={supportGeometry} ids={brushedUnselected} opacity={SEE_THROUGH} />}
+      <SupportBodies supports={supports} geometry={supportGeometry} ids={preview.ghost} opacity={SEE_THROUGH} color={PREVIEW[preview.ghostTone]} />
     </>}
     {props.problems.length > 0 && <ProblemMarkers problems={props.problems} />}
   </group>;

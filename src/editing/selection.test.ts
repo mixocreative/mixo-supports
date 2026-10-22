@@ -1,15 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import type { SupportContact } from '../core/supports/mesh';
-import { notSelected, paintSelection, pruneSelection, toggleSelection } from './selection';
+import { brushPreview, paintSelection, pruneSelection, toggleSelection } from './selection';
 
 const contact = (id: string, position: [number, number, number], normal: [number, number, number] = [0, 1, 0]) =>
   ({ id, position, normal }) as SupportContact;
 
-describe('notSelected', () => {
-  it('drops the ids already selected, keeping the order', () => {
-    expect(notSelected(['a', 'b', 'c'], new Set(['b']))).toEqual(['a', 'c']);
-    const ids = ['a'];
-    expect(notSelected(ids, new Set())).toBe(ids);
+describe('brushPreview', () => {
+  const selection = new Set(['a', 'b']);
+
+  it('Select ghosts in red only the supports it would add; the selection stays solid', () => {
+    const preview = brushPreview(selection, ['b', 'c', 'd'], 'select');
+    expect(preview.solid).toBe(selection);
+    expect(preview.ghost).toEqual(['c', 'd']);
+    expect(preview.ghostTone).toBe('remove');
+  });
+
+  it('Unselect ghosts in grey the selected supports under the circle and takes them off the solid red', () => {
+    const preview = brushPreview(selection, ['b', 'c'], 'unselect');
+    expect([...preview.solid]).toEqual(['a']);
+    expect(preview.ghost).toEqual(['b']);
+    expect(preview.ghostTone).toBe('ring');
+    expect([...selection]).toEqual(['a', 'b']);
+  });
+
+  it('keeps the selection itself as the solid set when nothing under the circle is selected', () => {
+    expect(brushPreview(selection, ['c'], 'unselect').solid).toBe(selection);
+    expect(brushPreview(selection, [], undefined)).toEqual({ solid: selection, ghost: [], ghostTone: 'remove' });
   });
 });
 
