@@ -101,6 +101,7 @@ export const zhHant: Dictionary = {
   'Regenerating {name}.': '正在重新產生 {name} 的支撐。',
   'Regenerating {n} objects.': '正在重新產生 {n} 個物件的支撐。',
   'Generated supports for {n} objects.': '已為 {n} 個物件產生支撐。',
+  '{n} customised kept, {m} reset.': '保留 {n} 個自訂支撐，重設 {m} 個。',
   'Regenerated {n} objects.': '已重新產生 {n} 個物件。',
   'Regenerated {n} objects. Hand edits kept: {added} added, {removed} removed. Removals reset: {reset}.': '已重新產生 {n} 個物件。保留手動編輯：新增 {added}、移除 {removed}。重設的移除：{reset}。',
   'Regenerated {name}: {n} supports placed. Hand edits kept: {added} added, {removed} removed. Removals reset: {reset}.': '已重新產生 {name}：放置 {n} 個支撐。保留手動編輯：新增 {added} 個、移除 {removed} 個。已重設的移除：{reset} 個。',

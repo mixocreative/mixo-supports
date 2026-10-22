@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupportPoint } from '../core/analysis/types';
 import { positionId, rekeyHandWork } from '../core/analysis/placement';
 import type { Vector } from '../core/vec3';
-import { REGENERATE_DELAY_MS, RegenerateQueue, regenReport, regeneratedStatus, regeneratingStatus } from './regenerate';
+import { REGENERATE_DELAY_MS, RegenerateQueue, hasHandWork, landedStatus, regenReport, regeneratedStatus, regeneratingStatus } from './regenerate';
 
 const at = (position: Vector): SupportPoint => ({ id: positionId(position), regionId: 0, position, normal: [0, -1, 0], source: 'interior' });
 
@@ -31,6 +31,19 @@ describe('regeneration statuses', () => {
   it('reports hand work only when there was some', () => {
     expect(regeneratedStatus('bust', 40, { added: 0, removed: 0, reset: 0, customisedKept: 0, customisedReset: 0 }).key).toBe('{name}: {n} automatic contacts generated.');
     expect(regeneratedStatus('bust', 40, { added: 2, removed: 3, reset: 1, customisedKept: 0, customisedReset: 0 })).toMatchObject({ vars: { name: 'bust', n: 40, added: 2, removed: 3, reset: 1 } });
+  });
+
+  it('reports customised supports even when they are the only hand work', () => {
+    const only = { added: 0, removed: 0, reset: 0, customisedKept: 3, customisedReset: 1 };
+    expect(hasHandWork(only)).toBe(true);
+    expect(regeneratedStatus('bust', 40, only)).toMatchObject({ key: '{name}: {n} automatic contacts generated.', then: { key: '{n} customised kept, {m} reset.', vars: { n: 3, m: 1 } } });
+  });
+
+  it('adds the customised sentence to the hand-edit report and to the several-object summary', () => {
+    const report = { added: 1, removed: 0, reset: 0, customisedKept: 2, customisedReset: 0 };
+    expect(regeneratedStatus('bust', 40, report).then?.vars).toEqual({ n: 2, m: 0 });
+    const several = landedStatus([{ name: 'a', placed: 1, report }, { name: 'b', placed: 2, report }]);
+    expect(several.then?.vars).toEqual({ n: 4, m: 0 });
   });
 });
 

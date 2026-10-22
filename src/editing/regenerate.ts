@@ -24,8 +24,21 @@ export function regenReport(manual: number, handWork: Pick<RekeyedHandWork<unkno
   return { added: manual, removed: handWork.removals.kept, reset: handWork.removals.reset, customisedKept: handWork.customised.kept, customisedReset: handWork.customised.reset };
 }
 
+const hasEdits = (report: RegenReport): boolean => report.added + report.removed + report.reset > 0;
+const hasCustomised = (report: RegenReport): boolean => report.customisedKept + report.customisedReset > 0;
+
 /** Hand work worth a report: nothing is said when there was none to keep or reset. */
-export const hasHandWork = (report: RegenReport): boolean => report.added + report.removed + report.reset > 0;
+export const hasHandWork = (report: RegenReport): boolean => hasEdits(report) || hasCustomised(report);
+
+/** The sentence about per-support settings, added to a regeneration's report when there were any. */
+function customisedSentence(report: RegenReport): StatusMessage | undefined {
+  return hasCustomised(report) ? { key: '{n} customised kept, {m} reset.', vars: { n: report.customisedKept, m: report.customisedReset } } : undefined;
+}
+
+function withCustomised(message: StatusMessage, report: RegenReport): StatusMessage {
+  const sentence = customisedSentence(report);
+  return sentence ? { ...message, then: sentence } : message;
+}
 
 /** The status line while a regeneration runs, for what changed it (`placement`: a placement setting) and its scope. */
 export function regeneratingStatus(scope: { n: number; name: string }, cause: 'button' | 'placement'): StatusMessage {
@@ -48,13 +61,14 @@ export function landedStatus(landed: readonly { name: string; placed: number; re
     customisedReset: sum.customisedReset + report.customisedReset,
   }), { added: 0, removed: 0, reset: 0, customisedKept: 0, customisedReset: 0 });
   if (!hasHandWork(total)) return { key: 'Regenerated {n} objects.', vars: { n: landed.length } };
-  return { key: 'Regenerated {n} objects. Hand edits kept: {added} added, {removed} removed. Removals reset: {reset}.', vars: { n: landed.length, added: total.added, removed: total.removed, reset: total.reset } };
+  if (!hasEdits(total)) return withCustomised({ key: 'Regenerated {n} objects.', vars: { n: landed.length } }, total);
+  return withCustomised({ key: 'Regenerated {n} objects. Hand edits kept: {added} added, {removed} removed. Removals reset: {reset}.', vars: { n: landed.length, added: total.added, removed: total.removed, reset: total.reset } }, total);
 }
 
 /** The status line (and the Undo toast) after a regeneration landed on an object. */
 export function regeneratedStatus(name: string, placed: number, report: RegenReport): StatusMessage {
-  if (!hasHandWork(report)) return { key: '{name}: {n} automatic contacts generated.', vars: { name, n: placed } };
-  return { key: 'Regenerated {name}: {n} supports placed. Hand edits kept: {added} added, {removed} removed. Removals reset: {reset}.', vars: { name, n: placed, added: report.added, removed: report.removed, reset: report.reset } };
+  if (!hasEdits(report)) return withCustomised({ key: '{name}: {n} automatic contacts generated.', vars: { name, n: placed } }, report);
+  return withCustomised({ key: 'Regenerated {name}: {n} supports placed. Hand edits kept: {added} added, {removed} removed. Removals reset: {reset}.', vars: { name, n: placed, added: report.added, removed: report.removed, reset: report.reset } }, report);
 }
 
 /** Settings edits come in bursts (typing a value): a placement change regenerates once it has been quiet this long. */

@@ -23,4 +23,6 @@ export interface StatusMessage {
   key: string;
   vars?: Record<string, string | number>;
   other?: string;
+  /** A second sentence, joined to the first when shown. */
+  then?: StatusMessage;
 }

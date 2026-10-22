@@ -63,11 +63,14 @@ export interface Message {
   vars?: Vars;
   /** Pick `other` instead of `key` when vars.n is not 1. */
   other?: string;
+  /** A second sentence, translated on its own and joined with a space. */
+  then?: Message;
 }
 
 export function translateMessage(message: Message): string {
   const n = message.vars?.n;
-  return message.other && typeof n === 'number' ? plural(n, message.key, message.other, message.vars) : t(message.key, message.vars);
+  const text = message.other && typeof n === 'number' ? plural(n, message.key, message.other, message.vars) : t(message.key, message.vars);
+  return message.then ? `${text} ${translateMessage(message.then)}` : text;
 }
 
 /** Progress stages posted by the workers (translated where they are shown). */

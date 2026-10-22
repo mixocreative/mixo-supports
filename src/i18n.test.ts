@@ -55,6 +55,11 @@ describe('i18n', () => {
     }
   });
 
+  it('joins a message and the sentence that follows it', () => {
+    setLanguage('ja');
+    expect(translateMessage({ key: 'Regenerated {n} objects.', vars: { n: 2 }, then: { key: '{n} customised kept, {m} reset.', vars: { n: 3, m: 1 } } })).toBe('2 個のオブジェクトを再生成しました。 個別設定 3 本を保持、1 本をリセット。');
+  });
+
   it('translates every label, hint and reason of every command', () => {
     const keys = new Set<string>();
     for (const state of STATES) {
