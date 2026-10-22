@@ -24,6 +24,6 @@ export function CommandButton({ command, run, className, locked = false, childre
     aria-pressed={command.pressed}
     onClick={() => run(command.runs)}
     disabled={!command.enabled}
-    {...hint(reason?.key ?? command.hint, reason?.vars, reason ? undefined : command.shortcut)}
+    {...hint(reason?.key ?? command.hint, reason ? reason.vars : command.hintVars, reason ? undefined : command.shortcut)}
   >{t(command.label)}{children}</button>;
 }

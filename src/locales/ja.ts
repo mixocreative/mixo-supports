@@ -118,6 +118,8 @@ export const ja: Dictionary = {
   'Give the selected supports the default settings again. Undo brings their own values back': '選択中のサポートを既定の設定に戻します。「元に戻す」で元の値を復元できます',
   'None of the selected supports has settings of its own.': '選択中のサポートに個別の設定はありません。',
   'Select them': 'それらを選択',
+  'Enter Support Edit Mode with the supports of the active object that have settings of their own selected. {n} more on the other selected objects: edit them one at a time': 'サポートのうち、アクティブなオブジェクトで個別の設定を持つものを選択してサポート編集モードに入ります。ほかの選択中オブジェクトにあと{n}個あります。1つずつ編集してください',
+  'Only the other selected objects have supports with settings of their own. Make one of them the active object.': '個別の設定を持つサポートがあるのは、ほかの選択中オブジェクトだけです。そのうち1つをアクティブにしてください。',
   'Select the supports of this object that have settings of their own': 'このオブジェクトで個別の設定を持つサポートを選択します',
   'Enter Support Edit Mode with the supports that have settings of their own selected': '個別の設定を持つサポートを選択した状態でサポート編集モードに入ります',
   'Applies to {n} of {m} supports': 'サポート {m} 本中 {n} 本に適用',

@@ -121,6 +121,8 @@ export const zhHant: Dictionary = {
   'Give the selected supports the default settings again. Undo brings their own values back': '讓選取的支撐改回預設設定。復原可找回原本的數值',
   'None of the selected supports has settings of its own.': '選取的支撐都沒有自訂設定。',
   'Select them': '選取這些支撐',
+  'Enter Support Edit Mode with the supports of the active object that have settings of their own selected. {n} more on the other selected objects: edit them one at a time': '進入支撐編輯模式，並選取使用中物件裡有自訂設定的支撐。其他選取的物件還有 {n} 個，請逐一編輯',
+  'Only the other selected objects have supports with settings of their own. Make one of them the active object.': '只有其他選取的物件有自訂設定的支撐。請將其中一個設為使用中的物件。',
   'Select the supports of this object that have settings of their own': '選取這個物件中有自訂設定的支撐',
   'Enter Support Edit Mode with the supports that have settings of their own selected': '進入支撐編輯模式，並選取有自訂設定的支撐',
   'Applies to {n} of {m} supports': '套用到 {m} 個支撐中的 {n} 個',

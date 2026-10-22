@@ -233,3 +233,20 @@ describe('the Select | Unselect switch', () => {
     expect(resolve('edit.dragUnselect', at({ ...drag, dragAction: 'unselect' }))).toMatchObject({ pressed: true, label: 'Unselect', hint: 'Dragging takes supports out of the selection' });
   });
 });
+
+describe('Select them', () => {
+  it('shows whenever a targeted object has customised supports, not only the active one', () => {
+    expect(resolve('shape.selectCustomised', at({ customisedTargeted: 0 })).visible).toBe(false);
+    expect(resolve('shape.selectCustomised', at({ customisedActive: 0, customisedTargeted: 3, customisedOthers: 3 })).visible).toBe(true);
+  });
+
+  it('selects on the active object and says how many sit on the other objects', () => {
+    const onlyOthers = resolve('shape.selectCustomised', at({ customisedActive: 0, customisedTargeted: 3, customisedOthers: 3 }));
+    expect(onlyOthers.enabled).toBe(false);
+    expect(onlyOthers.disabledReason).toBeDefined();
+    const both = resolve('shape.selectCustomised', at({ customisedActive: 2, customisedTargeted: 5, customisedOthers: 3 }));
+    expect(both.enabled).toBe(true);
+    expect(both.hintVars).toEqual({ n: 3 });
+    expect(resolve('shape.selectCustomised', at({ customisedActive: 2, customisedTargeted: 2 })).hintVars).toBeUndefined();
+  });
+});

@@ -46,6 +46,9 @@ export interface UiState {
   /** Supports of the active object with settings of their own, and how many of the selected ones. */
   customisedActive: number;
   customisedSelected: number;
+  /** Customised supports across the objects the header count speaks of, and how many of them sit on objects other than the active one. */
+  customisedTargeted: number;
+  customisedOthers: number;
   /** The active object has supports (generated or hand-added). */
   activeSupported: boolean;
   /** Undo and Redo as the host can run them now (Undo stops at the mode's floor). */
@@ -69,6 +72,8 @@ interface Command {
   /** i18n keys, translated where shown; the shortcut is added to the hint. */
   label(s: UiState): string;
   hint(s: UiState): string;
+  /** Values for `{n}` placeholders in the hint. */
+  hintVars?(s: UiState): Record<string, number> | undefined;
   visible(s: UiState): boolean;
   enabled(s: UiState): boolean;
   /** Why the control is off; defined exactly when a visible command is not enabled. */
@@ -191,13 +196,18 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     visible: (s) => s.mode === 'edit' && s.selection > 0, enabled: (s) => s.customisedSelected > 0,
     disabledReason: (s) => (s.customisedSelected > 0 ? undefined : { key: 'None of the selected supports has settings of its own.' }),
   },
-  /** The header count's action: outside Support Edit Mode it enters the mode with those supports selected. */
+  /** The header count's action: outside Support Edit Mode it enters the mode with those supports selected. The mode edits one object, so it selects the active object's. */
   'shape.selectCustomised': {
     role: 'secondary',
     label: () => 'Select them',
-    hint: (s) => (s.mode === 'edit' ? 'Select the supports of this object that have settings of their own' : 'Enter Support Edit Mode with the supports that have settings of their own selected'),
-    visible: (s) => s.customisedActive > 0, enabled: (s) => s.active && (s.mode === 'edit' || (s.mode === 'off' && s.heavy === undefined)),
-    disabledReason: (s) => (s.mode === 'zones' ? busyStatus(s.mode) : !s.active ? { key: 'Select an object first.' } : s.mode === 'off' && s.heavy !== undefined ? heavyReason(s) : undefined),
+    hint: (s) => (s.mode === 'edit'
+      ? 'Select the supports of this object that have settings of their own'
+      : s.customisedOthers > 0
+        ? 'Enter Support Edit Mode with the supports of the active object that have settings of their own selected. {n} more on the other selected objects: edit them one at a time'
+        : 'Enter Support Edit Mode with the supports that have settings of their own selected'),
+    hintVars: (s) => (s.mode !== 'edit' && s.customisedOthers > 0 ? { n: s.customisedOthers } : undefined),
+    visible: (s) => s.customisedTargeted > 0, enabled: (s) => s.active && s.customisedActive > 0 && (s.mode === 'edit' || (s.mode === 'off' && s.heavy === undefined)),
+    disabledReason: (s) => (s.mode === 'zones' ? busyStatus(s.mode) : !s.active ? { key: 'Select an object first.' } : s.mode === 'off' && s.heavy !== undefined ? heavyReason(s) : s.customisedActive === 0 ? { key: 'Only the other selected objects have supports with settings of their own. Make one of them the active object.' } : undefined),
   },
   'edit.clearSelection': {
     role: 'secondary', shortcut: 'Esc',
@@ -246,6 +256,7 @@ export interface ResolvedCommand {
   shortcut: string | undefined;
   label: string;
   hint: string;
+  hintVars: Record<string, number> | undefined;
   visible: boolean;
   enabled: boolean;
   disabledReason: StatusMessage | undefined;
@@ -260,7 +271,7 @@ export function resolve(id: CommandId, state: UiState): ResolvedCommand {
   const { shortcut } = command;
   return {
     id, role: command.role, shortcut: typeof shortcut === 'function' ? shortcut(state) : shortcut,
-    label: command.label(state), hint: command.hint(state),
+    label: command.label(state), hint: command.hint(state), hintVars: command.hintVars?.(state),
     visible: command.visible(state), enabled: command.enabled(state), disabledReason: command.disabledReason(state),
     pressed: command.pressed?.(state),
     runs: command.runs?.(state) ?? id,
