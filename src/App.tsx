@@ -16,6 +16,8 @@ import { CirclePreview } from './components/viewport/CirclePreview';
 import type { GizmoMode, ViewRequest } from './components/viewport/types';
 import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
+import { RangeField } from './components/RangeField';
+import { Segmented } from './components/Segmented';
 import { hint } from './components/hint';
 import { editModeButton, zonesButton } from './editing/modeButtons';
 import { canUndo as historyCanUndo, createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
@@ -814,9 +816,7 @@ export default function App() {
     <header>
       <div className="brand"><h1><BrandLogo /></h1><small>{t('Resin Support Studio')}</small></div>
       <div className="header-actions">
-        <div className="segmented lang" role="group" aria-label={t('Language')}>
-          {LANGS.map((entry) => <button key={entry.lang} lang={entry.lang} aria-pressed={lang === entry.lang} onClick={() => chooseLanguage(entry.lang)} title={entry.name}>{entry.label}</button>)}
-        </div>
+        <Segmented className="segmented lang" label={t('Language')} value={lang} onChange={chooseLanguage} options={LANGS.map((entry) => ({ value: entry.lang, label: entry.label, lang: entry.lang, title: entry.name }))} />
         <div className="toolbar-group">
           <button onClick={undo} disabled={!canUndo} {...hint('Undo (Ctrl+Z)')}>{t('Undo')}</button>
           <button onClick={() => dispatchHistory({ type: 'redo' })} disabled={history.future.length === 0} {...hint('Redo (Ctrl+Shift+Z)')}>{t('Redo')}</button>
@@ -857,9 +857,11 @@ export default function App() {
         </section>
         <section>
           <h3>{t('Transform')}</h3>
-          <div className="segmented">
-            {(['none', 'translate', 'rotate'] as const).map((mode) => <button key={mode} aria-pressed={gizmoMode === mode} onClick={() => setGizmoMode(mode)} disabled={editMode !== 'off'} {...hint(mode === 'none' ? 'Select objects without a gizmo' : mode === 'translate' ? 'Move the active object with the gizmo (G)' : 'Rotate the active object with the gizmo (R)')}>{t(mode === 'none' ? 'Select' : mode === 'translate' ? 'Move' : 'Rotate')}</button>)}
-          </div>
+          <Segmented value={gizmoMode} onChange={setGizmoMode} disabled={editMode !== 'off'} options={[
+            { value: 'none', label: t('Select'), hint: 'Select objects without a gizmo' },
+            { value: 'translate', label: t('Move'), hint: 'Move the active object with the gizmo (G)' },
+            { value: 'rotate', label: t('Rotate'), hint: 'Rotate the active object with the gizmo (R)' },
+          ]} />
         </section>
         <section>
           <h3>{t('Edit supports')}</h3>
@@ -952,15 +954,11 @@ export default function App() {
           </div>
           <div className="edit-bar">
             <div className="edit-row">
-              <div className="segmented" role="group" aria-label={t('Zone brush')}>
-                <button aria-pressed={zoneKind === 'paint'} onClick={() => send({ type: 'setZoneKind', kind: 'paint' })} {...hint('Paint no-support zones on the model')}>{t('Paint')}</button>
-                <button aria-pressed={zoneKind === 'erase'} onClick={() => send({ type: 'setZoneKind', kind: 'erase' })} {...hint('Erase no-support zones from the model')}>{t('Erase')}</button>
-              </div>
-              <label className="edit-size">
-                {t('Brush size')}
-                <input type="range" min={0.5} max={10} step={0.5} value={zoneRadius} onChange={(event) => send({ type: 'setZoneRadius', radius: Number(event.target.value) })} {...hint('Radius of the zone brush')} />
-                <output>{t('{n} mm', { n: zoneRadius })}</output>
-              </label>
+              <Segmented label={t('Zone brush')} value={zoneKind} onChange={(kind) => send({ type: 'setZoneKind', kind })} options={[
+                { value: 'paint', label: t('Paint'), hint: 'Paint no-support zones on the model' },
+                { value: 'erase', label: t('Erase'), hint: 'Erase no-support zones from the model' },
+              ]} />
+              <RangeField layout="row" label="Brush size" unit="{n} mm" hint="Radius of the zone brush" min={0.5} max={10} step={0.5} value={zoneRadius} onChange={(radius) => send({ type: 'setZoneRadius', radius })} />
               <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
             </div>
             {!tips.below && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
@@ -977,35 +975,27 @@ export default function App() {
           </div>
           <div className="edit-bar">
             <div className="edit-row">
-              <div className="segmented" role="group" aria-label={t('Edit tool')}>
-                <button aria-pressed={editTool === 'add'} onClick={() => send({ type: 'setTool', tool: 'add' })} {...hint('Click the model to add a support; right-click or Ctrl+click a support to remove it')}>{t('Add supports')}</button>
-                <button aria-pressed={editTool === 'select'} onClick={() => send({ type: 'setTool', tool: 'select' })} {...hint('Pick supports to delete several at once')}>{t('Select supports')}</button>
-              </div>
-              {editTool === 'select' && <div className="tool-choice" role="group" aria-label={t('How to select')}>
-                <button aria-pressed={selectStyle === 'click'} onClick={() => send({ type: 'setSelectStyle', style: 'click' })} {...hint('Click supports one at a time to select them')}><PointerIcon />{t('Click')}</button>
-                <div className="tool-stack">
-                  <button aria-pressed={selectStyle === 'brush'} onClick={() => send({ type: 'setSelectStyle', style: 'brush' })} {...hint('Drag over supports to select many at once, starting anywhere in the view')}><BrushIcon />{t('Drag over')}</button>
-                  {/* The tool's own size, under it: shown only while Drag over is the way to select. */}
-                  {selectStyle === 'brush' && <label className="tool-option">
-                    <span className="tool-option-head">{t('Circle size')}<output>{t('{n} px', { n: brushRadius })}</output></span>
-                    <input
-                      type="range" min={8} max={80} step={4} value={brushRadius}
-                      onChange={(event) => { send({ type: 'setBrushRadius', radius: Number(event.target.value) }); send({ type: 'setBrushSizing', sizing: true }); }}
-                      onPointerDown={() => send({ type: 'setBrushSizing', sizing: true })}
-                      onPointerUp={() => send({ type: 'setBrushSizing', sizing: false })}
-                      onKeyUp={() => send({ type: 'setBrushSizing', sizing: false })}
-                      onBlur={() => send({ type: 'setBrushSizing', sizing: false })}
-                      {...hint('Radius of the circle around the pointer, in screen pixels: supports it passes over are selected')}
-                    />
-                  </label>}
-                </div>
-              </div>}
-              {press.kind === 'drag' && <>
-                <div className="segmented" role="group" aria-label={t('Dragging over supports')}>
-                  <button aria-pressed={brushMode === 'select'} onClick={() => send({ type: 'setBrushMode', mode: 'select' })} {...hint('Dragging adds supports to the selection')}>{t('Select')}</button>
-                  <button aria-pressed={brushMode === 'unselect'} onClick={() => send({ type: 'setBrushMode', mode: 'unselect' })} {...hint('Dragging takes supports out of the selection')}>{t('Unselect')}</button>
-                </div>
-              </>}
+              <Segmented label={t('Edit tool')} value={editTool} onChange={(tool) => send({ type: 'setTool', tool })} options={[
+                { value: 'add', label: t('Add supports'), hint: 'Click the model to add a support; right-click or Ctrl+click a support to remove it' },
+                { value: 'select', label: t('Select supports'), hint: 'Pick supports to delete several at once' },
+              ]} />
+              {editTool === 'select' && <Segmented className="tool-choice" label={t('How to select')} value={selectStyle} onChange={(style) => send({ type: 'setSelectStyle', style })} options={[
+                { value: 'click', icon: <PointerIcon />, label: t('Click'), hint: 'Click supports one at a time to select them' },
+                {
+                  value: 'brush', icon: <BrushIcon />, label: t('Drag over'), hint: 'Drag over supports to select many at once, starting anywhere in the view',
+                  // The tool's own size, under it: shown only while Drag over is the way to select.
+                  under: selectStyle === 'brush' && <RangeField
+                    layout="stack" label="Circle size" unit="{n} px" hint="Radius of the circle around the pointer, in screen pixels: supports it passes over are selected"
+                    min={8} max={80} step={4} value={brushRadius}
+                    onChange={(radius) => send({ type: 'setBrushRadius', radius })}
+                    onAdjust={(sizing) => send({ type: 'setBrushSizing', sizing })}
+                  />,
+                },
+              ]} />}
+              {press.kind === 'drag' && <Segmented label={t('Dragging over supports')} value={brushMode} onChange={(mode) => send({ type: 'setBrushMode', mode })} options={[
+                { value: 'select', label: t('Select'), hint: 'Dragging adds supports to the selection' },
+                { value: 'unselect', label: t('Unselect'), hint: 'Dragging takes supports out of the selection' },
+              ]} />}
             </div>
             <div className="edit-row">
               {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
