@@ -152,6 +152,8 @@ export function useScreenBrush(options: {
   const view = useMemo(() => bodies && screenBrushView(bodies, camera, scene, options.group, gl.domElement), [bodies, camera, scene, options.group, gl]);
   /** Shows the hover again with the brush as it is now (set while the pointer listeners are attached). */
   const refreshHover = useRef<() => void>(() => undefined);
+  /** Where the pointer rests over the canvas, outside a stroke: a rebuild of the listeners (new supports) asks about it again. */
+  const resting = useRef<readonly [number, number] | undefined>(undefined);
   const live = useRef({ options, view });
   live.current = { options, view };
   // Outlives the support mesh: a rebuild mid-stroke keeps the queued samples.
@@ -206,7 +208,7 @@ export function useScreenBrush(options: {
       circle.hidden = true;
     };
     /** The latest hover move, shown again when a frame's rays change what is under the pointer. */
-    let hover: readonly [number, number] | undefined;
+    let hover: readonly [number, number] | undefined = resting.current;
     // The rays run once a frame for the latest pointer, not on every move; the circle follows the
     // pointer meanwhile with the last answer, and a changed answer shows or hides it at the frame.
     const probe = createHoverProbe({
@@ -222,6 +224,7 @@ export function useScreenBrush(options: {
     });
     refreshHover.current = () => {
       const { brush } = live.current.options;
+      if (brush) circle.dataset.mode = brush.mode;
       if (!hover || !brush || options.stroke.active) return;
       if (dragOver.move(hover, { held: false, onCanvas: true, onObject: probe.answer }, brush)) show(hover, brush);
       else hide();
@@ -241,6 +244,7 @@ export function useScreenBrush(options: {
         hover = undefined;
         probe.reset();
       }
+      resting.current = hover;
       if (dragOver.move(at, { held, onCanvas, onObject: (ask && probe.answer) || options.stroke.active }, brush)) show(at, brush);
       else hide();
     };
@@ -252,9 +256,13 @@ export function useScreenBrush(options: {
     };
     const leave = () => {
       hover = undefined;
+      resting.current = undefined;
       probe.reset();
       if (!dragOver.leave()) hide();
     };
+    // The supports were rebuilt under a resting pointer: the circle is new and hidden, so ask again where it rests.
+    const { brush: current } = live.current.options;
+    if (hover && current) probe.ask(hover, current.radius);
     // Capture on the canvas: runs before the orbit controls (listening on its parent) see the press.
     canvas.addEventListener('pointerdown', down, { capture: true });
     canvas.addEventListener('pointerleave', leave);
