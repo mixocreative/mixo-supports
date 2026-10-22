@@ -52,7 +52,7 @@ function UnitTransformControls({ mode, object, onDraggingChanged, onCommit }: {
 export default function ObjectViewport(props: ObjectViewportProps) {
   const [dragging, setDragging] = useState(false);
   const [overBrush, setOverBrush] = useState(false);
-  const [activeGroup, setActiveGroup] = useState<THREE.Group | null>(null);
+  const [activeGroup, setActiveGroup] = useState<{ unitId: string; group: THREE.Group } | null>(null);
   const { scene } = props;
   const selected = new Set(scene.selectedUnitIds);
   const activeId = scene.activeUnitId;
@@ -106,9 +106,9 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       problems={props.problems.filter((problem) => problem.unitId === unit.id)}
       {...(unit.id === activeId ? { onGroup: setActiveGroup, onBrushOver: setOverBrush } : {})}
     />)}
-    {activeId && activeGroup && props.gesture.kind === 'none' && isTransformMode(props.gizmoMode) && <UnitTransformControls
+    {activeId && activeGroup?.unitId === activeId && props.gesture.kind === 'none' && isTransformMode(props.gizmoMode) && <UnitTransformControls
       mode={props.gizmoMode}
-      object={activeGroup}
+      object={activeGroup.group}
       onDraggingChanged={setDragging}
       onCommit={(transform) => props.onTransform(activeId, transform)}
     />}

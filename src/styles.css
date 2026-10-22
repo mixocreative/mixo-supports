@@ -113,6 +113,9 @@ h3 { display: flex; align-items: center; min-height: 26px; margin: 0 0 10px; pad
 .drop strong { font-size: 13px; font-weight: 500; letter-spacing: .04em; }
 .drop small, .help { font-size: 11.5px; line-height: 1.7; color: var(--muted); }
 .help { margin: 10px 0 0; }
+/* Open and Save project sit under the drop zone, as one row with it. */
+.project-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: -10px 0 18px; }
+.project-row button { margin: 0; }
 
 .segmented { display: flex; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
 .segmented button, .panel .segmented button {

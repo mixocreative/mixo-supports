@@ -13,6 +13,7 @@ describe('undoToast', () => {
     expect(undoToast(3, { kind: 'resetCustomised', count: 4 }).message).toMatchObject({ other: 'Reset {n} supports to the defaults.', vars: { n: 4 } });
     expect(undoToast(3, { kind: 'removeSupports', count: 1 }).message).toMatchObject({ key: 'Removed the supports of 1 object; the model and manual edits are kept.', vars: { n: 1 } });
     expect(undoToast(3, { kind: 'deleteObjects', count: 2 }).message).toMatchObject({ other: 'Deleted {n} objects.', vars: { n: 2 } });
+    expect(undoToast(3, { kind: 'openProject', name: 'knot.mixosupports' }).message).toEqual({ key: 'Opened {name}.', vars: { name: 'knot.mixosupports' } });
     expect(undoToast(3, { kind: 'clearSelection', ids: ['a', 'b'], unitId: 'u1' }).message).toEqual({
       key: 'Selection of 1 support cleared.', other: 'Selection of {n} supports cleared.', vars: { n: 2 },
     });

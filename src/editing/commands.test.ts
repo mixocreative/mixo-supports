@@ -174,6 +174,15 @@ describe('the header in a mode', () => {
     expect(resolve('history.undo', at({ mode: 'edit', canUndo: false })).disabledReason?.key).toBe('Nothing to undo here: leave the mode to undo earlier steps.');
   });
 
+  it('Save project needs an object, and Open project waits for the mode to be finished', () => {
+    expect(resolve('project.save', at({ units: 0 })).disabledReason?.key).toBe('Import a model first.');
+    expect(resolve('project.save', at({ units: 1 })).enabled).toBe(true);
+    expect(resolve('project.open', at({ mode: 'off', units: 0 })).enabled).toBe(true);
+    expect(resolve('project.open', at({ mode: 'edit' })).disabledReason?.key).toBe('Finish editing supports first: press Esc or Done.');
+    expect(resolve('project.open', at({ mode: 'zones' })).disabledReason?.key).toBe('Finish painting zones first: press Esc or Done.');
+    expect(resolve('history.undo', at({ undoStep: 'openProject' })).hint).toBe('Undo opening the project');
+  });
+
   it('Undo and Redo name the step they take back or bring back', () => {
     expect(resolve('history.undo', at({ undoStep: 'addSupport' })).hint).toBe('Undo adding a support');
     expect(resolve('history.redo', at({ redoStep: 'zones' })).hint).toBe('Redo the zone change');

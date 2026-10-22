@@ -12,6 +12,7 @@ export const COMMAND_IDS = [
   'view.models', 'view.wireframe', 'view.fit', 'view.bottom',
   'objects.selectAll', 'objects.delete',
   'transform.select', 'transform.move', 'transform.rotate',
+  'project.open', 'project.save',
   'supports.generate', 'supports.clearManual', 'supports.remove', 'check.run',
   'mode.edit', 'mode.zones', 'mode.exit',
   'zones.clearAll',
@@ -98,11 +99,11 @@ interface Command {
 
 const UNDO_HINTS: Record<StepKind, string> = {
   addObjects: 'Undo the import', deleteObjects: 'Undo deleting objects', generate: 'Undo generating supports', removeSupports: 'Undo removing the supports',
-  clearManual: 'Undo clearing manual edits', addSupport: 'Undo adding a support', deleteSupports: 'Undo deleting supports', zones: 'Undo the zone change', move: 'Undo moving the object', settings: 'Undo the settings change',
+  clearManual: 'Undo clearing manual edits', addSupport: 'Undo adding a support', deleteSupports: 'Undo deleting supports', zones: 'Undo the zone change', move: 'Undo moving the object', settings: 'Undo the settings change', openProject: 'Undo opening the project',
 };
 const REDO_HINTS: Record<StepKind, string> = {
   addObjects: 'Redo the import', deleteObjects: 'Redo deleting objects', generate: 'Redo generating supports', removeSupports: 'Redo removing the supports',
-  clearManual: 'Redo clearing manual edits', addSupport: 'Redo adding a support', deleteSupports: 'Redo deleting supports', zones: 'Redo the zone change', move: 'Redo moving the object', settings: 'Redo the settings change',
+  clearManual: 'Redo clearing manual edits', addSupport: 'Redo adding a support', deleteSupports: 'Redo deleting supports', zones: 'Redo the zone change', move: 'Redo moving the object', settings: 'Redo the settings change', openProject: 'Redo opening the project',
 };
 const editable = (s: UiState) => s.active && s.heavy === undefined;
 const always = () => true;
@@ -164,6 +165,14 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
   'transform.select': transformChoice('Select', 'Select objects without a gizmo'),
   'transform.move': transformChoice('Move', 'Move the active object with the gizmo', 'G'),
   'transform.rotate': transformChoice('Rotate', 'Rotate the active object with the gizmo', 'R'),
+  'project.open': {
+    role: 'secondary', label: () => 'Open project', hint: () => 'Open a .mixosupports project. It replaces the plate; Undo brings the previous plate back',
+    visible: always, enabled: (s) => s.mode === 'off', disabledReason: (s) => (s.mode === 'off' ? undefined : busyStatus(s.mode)),
+  },
+  'project.save': {
+    role: 'secondary', label: () => 'Save project', hint: () => 'Save the plate, supports and hand edits as a .mixosupports file. Models stay on this device',
+    visible: always, enabled: (s) => s.units > 0, disabledReason: (s) => (s.units > 0 ? undefined : noModelReason),
+  },
   'supports.generate': {
     role: 'primary',
     label: (s) => (s.generating ? 'Generating supports…' : s.generated ? 'Regenerate' : 'Generate supports'),

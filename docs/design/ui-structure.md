@@ -265,6 +265,7 @@ carries "{n} supports hidden by zones" **[new]**. The camera-above-plate note sh
 ### 3.1 Proposed order and why
 
 1. **Import models** — first step, always at the top.
+   Under it, one row with **Open project** and **Save project** (the file counterpart of Import; same lock in a mode). The format is the scene JSON under a `{ app: 'mixo-supports', version: 1 }` header, gzip-compressed where the browser can; opening an older or plain file works.
 2. **Objects** — what was imported; selection decides the scope of everything below.
 3. **Transform** — orient before generating (rotation changes placement).
 4. **Supports for {scope}** — Generate / Regenerate (the primary), Clear manual edits, Remove supports.
@@ -484,6 +485,8 @@ header Generate stays, it locks in modes.)
 | id | Label (copy) | Icon | Hint (copy) | Shortcut | Visible | Enabled | Role | Status |
 |---|---|---|---|---|---|---|---|---|
 | import.files | imp.title, imp.help | — | imp.hint | drop on viewport | always | mode = setup | secondary (drop zone) | today; viewport drop refused in a mode **[change]** |
+| project.open | Open project | — | Open a .mixosupports project. It replaces the plate; Undo brings the previous plate back | drop a .mixosupports file on the viewport | always | mode = setup (refused with the "Finish … first" line in a mode, like an import) | secondary | **[new]** |
+| project.save | Save project | — | Save the plate, supports and hand edits as a .mixosupports file | — | always | units > 0 ("Import a model first.") | secondary | **[new]** |
 | objects.row[i] | object letter, name, support count | — | obj.row.hint | Shift / Ctrl+click adds or removes | units > 0 | mode = setup | choice | today |
 | objects.selectAll | obj.selectAll | — | obj.selectAll.hint | — | always | units > 0 | secondary | today |
 | objects.delete | obj.delete | — | obj.delete.hint | Delete (setup) | always | selObj > 0 | destructive | role **[change]** |

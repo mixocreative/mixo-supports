@@ -17,7 +17,12 @@ export interface GlossaryEntry {
 }
 
 export const GLOSSARY: readonly GlossaryEntry[] = [
-  { concept: 'Support', en: /\bsupports?\b/i, zh: ['支撐'], ja: ['サポート'], avoid: { ja: ['個のサポート', 'サポートを 1 個'] } },
+  { concept: 'Support', en: /\bsupports?\b/i, zh: ['支撐'], ja: ['サポート'], avoid: { ja: ['個のサポート', 'サポートを 1 個'] }, except: [
+    // The app's own name, not the word.
+    'Mixo Supports project',
+    '{name} is not a Mixo Supports project. Choose a .mixosupports file, or use Import models for STL, GLB and glTF.',
+    '{name} was saved by a newer version of Mixo Supports (file version {v}; this one reads up to {max}). Update the app, then open it again.',
+  ] },
   { concept: 'Contact (point)', en: /\bcontacts?\b/i, zh: ['接觸'], ja: ['接触'] },
   { concept: 'Tip', en: /\btips?\b/i, zh: ['支撐頭', '接觸頭'], ja: ['先端'], avoid: { zh: ['僅頂端', '接觸頂端'] } },
   { concept: 'Pillar', en: /\bpillars?\b/i, zh: ['支撐柱'], ja: ['支柱'] },

@@ -18,6 +18,9 @@ function unitStep(before: PrintUnit, after: PrintUnit): StepKind | undefined {
 /** The kind of the step that took the scene from `before` to `after`, or undefined when none stands out. */
 export function stepKind(before: PrintScene | undefined, after: PrintScene | undefined): StepKind | undefined {
   if (!before || !after) return undefined;
+  const ids = new Set(before.units.map((unit) => unit.id));
+  // A project opened over objects shares none of their ids; an import keeps the ones already there.
+  if (before.units.length > 0 && after.units.length > 0 && !after.units.some((unit) => ids.has(unit.id))) return 'openProject';
   if (after.units.length > before.units.length) return 'addObjects';
   if (after.units.length < before.units.length) return 'deleteObjects';
   const previous = new Map(before.units.map((unit) => [unit.id, unit]));

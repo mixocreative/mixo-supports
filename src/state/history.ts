@@ -69,6 +69,11 @@ export function canUndo(history: SceneHistory, floor?: PrintScene): boolean {
   return history.past.length > 0 && history.present !== floor;
 }
 
+/** Opening a project: its (already normalised) scene replaces the present as one step, and Undo brings the previous one back. */
+export function replaceScene(history: SceneHistory, scene: PrintScene): SceneHistory {
+  return { past: [...history.past, history.present].slice(-HISTORY_LIMIT), present: scene, future: [] };
+}
+
 export function undoScene(history: SceneHistory): SceneHistory {
   const previous = history.past.at(-1);
   if (previous === undefined) return history;

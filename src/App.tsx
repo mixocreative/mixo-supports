@@ -29,8 +29,10 @@ import { isAbort, RUNTIME, triangleCount } from './components/appShared';
 import { useFixSpot } from './components/useFixSpot';
 import { useExport } from './components/useExport';
 import { useRegenerate } from './components/useRegenerate';
+import { useProjectFile } from './components/useProjectFile';
+import { isProjectFile } from './state/projectFile';
 import { hint } from './components/hint';
-import { cancelSceneEdit, canUndo as historyCanUndo, createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
+import { cancelSceneEdit, canUndo as historyCanUndo, createSceneHistory, redoScene, replaceScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
 import { gltfRawMeshes, placeImportedUnits } from './state/import';
 import { setDisplayMesh, setPrebuiltBvh } from './state/meshExtras';
 import { memoryInfo } from './state/runtime';
@@ -65,11 +67,12 @@ import UndoToast from './components/UndoToast';
 import type { BrushMode } from './editing/types';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
-type HistoryAction = { type: 'command'; command: SceneCommand; edit?: string } | { type: 'cancelEdit'; edit: string } | { type: 'undo' } | { type: 'redo' };
+type HistoryAction = { type: 'command'; command: SceneCommand; edit?: string } | { type: 'cancelEdit'; edit: string } | { type: 'undo' } | { type: 'redo' } | { type: 'replace'; scene: PrintScene };
 
 function historyReducer(history: SceneHistory, action: HistoryAction): SceneHistory {
   if (action.type === 'undo') return undoScene(history);
   if (action.type === 'redo') return redoScene(history);
+  if (action.type === 'replace') return replaceScene(history, action.scene);
   if (action.type === 'cancelEdit') return cancelSceneEdit(history, action.edit);
   return withSceneCommand(history, action.command, action.edit);
 }
@@ -502,6 +505,13 @@ export default function App() {
     }
   }, [dispatch, importer, send, setStatus]);
 
+  const replaceWith = useCallback((next: PrintScene) => dispatchHistory({ type: 'replace', scene: next }), []);
+  const refuseWhileBusy = useCallback((message: Message) => {
+    setPulse((current) => ({ panel: 'left', seq: current.seq + 1 }));
+    setStatusMessage(message);
+  }, []);
+  const { openProject, saveProject, chooseProject } = useProjectFile({ sceneRef, modeRef: sessionRef, replace: replaceWith, setStatusMessage, offerUndo, refused: refuseWhileBusy, scene });
+
   // ---- Commands ------------------------------------------------------------------------
   const forTargets = useCallback((make: (unit: PrintUnit) => SceneCommand | undefined, edit?: string) => {
     const commands = targets(sceneRef.current).map(make).filter((command): command is SceneCommand => command !== undefined);
@@ -763,17 +773,21 @@ export default function App() {
       case 'supports.clearManual': return clearManual();
       case 'supports.remove': return removeSupports();
       case 'check.run': return checkSupports();
+      case 'project.open': return chooseProject();
+      case 'project.save': return void saveProject();
       case 'view.fit': return requestView('fit');
       case 'view.bottom': return requestView('bottom');
       case 'zones.clearAll': return clearActiveZones();
       case 'export.active-printable': case 'export.active-supports': case 'export.separate-printable': case 'export.separate-supports': case 'export.whole-printable': return void runExport(exportKindOf(id));
     }
-  }, [checkSupports, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dispatch, generate, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo]);
+  }, [checkSupports, chooseProject, saveProject, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dispatch, generate, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
     setIsDraggingOver(false);
-    void importFiles([...event.dataTransfer.files]);
+    const files = [...event.dataTransfer.files];
+    const project = files.find((file) => isProjectFile(file.name));
+    void (project ? openProject(project) : importFiles(files));
   };
 
   const contactCounts = activeUnit ? {
@@ -850,6 +864,10 @@ export default function App() {
           <strong>{t('Import models')}</strong>
           <small>{t('STL, GLB or glTF. Files stay on this device.')}</small>
         </label>
+        <div className="project-row" {...(locked('import') ? { inert: '' } : {})}>
+          <CommandButton command={command('project.open')} run={runCommand} />
+          <CommandButton command={command('project.save')} run={runCommand} />
+        </div>
         <ObjectList
           scene={scene}
           supportCount={(unit) => unitContacts(unit, built.get(unit.id)?.mesh).length}

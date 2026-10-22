@@ -36,7 +36,8 @@ interface UnitObjectProps extends Pick<ObjectViewportProps,
   supports?: GeneratedSupportMesh;
   selected: boolean;
   active: boolean;
-  onGroup?: (group: THREE.Group | null) => void;
+  /** The unit's group, with the unit it belongs to, so a stale group of a removed unit is never taken for the active one. */
+  onGroup?: (group: { unitId: string; group: THREE.Group } | null) => void;
   /** A brush (Drag over circle, or the zone brush on the model) is over this object, reported for the canvas cursor. */
   onBrushOver?: (over: boolean) => void;
 }
@@ -115,8 +116,8 @@ export function UnitObject(props: UnitObjectProps) {
   const supportColor = props.selected ? '#b59f78' : '#c8b896';
   const setGroup = useCallback((group: THREE.Group | null) => {
     groupRef.current = group;
-    onGroup?.(group);
-  }, [onGroup]);
+    onGroup?.(group && { unitId: props.unit.id, group });
+  }, [onGroup, props.unit.id]);
   const { brushed, over: circleOver } = useScreenBrush({
     brush: switchBrush,
     supports,
