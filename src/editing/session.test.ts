@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SupportContact } from '../core/supports/mesh';
-import { initialSession, reduceSession, startsEditing, type EditSession, type SessionEvent } from './session';
+import { FIX_TOOL_EVENTS, initialSession, reduceSession, startsEditing, type EditSession, type SessionEvent } from './session';
 
 const contact = (id: string) => ({ id, position: [0, 0, 0], normal: [0, -1, 0] }) as unknown as SupportContact;
 const run = (state: EditSession, ...events: SessionEvent[]) => events.reduce(reduceSession, state);
@@ -142,5 +142,13 @@ describe('reduceSession: selection', () => {
     const pruned = reduceSession(selected, { type: 'contactsChanged', contacts: [contact('b'), contact('c')] });
     expect([...pruned.selection]).toEqual(['b']);
     expect(reduceSession(selected, { type: 'contactsChanged', contacts: [contact('a'), contact('b')] })).toBe(selected);
+  });
+});
+
+describe('Fix on a check finding', () => {
+  it('leaves the Add tool adding, whatever the tool and click action were', () => {
+    const removing = run(editing, { type: 'setAddAction', action: 'remove' });
+    expect(run(removing, ...FIX_TOOL_EVENTS)).toMatchObject({ tool: 'add', addAction: 'add' });
+    expect(run(selected, ...FIX_TOOL_EVENTS)).toMatchObject({ tool: 'add', addAction: 'add' });
   });
 });

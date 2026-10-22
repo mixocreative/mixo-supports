@@ -47,7 +47,7 @@ import { resolve, type CommandId, type UiState } from './editing/commands';
 import { keyAction } from './editing/keys';
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
 import { contactToRemove } from './editing/removal';
-import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
+import { FIX_TOOL_EVENTS, initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
 import { busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
 import { atSpot, checkStatus, coverRadius, exportStatus, joinRun, recheckStatus, runToken, tallyChecks, uncovered, type CheckTally, type FixSpot } from './editing/check';
@@ -616,7 +616,7 @@ export default function App() {
     // Inside Support Edit Mode on the same object the spot is framed and the Add tool waits for the click.
     if (mode === 'edit' && sceneRef.current.activeUnitId === unit.id) {
       fixSpot.current = spot;
-      send({ type: 'setTool', tool: 'add' });
+      FIX_TOOL_EVENTS.forEach(send);
       return setStatus('Click the framed spot to add a support.');
     }
     send({ type: 'leave' });
@@ -627,7 +627,7 @@ export default function App() {
     if (!editTarget || scene.activeUnitId !== editTarget.unitId) return;
     setEditTarget(undefined);
     send({ type: 'enterEdit' });
-    send({ type: 'setTool', tool: 'add' });
+    FIX_TOOL_EVENTS.forEach(send);
     fixSpot.current = editTarget.spot;
     setStatus('Click the framed spot to add a support.');
   }, [editTarget, scene.activeUnitId, send, setStatus]);

@@ -46,6 +46,9 @@ export const initialSession: EditSession = {
   selection: NO_SELECTION,
 };
 
+/** What Fix on a check finding sets: the Add tool with its click adding (a Remove left on would take supports away). */
+export const FIX_TOOL_EVENTS: readonly SessionEvent[] = [{ type: 'setTool', tool: 'add' }, { type: 'setAddAction', action: 'add' }];
+
 /**
  * `enterEdit` and `enterZones` start a mode from outside the modes, only for an active object that
  * takes hand edits (the modes never switch directly: exit first). `exit` is the one user exit from
