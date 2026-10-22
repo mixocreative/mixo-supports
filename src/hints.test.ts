@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SETTING_GROUPS } from './components/SettingsPanel';
 
-declare global {
-  interface ImportMeta {
-    glob<T>(patterns: string[], options: { query: string; import: string; eager: true }): Record<string, T>;
-  }
-}
-
 const SOURCES = import.meta.glob<string>(['./App.tsx', './components/SettingsPanel.tsx', './components/UndoToast.tsx'], { query: '?raw', import: 'default', eager: true });
 
 /** Every JSX opening tag `<name …>` in `code`, attributes included (braces may hold `>`). */

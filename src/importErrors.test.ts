@@ -5,12 +5,6 @@ import { weldRawMesh } from './state/import';
 import { codedJobError } from './workers/jobErrors';
 import { WorkerTaskError } from './workers/WorkerTask';
 
-declare global {
-  interface ImportMeta {
-    glob<T>(patterns: string[], options: { query: string; import: string; eager: true }): Record<string, T>;
-  }
-}
-
 const WORKER_CLIENTS = import.meta.glob<string>(['./workers/*Client.ts'], { query: '?raw', import: 'default', eager: true });
 
 // The import code and the worker clients (lane B owns them) still throw English messages;

@@ -32,12 +32,6 @@ describe('transformFromObject', () => {
   });
 });
 
-declare global {
-  interface ImportMeta {
-    glob<T>(patterns: string[], options: { query: string; import: string; eager: true }): Record<string, T>;
-  }
-}
-
 describe('canvas clicks use the live edit tool', () => {
   // The r3f tree renders a step behind the DOM: a click right after "Select supports" must not act
   // with the tool the canvas last rendered (editing/pick clickTool reads the session as it is now).

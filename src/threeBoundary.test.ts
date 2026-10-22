@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-declare global {
-  interface ImportMeta {
-    glob<T>(patterns: string[], options: { query: string; import: string; eager: true }): Record<string, T>;
-  }
-}
-
 // three.js stays in the view layer (src/components) so the rules and the core port to a Babylon.js
 // host. The glTF loader and the pick index are the listed exceptions (STL is read and welded without
 // three, src/core/import); tests may use three as a reference.

@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-declare global {
-  interface ImportMeta {
-    glob<T>(patterns: string[], options: { query: string; import: string; eager: true }): Record<string, T>;
-  }
-}
-
 /*
  * Shared heavy-mesh spec §5 contract: every job a client runs carries a human label (shown in the
  * job activity list), and every worker reports progress.

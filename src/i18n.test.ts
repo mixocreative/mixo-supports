@@ -4,12 +4,6 @@ import { CodedError, ERROR_CODES, ERROR_CONTEXTS, errorStatus } from './editing/
 import { undoToast } from './editing/toast';
 import { DICTIONARY, STAGE_KEYS, detectLanguage, plural, setLanguage, t, translateMessage } from './i18n';
 
-declare global {
-  interface ImportMeta {
-    glob<T>(patterns: string[], options: { query: string; import: string; eager: true }): Record<string, T>;
-  }
-}
-
 /** Source text of every non-test module, keyed './path'. */
 const SOURCES = import.meta.glob<string>(['./**/*.ts', './**/*.tsx', '!./**/*.test.ts', '!./**/*.test.tsx'], { query: '?raw', import: 'default', eager: true });
 const UI_FILES = ['./App.tsx', './components/SettingsPanel.tsx', './components/JobActivity.tsx', './components/ObjectViewport.tsx', './components/UndoToast.tsx', './editing/status.ts', './editing/errors.ts', './editing/toast.ts', './editing/check.ts', './editing/modeButtons.ts'];

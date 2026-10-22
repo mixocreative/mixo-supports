@@ -2,12 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { GLOSSARY, ZONE_ONLY_WORDS, ZONE_TEXTS } from './glossary';
 import { DICTIONARY } from './i18n';
 
-declare global {
-  interface ImportMeta {
-    glob<T>(patterns: string[], options: { query: string; import: string; eager: true }): Record<string, T>;
-  }
-}
-
 const GLOSSARY_MD = import.meta.glob<string>(['../docs/migration/glossary.md'], { query: '?raw', import: 'default', eager: true })['../docs/migration/glossary.md']!;
 const KEYS = Object.keys(DICTIONARY['zh-Hant']);
 /** Migration docs that name the UI's tool words. */

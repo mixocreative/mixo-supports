@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-declare global {
-  interface ImportMeta {
-    glob<T>(patterns: string[], options: { query: string; import: string; eager: true }): Record<string, T>;
-  }
-}
-
 // The support core and the editing rules must stay portable to a Babylon.js host (mixomesh):
 // no UI framework, no three.js, no DOM, no Vite-only syntax, no app state or app glue.
 const GLOBBED = import.meta.glob<string>(['./**/*.ts', './**/*.tsx', '../editing/**/*.ts', '../editing/**/*.tsx'], { query: '?raw', import: 'default', eager: true });

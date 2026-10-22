@@ -88,7 +88,7 @@ function screenBrushView(bodies: BodySegments, camera: THREE.Camera, scene: THRE
 }
 
 /** Dev builds time each frame of hit tests (read with performance.getEntriesByName('mixo-brush-frame')). */
-const measureBrushFrame = (import.meta as { env?: { DEV?: boolean } }).env?.DEV ? (start: number) => void performance.measure('mixo-brush-frame', { start }) : undefined;
+const measureBrushFrame = import.meta.env?.DEV ? (start: number) => void performance.measure('mixo-brush-frame', { start }) : undefined;
 
 /**
  * Drag over in screen space (hit rules: editing/screenBrush; frame loop: editing/brushScheduler):

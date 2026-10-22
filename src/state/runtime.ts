@@ -5,7 +5,7 @@ import type { Runtime } from '../core/budget';
  * VITE_RUNTIME=desktop), else 'web'.
  */
 export function detectRuntime(): Runtime {
-  if ((import.meta as { env?: Record<string, string | undefined> }).env?.VITE_RUNTIME === 'desktop') return 'desktop';
+  if (import.meta.env?.VITE_RUNTIME === 'desktop') return 'desktop';
   return typeof navigator !== 'undefined' && /\bElectron\//.test(navigator.userAgent) ? 'desktop' : 'web';
 }
 
