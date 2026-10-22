@@ -49,7 +49,7 @@ import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type L
 import { checkJobOf, currentBuild, currentBuilds, hiddenByZones, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { resolve, type CommandId, type UiState } from './editing/commands';
 import { effectiveBrushMode } from './editing/selection';
-import { keyAction, SHIFT_KEY } from './editing/keys';
+import { keyAction } from './editing/keys';
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
 import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
@@ -600,6 +600,7 @@ export default function App() {
     send({ type: 'toggleContact', id: contactId });
   }, [contactsOf, send]);
 
+  const onShift = useCallback((held: boolean) => send({ type: 'shift', held }), [send]);
   const onPaint = useCallback((unitId: string, ids: readonly string[], mode: BrushMode) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
     if (sessionRef.current.mode !== 'edit' || !unit || unit.id !== sceneRef.current.activeUnitId) return;
@@ -765,23 +766,6 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [runCommand, ui]);
-  // Shift held flips Drag over's Select | Unselect while it is down. A window losing focus never
-  // sends the key-up, so it counts as a release; a key repeat is not a new press (a click on the
-  // switch while Shift is down then stays the person's choice).
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === SHIFT_KEY && !event.repeat) send({ type: 'shift', held: event.type === 'keydown' });
-    };
-    const release = () => send({ type: 'shift', held: false });
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('keyup', onKey);
-    window.addEventListener('blur', release);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('keyup', onKey);
-      window.removeEventListener('blur', release);
-    };
-  }, [send]);
   const locked = (section: Parameters<typeof sectionLocked>[0]) => sectionLocked(section, editMode);
   /** Locked sections are inert, so a click on one falls through to its panel: say why and pulse the note. */
   const blockedClick = (panel: Panel) => (event: React.MouseEvent<HTMLElement>) => {
@@ -877,6 +861,7 @@ export default function App() {
           selection={selection}
           onToggleContact={onToggleContact}
           onPaint={onPaint}
+          onShift={onShift}
           onZoneStroke={onZoneStroke}
           problems={listedProblems}
           {...(focus ? { focus } : {})}

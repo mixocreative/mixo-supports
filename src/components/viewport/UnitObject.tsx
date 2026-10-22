@@ -27,7 +27,7 @@ function toVector(vector: THREE.Vector3): Vector {
 /** The viewport settings and callbacks one object takes, plus its own unit, supports and state. */
 interface UnitObjectProps extends Pick<ObjectViewportProps,
   | 'gesture' | 'liveTool' | 'selection' | 'tipsView' | 'modelVisible' | 'wireframe'
-  | 'onSelect' | 'onAddContact' | 'onRemoveContact' | 'onErase' | 'onEditMiss' | 'onToggleContact' | 'onPaint' | 'onZoneStroke'> {
+  | 'onSelect' | 'onAddContact' | 'onRemoveContact' | 'onErase' | 'onEditMiss' | 'onToggleContact' | 'onPaint' | 'onShift' | 'onZoneStroke'> {
   problems: readonly SupportProblem[];
   unit: PrintUnit;
   supports?: GeneratedSupportMesh;
@@ -56,6 +56,10 @@ export function UnitObject(props: UnitObjectProps) {
   const clickSelecting = gesture.kind === 'pick';
   /** Drag over settings, only while this object is the one edited. */
   const brush = editing && gesture.kind === 'drag' ? gesture.brush : undefined;
+  /** The same brush with the switch's own mode: the viewport adds Shift from the pointer. */
+  const switchRadius = brush?.radius;
+  const switchMode = editing && gesture.kind === 'drag' ? gesture.base : undefined;
+  const switchBrush = useMemo(() => (switchRadius !== undefined && switchMode ? { radius: switchRadius, mode: switchMode } : undefined), [switchRadius, switchMode]);
   /** Zone brush settings, only while this object's zones are painted. */
   const zoneBrush = zoning && gesture.kind === 'zones' ? gesture.brush : undefined;
   /** Stamps of the zone stroke in progress (the ref is what the stroke end hands on). */
@@ -110,12 +114,13 @@ export function UnitObject(props: UnitObjectProps) {
     onGroup?.(group);
   }, [onGroup]);
   const { brushed, over: circleOver } = useScreenBrush({
-    brush,
+    brush: switchBrush,
     supports,
     group: groupRef,
     selection: props.selection,
     stroke: brushStroke,
     beginStroke,
+    onShift: props.onShift,
     onPaint: (ids, mode) => props.onPaint(unit.id, ids, mode),
   });
   const brushOver = circleOver || Boolean(hover && zoneBrush);

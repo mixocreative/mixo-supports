@@ -1,6 +1,7 @@
 import type { Brush, BrushScheduler } from './brushScheduler';
 import type { Stroke } from './stroke';
 import type { Point } from './strokeQueue';
+import type { BrushMode } from './types';
 
 /**
  * A pointer move: whether the left button is held, whether the pointer is over the canvas, and
@@ -21,7 +22,8 @@ export interface DragOver {
   /**
    * A press: the left button starts a stroke (`onStrokeStart`) sampled first at `at`, when it
    * lands on the model or a support (`onObject`). False for other buttons and for a press on
-   * empty space, which is left to the camera: it orbits.
+   * empty space, which is left to the camera: it orbits. The stroke does what `brush.mode` says
+   * at the press, whatever the brush says on its later moves (Shift pressed mid-stroke changes nothing).
    */
   down(button: number, at: Point, brush: Brush, onObject: boolean): boolean;
   /**
@@ -36,6 +38,7 @@ export interface DragOver {
 }
 
 export function createDragOver(stroke: Stroke, scheduler: BrushScheduler, onStrokeStart: () => void): DragOver {
+  let latched: BrushMode = 'select';
   return {
     down(button, at, brush, onObject) {
       if (!onObject) {
@@ -43,6 +46,7 @@ export function createDragOver(stroke: Stroke, scheduler: BrushScheduler, onStro
         return false;
       }
       if (!stroke.begin(button)) return false;
+      latched = brush.mode;
       onStrokeStart();
       scheduler.press();
       scheduler.sample(at, brush);
@@ -54,7 +58,7 @@ export function createDragOver(stroke: Stroke, scheduler: BrushScheduler, onStro
         return false;
       }
       const state = stroke.move(held);
-      if (state === 'sample') scheduler.sample(at, brush);
+      if (state === 'sample') scheduler.sample(at, brush.mode === latched ? brush : { radius: brush.radius, mode: latched });
       else if (state === 'idle') scheduler.hover(at, brush);
       return true;
     },

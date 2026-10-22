@@ -236,6 +236,8 @@ export const ja: Dictionary = {
   'Drag over supports to unselect': 'サポートをなぞって選択解除',
   'Hold Shift to unselect': 'Shift を押している間は選択解除',
   'Hold Shift to select': 'Shift を押している間は選択',
+  'Release Shift to select': 'Shift を離すと選択に戻ります',
+  'Release Shift to unselect': 'Shift を離すと選択解除に戻ります',
   'Support Edit Mode: drag the circle over supports to unselect them. Supports hidden behind the model are skipped.': 'サポート編集モード：円をサポートの上でなぞって選択解除。モデルに隠れたサポートは解除されません。',
   'Deleted 1 support.': 'サポートを 1 本削除しました。',
   'Deleted {n} supports.': 'サポートを {n} 本削除しました。',

@@ -34,6 +34,8 @@ export interface ObjectViewportProps {
   onToggleContact: (unitId: string, contactId: string) => void;
   /** Drag over: the contacts whose supports the circle passed over (editing/screenBrush). */
   onPaint: (unitId: string, ids: readonly string[], mode: BrushMode) => void;
+  /** Drag over saw Shift down or up (the pointer's `shiftKey`): the Select | Unselect switch shows it. */
+  onShift: (held: boolean) => void;
   /** One finished zone stroke on a unit, stamps in unit-local space. */
   onZoneStroke: (unitId: string, stamps: ZoneStamp[]) => void;
   /** Support check findings to mark, positions in their unit's local frame. */

@@ -63,7 +63,7 @@ export function EditBar({ gesture, unitName, ui, clickReach, send, run }: {
             // The tool's own size, under it: shown only while Drag over is the way to select.
             under: gesture.kind === 'drag' && <div className="drag-under">
               <DragActionSwitch ui={ui} run={run} />
-              <span className="drag-shift-hint">{t(ui.dragAction === 'select' ? 'Hold Shift to unselect' : 'Hold Shift to select')}</span>
+              <span className="drag-shift-hint">{t(gesture.flipped ? (gesture.base === 'select' ? 'Release Shift to select' : 'Release Shift to unselect') : gesture.base === 'select' ? 'Hold Shift to unselect' : 'Hold Shift to select')}</span>
               <RangeField
                 layout="stack" label="Circle size" unit="{n} px" hint="Radius of the circle around the pointer, in screen pixels: supports it passes over are selected"
                 min={8} max={80} step={4} value={gesture.brush.radius}

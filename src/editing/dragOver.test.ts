@@ -148,6 +148,53 @@ function rig(options: { bodies?: BodySegments; hidden?: (x: number) => boolean }
   };
 }
 
+describe('Drag over: the stroke keeps the mode it started with', () => {
+
+  it('an unselect stroke stays an unselect stroke when the brush turns to select halfway', () => {
+    const view = rig();
+    view.stroke([5, 30], [95, 30], 2);
+    view.settle();
+    expect(view.selection.length).toBe(12);
+    view.setMode('unselect');
+    view.press([5, 30]);
+    view.frame();
+    view.setMode('select');
+    view.drag([50, 30]);
+    view.frame();
+    view.drag([95, 30]);
+    view.release();
+    view.settle();
+    expect(view.selection).toEqual([]);
+  });
+
+  it('a select stroke stays a select stroke when the brush turns to unselect halfway', () => {
+    const view = rig();
+    view.press([5, 30]);
+    view.frame();
+    view.setMode('unselect');
+    view.drag([50, 30]);
+    view.frame();
+    view.drag([95, 30]);
+    view.release();
+    view.settle();
+    expect(view.selection.length).toBe(12);
+    expect(view.log.some((line) => line.includes(' unselect '))).toBe(false);
+  });
+
+  it('a press on empty space starts no stroke whichever way the brush is set (an orbit, or a pan with Shift)', () => {
+    const view = rig();
+    for (const mode of ['select', 'unselect'] as const) {
+      view.setMode(mode);
+      expect(view.press([5, 30], false)).toBe(false);
+      view.drag([95, 30]);
+      view.release();
+    }
+    view.settle();
+    expect(view.selection).toEqual([]);
+    expect(view.log).toEqual([]);
+  });
+});
+
 describe('Drag over pipeline (characterization)', () => {
   it('a hover previews the supports under the circle, sliced over frames', () => {
     const view = rig();

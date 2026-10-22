@@ -240,6 +240,8 @@ export const zhHant: Dictionary = {
   'Drag over supports to unselect': '在支撐上拖曳以取消選取',
   'Hold Shift to unselect': '按住 Shift 可取消選取',
   'Hold Shift to select': '按住 Shift 可選取',
+  'Release Shift to select': '放開 Shift 即恢復選取',
+  'Release Shift to unselect': '放開 Shift 即恢復取消選取',
   'Support Edit Mode: drag the circle over supports to unselect them. Supports hidden behind the model are skipped.': '支撐編輯模式：拖曳圓圈經過支撐即可取消選取。被模型擋住的支撐不會被取消。',
   'Deleted 1 support.': '已刪除 1 個支撐。',
   'Deleted {n} supports.': '已刪除 {n} 個支撐。',

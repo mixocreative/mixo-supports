@@ -174,10 +174,17 @@ describe('Drag over: Select | Unselect and Shift', () => {
     expect(effective(run(unselecting, { type: 'shift', held: false }))).toBe('unselect');
   });
 
-  it('a press on the switch while Shift is down is the choice, and a key repeat is not a flip back', () => {
+  it('a press on the switch while Shift is down changes the switch only, and the flip stays on top of it', () => {
     const clicked = run(dragging, { type: 'shift', held: true }, { type: 'setBrushMode', mode: 'unselect' });
-    expect(effective(clicked)).toBe('unselect');
+    expect(clicked).toMatchObject({ brushMode: 'unselect', shiftHeld: true });
+    expect(effective(clicked)).toBe('select');
     expect(run(clicked, { type: 'shift', held: false })).toMatchObject({ brushMode: 'unselect', shiftHeld: false });
+  });
+
+  it('the drag gesture carries the switch and the flip apart, so the viewport can add the pointer own Shift', () => {
+    const held = gesture(run(dragging, { type: 'shift', held: true }));
+    expect(held).toMatchObject({ kind: 'drag', base: 'select', flipped: true, brush: { mode: 'unselect' } });
+    expect(gesture(dragging)).toMatchObject({ base: 'select', flipped: false, brush: { mode: 'select' } });
   });
 
   it('leaving the mode lets go of Shift, and Shift outside Support Edit Mode is ignored', () => {

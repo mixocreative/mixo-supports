@@ -7,6 +7,8 @@ import type { Vector } from '../../core/vec3';
 import { createBrushScheduler, type Brush, type FrameTest } from '../../editing/brushScheduler';
 import { createDragOver } from '../../editing/dragOver';
 import { createHoverProbe } from '../../editing/hoverProbe';
+import { takesText } from '../../editing/keys';
+import { effectiveBrushMode } from '../../editing/selection';
 import { bodySegments, brushHitsFrom, cachedVisibility, hiddenByModel, projectBodies, type BodySegments } from '../../editing/screenBrush';
 import type { Stroke } from '../../editing/stroke';
 import type { BrushMode } from '../../editing/types';
@@ -133,12 +135,15 @@ const measureBrushFrame = import.meta.env?.DEV ? (start: number) => void perform
  * on empty space orbits, and shows no circle); right and middle drags always orbit.
  */
 export function useScreenBrush(options: {
+  /** `mode` is the Select | Unselect switch; Shift flips it as the pointer reports it (`event.shiftKey`). */
   brush: Brush | undefined;
   supports: GeneratedSupportMesh | undefined;
   group: { current: THREE.Group | null };
   selection: ReadonlySet<string>;
   stroke: Stroke;
   beginStroke: () => void;
+  /** Whether Shift is down, as the latest pointer event or Shift key press saw it (the switch shows it). */
+  onShift: (held: boolean) => void;
   onPaint: (ids: readonly string[], mode: BrushMode) => void;
 }): { brushed: readonly string[]; over: boolean } {
   const gl = useThree((state) => state.gl);
@@ -154,6 +159,8 @@ export function useScreenBrush(options: {
   const refreshHover = useRef<() => void>(() => undefined);
   /** Where the pointer rests over the canvas, outside a stroke: a rebuild of the listeners (new supports) asks about it again. */
   const resting = useRef<readonly [number, number] | undefined>(undefined);
+  /** The latest `shiftKey` seen on a pointer event or a Shift key press: refreshed by each, never held across them. */
+  const shift = useRef(false);
   const live = useRef({ options, view });
   live.current = { options, view };
   // Outlives the support mesh: a rebuild mid-stroke keeps the queued samples.
@@ -173,6 +180,16 @@ export function useScreenBrush(options: {
   // Select ↔ Unselect (the switch, or Shift) with the pointer at rest: the circle and the preview redo at once.
   const mode = options.brush?.mode;
   useEffect(() => refreshHover.current(), [mode]);
+  // The brush going off (tool or mode changed): a re-enabled one starts with no resting spot and no Shift.
+  useEffect(() => {
+    if (!wanted) return;
+    const { onShift } = live.current.options;
+    return () => {
+      resting.current = undefined;
+      shift.current = false;
+      onShift(false);
+    };
+  }, [wanted]);
   useEffect(() => {
     scheduler.setSupports(bodies?.ids.length);
   }, [scheduler, bodies]);
@@ -196,6 +213,19 @@ export function useScreenBrush(options: {
       const root = live.current.options.group.current;
       return Boolean(root) && objectTest(root!, camera, { width: canvas.clientWidth, height: canvas.clientHeight }, at, radius);
     };
+    /** The brush as the pointer's Shift makes it; one object reused, so a move allocates nothing. */
+    const shifted: Brush = { radius: 0, mode: 'select' };
+    const shiftedBrush = (brush: Brush): Brush => {
+      shifted.radius = brush.radius;
+      shifted.mode = effectiveBrushMode(brush.mode, shift.current);
+      return shifted;
+    };
+    /** A stroke keeps the Shift it started with (its circle too); the next event after it sees the real one. */
+    const seeShift = (held: boolean) => {
+      if (options.stroke.active) return;
+      shift.current = held;
+      live.current.options.onShift(held);
+    };
     const show = ([x, y]: readonly [number, number], brush: Brush) => {
       setOver(true);
       circle.hidden = false;
@@ -216,22 +246,25 @@ export function useScreenBrush(options: {
       requestFrame: (run) => requestAnimationFrame(run),
       cancelFrame: (handle) => cancelAnimationFrame(handle),
       onAnswer: (onObject) => {
-        const { brush } = live.current.options;
-        if (!hover || !brush || options.stroke.active) return;
+        const { brush: base } = live.current.options;
+        if (!hover || !base || options.stroke.active) return;
+        const brush = shiftedBrush(base);
         if (dragOver.move(hover, { held: false, onCanvas: true, onObject }, brush)) show(hover, brush);
         else hide();
       },
     });
     refreshHover.current = () => {
-      const { brush } = live.current.options;
-      if (brush) circle.dataset.mode = brush.mode;
-      if (!hover || !brush || options.stroke.active) return;
+      const { brush: base } = live.current.options;
+      if (!hover || !base || options.stroke.active) return;
+      const brush = shiftedBrush(base);
       if (dragOver.move(hover, { held: false, onCanvas: true, onObject: probe.answer }, brush)) show(hover, brush);
       else hide();
     };
     const move = (event: PointerEvent) => {
-      const { brush } = live.current.options;
-      if (!brush) return;
+      const { brush: base } = live.current.options;
+      if (!base) return;
+      seeShift(event.shiftKey);
+      const brush = shiftedBrush(base);
       const at = locate(event);
       const held = (event.buttons & 1) !== 0;
       const onCanvas = event.target === canvas;
@@ -249,10 +282,19 @@ export function useScreenBrush(options: {
       else hide();
     };
     const down = (event: PointerEvent) => {
-      const { brush } = live.current.options;
-      if (!brush) return;
+      const { brush: base } = live.current.options;
+      if (!base) return;
+      options.stroke.end();
+      seeShift(event.shiftKey);
+      const brush = shiftedBrush(base);
       const at = locate(event);
       if (dragOver.down(event.button, at, brush, event.button === 0 && objectAt(at, brush.radius))) show(at, brush);
+    };
+    // Shift pressed or released with the pointer at rest: the circle and the preview redo. A key in a text field is not the brush's.
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== 'Shift' || takesText(event.target as HTMLElement | null)) return;
+      seeShift(event.shiftKey);
+      refreshHover.current();
     };
     const leave = () => {
       hover = undefined;
@@ -267,10 +309,14 @@ export function useScreenBrush(options: {
     canvas.addEventListener('pointerdown', down, { capture: true });
     canvas.addEventListener('pointerleave', leave);
     window.addEventListener('pointermove', move);
+    window.addEventListener('keydown', key);
+    window.addEventListener('keyup', key);
     return () => {
       canvas.removeEventListener('pointerdown', down, { capture: true });
       canvas.removeEventListener('pointerleave', leave);
       window.removeEventListener('pointermove', move);
+      window.removeEventListener('keydown', key);
+      window.removeEventListener('keyup', key);
       probe.reset();
       refreshHover.current = () => undefined;
       circle.remove();
