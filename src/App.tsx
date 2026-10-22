@@ -951,11 +951,10 @@ export default function App() {
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>
         {lockNoteOf('right')}
-        {activeUnit && <ShapeBand supports={bandCounts.supports} customised={bandCounts.customised} ui={ui} run={runCommand} />}
         {!activeUnit && <p className="help">{t('Select an object to edit its settings. Changes apply to every selected object.')}</p>}
         <SettingsPanel
           settings={activeSettings}
-          shape={{ selected: selectedIds.length, ...shapeRegion, onChange: onShapeChange, run: runCommand }}
+          shape={{ selected: selectedIds.length, ...shapeRegion, onChange: onShapeChange, run: runCommand, band: activeUnit && <ShapeBand supports={bandCounts.supports} customised={bandCounts.customised} ui={ui} run={runCommand} /> }}
           ui={ui}
           scope={activeUnit ? `${activeUnit.name}${selectedCount > 1 ? ` ${t('and {n} more', { n: selectedCount - 1 })}` : ''}` : t('Nothing selected')}
           deferPlacement={editMode === 'edit'}

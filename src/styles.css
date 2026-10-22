@@ -575,7 +575,7 @@ button.attention { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--blue); }
 @keyframes attention-pulse { 50% { box-shadow: 0 0 0 2px var(--paper), 0 0 0 6px var(--blue); } }
 
 /* ---- Right panel: shape band and region header ---------------------------- */
-.shape-band { position: sticky; top: -20px; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -20px -20px 14px; padding: 8px 20px; background: var(--paper); border-bottom: 1px solid var(--line); font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.shape-band { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .shape-band button { width: auto; margin: 0; padding: 3px 10px; flex: none; white-space: nowrap; }
 .shape-head { display: flex; align-items: center; gap: 8px; }
 .shape-head h3 { flex: 1; min-width: 0; }

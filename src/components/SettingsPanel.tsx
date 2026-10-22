@@ -1,4 +1,5 @@
 
+import type { ReactNode } from 'react';
 import type { LiveSupportSettings, PresetName, RoofMode, SettingKey, ShapeKey } from '../core/supports/settings';
 import { settingLimits } from '../core/supports/settings';
 import { resolve, type CommandId, type UiState } from '../editing/commands';
@@ -175,6 +176,8 @@ export interface ShapeRegion {
   /** A committed field value (the host writes it to the selection, or to the defaults). */
   onChange: <K extends SettingKey>(key: K, value: LiveSupportSettings[K], edit?: string) => void;
   run: (id: CommandId) => void;
+  /** The count line under the region header (ShapeBand). */
+  band?: ReactNode;
 }
 
 export interface SettingsPanelProps {
@@ -277,6 +280,7 @@ export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, d
         <h3>{t(heading.key, heading.vars)}</h3>
         {mixed && <CommandButton command={resolve('shape.reset', ui)} run={shape.run} />}
       </div>
+      {shape.band}
       {mixed && <p className="help">{t('Changes apply to the selected supports only.')}</p>}
       <fieldset className="settings" disabled={disabled}>{groups('shape')}</fieldset>
     </section>
