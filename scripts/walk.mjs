@@ -1,7 +1,8 @@
 // Browser walk: `npm run walk`. Starts Vite, drives headless Chromium through the editor on a fixture
 // model, prints PASS/FAIL lines with numbers, exits 1 on any FAIL, and always stops Vite.
 import { spawn, execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
@@ -190,7 +191,7 @@ function makeDriver(page) {
     /** Generates the supports; with `whileBuilding`, presses Drag over in the window where the first build is still running. */
     async generate(url, whileBuilding) {
       await page.goto(url);
-      await page.setInputFiles('input[type=file]', FIXTURE);
+      await page.setInputFiles('.drop input[type=file]', FIXTURE);
       await page.waitForFunction(() => document.body.innerText.includes('knot'), null, { timeout: 60000 });
       if (whileBuilding) await page.evaluate(() => { window.__meshDelay = 8000; });
       await page.locator('.panel.left .primary').first().click();
@@ -443,6 +444,68 @@ async function walk(url, scratch) {
     const fromBelow = await d.settle();
     check('a5 drag over from Bottom view: fixed selection count', fromBelow.selected === BASE.bottomSelected, `selected ${fromBelow.selected} (baseline ${BASE.bottomSelected})`);
     await d.exitMode();
+
+    // i. Save project, reload, Open it: the same work comes back; Open over objects is one Undo.
+    await d.enterDragOver();
+    await d.stroke([0.3, 0.5], [0.7, 0.5], 25);
+    await d.settle();
+    await page.keyboard.press('Delete');
+    await d.settled();
+    await d.exitMode();
+    const projectStats = async () => ({ ...(await d.counts()), customised: (await d.props()).customised, zones: (await d.props()).zones });
+    const leavePrompt = () => page.evaluate(() => { const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented; });
+    const before = await projectStats();
+    check('i1 the work to save has every kind of hand edit', before.manual > 0 && before.removed > 0 && before.customised > 0 && before.zones > 0, JSON.stringify(before));
+    const unsaved = await leavePrompt();
+    const download = page.waitForEvent('download', { timeout: 120000 });
+    await d.button('Save project').click();
+    const projectFile = path.join(scratch, 'knot.mixosupports');
+    const saved = await download;
+    await saved.saveAs(projectFile);
+    await d.settled();
+    const bytes = readFileSync(projectFile);
+    const raw = gunzipSync(bytes);
+    note(`project file ${saved.suggestedFilename()}: ${bytes.length} bytes gzip, ${raw.length} bytes plain`);
+    const header = JSON.parse(raw.toString('utf8').slice(0, 200).replace(/,"scene".*$/s, '}'));
+    check('i2 Save writes knot.mixosupports with the format header, and the leave prompt follows it',
+      saved.suggestedFilename() === 'knot.mixosupports' && header.app === 'mixo-supports' && header.version === 1 && unsaved === true && (await leavePrompt()) === false && (await d.status()) === 'Saved knot.mixosupports.',
+      `file ${saved.suggestedFilename()}, header ${JSON.stringify(header)}, prompt before the save ${unsaved}, status "${await d.status()}"`);
+
+    await page.goto(url);
+    await d.idle(1500);
+    const chooser = page.waitForEvent('filechooser');
+    await d.button('Open project').click();
+    await (await chooser).setFiles(projectFile);
+    await page.waitForFunction(() => /[1-9][\d,]* automatic/.test(document.querySelector('footer')?.innerText ?? ''), null, { timeout: 120000 });
+    await d.settled();
+    const after = await projectStats();
+    check('i3 Open after a reload: automatic, manual, removed, customised and zones are identical', JSON.stringify(after) === JSON.stringify(before), `before ${JSON.stringify(before)}, after ${JSON.stringify(after)}`);
+    check('i4 a freshly opened project has nothing unsaved', (await leavePrompt()) === false && (await d.status()) === 'Opened knot.mixosupports.', `status "${await d.status()}"`);
+
+    await page.goto(url);
+    await page.setInputFiles('.drop input[type=file]', FIXTURE);
+    await page.waitForFunction(() => document.body.innerText.includes('knot'), null, { timeout: 60000 });
+    await d.settled();
+    const chooser2 = page.waitForEvent('filechooser');
+    await d.button('Open project').click();
+    await (await chooser2).setFiles(projectFile);
+    await page.waitForFunction(() => document.querySelector('.undo-toast'), null, { timeout: 120000 });
+    await d.settled();
+    const over = await projectStats();
+    await page.locator('.undo-toast button').click();
+    await d.settled();
+    const undoneOpen = await projectStats();
+    check('i5 Open over an object offers Undo, and Undo restores the plate as it was',
+      over.auto === before.auto && undoneOpen.auto === 0 && undoneOpen.manual === 0 && undoneOpen.zones === 0 && (await page.locator('footer').innerText()).includes('1 object'),
+      `opened ${JSON.stringify(over)}, after Undo ${JSON.stringify(undoneOpen)}`);
+
+    const wrong = path.join(scratch, 'wrong.mixosupports');
+    writeFileSync(wrong, JSON.stringify({ app: 'mixo-supports', version: 99, scene: { units: [], selectedUnitIds: [] } }));
+    const chooser3 = page.waitForEvent('filechooser');
+    await d.button('Open project').click();
+    await (await chooser3).setFiles(wrong);
+    await d.idle(1000);
+    check('i6 a newer file is refused with a message and the plate stays', /newer version/.test(await d.status()) && (await page.locator('footer').innerText()).includes('1 object'), `status "${await d.status()}"`);
   } catch (error) {
     check('walk ran to the end', false, error.message);
     await page.screenshot({ path: path.join(scratch, 'walk-error.png') }).catch(() => {});
