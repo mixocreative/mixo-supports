@@ -427,7 +427,11 @@ export default function App() {
   const importFiles = useCallback(async (files: readonly File[]) => {
     // A mode owns the scene until it is finished: a dropped or chosen file waits.
     const refusal = importRefusal(sessionRef.current.mode);
-    if (refusal) return setStatusMessage(refusal);
+    if (refusal) {
+      // The refusal also pulses the left panel's lock note, which says why and how out.
+      setPulse((current) => ({ panel: 'left', seq: current.seq + 1 }));
+      return setStatusMessage(refusal);
+    }
     const accepted = files.filter(acceptModelFile);
     if (accepted.length === 0) return setStatusMessage(errorStatus('import', new CodedError('file-type', 'file-type')));
     /** The file being read, named in an error. */
@@ -951,7 +955,7 @@ export default function App() {
     <footer>
       <span>{plural(scene.units.length, '1 object', '{n} objects')}</span>
       {activeUnit && <span>{t('{n} triangles', { n: (activeUnit.source.indices.length / 3).toLocaleString() })}</span>}
-      {contactCounts && <span className={building(activeUnit!) ? 'building' : undefined} aria-busy={building(activeUnit!) || undefined}>{t('{auto} automatic, {manual} manual, {removed} removed', contactCounts)}</span>}
+      {contactCounts && <span className={building(activeUnit!) ? 'building' : undefined} aria-busy={building(activeUnit!) || undefined} {...hint('Automatic supports you removed by hand. Clear manual edits brings them back')}>{t('{auto} automatic, {manual} manual, {removed} removed', contactCounts)}</span>}
       {/* Announced to screen readers, so errors and step results are heard too. */}
       <strong role="status" aria-live="polite">{translateMessage(status)}</strong>
     </footer>

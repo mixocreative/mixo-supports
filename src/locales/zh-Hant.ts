@@ -453,9 +453,6 @@ export const zhHant: Dictionary = {
   'Lighter support geometry for faster viewport feedback; export always uses the full geometry': '使用較輕量的支撐幾何，讓視圖操作更流暢；匯出一律使用完整幾何',
   'Number of sides of each support cylinder. Higher is rounder and heavier': '每根支撐圓柱的邊數。越高越圓，面數也越多',
   'Extra tip snapping along the neck (SLASG). Usually leave off: contacts are already placed exactly on the surface, and this sinks tips deeper than Contact depth on curved faces': '沿頸部方向的額外支撐頭吸附（SLASG）。通常保持關閉：接觸點已精確放在表面上，開啟後在曲面上支撐頭會比接觸深度陷得更深',
-  'Chitubox Light support preset': 'Chitubox 輕型支撐預設組合',
-  'Chitubox Middle support preset': 'Chitubox 中型支撐預設組合',
-  'Chitubox Heavy support preset': 'Chitubox 重型支撐預設組合',
   'Values edited by hand': '手動調整的數值',
   'Chitubox support preset. Editing any value switches to Custom': 'Chitubox 支撐預設組合。修改任何數值都會切換為自訂',
   'No structure above the model': '模型上方不建任何結構',
@@ -535,4 +532,8 @@ export const zhHant: Dictionary = {
   'Edit the supports of {name}: add or remove them by clicking': '編輯 {name} 的支撐：點擊即可新增或移除',
   'Paint no-support zones on {name}, where automatic supports must not grow': '在 {name} 上塗刷免支撐區，自動支撐將不會在此區域生成',
   'No zones are painted yet.': '尚未塗刷任何免支撐區。',
+  'Chitubox Light support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back': 'Chitubox 輕型支撐預設：一次設定接觸點、頸部、支撐柱、底座、底筏、加強桿與樹狀支撐的數值。「復原」可一步還原。',
+  'Chitubox Middle support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back': 'Chitubox 中型支撐預設：一次設定接觸點、頸部、支撐柱、底座、底筏、加強桿與樹狀支撐的數值。「復原」可一步還原。',
+  'Chitubox Heavy support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back': 'Chitubox 重型支撐預設：一次設定接觸點、頸部、支撐柱、底座、底筏、加強桿與樹狀支撐的數值。「復原」可一步還原。',
+  'Automatic supports you removed by hand. Clear manual edits brings them back': '手動移除的自動支撐。「清除手動編輯」可將它們找回。',
 };

@@ -449,9 +449,6 @@ export const ja: Dictionary = {
   'Lighter support geometry for faster viewport feedback; export always uses the full geometry': '軽量なサポートジオメトリーで、ビューポートの反応を高速にします。書き出しは常に完全なジオメトリーを使用します',
   'Number of sides of each support cylinder. Higher is rounder and heavier': '各サポート円柱の辺の数。高いほど丸くなり、ポリゴン数も増えます',
   'Extra tip snapping along the neck (SLASG). Usually leave off: contacts are already placed exactly on the surface, and this sinks tips deeper than Contact depth on curved faces': 'ネックに沿った先端の追加スナップです（SLASG）。通常はオフのままにしてください。接触点は既に表面上に正確に配置されており、オンにすると曲面で先端が接触深さより深くめり込みます',
-  'Chitubox Light support preset': 'Chitubox のライトサポートプリセット',
-  'Chitubox Middle support preset': 'Chitubox のミドルサポートプリセット',
-  'Chitubox Heavy support preset': 'Chitubox のヘビーサポートプリセット',
   'Values edited by hand': '手動で編集した値',
   'Chitubox support preset. Editing any value switches to Custom': 'Chitubox のサポートプリセットです。値を変更するとカスタムに切り替わります',
   'No structure above the model': 'モデルの上に構造物を作りません',
@@ -531,4 +528,8 @@ export const ja: Dictionary = {
   'Edit the supports of {name}: add or remove them by clicking': '{name} のサポートを編集：クリックで追加・削除します',
   'Paint no-support zones on {name}, where automatic supports must not grow': '{name} 上のサポート禁止エリアを塗る：自動サポートはそこに立ちません',
   'No zones are painted yet.': '塗り済みのサポート禁止エリアはまだありません。',
+  'Chitubox Light support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back': 'Chitubox のライトサポートプリセット：接触点・ネック・支柱・基部・ラフト・補強材・ツリーの値をまとめて設定します。「元に戻す」で一度に戻せます',
+  'Chitubox Middle support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back': 'Chitubox のミドルサポートプリセット：接触点・ネック・支柱・基部・ラフト・補強材・ツリーの値をまとめて設定します。「元に戻す」で一度に戻せます',
+  'Chitubox Heavy support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back': 'Chitubox のヘビーサポートプリセット：接触点・ネック・支柱・基部・ラフト・補強材・ツリーの値をまとめて設定します。「元に戻す」で一度に戻せます',
+  'Automatic supports you removed by hand. Clear manual edits brings them back': '手動で削除した自動サポートです。「手動編集をクリア」で戻せます',
 };

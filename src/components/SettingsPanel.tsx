@@ -158,7 +158,11 @@ export const SETTING_GROUPS: Group[] = [
 export const PRESET_LABELS = { LIGHT: 'Light', MIDDLE: 'Middle', HEAVY: 'Heavy' } as const;
 export const ROOF_LABELS = { OFF: 'Off', ROOF: 'Roof', CAGE: 'Cage' } as const;
 /** Hover hints (i18n keys) of the preset and roof / cage buttons. */
-export const PRESET_HINTS = { LIGHT: 'Chitubox Light support preset', MIDDLE: 'Chitubox Middle support preset', HEAVY: 'Chitubox Heavy support preset' } as const;
+export const PRESET_HINTS = {
+  LIGHT: 'Chitubox Light support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back',
+  MIDDLE: 'Chitubox Middle support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back',
+  HEAVY: 'Chitubox Heavy support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back',
+} as const;
 export const ROOF_HINTS = {
   OFF: 'No structure above the model',
   ROOF: 'A flat roof above the model on columns down to the raft: a base to build other things on',
