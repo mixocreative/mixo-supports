@@ -118,7 +118,10 @@ function screenBrushView(bodies: BodySegments, camera: THREE.Camera, scene: THRE
     frame(): FrameTest | undefined {
       const projected = project();
       if (!projected) return undefined;
-      occluders = visibleOccluders();
+      const now = visibleOccluders();
+      // Hide / Show models changes what hides a support while the camera stands still: the remembered rays are stale then.
+      if (now.length !== occluders.length || now.some((occluder, index) => occluder.bvh !== occluders[index]!.bvh)) visibility.clear();
+      occluders = now;
       return (job, want, stop) => brushHitsFrom(job.next, bodies, projected, job.from, job.to, job.radius, visibility.isVisible, want, stop);
     },
   };
