@@ -5,6 +5,7 @@ import { MeshBVH } from 'three-mesh-bvh';
 import type { GeneratedSupportMesh } from '../../core/supports/mesh';
 import type { Vector } from '../../core/vec3';
 import { createBrushScheduler, type Brush, type FrameTest } from '../../editing/brushScheduler';
+import { createDragOver } from '../../editing/dragOver';
 import { bodySegments, brushHitsFrom, cachedVisibility, hiddenByModel, projectBodies, type BodySegments } from '../../editing/screenBrush';
 import type { Stroke } from '../../editing/stroke';
 import type { BrushMode } from '../../editing/types';
@@ -115,17 +116,22 @@ export function useScreenBrush(options: {
   const live = useRef({ options, view });
   live.current = { options, view };
   // Outlives the support mesh: a rebuild mid-stroke keeps the queued samples.
-  const [scheduler] = useState(() => createBrushScheduler({
-    frame: () => live.current.view?.frame(),
-    isSelected: (id) => live.current.options.selection.has(id),
-    commit: (ids, mode) => live.current.options.onPaint(ids, mode),
-    preview: setBrushed,
-    now: () => performance.now(),
-    requestFrame: (run) => requestAnimationFrame(run),
-    cancelFrame: (handle) => cancelAnimationFrame(handle),
-    ...(measureBrushFrame ? { measure: measureBrushFrame } : {}),
-  }));
-  useEffect(() => scheduler.setSupports(bodies?.ids.length), [scheduler, bodies]);
+  const [{ scheduler, dragOver }] = useState(() => {
+    const scheduler = createBrushScheduler({
+      frame: () => live.current.view?.frame(),
+      isSelected: (id) => live.current.options.selection.has(id),
+      commit: (ids, mode) => live.current.options.onPaint(ids, mode),
+      preview: setBrushed,
+      now: () => performance.now(),
+      requestFrame: (run) => requestAnimationFrame(run),
+      cancelFrame: (handle) => cancelAnimationFrame(handle),
+      ...(measureBrushFrame ? { measure: measureBrushFrame } : {}),
+    });
+    return { scheduler, dragOver: createDragOver(options.stroke, scheduler, () => live.current.options.beginStroke()) };
+  });
+  useEffect(() => {
+    scheduler.setSupports(bodies?.ids.length);
+  }, [scheduler, bodies]);
   useEffect(() => () => scheduler.setSupports(undefined), [scheduler]);
   useEffect(() => {
     if (!view) return;
@@ -135,45 +141,40 @@ export function useScreenBrush(options: {
     circle.className = 'brush-circle';
     circle.hidden = true;
     host.appendChild(circle);
-    const hide = () => {
-      canvas.style.cursor = '';
-      circle.hidden = true;
-      scheduler.clearHover();
-    };
-    /** Moves the circle to the pointer: its canvas point, or undefined when the pointer left the canvas outside a stroke. */
-    const place = (event: PointerEvent): [number, number] | undefined => {
-      const { brush, stroke } = live.current.options;
-      if (!brush) return undefined;
+    /** The pointer's canvas point and the canvas size it saw. */
+    const locate = (event: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
-      view.resize(rect.width, rect.height);
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      if (event.target !== canvas && !stroke.active) return void hide();
+      return { at: [event.clientX - rect.left, event.clientY - rect.top] as const, width: rect.width, height: rect.height };
+    };
+    const show = ([x, y]: readonly [number, number], brush: Brush) => {
       canvas.style.cursor = BRUSH_CURSOR.select;
       circle.hidden = false;
       circle.dataset.mode = brush.mode;
       circle.style.width = circle.style.height = `${brush.radius * 2}px`;
       circle.style.transform = `translate(${x - brush.radius}px, ${y - brush.radius}px)`;
-      return [x, y];
+    };
+    const hide = () => {
+      canvas.style.cursor = '';
+      circle.hidden = true;
     };
     const move = (event: PointerEvent) => {
-      const at = place(event);
-      if (!at) return;
-      const { brush, stroke } = live.current.options;
-      const state = stroke.move((event.buttons & 1) !== 0);
-      if (state === 'sample') scheduler.sample(at, brush!);
-      else if (state === 'idle') scheduler.hover(at, brush!);
+      const { brush } = live.current.options;
+      if (!brush) return;
+      const { at, width, height } = locate(event);
+      view.resize(width, height);
+      if (dragOver.move(at, { held: (event.buttons & 1) !== 0, onCanvas: event.target === canvas }, brush)) show(at, brush);
+      else hide();
     };
     const down = (event: PointerEvent) => {
-      const { brush, stroke, beginStroke } = live.current.options;
-      if (!brush || !stroke.begin(event.button)) return;
-      beginStroke();
-      scheduler.press();
-      const at = place(event);
-      if (at) scheduler.sample(at, brush);
+      const { brush } = live.current.options;
+      if (!brush) return;
+      const { at, width, height } = locate(event);
+      if (!dragOver.down(event.button, at, brush)) return;
+      view.resize(width, height);
+      show(at, brush);
     };
     const leave = () => {
-      if (!live.current.options.stroke.active) hide();
+      if (dragOver.leave()) hide();
     };
     // Capture on the canvas: runs before the orbit controls (listening on its parent) see the press.
     canvas.addEventListener('pointerdown', down, { capture: true });
@@ -186,6 +187,6 @@ export function useScreenBrush(options: {
       circle.remove();
       canvas.style.cursor = '';
     };
-  }, [view, gl, scheduler]);
+  }, [view, gl, dragOver]);
   return bodies ? brushed : [];
 }

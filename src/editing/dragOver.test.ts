@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Vector } from '../core/vec3';
 import { createBrushScheduler, type Brush, type FrameTest } from './brushScheduler';
+import { createDragOver } from './dragOver';
 import { brushHitsFrom, cachedVisibility, projectBodies, type BodySegments } from './screenBrush';
 import { createStroke } from './stroke';
 import type { BrushMode } from './types';
@@ -37,8 +38,10 @@ function row(entries: Record<string, number>): BodySegments {
 const PILLARS = Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`s${index}`, -27.5 + index * 5]));
 
 /**
- * The viewport's side of Drag over, scripted: what useScreenBrush does around the scheduler. `log`
- * records every selection commit and every hover preview change, per frame.
+ * The viewport's side of Drag over: the real pointer rules (`createDragOver`) and scheduler, with
+ * the host's hit test, selection, clock and frames faked. Pointer events reach them only while
+ * the host listens (a brush and supports to test). `log` records every selection commit and every
+ * hover preview change, per frame.
  */
 function rig(options: { bodies?: BodySegments; hidden?: (x: number) => boolean } = {}) {
   let clock = 0;
@@ -103,26 +106,19 @@ function rig(options: { bodies?: BodySegments; hidden?: (x: number) => boolean }
     // React renders the committed selection before the next frame.
     selection = new Set(committed);
   };
-  const move = (at: Point, held: boolean, onCanvas = true) => {
-    if (!view || !brush) return;
-    if (!onCanvas && !stroke.active) return scheduler.clearHover();
-    const state = stroke.move(held);
-    if (state === 'sample') scheduler.sample(at, brush);
-    else if (state === 'idle') scheduler.hover(at, brush);
-  };
+  const dragOver = createDragOver(stroke, scheduler, () => {});
+  /** True when the circle shows at `at`. */
+  const move = (at: Point, held: boolean, onCanvas = true) => Boolean(view && brush && dragOver.move(at, { held, onCanvas }, brush));
   return {
     log,
     get selection() { return [...selection].sort(); },
     get preview() { return preview; },
-    hover(at: Point) { move(at, false); },
-    offCanvas(at: Point) { move(at, false, false); },
-    leave() { if (view && !stroke.active) scheduler.clearHover(); },
-    press(at: Point) {
-      if (!view || !brush || !stroke.begin(0)) return;
-      scheduler.press();
-      scheduler.sample(at, brush);
-    },
-    drag(at: Point) { move(at, true); },
+    hover(at: Point) { return move(at, false); },
+    offCanvas(at: Point) { return move(at, false, false); },
+    /** True when the circle hides. */
+    leave() { return Boolean(view && dragOver.leave()); },
+    press(at: Point) { if (view && brush) dragOver.down(0, at, brush); },
+    drag(at: Point) { return move(at, true); },
     release() { stroke.end(); },
     /** A straight drag in `moves` pointer steps, one frame after each. */
     stroke(from: Point, to: Point, moves: number) {
@@ -299,5 +295,17 @@ describe('Drag over pipeline (characterization)', () => {
     view.release();
     view.settle();
     expect(view.selection).toEqual(PILLARS && Object.keys(PILLARS).sort());
+  });
+
+  it('the circle hides off the canvas outside a stroke and follows the pointer through one', () => {
+    const view = rig();
+    expect(view.hover([50, 30])).toBe(true);
+    expect(view.offCanvas([150, 30])).toBe(false);
+    expect(view.leave()).toBe(true);
+    view.press([5, 30]);
+    expect(view.leave()).toBe(false);
+    expect(view.drag([150, 30])).toBe(true);
+    view.release();
+    expect(view.offCanvas([150, 30])).toBe(false);
   });
 });
