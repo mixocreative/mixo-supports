@@ -74,6 +74,6 @@ const CONTACT_KIND: Record<SupportPoint['source'], NonNullable<SupportContact['k
  */
 export function jobContacts(inputs: ContactInputs, settings: Pick<LiveSupportSettings, 'eraseRadius' | 'scatterSpacing'>): SupportContact[] {
   return composeContacts(inputs.points, inputs.manual, inputs.suppressed, settings.eraseRadius, inputs.deleted, settings.scatterSpacing / 2)
-    .map(({ id, position, normal, source }) => ({ id, position, normal, kind: CONTACT_KIND[source], tree: !id.startsWith('manual-') }))
-    .filter((contact) => !contact.tree || !zonedAt(inputs.zones, contact.position, contact.normal));
+    .map(({ id, position, normal, source }) => ({ id, position, normal, kind: CONTACT_KIND[source], origin: id.startsWith('manual-') ? 'manual' as const : 'auto' as const }))
+    .filter((contact) => contact.origin === 'manual' || !zonedAt(inputs.zones, contact.position, contact.normal));
 }

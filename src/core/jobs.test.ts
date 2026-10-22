@@ -10,9 +10,9 @@ const inputs = (overrides: Partial<ContactInputs> = {}): ContactInputs => ({ poi
 describe('jobContacts', () => {
   it('lists automatic then manual contacts with their SLASG class; manual ones never join trees', () => {
     expect(jobContacts(inputs(), settings)).toEqual([
-      { id: 'auto-0', position: [0, 0, 0], normal: [0, -1, 0], kind: 'face', tree: true },
-      { id: 'auto-1', position: [10, 0, 0], normal: [0, -1, 0], kind: 'vertical', tree: true },
-      { id: 'manual-a', position: [20, 0, 0], normal: [0, -1, 0], kind: 'face', tree: false },
+      { id: 'auto-0', position: [0, 0, 0], normal: [0, -1, 0], kind: 'face', origin: 'auto' },
+      { id: 'auto-1', position: [10, 0, 0], normal: [0, -1, 0], kind: 'vertical', origin: 'auto' },
+      { id: 'manual-a', position: [20, 0, 0], normal: [0, -1, 0], kind: 'face', origin: 'manual' },
     ]);
   });
 

@@ -67,7 +67,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     position: transformPoint(frame, contact.position),
     normal: transformDirection(frame, contact.normal),
     ...(contact.kind ? { kind: contact.kind } : {}),
-    ...(contact.tree === false ? { tree: false } : {}),
+    ...(contact.origin === 'manual' ? { origin: 'manual' as const } : {}),
   }));
   const model = applyTransform(job.mesh, frame);
   const mesh = buildSupportMesh(contacts, settings, {

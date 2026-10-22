@@ -61,7 +61,7 @@ describe('buildSupportMesh: a column landing in a no-support zone', () => {
   });
 
   it('never drops a manual support; it still lands in the zone', () => {
-    const manual: SupportContact = { ...tilted, id: 'manual-shelf', tree: false };
+    const manual: SupportContact = { ...tilted, id: 'manual-shelf', origin: 'manual' };
     const mesh = build([paint(real)], {}, [manual]);
     expect(mesh.dropped).toEqual([]);
     expect(builtIds(mesh).has('manual-shelf')).toBe(true);
@@ -86,7 +86,7 @@ describe('buildSupportMesh: an Auto Tree landing in a no-support zone', () => {
   // make a tree that does not reach the post.
   const model = boxes([[-12, 30, -12], [12, 34, 12]], [[-0.5, 5, -0.5], [0.5, 25, 0.5]]);
   const settings = { ...defaultSupportSettings, roofSeededModes: [], scatterAutoTree: true, lowPolyMode: true } as LiveSupportSettings;
-  const contacts: SupportContact[] = [-0.9, 0.9, 7.1, 8.9].map((x) => ({ id: `auto-${x}`, position: [x, 30, 0], normal: [0, -1, 0], tree: true }));
+  const contacts: SupportContact[] = [-0.9, 0.9, 7.1, 8.9].map((x) => ({ id: `auto-${x}`, position: [x, 30, 0], normal: [0, -1, 0], origin: 'auto' }));
   const ray = lineTarget(model, settings);
   const landed = autoTrees(contacts, settings, model).flatMap(({ tree }) => {
     const hit = treeLanding(tree, settings, ray).hit;

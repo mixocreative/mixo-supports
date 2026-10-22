@@ -13,8 +13,8 @@ export type Point2 = [number, number];
 /** A support contact in build-plate space: Y is up and the plate is y = 0 (mm). */
 export interface SupportContact {
   id: string;
-  /** False for manual contacts, which never merge into Auto Tree branches. */
-  tree?: boolean;
+  /** Manual contacts never merge into Auto Tree branches and ignore zones. Unset means automatic. */
+  origin?: 'auto' | 'manual';
   position: Vector;
   /** Model surface normal at the contact, pointing out of the model. */
   normal: Vector;
@@ -173,7 +173,7 @@ export function buildSupportMesh(
     if (!column) return;
     // A tips-only preview casts no landing for its geometry, so it casts one for the zone test alone.
     // Tree members are tested at their junction above, also when a tips-only preview draws them as columns.
-    if (zones && contact.tree !== false && !inTree.has(index) && zoned(tipOnly ? columnLanding(contact, settings, ray).hit : column.landing)) {
+    if (zones && contact.origin !== 'manual' && !inTree.has(index) && zoned(tipOnly ? columnLanding(contact, settings, ray).hit : column.landing)) {
       dropped.add(index);
       return;
     }
