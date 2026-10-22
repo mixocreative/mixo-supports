@@ -255,8 +255,10 @@ export function useScreenBrush(options: {
     });
     refreshHover.current = () => {
       const { brush: base } = live.current.options;
-      if (!hover || !base || options.stroke.active) return;
+      if (!base || options.stroke.active) return;
       const brush = shiftedBrush(base);
+      circle.dataset.mode = brush.mode;
+      if (!hover) return;
       if (dragOver.move(hover, { held: false, onCanvas: true, onObject: probe.answer }, brush)) show(hover, brush);
       else hide();
     };
