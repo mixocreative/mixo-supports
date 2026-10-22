@@ -18,6 +18,7 @@ import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
 import { EditBar } from './components/EditBar';
 import { ModeSections, ViewportEditToggle } from './components/ModeEntry';
+import { ObjectList } from './components/ObjectList';
 import { ProblemList } from './components/ProblemList';
 import { ZonesBar } from './components/ZonesBar';
 import { Segmented } from './components/Segmented';
@@ -817,26 +818,14 @@ export default function App() {
           <strong>{t('Import models')}</strong>
           <small>{t('STL, GLB or glTF. Files stay on this device.')}</small>
         </label>
-        <section>
-          <h3>{t('Objects')}{scene.units.length > 0 && <small className="count">{scene.units.length}</small>}</h3>
-          {scene.units.length === 0 ? <p className="help">{t('Each STL, and each mesh inside a glTF, becomes its own object.')}</p> : <ul className="units">
-            {scene.units.map((unit, index) => {
-              const selected = scene.selectedUnitIds.includes(unit.id);
-              return <li key={unit.id}>
-                <button className={`unit${selected ? ' selected' : ''}${unit.id === scene.activeUnitId ? ' active' : ''}`} onClick={(event) => onSelect(unit.id, event.shiftKey || event.ctrlKey || event.metaKey)} {...hint('Click to select; Shift+click or Ctrl+click adds it to the selection or takes it out')}>
-                  <b>{resolveSettings(unit.settings).labelText || labelForIndex(index)}</b>
-                  <span title={unit.name}>{unit.name}</span>
-                  {/* Compact row: the support count alone, spelled out on hover. */}
-                  <small className={building(unit) ? 'building' : undefined} aria-busy={building(unit) || undefined} title={unit.supports ? plural(unitContacts(unit, built.get(unit.id)?.mesh).length, '1 support', '{n} supports') : t('No supports yet')}>{unit.supports ? unitContacts(unit, built.get(unit.id)?.mesh).length : '–'}</small>
-                </button>
-              </li>;
-            })}
-          </ul>}
-          <div className="row">
-            <button onClick={() => dispatch({ type: 'selection/set', unitIds: scene.units.map((unit) => unit.id), ...(scene.units[0] ? { activeUnitId: scene.activeUnitId ?? scene.units[0].id } : {}) })} disabled={scene.units.length === 0} {...hint('Select every object')}>{t('Select all')}</button>
-            <button onClick={deleteUnits} disabled={selectedCount === 0} {...hint('Delete the selected objects (Delete key). Undo brings them back')}>{t('Delete')}</button>
-          </div>
-        </section>
+        <ObjectList
+          scene={scene}
+          supportCount={(unit) => unitContacts(unit, built.get(unit.id)?.mesh).length}
+          building={building}
+          onSelect={onSelect}
+          onSelectAll={() => dispatch({ type: 'selection/set', unitIds: scene.units.map((unit) => unit.id), ...(scene.units[0] ? { activeUnitId: scene.activeUnitId ?? scene.units[0].id } : {}) })}
+          onDelete={deleteUnits}
+        />
         <section>
           <h3>{t('Transform')}</h3>
           <Segmented value={gizmoMode} onChange={setGizmoMode} disabled={editMode !== 'off'} options={[
