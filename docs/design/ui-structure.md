@@ -92,7 +92,7 @@ React implementer of the layout brush-up, the Babylon.js porter (mixomesh), and 
 section 10). It defines the structure; the behaviour spec defines the gestures.
 
 **Audience of the app.** Lay resin printers: they know "supports", "raft", "overhang" from their
-slicer (Chitubox, Lychee), not 3D-editor jargon. They print one or a few models, want automatic
+resin slicer, not 3D-editor jargon. They print one or a few models, want automatic
 supports, then fix a few spots by hand. They must never be unsure which mode they are in or how to
 get out.
 

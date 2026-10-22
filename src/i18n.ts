@@ -2,7 +2,7 @@
  * UI language: English, Traditional Chinese (Taiwan) or Japanese. English text is the key;
  * a missing translation falls back to it. The choice is remembered in localStorage; without
  * one the browser language decides. Terms follow the Blender add-on (mixo3d/i18n_dict.py) and
- * Chitubox's own wording. The translations live in src/locales, one file per language.
+ * common slicer wording. The translations live in src/locales, one file per language.
  */
 import { ja } from './locales/ja';
 import { zhHant } from './locales/zh-Hant';

@@ -50,7 +50,7 @@ Scans the model for islands and overhangs that no support reaches and lists each
 ### Import and export
 - Import **STL**, **GLB** and **glTF**. STL is read Z-up, the same as your slicer.
 - Export **STL**: the active object or each object, with or without the model, or the whole plate in one file.
-- The exported file loads straight into Chitubox, Lychee, PrusaSlicer, UVtools and other resin slicers.
+- The exported file loads straight into common resin slicers.
 
 ### Phone, tablet and three languages
 
@@ -115,4 +115,4 @@ Found a model that supports badly, or want a feature? [Open an issue](https://gi
 
 ---
 
-<sub>Keywords: resin 3D printing, SLA supports, MSLA, DLP, LCD resin printer, auto supports, tree supports, support generator, STL support editor, free Chitubox and Lychee alternative, browser 3D print prep, Elegoo, Anycubic, Phrozen, Formlabs, miniatures, tabletop, jewelry.</sub>
+<sub>Keywords: resin 3D printing, SLA supports, MSLA, DLP, LCD resin printer, auto supports, tree supports, support generator, STL support editor, free resin slicer companion, browser 3D print prep, Elegoo, Anycubic, Phrozen, Formlabs, miniatures, tabletop, jewelry.</sub>

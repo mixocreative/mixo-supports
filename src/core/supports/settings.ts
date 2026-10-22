@@ -9,9 +9,9 @@ export type PresetName = 'LIGHT' | 'MIDDLE' | 'HEAVY';
 export type SupportPreset = PresetName | 'CUSTOM';
 export type RoofMode = 'OFF' | 'ROOF' | 'CAGE';
 export type PreviewMode = 'FULL' | 'ONLY_TIP';
-/** What touches the model: a Contact Ø sphere (Chitubox Sphere) or the tip itself (Chitubox None). */
+/** What touches the model: a Contact Ø sphere or the tip itself. */
 export type ContactShape = 'NONE' | 'SPHERE';
-/** Cross-section of the tip (Lychee tip types): round, square or a "+" of two plates. */
+/** Cross-section of the tip: round, square or a "+" of two plates. */
 export type TipSection = 'ROUND' | 'SQUARE' | 'CROSS';
 /** Tapered narrows from Middle Ø to the contact end (cone, pyramid); Straight keeps the end Ø. */
 export type TipProfile = 'TAPERED' | 'STRAIGHT';
@@ -22,7 +22,7 @@ export type LiveSupportSettings = {
   contactShape: ContactShape;
   /** Diameter of the tip end touching the model when Contact shape is None. */
   pointDiameter: number;
-  /** How far that tip end sinks into the model so it fuses (Lychee: Penetration); None only. */
+  /** How far that tip end sinks into the model so it fuses; None only. */
   pointDepth: number;
   tipSection: TipSection;
   /** Width of each plate of a Cross tip, in % of the tip Ø. */

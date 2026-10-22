@@ -47,9 +47,9 @@ export const SETTING_GROUPS: Group[] = [
   {
     title: 'Auto placement', open: true, fields: [
       mm('scatterSpacing', 'Support spacing', 0.1, 'Distance between automatic contacts; smaller is denser'),
-      deg('scatterAngle', 'Overhang angle', 'Downward faces tilted less than this from horizontal get automatic supports. Higher means more supports, lower means fewer (Chitubox: Angle)'),
+      deg('scatterAngle', 'Overhang angle', 'Downward faces tilted less than this from horizontal get automatic supports. Higher means more supports, lower means fewer'),
       bool('scatterFacingDown', 'Downward faces', 'Place contacts on overhanging, downward-facing areas'),
-      bool('scatterIslands', 'Islands', 'Support the lowest point of every unconnected island (Chitubox: Islands)'),
+      bool('scatterIslands', 'Islands', 'Support the lowest point of every unconnected island'),
       bool('reinforceOverhangEdges', 'Reinforce overhang edges', 'Add evenly spaced contacts just inside sharp edges and boundaries of downward overhangs'),
       deg('scatterRidgeAngle', 'Ridge angle', 'Creases inside an overhang that bend more than this get a line of supports. Lower means more creases are supported, higher means fewer. With Reinforce overhang edges off, it picks the ridge points instead'),
       bool('scatterAutoTree', 'Tree supports', 'Merge nearby supports into branching trees'),
@@ -65,45 +65,45 @@ export const SETTING_GROUPS: Group[] = [
   },
   {
     title: 'Contact tip', open: true, region: 'shape', fields: [
-      { kind: 'choice', key: 'contactShape', label: 'Contact shape', hint: 'None: the tip itself touches the model. Sphere: a Contact Ø ball at the tip (Chitubox)', options: [{ value: 'NONE', label: 'None' }, { value: 'SPHERE', label: 'Sphere' }] },
-      { kind: 'choice', key: 'tipSection', label: 'Tip section', hint: 'Cross-section of the tip (Lychee: tip type)', options: [{ value: 'ROUND', label: 'Round' }, { value: 'SQUARE', label: 'Square' }, { value: 'CROSS', label: 'Cross' }] },
+      { kind: 'choice', key: 'contactShape', label: 'Contact shape', hint: 'None: the tip itself touches the model. Sphere: a Contact Ø ball at the tip', options: [{ value: 'NONE', label: 'None' }, { value: 'SPHERE', label: 'Sphere' }] },
+      { kind: 'choice', key: 'tipSection', label: 'Tip section', hint: 'Cross-section of the tip', options: [{ value: 'ROUND', label: 'Round' }, { value: 'SQUARE', label: 'Square' }, { value: 'CROSS', label: 'Cross' }] },
       { kind: 'number', key: 'tipCrossWidth', label: 'Plate width', unit: '%', step: 5, hint: 'Width of each plate of a Cross tip, in % of the tip Ø', when: (settings) => settings.tipSection === 'CROSS' },
       { kind: 'choice', key: 'tipProfile', label: 'Tip profile', hint: 'Tapered narrows to the contact (cone, pyramid); Straight keeps the contact Ø along the tip', options: [{ value: 'TAPERED', label: 'Tapered' }, { value: 'STRAIGHT', label: 'Straight' }] },
       { ...mm('pointDiameter', 'Point Ø', 0.05, 'Diameter of the tip end touching the model'), when: (settings) => !sphere(settings) },
-      { ...mm('touchDiameter', 'Contact Ø', 0.05, 'Diameter of the contact tip where the support touches the model (Chitubox: Contact Ø)'), when: sphere },
+      { ...mm('touchDiameter', 'Contact Ø', 0.05, 'Diameter of the contact tip where the support touches the model'), when: sphere },
       { ...mm('pointDepth', 'Penetration', 0.05, 'How far the tip end sinks into the model so it fuses with it'), when: (settings) => !sphere(settings) },
-      { ...mm('touchDepth', 'Contact depth', 0.05, 'Extra depth of the contact into the model. At 0 the ball is centred on the surface, so it already sinks by half its Ø. Negative pulls it back; below minus half the Contact Ø it no longer touches the model (Chitubox: Contact Depth)'), when: sphere },
-      { ...mm('neckDiameter', 'Upper Ø', 0.05, 'Narrowest diameter of the neck below the contact (Chitubox: Upper Ø)'), when: sphere },
-      mm('neckLength', 'Connection length', 0.1, 'Length of the thin neck between the tip and the pillar (Chitubox: Connection Length)'),
+      { ...mm('touchDepth', 'Contact depth', 0.05, 'Extra depth of the contact into the model. At 0 the ball is centred on the surface, so it already sinks by half its Ø. Negative pulls it back; below minus half the Contact Ø it no longer touches the model'), when: sphere },
+      { ...mm('neckDiameter', 'Upper Ø', 0.05, 'Narrowest diameter of the neck below the contact'), when: sphere },
+      mm('neckLength', 'Connection length', 0.1, 'Length of the thin neck between the tip and the pillar'),
       deg('maxNeckAngle', 'Connection angle', 'Largest tilt of the neck from vertical'),
     ],
   },
-  { title: 'Pillar', fields: [mm('pillarDiameter', 'Middle Ø', 0.05, 'Diameter of the support pillar (Chitubox: Middle Ø)')] },
+  { title: 'Pillar', fields: [mm('pillarDiameter', 'Middle Ø', 0.05, 'Diameter of the support pillar')] },
   {
     title: 'Foot', region: 'shape', fields: [
-      mm('baseDiameter', 'Bottom Ø', 0.1, 'Diameter of the support foot on the raft or plate (Chitubox: Bottom Ø)'),
-      mm('baseHeight', 'Bottom thickness', 0.1, 'Height of the support foot (Chitubox: Bottom Thickness)'),
+      mm('baseDiameter', 'Bottom Ø', 0.1, 'Diameter of the support foot on the raft or plate'),
+      mm('baseHeight', 'Bottom thickness', 0.1, 'Height of the support foot'),
     ],
   },
   {
     title: 'Bracing', fields: [
-      bool('trussEnabled', 'Bracing', 'Add cross braces between neighbouring pillars (Chitubox: Braces)'),
+      bool('trussEnabled', 'Bracing', 'Add cross braces between neighbouring pillars'),
       mm('trussDiameter', 'Bracing Ø', 0.05, 'Diameter of the braces'),
       deg('trussAngle', 'Bracing angle', 'Angle of the braces'),
-      mm('trussSpacing', 'Bracing spacing', 0.1, 'Vertical spacing between brace levels (Chitubox: Z Spacing)'),
-      mm('trussMinHeight', 'Start height', 0.1, 'Pillars shorter than this get no braces (Chitubox: Min. Height)'),
+      mm('trussSpacing', 'Bracing spacing', 0.1, 'Vertical spacing between brace levels'),
+      mm('trussMinHeight', 'Start height', 0.1, 'Pillars shorter than this get no braces'),
       mm('trussTopSpacing', 'Top spacing', 0.1, 'Keep braces this far below the support tips'),
       mm('trussDistanceLimit', 'Distance limit', 1, 'Brace only pillars closer than this to each other'),
     ],
   },
   {
     title: 'Raft', fields: [
-      bool('raftEnabled', 'Raft', 'Build a raft under the supports (Chitubox: Raft)'),
+      bool('raftEnabled', 'Raft', 'Build a raft under the supports'),
       mm('raftExpandWidth', 'Expand width', 0.1, 'How far the raft reaches beyond the support feet'),
-      mm('raftFloorThickness', 'Floor thickness', 0.1, 'Thickness of the raft plate (Chitubox: Raft Thickness)'),
-      mm('raftWallHeight', 'Wall height', 0.1, 'Height of the sloped raft rim (Chitubox: Raft Height)'),
+      mm('raftFloorThickness', 'Floor thickness', 0.1, 'Thickness of the raft plate'),
+      mm('raftWallHeight', 'Wall height', 0.1, 'Height of the sloped raft rim'),
       mm('raftWallThickness', 'Wall thickness', 0.1, 'Thickness of the raft rim wall'),
-      deg('raftWallAngle', 'Wall angle', 'Slope of the raft rim (Chitubox: Raft Slope)'),
+      deg('raftWallAngle', 'Wall angle', 'Slope of the raft rim'),
       int('voxelResolution', 'Voxel resolution', 'Raft voxel resolution. Higher is smoother and slower'),
     ],
   },
@@ -159,9 +159,9 @@ export const PRESET_LABELS = { LIGHT: 'Light', MIDDLE: 'Middle', HEAVY: 'Heavy' 
 export const ROOF_LABELS = { OFF: 'Off', ROOF: 'Roof', CAGE: 'Cage' } as const;
 /** Hover hints (i18n keys) of the preset and roof / cage buttons. */
 export const PRESET_HINTS = {
-  LIGHT: 'Chitubox Light support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back',
-  MIDDLE: 'Chitubox Middle support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back',
-  HEAVY: 'Chitubox Heavy support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back',
+  LIGHT: 'Light support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back',
+  MIDDLE: 'Middle support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back',
+  HEAVY: 'Heavy support preset: sets the contact, neck, pillar, foot, raft, brace and tree values in one step. Undo takes them back',
 } as const;
 export const ROOF_HINTS = {
   OFF: 'No structure above the model',
@@ -263,7 +263,7 @@ export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, d
       <h3>{t('Object: {scope}', { scope })}</h3>
       {placementPending && <p className="help pending-note" role="note">{t('Placement changed. Regenerate to apply.')}</p>}
       <fieldset className="settings" disabled={disabled}>
-        <div className="field-row" title={t('Chitubox support preset. Editing any value switches to Custom')}>
+        <div className="field-row" title={t('Support preset. Editing any value switches to Custom')}>
           <span>{t('Preset')}</span>
           <div className="segmented">
             {(['LIGHT', 'MIDDLE', 'HEAVY'] as const).map((preset) => <button key={preset} type="button" aria-pressed={settings.preset === preset} onClick={() => onPreset(preset)} {...hint(PRESET_HINTS[preset])}>{t(PRESET_LABELS[preset])}</button>)}

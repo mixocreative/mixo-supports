@@ -85,7 +85,7 @@ fails when a UI literal, setting label or stage lacks a translation or a placeho
 ## Contact tip shapes (web and Blender add-on done; add-on b82ad6b, not pushed)
 
 Settings `contactShape` (NONE default / SPHERE), `pointDiameter` (0.2 mm, the tip end at the model
-when NONE), `tipSection` (ROUND / SQUARE / CROSS, Lychee tip types) and `tipProfile` (TAPERED /
+when NONE), `tipSection` (ROUND / SQUARE / CROSS tip types) and `tipProfile` (TAPERED /
 STRAIGHT). Defaults = a round cone whose 0.2 mm end touches the model, no sphere (owner's choice).
 `tipRadius()` = Upper Ø/2 with a sphere, else Point Ø/2. Round + Tapered keeps SLASG's exact neck;
 other shapes split the tapered ends (`addTip`, also landings and tree tips) and swap the tube

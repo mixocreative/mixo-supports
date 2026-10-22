@@ -50,7 +50,7 @@
 ### 匯入與匯出
 - 可匯入 **STL**、**GLB** 和 **glTF**。STL 以 Z 軸朝上讀取，和切片軟體一致。
 - 匯出 **STL**：目前物件或每個物件、含或不含模型，或整個平台合成一個檔案。
-- 匯出的檔案可以直接載入 Chitubox、Lychee、PrusaSlicer、UVtools 等光固化切片軟體。
+- 匯出的檔案可以直接載入 一般的光固化切片軟體。
 
 ### 手機、平板與三種語言
 
@@ -92,4 +92,4 @@ Copyright © 2026 mixocreative，保留所有權利。程式碼公開供閱讀�
 
 ---
 
-<sub>關鍵字：光固化 3D 列印、樹脂列印、SLA 支撐、MSLA、DLP、LCD 光固化印表機、自動支撐、樹狀支撐、支撐產生器、STL 支撐編輯、免費 Chitubox 與 Lychee 替代方案、瀏覽器 3D 列印前處理、Elegoo、Anycubic、Phrozen、Formlabs、模型公仔、桌遊棋子、珠寶。</sub>
+<sub>關鍵字：光固化 3D 列印、樹脂列印、SLA 支撐、MSLA、DLP、LCD 光固化印表機、自動支撐、樹狀支撐、支撐產生器、STL 支撐編輯、免費光固化切片輔助工具、瀏覽器 3D 列印前處理、Elegoo、Anycubic、Phrozen、Formlabs、模型公仔、桌遊棋子、珠寶。</sub>
