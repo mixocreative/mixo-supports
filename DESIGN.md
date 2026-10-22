@@ -21,8 +21,8 @@ panels are the bench. Light theme only.
 - **Viewport (`#e9e6df`)**: 3D background.
 
 ### Accent & Interactive
-- **Mixo Red (`#7f0019`, hover `#96102b`)**: the one primary button per view (Generate, Done), Support Edit Mode frame and badge, active-object letter badge, progress fill.
-- **Zone Navy (`#1d3461`, hover `#284579`)**: No-support zones frame and badge, Regenerate button, the zone layer on the model.
+- **Mixo Red (`#7f0019`, hover `#96102b`)**: the one primary button per view (Generate, Done), Support Edit Mode and No-support zones frame and badge (every tool mode gets the same red hairline), active-object letter badge, progress fill.
+- **Zone Navy (`#1d3461`, hover `#284579`)**: Regenerate button, the zone layer on the model. Not a frame colour.
 - **Ink fill (`#3b3631`)**: pressed toggles, chosen segments and tool buttons (paper text).
 
 ### Typography & Text Hierarchy
@@ -49,7 +49,7 @@ panels are the bench. Light theme only.
 - **Tool choice**: 40 px tall buttons with a 19 px line icon left of the label (Click: arrow, Drag over: brush).
 - **Number fields**: right-aligned value with a unit, underline turns red on focus.
 - **Collapsible groups**: sunken heading band with a left chevron.
-- **Mode chrome**: 1 px frame round the viewport in the mode colour; badge top-left in the mode colour naming mode, object and what a click does; tool bar top-right on surface with a hairline: tool → options → actions → Done.
+- **Mode chrome**: 1 px red frame round the viewport; red badge top-left naming mode, object and what a click does; tool bar top-right on surface with a hairline: tool → options → actions → Done.
 - **Toast**: surface, hairline, 2 px radius, "… · Undo", bottom centre of the viewport.
 
 ## 5. Layout Principles
@@ -63,4 +63,4 @@ panels are the bench. Light theme only.
 
 - **Atmosphere keywords**: flat paper editor, warm grey ink, hairline borders, no shadows, dense desktop tool, one dark-red primary.
 - **Canonical colours**: Paper `#f4f2ed`, Surface `#fbfaf7`, Sunken `#ebe8e1`, Ink `#3b3631`, Muted `#8a847a`, Mixo Red `#7f0019`, Zone Navy `#1d3461`, Danger `#b3261e`.
-- **Component prompts**: a three-column editor (setup panel, 3D viewport, settings panel) with a status footer; a viewport in a tool mode with a 1 px coloured frame, a filled badge top-left and a light tool bar top-right ending in a dark-red "Done  Esc"; a settings panel of collapsible groups with left chevrons and dense number rows.
+- **Component prompts**: a three-column editor (setup panel, 3D viewport, settings panel) with a status footer; a viewport in a tool mode with a 1 px red frame, a filled badge top-left and a light tool bar top-right ending in a dark-red "Done  Esc"; a settings panel of collapsible groups with left chevrons and dense number rows.
