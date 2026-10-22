@@ -61,12 +61,12 @@ import UndoToast from './components/UndoToast';
 import type { BrushMode } from './editing/types';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
-type HistoryAction = { type: 'command'; command: SceneCommand } | { type: 'undo' } | { type: 'redo' };
+type HistoryAction = { type: 'command'; command: SceneCommand; edit?: string } | { type: 'undo' } | { type: 'redo' };
 
 function historyReducer(history: SceneHistory, action: HistoryAction): SceneHistory {
   if (action.type === 'undo') return undoScene(history);
   if (action.type === 'redo') return redoScene(history);
-  return withSceneCommand(history, action.command);
+  return withSceneCommand(history, action.command, action.edit);
 }
 
 /** Settings edits come in bursts (typing a value); a unit's preview rebuild waits this long. */
@@ -122,7 +122,8 @@ export default function App() {
   const scene = history.present;
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
-  const dispatch = useCallback((command: SceneCommand) => dispatchHistory({ type: 'command', command }), []);
+  /** `edit`: commands of one edit that share one undo step (a number field's typing). */
+  const dispatch = useCallback((command: SceneCommand, edit?: string) => dispatchHistory({ type: 'command', command, ...(edit ? { edit } : {}) }), []);
 
   const [lang, setLang] = useState<Lang>(detectLanguage);
   setLanguage(lang);
@@ -475,21 +476,21 @@ export default function App() {
   }, [dispatch, importer, send, setStatus]);
 
   // ---- Commands ------------------------------------------------------------------------
-  const forTargets = useCallback((make: (unit: PrintUnit) => SceneCommand | undefined) => {
+  const forTargets = useCallback((make: (unit: PrintUnit) => SceneCommand | undefined, edit?: string) => {
     const commands = targets(sceneRef.current).map(make).filter((command): command is SceneCommand => command !== undefined);
-    if (commands.length > 0) dispatch({ type: 'batch', commands });
+    if (commands.length > 0) dispatch({ type: 'batch', commands }, edit);
     return commands.length;
   }, [dispatch, targets]);
 
-  const changeSettings = useCallback((change: (settings: LiveSupportSettings) => LiveSupportSettings, regenerate: boolean) => {
+  const changeSettings = useCallback((change: (settings: LiveSupportSettings) => LiveSupportSettings, regenerate: boolean, edit?: string) => {
     const units = targets(sceneRef.current);
-    forTargets((unit) => ({ type: 'settings/set', unitId: unit.id, settings: change(resolveSettings(unit.settings)) as SupportSettings }));
+    forTargets((unit) => ({ type: 'settings/set', unitId: unit.id, settings: change(resolveSettings(unit.settings)) as SupportSettings }), edit);
     // Support Edit Mode keeps the supports it shows: a placement change waits for the next Generate.
     if (regenerate && sessionRef.current.mode !== 'edit') scheduleRegenerate(units.filter((unit) => unit.supports).map((unit) => unit.id));
   }, [forTargets, scheduleRegenerate, targets]);
 
-  const onSettingChange = useCallback(<K extends SettingKey>(key: K, value: LiveSupportSettings[K]) => {
-    changeSettings((settings) => updateSetting(settings, key, value), PLACEMENT_KEYS.includes(key));
+  const onSettingChange = useCallback(<K extends SettingKey>(key: K, value: LiveSupportSettings[K], edit?: string) => {
+    changeSettings((settings) => updateSetting(settings, key, value), PLACEMENT_KEYS.includes(key), edit);
   }, [changeSettings]);
 
   const removeSupports = () => {
@@ -886,7 +887,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} hidden={zonesHidden} ui={ui} send={send} run={runCommand} onClear={clearActiveZones} />
-          : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value) => onSettingChange('eraseRadius', value) }} send={send} run={runCommand} />}
+          : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>
         {lockNoteOf('right')}

@@ -176,7 +176,7 @@ export interface SettingsPanelProps {
   deferPlacement?: boolean;
   /** The object's placement settings changed since its contacts were placed: Regenerate applies them. */
   placementPending?: boolean;
-  onChange: <K extends SettingKey>(key: K, value: LiveSupportSettings[K]) => void;
+  onChange: <K extends SettingKey>(key: K, value: LiveSupportSettings[K], edit?: string) => void;
   onPreset: (preset: PresetName) => void;
   onRoofMode: (mode: RoofMode) => void;
 }
@@ -199,7 +199,7 @@ export default function SettingsPanel({ settings, ui, autoLabel, scope, disabled
       switch (field.kind) {
         case 'number': {
           const { label, hint: text } = 'command' in field ? resolve(field.command, ui) : field;
-          return <NumberField key={field.key} label={t(label)} unit={field.unit} step={field.step ?? 0.1} limits={settingLimits[field.key]} value={settings[field.key]} hint={t(text)} onChange={(value) => onChange(field.key, value)} />;
+          return <NumberField key={field.key} label={t(label)} unit={field.unit} step={field.step ?? 0.1} limits={settingLimits[field.key]} value={settings[field.key]} hint={t(text)} onChange={(value, edit) => onChange(field.key, value, edit)} />;
         }
         case 'boolean':
           return <label key={field.key} className="check" title={t(field.hint)}><input type="checkbox" checked={settings[field.key]} aria-description={t(field.hint)} onChange={(event) => onChange(field.key, event.target.checked)} /> {t(field.label)}</label>;
@@ -229,7 +229,7 @@ export default function SettingsPanel({ settings, ui, autoLabel, scope, disabled
             <button type="button" disabled className={settings.preset === 'CUSTOM' ? 'custom on' : 'custom'} {...hint('Values edited by hand')}>{t('Custom')}</button>
           </div>
         </div>
-        <NumberField label={t('Lift height')} unit="mm" step={0.5} limits={settingLimits.liftHeight} value={settings.liftHeight} onChange={(value) => onChange('liftHeight', value)} hint={t('Lowest model point above the plate')} />
+        <NumberField label={t('Lift height')} unit="mm" step={0.5} limits={settingLimits.liftHeight} value={settings.liftHeight} onChange={(value, edit) => onChange('liftHeight', value, edit)} hint={t('Lowest model point above the plate')} />
         {deferPlacement && <DeferNote />}
         <div className="field-row" title={t('Structure above or around the model. Each mode gets its defaults the first time it is used')}>
           <span>{t('Roof / cage')}</span>

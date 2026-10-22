@@ -4,6 +4,8 @@ export interface SceneHistory {
   past: PrintScene[];
   present: PrintScene;
   future: PrintScene[];
+  /** The edit whose steps still merge: set by a coalesced command, gone with the next step, undo or redo. */
+  open?: string;
 }
 
 export function createSceneHistory(scene: PrintScene): SceneHistory {
@@ -16,11 +18,15 @@ export const HISTORY_LIMIT = 100;
 /**
  * Applies a command as one undoable step. The reducer already validates and copies the
  * data each command introduces, so unchanged units (and their meshes) are shared
- * between snapshots rather than copied per step.
+ * between snapshots rather than copied per step. Commands that follow each other with one
+ * `coalesce` key (a number field's edit, from focus to commit) share one step.
  */
-export function withSceneCommand(history: SceneHistory, command: SceneCommand): SceneHistory {
+export function withSceneCommand(history: SceneHistory, command: SceneCommand, coalesce?: string): SceneHistory {
   const present = reduceScene(history.present, command);
   if (present === history.present) return history;
+  // A burst of commands of one edit (typing a value) is one step: it replaces the scene its first command left.
+  if (coalesce !== undefined && history.open === coalesce && history.past.length > 0) return { ...history, present, future: [] };
+  if (coalesce !== undefined) return { past: [...history.past, history.present].slice(-HISTORY_LIMIT), present, future: [], open: coalesce };
   return { past: [...history.past, history.present].slice(-HISTORY_LIMIT), present, future: [] };
 }
 

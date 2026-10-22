@@ -40,7 +40,7 @@ export function EditBar({ gesture, unitName, ui, clickReach, send, run }: {
   unitName: string | undefined;
   ui: UiState;
   /** The active object's Click reach (the registry's setting.clickReach): its value and how to set it. */
-  clickReach: { value: number; onChange: (value: number) => void };
+  clickReach: { value: number; onChange: (value: number, edit?: string) => void };
   send: (event: SessionEvent) => void;
   run: (id: CommandId) => void;
 }) {
@@ -104,7 +104,7 @@ function DragActionSwitch({ ui, run }: { ui: UiState; run: (id: CommandId) => vo
 }
 
 /** Click reach from the registry as a number field: the same control as the Advanced row of the right panel. */
-function ClickReachField({ ui, value, onChange }: { ui: UiState; value: number; onChange: (value: number) => void }) {
+function ClickReachField({ ui, value, onChange }: { ui: UiState; value: number; onChange: (value: number, edit?: string) => void }) {
   const { label, hint } = resolve('setting.clickReach', ui);
   return <NumberField label={t(label)} unit="mm" step={0.1} limits={settingLimits.eraseRadius} value={value} hint={t(hint)} onChange={onChange} />;
 }

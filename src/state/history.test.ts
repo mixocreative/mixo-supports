@@ -122,3 +122,30 @@ describe('scene history', () => {
     });
   });
 });
+
+describe('coalesced edits', () => {
+  const start = withSceneCommand(createSceneHistory(emptyScene), { type: 'unit/add', unit });
+  const set = (history: ReturnType<typeof createSceneHistory>, neckLength: number, edit?: string) => withSceneCommand(history, { type: 'settings/set', unitId: 'unit-a', settings: { neckLength } }, edit);
+
+  it('makes one step of a burst with one key, and Undo goes back to before it', () => {
+    const typed = set(set(set(start, 1, 'a'), 12, 'a'), 125, 'a');
+    expect(typed.present.units[0]!.settings).toEqual({ neckLength: 125 });
+    expect(typed.past).toHaveLength(start.past.length + 1);
+    expect(undoScene(typed).present).toBe(start.present);
+  });
+
+  it('starts a new step for a new key, for a command without one, and after Undo', () => {
+    const first = set(start, 1, 'a');
+    expect(set(first, 2, 'b').past).toHaveLength(first.past.length + 1);
+    expect(set(first, 2).past).toHaveLength(first.past.length + 1);
+    const between = withSceneCommand(first, { type: 'selection/set', unitIds: ['unit-a'], activeUnitId: 'unit-a' });
+    expect(set(between, 2, 'a').past).toHaveLength(between.past.length + 1);
+    const undone = undoScene(first);
+    expect(set(undone, 3, 'a').past).toHaveLength(undone.past.length + 1);
+  });
+
+  it('drops redo steps when an edit goes on', () => {
+    const typed = set(set(start, 1, 'a'), 2, 'a');
+    expect(typed.future).toEqual([]);
+  });
+});
