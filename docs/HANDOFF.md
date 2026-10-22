@@ -74,7 +74,7 @@ grow the page); tablet viewport on top + two panel columns; phone one column. Cr
 
 ## Previous step (UI languages)
 
-`src/i18n.ts`: English, Traditional Chinese (Taiwan) and Japanese. English text is the key;
+`src/i18n.ts` (API) with `src/locales/zh-Hant.ts` and `src/locales/ja.ts`: English, Traditional Chinese (Taiwan) and Japanese. English text is the key;
 `t(key, vars)`, `plural(n, one, other)`; status lines are stored as `Message` (key + vars) so they
 re-translate on switch; worker progress stages are keys (`STAGE_KEYS`) translated in the job activity list
 (`components/JobActivity.tsx`; ProgressBar was removed in Release 2).

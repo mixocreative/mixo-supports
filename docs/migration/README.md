@@ -22,7 +22,7 @@ When this page and the code disagree, the code and its tests win.
 | `src/workers/**` | Re-implement from the contract | Worker plumbing is host-specific (bundler, pool size, transfer). Keep the message contract in `src/core/README.md` ("Worker contract"). |
 | `src/supports/unitSupports.ts`, `selection.ts`, `export.ts` | Re-implement as mixomesh glue | Bound to this app's `PrintUnit` / `PrintScene` and history commands. `supportJobOf` / `placementJobOf` / `checkJobOf` are the reference for the adapter, and `src/supports/jobRunner.ts` (`runSupportJob`) for running a job with its caches (section 3). |
 | `src/components/**`, `App.tsx`, `src/state/**` | No | React / three.js / app state. The recipes in section 5 replace the viewport. |
-| `src/i18n.ts` | Copy the strings | Status lines and errors are i18n keys (`StatusMessage.key`); mixomesh supplies the en / zh-Hant / ja text from here. |
+| `src/i18n.ts`, `src/locales/*.ts` | Copy the strings | Status lines and errors are i18n keys (`StatusMessage.key`); mixomesh supplies the en / zh-Hant / ja text from here. |
 
 The core and editing tests (`npx vitest run src/core src/editing`) come along and should pass
 unchanged in mixomesh; the Blender parity tests need `tools/blender-parity/*.json`.

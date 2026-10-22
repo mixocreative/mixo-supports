@@ -1,7 +1,7 @@
 # Glossary (en / zh-Hant / ja)
 
 One term per concept in each language. The data lives in `src/glossary.ts`; `src/glossary.test.ts`
-checks that every translation in `src/i18n.ts` of a key naming a concept uses its term, that no
+checks that every translation in `src/locales/` of a key naming a concept uses its term, that no
 ruled-out synonym appears, that Paint / Erase / Brush only name the no-support zone tools, and that
 this table lists every concept. Terms follow the Blender add-on (`mixo3d/i18n_dict.py`) where it has
 one; the add-on's Japanese **オーバーハングの縁を補強** is the label for "Reinforce overhang edges".
