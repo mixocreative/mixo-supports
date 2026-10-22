@@ -802,6 +802,8 @@ export default function App() {
   // Once every unit in scope has supports, the one generate action becomes Regenerate.
   const scopeUnits = targets(scene);
   const scopeGenerated = scopeUnits.length > 0 && scopeUnits.every((unit) => unit.supports);
+  /** The one generate action, in the header and the left panel (Regenerate in blue). */
+  const generateButton = (label: string) => <button className={scopeGenerated ? 'primary regen' : 'primary'} onClick={() => generate()} disabled={scene.units.length === 0} {...hint('Place automatic supports on the selected objects, or on every object when none is selected')}>{label}</button>;
   const editButton = editModeButton(session);
   const zonesModeButton = zonesButton(session);
   const heavy = heavyStatus(session);
@@ -819,7 +821,7 @@ export default function App() {
           <button onClick={() => setModelVisible((visible) => !visible)} {...hint(modelVisible ? 'Hide the models to see the supports alone. Export is not affected' : 'Show the models again')}>{modelVisible ? t('Hide models') : t('Show models')}</button>
           <button onClick={() => setWireframe((value) => !value)} {...hint(wireframe ? 'Draw the models solid' : 'Draw the models as wireframes to see supports behind them')}>{wireframe ? t('Solid') : t('Wireframe')}</button>
         </div>
-        <button className={scopeGenerated ? 'primary regen' : 'primary'} onClick={() => generate()} disabled={scene.units.length === 0} {...hint('Place automatic supports on the selected objects, or on every object when none is selected')}>{pendingCount > 0 ? t('Generating supports') : t(scopeGenerated ? 'Regenerate supports for {scope}' : 'Generate supports for {scope}', { scope: scopeLabel })}</button>
+        {generateButton(pendingCount > 0 ? t('Generating supports') : t(scopeGenerated ? 'Regenerate supports for {scope}' : 'Generate supports for {scope}', { scope: scopeLabel }))}
       </div>
     </header>
     <section className="workspace">
@@ -871,7 +873,7 @@ export default function App() {
         </section>
         <section>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
-          <button className={scopeGenerated ? 'primary regen' : 'primary'} onClick={() => generate()} disabled={scene.units.length === 0} {...hint('Place automatic supports on the selected objects, or on every object when none is selected')}>{t(scopeGenerated ? 'Regenerate' : 'Generate supports')}</button>
+          {generateButton(t(scopeGenerated ? 'Regenerate' : 'Generate supports'))}
           <button onClick={clearManual} disabled={scene.units.length === 0} {...hint('Remove manual supports and bring back removed automatic ones, at once. Undo brings the edits back')}>{t('Clear manual edits')}</button>
           <button onClick={removeSupports} disabled={scene.units.length === 0} {...hint('Remove the supports of the selected objects. Models and manual edits are kept')}>{t('Remove supports')}</button>
         </section>
