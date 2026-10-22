@@ -180,6 +180,8 @@ export default function App() {
   const closeToast = useCallback(() => setToast(undefined), []);
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>('translate');
   const [focus, setFocus] = useState<{ point: [number, number, number]; area: number; seq: number }>();
+  /** The support just added (its object, tip and a counter): the viewport flashes a ring there. */
+  const [added, setAdded] = useState<{ unitId: string; point: Vector; normal: Vector; seq: number }>();
   const [viewRequest, setViewRequest] = useState<ViewRequest>();
   const requestView = useCallback((kind: ViewRequest['kind']) => setViewRequest((current) => ({ kind, seq: (current?.seq ?? 0) + 1 })), []);
   // Contact tips view (Blender: Only Tip + Ctrl+Numpad 7): view only, settings and export untouched.
@@ -591,6 +593,7 @@ export default function App() {
       type: 'supports/set', unitId, supports: { kind: 'live', data: { transform: { position: [...unit.transform.position], rotation: [...unit.transform.rotation] } } },
     }];
     dispatch({ type: 'batch', commands: [...commands, { type: 'manual/add', unitId, point: contact }] });
+    setAdded((current) => ({ unitId, point: contact.position, normal: contact.normal, seq: (current?.seq ?? 0) + 1 }));
     if (!noteAdded(unitId, contact.position)) setStatus(normal[1] > 0 ? 'Support added on a top face: it grows from below.' : 'Support added.');
   }, [dispatch, noteAdded, setStatus]);
 
@@ -895,6 +898,7 @@ export default function App() {
           onShift={onShift}
           onZoneStroke={onZoneStroke}
           problems={listedProblems}
+          {...(added ? { added } : {})}
           {...(focus ? { focus } : {})}
           {...(viewRequest ? { viewRequest } : {})}
           tipsView={tipsOnly.shown}

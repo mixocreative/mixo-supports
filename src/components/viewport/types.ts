@@ -6,6 +6,7 @@ import type { Gesture } from '../../editing/gesture';
 import type { AddAction, BrushMode, EditTool, SelectStyle } from '../../editing/types';
 import type { PrintScene } from '../../state/project';
 import type { ModelTransform } from '../../state/transform';
+import type { AddedAt } from './AddFlash';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
 
@@ -42,6 +43,8 @@ export interface ObjectViewportProps {
   problems: readonly (SupportProblem & { unitId: string })[];
   /** Check finding to frame (Show me): point in plate space, its area in mm²; a new `seq` repeats the move. */
   focus?: { point: Vector; area: number; seq: number };
+  /** The support just added, to flash a ring at; `unitId` is the object it landed on. */
+  added?: AddedAt & { unitId: string };
   /** A new `seq` turns the camera to look straight up at the selection (or every object). */
   viewRequest?: ViewRequest;
   /** Show only the contact tips (the host decides: editing/view `tipsButton`). */

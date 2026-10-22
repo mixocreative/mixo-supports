@@ -13,7 +13,8 @@ import { brushPreview } from '../../editing/selection';
 import { createStroke, zoneFill } from '../../editing/stroke';
 import { displayMesh } from '../../state/meshExtras';
 import type { PrintUnit } from '../../state/project';
-import { unitContacts } from '../../supports/unitSupports';
+import { resolveSettings, unitContacts } from '../../supports/unitSupports';
+import { AddFlash, type AddedAt } from './AddFlash';
 import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
 import { type Hover, EditPreview, SupportBodies, ZoneLayer, useDoomed, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
@@ -29,6 +30,8 @@ interface UnitObjectProps extends Pick<ObjectViewportProps,
   | 'gesture' | 'liveTool' | 'selection' | 'tipsView' | 'modelVisible' | 'wireframe'
   | 'onSelect' | 'onAddContact' | 'onRemoveContact' | 'onErase' | 'onEditMiss' | 'onToggleContact' | 'onPaint' | 'onShift' | 'onZoneStroke'> {
   problems: readonly SupportProblem[];
+  /** A support just added to this object: a ring flashes at its tip. */
+  added?: AddedAt;
   unit: PrintUnit;
   supports?: GeneratedSupportMesh;
   selected: boolean;
@@ -279,6 +282,7 @@ export function UnitObject(props: UnitObjectProps) {
       <SupportBodies supports={supports} geometry={supportGeometry} ids={preview.ghost} opacity={SEE_THROUGH} color={PREVIEW[preview.ghostTone]} />
     </>}
     {editing && !zoning && <CustomisedMarks unit={unit} contacts={contacts} />}
+    {props.added && <AddFlash key={props.added.seq} at={props.added} radius={Math.max(0.8, resolveSettings(unit.settings).pillarDiameter * 1.5)} />}
     {props.problems.length > 0 && <ProblemMarkers problems={props.problems} />}
   </group>;
 }

@@ -89,6 +89,7 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       active={unit.id === activeId}
       gesture={props.gesture}
       modelVisible={props.modelVisible}
+      {...(props.added?.unitId === unit.id ? { added: props.added } : {})}
       wireframe={props.wireframe}
       onSelect={props.onSelect}
       onAddContact={props.onAddContact}
