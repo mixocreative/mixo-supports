@@ -1,6 +1,6 @@
 import type { SupportContact } from '../core/supports/mesh';
 import { paintSelection, pruneSelection, toggleSelection } from './selection';
-import type { BrushMode, EditMode, EditTool, SelectStyle, ZoneKind, ZonesReturn } from './types';
+import type { BrushMode, EditMode, EditTool, SelectStyle, ZoneKind } from './types';
 
 /**
  * The editing session of the active object: which mode is on, its tools and the selected
@@ -9,8 +9,6 @@ import type { BrushMode, EditMode, EditTool, SelectStyle, ZoneKind, ZonesReturn 
  */
 export interface EditSession {
   mode: EditMode;
-  /** The mode Done in zones mode goes back to. */
-  zonesReturn: ZonesReturn;
   /** The object the session belongs to (the scene's active object). */
   activeUnitId: string | undefined;
   /** Triangles of the active object when it is heavy: it takes no hand edits (Edit Mode, zones). */
@@ -33,7 +31,6 @@ const NO_SELECTION: ReadonlySet<string> = new Set();
 
 export const initialSession: EditSession = {
   mode: 'off',
-  zonesReturn: 'off',
   activeUnitId: undefined,
   heavy: undefined,
   tool: 'add',
@@ -47,14 +44,15 @@ export const initialSession: EditSession = {
 };
 
 /**
- * `toggleEdit` (Tab, the Edit supports button) and `openZones` enter a mode only for an active
- * object that takes hand edits; `leave` ends any mode (import, Remove supports, a check's Fix);
+ * `enterEdit` and `enterZones` start a mode from outside the modes, only for an active object that
+ * takes hand edits (the modes never switch directly: exit first). `exit` is the one user exit from
+ * either mode (Done, the left Exit button, Esc, Enter); `leave` ends any mode without a word (Remove supports, a check's Fix);
  * `activeUnitChanged` (with the triangles of a heavy object) and `contactsChanged` follow the scene.
  */
 export type SessionEvent =
-  | { type: 'toggleEdit' }
-  | { type: 'openZones'; from: ZonesReturn }
-  | { type: 'closeZones' }
+  | { type: 'enterEdit' }
+  | { type: 'enterZones' }
+  | { type: 'exit' }
   | { type: 'leave' }
   | { type: 'activeUnitChanged'; id: string | undefined; heavy?: number | undefined }
   | { type: 'contactsChanged'; contacts: readonly SupportContact[] }
@@ -72,9 +70,9 @@ export type SessionEvent =
   | { type: 'restoreSelection'; ids: readonly string[] };
 
 /** The selection empties on every mode change. */
-function withMode(state: EditSession, mode: EditMode, zonesReturn = state.zonesReturn): EditSession {
-  if (mode === state.mode && zonesReturn === state.zonesReturn) return state;
-  return { ...state, mode, zonesReturn, selection: mode === state.mode ? state.selection : NO_SELECTION };
+function withMode(state: EditSession, mode: EditMode): EditSession {
+  if (mode === state.mode) return state;
+  return { ...state, mode, selection: NO_SELECTION };
 }
 
 function withSelection(state: EditSession, selection: ReadonlySet<string>): EditSession {
@@ -88,15 +86,11 @@ function set<K extends keyof EditSession>(state: EditSession, key: K, value: Edi
 /** The next session; the same object when the event changes nothing. */
 export function reduceSession(state: EditSession, event: SessionEvent): EditSession {
   switch (event.type) {
-    case 'toggleEdit':
-      // Zones mode leaves through Done or Esc only.
-      if (state.mode === 'zones') return state;
-      if (state.mode === 'edit') return withMode(state, 'off');
-      return editable(state) ? withMode(state, 'edit') : state;
-    case 'openZones':
-      return editable(state) ? withMode(state, 'zones', event.from) : state;
-    case 'closeZones':
-      return state.mode === 'zones' ? withMode(state, state.zonesReturn) : state;
+    case 'enterEdit':
+      return state.mode === 'off' && editable(state) ? withMode(state, 'edit') : state;
+    case 'enterZones':
+      return state.mode === 'off' && editable(state) ? withMode(state, 'zones') : state;
+    case 'exit':
     case 'leave':
       return withMode(state, 'off');
     case 'activeUnitChanged':

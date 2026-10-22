@@ -23,7 +23,7 @@ export function ModeSections({ session, zones, send, onClearZones }: {
     <section>
       <h3>{t('Edit supports')}</h3>
       <button aria-pressed={edit.pressed} onClick={() => send(edit.event)} disabled={edit.disabled} {...hint(edit.hint)}>{t(edit.label)}</button>
-      <p className="help">{heavy ? translateMessage(heavy) : zones !== undefined ? t('Add or remove supports by clicking the model. Tab toggles.') : t('Select an object first.')}</p>
+      <p className="help">{heavy ? translateMessage(heavy) : zones !== undefined ? t('Add or remove supports by clicking the model.') : t('Select an object first.')}</p>
     </section>
     <section>
       <h3>{t('No-support zones')}{zones !== undefined && <small className="count">{zones ? t('Painted') : t('None')}</small>}</h3>
@@ -35,11 +35,11 @@ export function ModeSections({ session, zones, send, onClearZones }: {
   </>;
 }
 
-/** The viewport's Edit supports button outside the modes (Tab does the same); its hint says why it is off. */
+/** The viewport's Edit supports button outside the modes; its hint says why it is off. */
 export function ViewportEditToggle({ session, hasObject, send }: { session: EditSession; hasObject: boolean; send: (event: SessionEvent) => void }) {
   const edit = editModeButton(session);
   const heavy = heavyStatus(session);
-  return <button className="viewport-edit-toggle" onClick={() => send(edit.event)} disabled={edit.disabled} {...hint(heavy ? heavy.key : hasObject ? 'Add or remove supports by clicking (Tab)' : 'Select an object first.', heavy?.vars)}>
+  return <button className="viewport-edit-toggle" onClick={() => send(edit.event)} disabled={edit.disabled} {...hint(heavy ? heavy.key : hasObject ? 'Add or remove supports by clicking' : 'Select an object first.', heavy?.vars)}>
     {t('Edit supports')}
   </button>;
 }

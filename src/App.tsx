@@ -572,7 +572,7 @@ export default function App() {
   useEffect(() => {
     if (!editTarget || scene.activeUnitId !== editTarget) return;
     setEditTarget(undefined);
-    send({ type: 'toggleEdit' });
+    send({ type: 'enterEdit' });
   }, [editTarget, scene.activeUnitId, send]);
 
   const onSelect = useCallback((unitId: string | null, additive: boolean) => {
@@ -761,8 +761,7 @@ export default function App() {
       switch (action.type) {
         case 'undo': return undo();
         case 'redo': return dispatchHistory({ type: 'redo' });
-        case 'toggleEdit': return send({ type: 'toggleEdit' });
-        case 'leaveMode': return send({ type: editMode === 'zones' ? 'closeZones' : 'toggleEdit' });
+                case 'leaveMode': return send({ type: 'exit' });
         case 'deleteSelection': return deleteSelected();
         case 'clearSelection': return clearSelection();
         case 'deleteObjects': return deleteUnits();

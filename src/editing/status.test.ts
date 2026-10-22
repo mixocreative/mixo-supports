@@ -31,7 +31,7 @@ describe('sessionStatus', () => {
   const editing = at({ mode: 'edit' });
 
   it('entering Support Edit Mode or switching tool says what the tool does', () => {
-    expect(after(active, { type: 'toggleEdit' })).toEqual({ key: ADD });
+    expect(after(active, { type: 'enterEdit' })).toEqual({ key: ADD });
     expect(after(editing, { type: 'setTool', tool: 'select' })).toEqual({ key: CLICK });
     expect(after(at({ mode: 'edit', tool: 'select' }), { type: 'setSelectStyle', style: 'brush' })).toEqual({ key: BRUSH });
   });
@@ -40,29 +40,39 @@ describe('sessionStatus', () => {
     expect(after(at({ mode: 'edit', tool: 'select', selectStyle: 'brush' }), { type: 'setBrushMode', mode: 'unselect' })).toBeUndefined();
     expect(after(editing, { type: 'setTool', tool: 'add' })).toBeUndefined();
     expect(after(editing, { type: 'setSelectStyle', style: 'brush' })).toBeUndefined();
-    expect(after(editing, { type: 'toggleContact', id: 'a' })).toBeUndefined();
   });
 
   it('asks for an object when there is none', () => {
-    expect(after(initialSession, { type: 'toggleEdit' })).toEqual({ key: 'Select an object to edit its supports.' });
-    expect(after(initialSession, { type: 'openZones', from: 'off' })).toEqual({ key: 'Select an object first.' });
+    expect(after(initialSession, { type: 'enterEdit' })).toEqual({ key: 'Select an object to edit its supports.' });
+    expect(after(initialSession, { type: 'enterZones' })).toEqual({ key: 'Select an object first.' });
   });
 
   it('leaving a mode says the edits are kept', () => {
-    expect(after(editing, { type: 'toggleEdit' })).toEqual({ key: 'Support edits kept.' });
-    expect(after(at({ mode: 'zones', zonesReturn: 'off' }), { type: 'closeZones' })).toEqual({ key: 'No-support zones kept.' });
+    expect(after(editing, { type: 'exit' })).toEqual({ key: 'Support edits kept.' });
+    expect(after(at({ mode: 'zones' }), { type: 'exit' })).toEqual({ key: 'No-support zones kept.' });
   });
 
-  it('zones mode opens with its hint and Done back in Edit Mode restores the tool message', () => {
-    expect(after(active, { type: 'openZones', from: 'off' })).toEqual({ key: ZONES });
-    expect(after(editing, { type: 'openZones', from: 'edit' })).toEqual({ key: ZONES });
-    expect(after(at({ mode: 'zones', zonesReturn: 'edit', tool: 'select' }), { type: 'closeZones' })).toEqual({ key: CLICK });
+  it('zones mode opens with its hint', () => {
+    expect(after(active, { type: 'enterZones' })).toEqual({ key: ZONES });
+  });
+
+  it('while supports are selected the line says how Esc leaves, and the tool line returns when they are not', () => {
+    const ESC = 'Esc again to exit';
+    const select = at({ mode: 'edit', tool: 'select' });
+    const one = reduceSession(select, { type: 'toggleContact', id: 'a' });
+    expect(sessionStatus(select, one, { type: 'toggleContact', id: 'a' })).toEqual({ key: ESC });
+    const two = reduceSession(one, { type: 'toggleContact', id: 'b' });
+    expect(sessionStatus(one, two, { type: 'toggleContact', id: 'b' })).toBeUndefined();
+    expect(after(one, { type: 'clearSelection' })).toEqual({ key: CLICK });
+    expect(after(one, { type: 'restoreSelection', ids: [] })).toEqual({ key: CLICK });
+    expect(after(select, { type: 'restoreSelection', ids: ['a'] })).toEqual({ key: ESC });
+    expect(after(one, { type: 'exit' })).toEqual({ key: 'Support edits kept.' });
   });
 
   it('a forced exit or a no-op leaves the status line to the host', () => {
     expect(after(editing, { type: 'leave' })).toBeUndefined();
     expect(after(editing, { type: 'activeUnitChanged', id: undefined })).toBeUndefined();
-    expect(after(at({ mode: 'zones' }), { type: 'toggleEdit' })).toBeUndefined();
+    expect(after(at({ mode: 'zones' }), { type: 'enterEdit' })).toBeUndefined();
   });
 });
 

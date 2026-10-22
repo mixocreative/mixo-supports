@@ -63,13 +63,12 @@ export function EditBar({ gesture, unitName, selected, send, onDelete, onClearSe
         {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
         <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{gesture.kind === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
         <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
-        <button onClick={() => send({ type: 'openZones', from: 'edit' })} {...hint('Switch to painting no-support zones; Done comes back here')}>{t('Edit no-support zones →')}</button>
         {selected > 0 && <>
           <span className="edit-count">{t('{n} selected', { n: selected })}</span>
           <button className="danger" onClick={onDelete} {...hint('Delete the selected supports (Delete key). Undo brings them back')}>{t('Delete')}</button>
           <button onClick={onClearSelection} {...hint('Unselect every support at once (Esc). Undo on the notice brings the selection back')}>{t('Clear selection')}</button>
         </>}
-        <button className="primary edit-done" onClick={() => send({ type: 'toggleEdit' })} {...hint('Finish editing supports (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
+        <button className="primary edit-done" onClick={() => send({ type: 'exit' })} {...hint('Finish editing supports (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
       </div>
     </div>
   </>;

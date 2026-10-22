@@ -26,26 +26,37 @@ const MISS_STATUS: Record<GestureKind, string | undefined> = {
   drag: undefined,
 };
 
+/** What Esc does while supports are selected: the first press clears them, the next one leaves the mode. */
+const ESC_AGAIN = 'Esc again to exit';
+
 const keyed = (key: string | undefined): StatusMessage | undefined => (key ? { key } : undefined);
 
 export function editStatus(session: EditSession): StatusMessage | undefined {
   return keyed(GESTURE_STATUS[gesture(session).kind]);
 }
 
+/** What the status line rests on in a mode: how Esc leaves while supports are selected, else the tool line. */
+function standingStatus(session: EditSession): StatusMessage | undefined {
+  return session.mode === 'edit' && session.selection.size > 0 ? keyed(ESC_AGAIN) : editStatus(session);
+}
+
 /**
  * The status line for one session step (`next` = reduceSession(previous, event)), or undefined to
- * leave it as it is. Entering a mode or switching tool says what a click or drag now does; a
- * forced exit (`leave`, the object gone) is left to the host, which says why.
+ * leave it as it is. Entering a mode or switching tool says what a click or drag now does, and
+ * while supports are selected it says how Esc leaves; a forced exit (`leave`, the object gone) is
+ * left to the host, which says why.
  */
 export function sessionStatus(previous: EditSession, next: EditSession, event: SessionEvent): StatusMessage | undefined {
-  const entering = (event.type === 'toggleEdit' && previous.mode === 'off') || event.type === 'openZones';
-  if (entering && previous.activeUnitId === undefined) return { key: event.type === 'toggleEdit' ? 'Select an object to edit its supports.' : 'Select an object first.' };
+  const entering = (event.type === 'enterEdit' || event.type === 'enterZones') && previous.mode === 'off';
+  if (entering && previous.activeUnitId === undefined) return { key: event.type === 'enterEdit' ? 'Select an object to edit its supports.' : 'Select an object first.' };
   if (entering && previous.heavy !== undefined) return heavyStatus(previous);
-  if (event.type === 'toggleEdit' && previous.mode === 'edit' && next.mode === 'off') return { key: 'Support edits kept.' };
-  if (event.type === 'closeZones' && previous.mode === 'zones' && next.mode === 'off') return { key: 'No-support zones kept.' };
+  if (event.type === 'exit' && next.mode === 'off') {
+    if (previous.mode === 'edit') return { key: 'Support edits kept.' };
+    if (previous.mode === 'zones') return { key: 'No-support zones kept.' };
+  }
   if (next.mode === 'off' || next === previous) return undefined;
-  const now = editStatus(next);
-  return next.mode !== previous.mode || now?.key !== editStatus(previous)?.key ? now : undefined;
+  const now = standingStatus(next);
+  return next.mode !== previous.mode || now?.key !== standingStatus(previous)?.key ? now : undefined;
 }
 
 export function missStatus(session: EditSession): StatusMessage | undefined {

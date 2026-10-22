@@ -12,8 +12,6 @@ export type SelectStyle = 'click' | 'brush';
 export type BrushMode = 'select' | 'unselect';
 /** The zone brush paints no-support zones or erases them. */
 export type ZoneKind = 'paint' | 'erase';
-/** The mode Done in zones mode goes back to. */
-export type ZonesReturn = 'off' | 'edit';
 
 /**
  * A status line as an i18n key and its values, so the host translates it (and re-translates it

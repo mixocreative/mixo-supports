@@ -10,20 +10,20 @@ export interface ModeButton {
   hint: string;
   pressed: boolean;
   disabled: boolean;
-  event: Extract<SessionEvent, { type: 'toggleEdit' | 'openZones' | 'closeZones' }>;
+  event: Extract<SessionEvent, { type: 'enterEdit' | 'enterZones' | 'exit' }>;
 }
 
 /** Support Edit Mode's button: entering needs an active object that takes hand edits (not heavy). */
 export function editModeButton(session: EditSession): ModeButton {
   const { mode } = session;
-  if (mode === 'edit') return { label: 'Exit Support Edit Mode', hint: 'Finish editing supports (Esc or Tab)', pressed: true, disabled: false, event: { type: 'toggleEdit' } };
+  if (mode === 'edit') return { label: 'Exit Support Edit Mode', hint: 'Finish editing supports (Esc)', pressed: true, disabled: false, event: { type: 'exit' } };
   // Zones mode leaves through its own exit first.
-  return { label: 'Enter Support Edit Mode', hint: 'Add or remove supports by clicking (Tab)', pressed: false, disabled: mode === 'zones' || !editable(session), event: { type: 'toggleEdit' } };
+  return { label: 'Enter Support Edit Mode', hint: 'Add or remove supports by clicking', pressed: false, disabled: mode === 'zones' || !editable(session), event: { type: 'enterEdit' } };
 }
 
-/** The no-support zones button; from Support Edit Mode, leaving zones comes back there (like Done). */
+/** The no-support zones button: zones is entered from outside the modes only and always exits to them. */
 export function zonesButton(session: EditSession): ModeButton {
   const { mode } = session;
-  if (mode === 'zones') return { label: 'Exit no-support zones', hint: 'Finish painting zones (Esc or Enter)', pressed: true, disabled: false, event: { type: 'closeZones' } };
-  return { label: 'Paint zones', hint: 'Paint areas of the model where automatic supports must not grow', pressed: false, disabled: !editable(session), event: { type: 'openZones', from: mode === 'edit' ? 'edit' : 'off' } };
+  if (mode === 'zones') return { label: 'Exit no-support zones', hint: 'Finish painting zones (Esc or Enter)', pressed: true, disabled: false, event: { type: 'exit' } };
+  return { label: 'Paint zones', hint: 'Paint areas of the model where automatic supports must not grow', pressed: false, disabled: mode === 'edit' || !editable(session), event: { type: 'enterZones' } };
 }

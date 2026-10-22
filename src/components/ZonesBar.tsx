@@ -42,7 +42,7 @@ export function ZonesBar({ brush, unitName, belowPlate, hasZones, send, onClear 
       {!belowPlate && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
       <div className="edit-row">
         <ClearZonesButton disabled={!hasZones} onClear={onClear} />
-        <button className="primary edit-done" onClick={() => send({ type: 'closeZones' })} {...hint('Finish painting zones (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
+        <button className="primary edit-done" onClick={() => send({ type: 'exit' })} {...hint('Finish painting zones (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
       </div>
     </div>
   </>;
