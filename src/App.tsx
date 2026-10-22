@@ -27,6 +27,7 @@ import { ZonesBar } from './components/ZonesBar';
 import { Segmented } from './components/Segmented';
 import { isAbort, RUNTIME, triangleCount } from './components/appShared';
 import { useFixSpot } from './components/useFixSpot';
+import { useExport } from './components/useExport';
 import { useRegenerate } from './components/useRegenerate';
 import { hint } from './components/hint';
 import { cancelSceneEdit, canUndo as historyCanUndo, createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
@@ -39,7 +40,7 @@ import { PlateLedger, type PlateScene } from './core/plateLedger';
 import { estimateTriangles, ESTIMATE_HEAD_BYTES } from './core/import/estimate';
 import { emptyScene, type ContactSettings, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
-import { exportUnits, planExport, type ExportKind } from './supports/export';
+import type { ExportKind } from './supports/export';
 import type { GeneratedSupportMesh } from './core/supports/mesh';
 import { meshBounds } from './core/supports/meshQuery';
 import { problemInZone, type ZoneStamp } from './core/supports/zones';
@@ -47,7 +48,7 @@ import { deleteCommands } from './supports/selection';
 import { gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, withShape, type LiveSupportSettings, type SettingKey, type ShapeKey } from './core/supports/settings';
-import { checkJobOf, currentBuild, currentBuilds, hiddenByZones, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
+import { checkJobOf, currentBuild, hiddenByZones, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { resolve, type CommandId, type UiState } from './editing/commands';
 import { effectiveBrushMode } from './editing/selection';
 import { keyAction } from './editing/keys';
@@ -57,7 +58,7 @@ import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
 import { busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
-import { checkStatus, exportStatus, joinRun, runToken, tallyChecks, uncovered, type CheckTally } from './editing/check';
+import { checkStatus, joinRun, runToken, tallyChecks, uncovered, type CheckTally } from './editing/check';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
 import type { BrushMode } from './editing/types';
@@ -712,49 +713,7 @@ export default function App() {
     setStatus('Selected 1 customised support.', { n: ids.length }, 'Selected {n} customised supports.');
   }, [contactsOf, send, setStatus]);
 
-  const [exporting, setExporting] = useState(false);
-  const runExport = async (kind: ExportKind) => {
-    const current = sceneRef.current;
-    // A unit changed since its build keeps its supports part (the worker skips an empty one).
-    const files = planExport(current, kind, currentBuilds(current.units, builtRef.current));
-    if (files.length === 0) {
-      if (kind.startsWith('active') && !current.activeUnitId) return setStatus('Select an object to export.');
-      // Supports only, and every unit in scope had its contacts deleted or zoned out.
-      const emptied = exportUnits(current, kind).filter(([unit]) => unit.supports);
-      if (kind.endsWith('supports') && emptied.length === 1) return setStatus('Nothing to export: {name} has no supports left.', { name: emptied[0]![0].name });
-      if (kind.endsWith('supports') && emptied.length > 1) return setStatus('Nothing to export: no object in this export has supports left.');
-      return setStatus('Nothing to export for this mode.');
-    }
-    const used = new Set(files.flatMap((file) => file.parts.map((part) => part.unitId)));
-    const units = exportUnits(current, kind).filter(([unit]) => used.has(unit.id));
-    setExporting(true);
-    setStatus('Preparing export at full resolution.');
-    // The check runs alongside, on the analysis workers, so the export can warn about gaps.
-    // A check that fails or is cancelled leaves its units unchecked: the status says so.
-    const checking = runCheck(units.map(([unit]) => unit)).catch((): CheckTally => ({ spots: 0, inZone: 0, incomplete: units.filter(([unit]) => unit.supports).length }));
-    const label = { key: files.length === 1 ? 'Exporting {name}' : 'Exporting {n} files', vars: { name: files[0]!.fileName, n: files.length } };
-    try {
-      const jobs = units.map(([unit, index]) => ({ unitId: unit.id, job: supportJobOf(unit, index, 'export'), transform: unit.transform }));
-      const written = await exporter().exportFiles(jobs, files, label, () => {});
-      // Nothing came back (every file was empty, or the job was dropped): never report success.
-      if (written.length === 0) return setStatus('Nothing to export for this mode.');
-      for (const file of written) {
-        const url = URL.createObjectURL(new Blob([file.buffer], { type: 'model/stl' }));
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = file.fileName;
-        anchor.click();
-        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }
-      const names = written.map((file) => file.fileName).join(', ');
-      setStatusMessage(exportStatus(names, await checking));
-    } catch (error) {
-      if (isAbort(error)) setStatus('Export cancelled; no file was written.');
-      else setStatusMessage(errorStatus('export', codedJobError(error)));
-    } finally {
-      setExporting(false);
-    }
-  };
+  const { exporting, runExport } = useExport({ sceneRef, builtRef, exporter, runCheck, setStatus, setStatusMessage });
 
   // ---- Commands and keyboard -----------------------------------------------------------
   // Buttons and keys run registry commands (editing/commands); the key rules live in editing/keys.
