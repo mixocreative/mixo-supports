@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLICK_TOLERANCE, missAction, pickAction, type PickAction, type PickInput } from './pick';
+import { CLICK_TOLERANCE, clickTool, missAction, pickAction, type PickAction, type PickInput } from './pick';
 
 const base: PickInput = {
   hit: 'model', button: 'left', ctrl: false, shift: false, travel: 0,
@@ -73,5 +73,19 @@ describe('missAction', () => {
   it('the end of a gizmo drag is no click', () => {
     expect(missAction({ mode: 'off', button: 'left', gizmoDragging: true })).toEqual({ type: 'none' });
     expect(missAction({ mode: 'edit', button: 'left', gizmoDragging: true })).toEqual({ type: 'none' });
+  });
+});
+
+describe('clickTool', () => {
+  it('takes the tool and select style from the live session, not the step-behind canvas (a click right after Select supports must not add a support)', () => {
+    expect(clickTool({ tool: 'select', selectStyle: 'click' }, { tool: 'add', brush: false })).toEqual({ tool: 'select', selectStyle: 'click' });
+    // The live session carries more (its mode, its selection): only the tool is taken from it.
+    const session = { mode: 'zones' as const, tool: 'add' as const, selectStyle: 'brush' as const };
+    expect(clickTool(session, { tool: 'select', brush: false })).toEqual({ tool: 'add', selectStyle: 'brush' });
+  });
+
+  it('falls back to what the canvas rendered without a live session', () => {
+    expect(clickTool(undefined, { tool: 'select', brush: true })).toEqual({ tool: 'select', selectStyle: 'brush' });
+    expect(clickTool(undefined, { tool: 'add', brush: false })).toEqual({ tool: 'add', selectStyle: 'click' });
   });
 });

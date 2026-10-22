@@ -25,6 +25,16 @@ export interface PickInput {
 }
 
 /**
+ * The tool a canvas click acts with. The canvas renders a step behind the DOM, so a click right
+ * after a tool switch reads the session as it is now (`live`); without one it falls back to what
+ * the canvas last rendered.
+ */
+export function clickTool(live: { tool: EditTool; selectStyle: SelectStyle } | undefined, rendered: { tool: EditTool; brush: boolean }): { tool: EditTool; selectStyle: SelectStyle } {
+  if (live) return { tool: live.tool, selectStyle: live.selectStyle };
+  return { tool: rendered.tool, selectStyle: rendered.brush ? 'brush' : 'click' };
+}
+
+/**
  * What a click means. `pass`: this hit does not take it, the object behind gets the click (or
  * none does). `none`: taken, nothing happens. `select`: pick the object (`additive` with Shift).
  * `add` a contact at the model point; `erase` every contact within Remove radius of the point;

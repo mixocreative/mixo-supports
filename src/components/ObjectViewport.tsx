@@ -21,7 +21,7 @@ import { resolveSettings, unitContacts } from '../supports/unitSupports';
 import { zoneOverlay } from '../core/supports/overlayMesh';
 import { belowPlate, boundsSphere, frameView, spotView } from '../editing/view';
 import { createStroke, zoneFill, type Stroke } from '../editing/stroke';
-import { missAction, pickAction, type PickInput } from '../editing/pick';
+import { clickTool, missAction, pickAction, type PickInput } from '../editing/pick';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../core/supports/zones';
 
 export type GizmoMode = 'none' | 'translate' | 'rotate';
@@ -770,21 +770,17 @@ function UnitObject(props: UnitObjectProps) {
   };
 
   /** The click rules (editing/pick) for a hit on this object; `contact` only matters on supports. */
-  const pickFor = (event: ThreeEvent<MouseEvent>, hit: PickInput['hit'], right: boolean, contact: boolean) => {
-    const live = props.liveTool?.();
-    return pickAction({
-      hit,
-      button: right ? 'right' : 'left',
-      ctrl: event.ctrlKey || event.metaKey,
-      shift: event.shiftKey,
-      travel: event.delta,
-      mode: editMode,
-      tool: live?.tool ?? props.editTool,
-      selectStyle: live?.selectStyle ?? (props.brush ? 'brush' : 'click'),
-      active: props.active,
-      contact,
-    });
-  };
+  const pickFor = (event: ThreeEvent<MouseEvent>, hit: PickInput['hit'], right: boolean, contact: boolean) => pickAction({
+    hit,
+    button: right ? 'right' : 'left',
+    ctrl: event.ctrlKey || event.metaKey,
+    shift: event.shiftKey,
+    travel: event.delta,
+    mode: editMode,
+    ...clickTool(props.liveTool?.(), { tool: props.editTool, brush: Boolean(props.brush) }),
+    active: props.active,
+    contact,
+  });
 
   const clickModel = (event: ThreeEvent<MouseEvent>, right: boolean) => {
     const action = pickFor(event, 'model', right, false);
