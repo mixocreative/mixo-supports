@@ -11,8 +11,8 @@ describe('worker job contract', () => {
   const workers = Object.entries(SOURCES).filter(([file]) => /Worker\.ts$/.test(file));
 
   it('finds the clients and workers', () => {
-    expect(clients.map(([file]) => file).sort()).toEqual(['./analysisClient.ts', './importClient.ts', './meshClient.ts']);
-    expect(workers.map(([file]) => file).sort()).toEqual(['./analysisWorker.ts', './importWorker.ts', './meshWorker.ts']);
+    expect(clients.map(([file]) => file).sort()).toEqual(['./analysisClient.ts', './importClient.ts', './meshClient.ts', './projectClient.ts']);
+    expect(workers.map(([file]) => file).sort()).toEqual(['./analysisWorker.ts', './importWorker.ts', './meshWorker.ts', './projectWorker.ts']);
   });
 
   it('labels every job a client runs', () => {

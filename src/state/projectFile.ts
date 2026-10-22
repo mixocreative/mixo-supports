@@ -98,6 +98,14 @@ export async function unpackProject(file: Blob, triangleLimit: number = refusalL
   return decodeProject(await inflate(file, maxBytes, triangleLimit));
 }
 
+/** Every buffer of the scene's typed arrays, to transfer. */
+export function sceneBuffers(scene: PrintScene): Transferable[] {
+  return scene.units.flatMap(({ source, placement }) => [
+    source.positions.buffer, source.indices.buffer,
+    ...(placement ? [placement.contactPositions.buffer, placement.contactNormals.buffer] : []),
+  ]);
+}
+
 /** Triangles in every object of the scene. */
 export const triangleCountOf = (scene: PrintScene): number => scene.units.reduce((sum, unit) => sum + unit.source.indices.length / 3, 0);
 

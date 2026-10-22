@@ -5,10 +5,11 @@ import { saveFailure, savedStatus, SAVE_CANCELLED } from '../editing/project';
 import type { EditMode, StatusMessage } from '../editing/types';
 import type { UndoAction } from '../editing/toast';
 import type { PrintScene } from '../state/project';
-import { packProject, projectFileName, PROJECT_EXTENSION, sameUnits, unpackProject } from '../state/projectFile';
+import { packProject, projectFileName, PROJECT_EXTENSION, sameUnits } from '../state/projectFile';
 import { t } from '../i18n';
 import { jobActivity } from '../workers/jobActivity';
-import { refusalLimit } from '../core/budget';
+import { createProjectWorker } from '../workers/factories';
+import { ProjectClient } from '../workers/projectClient';
 import { isAbort, RUNTIME } from './appShared';
 
 /** The browser's save dialog, where it has one; automation cannot answer a native dialog, so it downloads instead. */
@@ -34,6 +35,8 @@ export function useProjectFile(host: {
   const { sceneRef, modeRef, replace, setStatusMessage, offerUndo, refused, scene } = host;
   const saved = useRef<PrintScene>(scene);
   const busy = useRef(false);
+  const projectClient = useRef<ProjectClient>();
+  const client = () => (projectClient.current ??= new ProjectClient(createProjectWorker));
   const dirty = !sameUnits(scene, saved.current);
 
   useEffect(() => {
@@ -53,7 +56,7 @@ export function useProjectFile(host: {
     busy.current = true;
     try {
       await openProjectFile(file, {
-        jobs: jobActivity, runtime: RUNTIME, read: (blob) => unpackProject(blob, refusalLimit(RUNTIME)), mode: () => modeRef.current.mode,
+        runtime: RUNTIME, read: (blob, limit) => client().open(blob, limit), mode: () => modeRef.current.mode,
         hadObjects: () => sceneRef.current.units.length > 0, replace, markSaved: (opened) => { saved.current = opened; },
         setStatusMessage, offerUndo, refused,
       }, modelsIgnored);
