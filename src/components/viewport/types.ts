@@ -2,7 +2,8 @@ import type { SupportProblem } from '../../core/analysis/supportCheck';
 import type { GeneratedSupportMesh } from '../../core/supports/mesh';
 import type { ZoneStamp } from '../../core/supports/zones';
 import type { Vector } from '../../core/vec3';
-import type { BrushMode, EditMode, EditTool, SelectStyle, ZoneKind } from '../../editing/types';
+import type { Gesture } from '../../editing/gesture';
+import type { BrushMode, EditTool, SelectStyle } from '../../editing/types';
 import type { PrintScene } from '../../state/project';
 import type { ModelTransform } from '../../state/transform';
 
@@ -11,7 +12,8 @@ export type GizmoMode = 'none' | 'translate' | 'rotate';
 export interface ObjectViewportProps {
   scene: PrintScene;
   supportMeshes: ReadonlyMap<string, GeneratedSupportMesh>;
-  editMode: EditMode;
+  /** What a press or drag does now (editing/gesture): the mode, the tool and its brush. */
+  gesture: Gesture;
   gizmoMode: GizmoMode;
   modelVisible: boolean;
   wireframe: boolean;
@@ -22,23 +24,16 @@ export interface ObjectViewportProps {
   onErase: (unitId: string, point: Vector) => void;
   /** A Support Edit Mode click that hit neither the model nor a support. */
   onEditMiss: () => void;
-  editTool: EditTool;
   /**
    * The edit tool as it is now. The canvas renders a step behind the DOM, so a click right after a
-   * tool switch would otherwise act with the previous tool; clicks read this instead of `editTool`.
+   * tool switch would otherwise act with the previous tool; clicks read this instead of `gesture`.
    */
   liveTool?: () => { tool: EditTool; selectStyle: SelectStyle };
-  /** Present only while Select supports drags over supports (circle radius in screen px). */
-  brush?: { radius: number; mode: BrushMode };
   /** Selected contact ids of the active object. */
   selection: ReadonlySet<string>;
   onToggleContact: (unitId: string, contactId: string) => void;
   /** Drag over: the contacts whose supports the circle passed over (editing/screenBrush). */
   onPaint: (unitId: string, ids: readonly string[], mode: BrushMode) => void;
-  /** Present only in zones mode: the zone brush (radius in mm). */
-  zoneBrush?: { radius: number; kind: ZoneKind };
-  /** How strongly the no-support zone layer shows on the active object. */
-  showZones: 'off' | 'faint' | 'full';
   /** One finished zone stroke on a unit, stamps in unit-local space. */
   onZoneStroke: (unitId: string, stamps: ZoneStamp[]) => void;
   /** Support check findings to mark, positions in their unit's local frame. */

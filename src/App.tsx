@@ -33,6 +33,7 @@ import { meshBounds } from './core/supports/meshQuery';
 import type { Vector } from './core/vec3';
 import { problemInZone, type ZoneStamp } from './core/supports/zones';
 import { deleteCommands } from './supports/selection';
+import { gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsCamera, tipsShown, tipsToggle } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
 import { checkJobOf, currentBuild, currentBuilds, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
@@ -71,6 +72,21 @@ const EXPORTS: { kind: ExportKind; label: string; hint: string }[] = [
   { kind: 'separate-supports', label: 'Each object, supports only', hint: 'One STL file per object, supports only' },
   { kind: 'whole-printable', label: 'Whole plate in one file', hint: 'One STL file: every object and its supports, as placed on the plate' },
 ];
+
+/** The viewport's classes per gesture: the mode chrome, and the arrow cursor of Select supports → Click. */
+const VIEWPORT_CLASS: Record<GestureKind, string> = {
+  none: '',
+  zones: ' viewport--editing viewport--zones',
+  add: ' viewport--editing',
+  pick: ' viewport--editing viewport--pick',
+  drag: ' viewport--editing',
+};
+/** What a click or drag does in Support Edit Mode, on its badge. */
+const EDIT_BADGE: Record<Exclude<GestureKind, 'none' | 'zones'>, string> = {
+  add: 'Click the model to add supports',
+  pick: 'Click supports to select',
+  drag: 'Drag over supports to select',
+};
 
 /** A support check finding, its position in the unit's local frame. */
 export interface UnitProblem extends SupportProblem {
@@ -128,6 +144,7 @@ export default function App() {
   const [session, setSession] = useState(initialSession);
   const sessionRef = useRef(session);
   const { mode: editMode, tool: editTool, selectStyle, brushMode, brushRadius, selection, zoneKind, zoneRadius } = session;
+  const press = gesture(session);
   /** The tool as it is now, for canvas clicks (the canvas renders a step behind the DOM). */
   const liveTool = useCallback(() => sessionRef.current, []);
   // Like Blender's Support Edit Mode, undo inside the mode stops at the scene it was entered with.
@@ -914,7 +931,7 @@ export default function App() {
         </section>
       </aside>
       <section
-        className={`viewport${isDraggingOver ? ' viewport--dropping' : ''}${editMode === 'off' ? '' : ' viewport--editing'}${editMode === 'zones' ? ' viewport--zones' : ''}${editMode === 'edit' && editTool === 'select' && selectStyle === 'click' ? ' viewport--pick' : ''}`}
+        className={`viewport${isDraggingOver ? ' viewport--dropping' : ''}${VIEWPORT_CLASS[press.kind]}`}
         onDragOver={(event) => { event.preventDefault(); setIsDraggingOver(true); }}
         onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDraggingOver(false); }}
         onDrop={dropImport}
@@ -922,7 +939,7 @@ export default function App() {
         <ObjectViewport
           scene={scene}
           supportMeshes={supportMeshes}
-          editMode={editMode}
+          gesture={press}
           gizmoMode={gizmoMode}
           modelVisible={modelVisible}
           wireframe={wireframe}
@@ -932,14 +949,10 @@ export default function App() {
           onRemoveContact={onRemoveContact}
           onErase={onErase}
           onEditMiss={onEditMiss}
-          editTool={editTool}
           liveTool={liveTool}
-          {...(editMode === 'edit' && editTool === 'select' && selectStyle === 'brush' ? { brush: { radius: brushRadius, mode: brushMode } } : {})}
           selection={selection}
           onToggleContact={onToggleContact}
           onPaint={onPaint}
-          {...(editMode === 'zones' ? { zoneBrush: { radius: zoneRadius, kind: zoneKind } } : {})}
-          showZones={editMode === 'zones' ? 'full' : editMode === 'edit' ? 'faint' : 'off'}
           onZoneStroke={onZoneStroke}
           problems={currentProblems}
           {...(focus ? { focus } : {})}
@@ -959,7 +972,7 @@ export default function App() {
           <button onClick={() => requestView('bottom')} disabled={scene.units.length === 0} {...hint('Look straight up at the selection to check contact points')}>{t('Bottom view')}</button>
         </div>
         {/* Circle size preview while its slider moves (centre of the view), gone 800 ms after release. */}
-        {circlePreview && editMode === 'edit' && editTool === 'select' && selectStyle === 'brush' && <div className="brush-circle brush-circle--preview" data-mode={brushMode} style={{ width: brushRadius * 2, height: brushRadius * 2 }} aria-hidden="true" />}
+        {circlePreview && press.kind === 'drag' && <div className="brush-circle brush-circle--preview" data-mode={brushMode} style={{ width: brushRadius * 2, height: brushRadius * 2 }} aria-hidden="true" />}
         {isDraggingOver && <div className="viewport-drop-overlay">{t('Drop to import')}</div>}
         <JobActivityPanel />
         <div className="undo-toast-region" role="status" aria-live="polite">
@@ -999,7 +1012,7 @@ export default function App() {
           <div className="edit-frame" aria-hidden="true" />
           <div className="edit-badge" role="status">
             {t('Support Edit Mode')}<span>{activeUnit?.name}</span>
-            <b>{t(editTool === 'add' ? 'Click the model to add supports' : selectStyle === 'brush' ? 'Drag over supports to select' : 'Click supports to select')}</b>
+            {press.kind !== 'none' && press.kind !== 'zones' && <b>{t(EDIT_BADGE[press.kind])}</b>}
           </div>
           <div className="edit-bar">
             <div className="edit-row">
@@ -1026,7 +1039,7 @@ export default function App() {
                   </label>}
                 </div>
               </div>}
-              {editTool === 'select' && selectStyle === 'brush' && <>
+              {press.kind === 'drag' && <>
                 <div className="segmented" role="group" aria-label={t('Dragging over supports')}>
                   <button aria-pressed={brushMode === 'select'} onClick={() => send({ type: 'setBrushMode', mode: 'select' })} {...hint('Dragging adds supports to the selection')}>{t('Select')}</button>
                   <button aria-pressed={brushMode === 'unselect'} onClick={() => send({ type: 'setBrushMode', mode: 'unselect' })} {...hint('Dragging takes supports out of the selection')}>{t('Unselect')}</button>

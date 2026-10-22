@@ -7,6 +7,7 @@ import type { GeneratedSupportMesh } from '../../core/supports/mesh';
 import { contactAtTriangle, tipsOf } from '../../core/supports/meshQuery';
 import type { ZoneStamp } from '../../core/supports/zones';
 import type { Vector } from '../../core/vec3';
+import { gestureMode } from '../../editing/gesture';
 import { clickTool, pickAction, type PickInput } from '../../editing/pick';
 import { brushPreview } from '../../editing/selection';
 import { createStroke, zoneFill } from '../../editing/stroke';
@@ -25,7 +26,7 @@ function toVector(vector: THREE.Vector3): Vector {
 
 /** The viewport settings and callbacks one object takes, plus its own unit, supports and state. */
 interface UnitObjectProps extends Pick<ObjectViewportProps,
-  | 'editMode' | 'editTool' | 'liveTool' | 'brush' | 'zoneBrush' | 'selection' | 'showZones' | 'tipsView' | 'modelVisible' | 'wireframe'
+  | 'gesture' | 'liveTool' | 'selection' | 'tipsView' | 'modelVisible' | 'wireframe'
   | 'onSelect' | 'onAddContact' | 'onRemoveContact' | 'onErase' | 'onEditMiss' | 'onToggleContact' | 'onPaint' | 'onZoneStroke'> {
   problems: readonly SupportProblem[];
   unit: PrintUnit;
@@ -36,7 +37,8 @@ interface UnitObjectProps extends Pick<ObjectViewportProps,
 }
 
 export function UnitObject(props: UnitObjectProps) {
-  const { unit, editMode } = props;
+  const { unit, gesture } = props;
+  const editMode = gestureMode(gesture);
   const editing = editMode !== 'off' && props.active;
   // The tips view draws (and picks) only the contact tips of the built supports.
   const tips = useMemo(() => (props.tipsView && props.supports ? tipsOf(props.supports) : undefined), [props.tipsView, props.supports]);
@@ -45,15 +47,15 @@ export function UnitObject(props: UnitObjectProps) {
   const shown = displayMesh(unit.source);
   const model = useGeometry(shown, true);
   // Painting zones: supports are drawn but take no pointer events (presses reach the model).
-  const zoning = editing && editMode === 'zones';
+  const zoning = editing && gesture.kind === 'zones';
   const supportGeometry = useGeometry(supports, editing && !zoning);
   // Select supports: Click picks one support at a time; Drag over (the brush) owns the left button.
-  const selecting = props.editTool === 'select';
-  const clickSelecting = selecting && !props.brush;
+  const selecting = gesture.kind === 'pick' || gesture.kind === 'drag';
+  const clickSelecting = gesture.kind === 'pick';
   /** Drag over settings, only while this object is the one edited. */
-  const brush = editing ? props.brush : undefined;
+  const brush = editing && gesture.kind === 'drag' ? gesture.brush : undefined;
   /** Zone brush settings, only while this object's zones are painted. */
-  const zoneBrush = zoning ? props.zoneBrush : undefined;
+  const zoneBrush = zoning && gesture.kind === 'zones' ? gesture.brush : undefined;
   /** Stamps of the zone stroke in progress (the ref is what the stroke end hands on). */
   const strokeStamps = useRef<ZoneStamp[]>([]);
   const [stroke, setStroke] = useState<readonly ZoneStamp[]>([]);
@@ -196,7 +198,7 @@ export function UnitObject(props: UnitObjectProps) {
     shift: event.shiftKey,
     travel: event.delta,
     mode: editMode,
-    ...clickTool(props.liveTool?.(), { tool: props.editTool, brush: Boolean(props.brush) }),
+    ...clickTool(props.liveTool?.(), { tool: gesture.kind === 'add' ? 'add' : 'select', brush: gesture.kind === 'drag' }),
     active: props.active,
     contact,
   });
@@ -231,7 +233,7 @@ export function UnitObject(props: UnitObjectProps) {
       visible={props.modelVisible}
       userData={OCCLUDER}
       // Painting zones: other objects take no pointer events (a press passes through to the active one).
-      raycast={editMode === 'zones' && !props.active ? () => undefined : acceleratedRaycast}
+      raycast={gesture.kind === 'zones' && !props.active ? () => undefined : acceleratedRaycast}
       onClick={(event) => clickModel(event, false)}
       onContextMenu={(event) => clickModel(event, true)}
       {...(editing ? { onPointerDown: startStroke, onPointerMove: hoverModel, onPointerOut: leave } : {})}
@@ -246,8 +248,8 @@ export function UnitObject(props: UnitObjectProps) {
         wireframe={props.wireframe}
       />
     </mesh>}
-    {model && editing && shown === unit.source && props.showZones !== 'off' && zones.length > 0 && <group visible={props.modelVisible}>
-      <ZoneLayer mesh={unit.source} geometry={model} zones={zones} opacity={ZONE_OPACITY[props.showZones]} />
+    {model && editing && shown === unit.source && zones.length > 0 && <group visible={props.modelVisible}>
+      <ZoneLayer mesh={unit.source} geometry={model} zones={zones} opacity={ZONE_OPACITY[zoning ? 'full' : 'faint']} />
     </group>}
     {supportGeometry && <mesh
       geometry={supportGeometry}

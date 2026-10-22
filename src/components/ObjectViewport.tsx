@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { TransformControls as TransformControlsImpl } from 'three-stdlib';
+import { gestureMode } from '../editing/gesture';
 import { missAction } from '../editing/pick';
 import type { ModelTransform } from '../state/transform';
 import { ViewCamera, PlateSide, FocusCamera } from './viewport/cameras';
@@ -61,7 +62,7 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       (raycaster as THREE.Raycaster & { firstHitOnly?: boolean }).firstHitOnly = true;
     }}
     onPointerMissed={(event) => {
-      const action = missAction({ mode: props.editMode, button: event.button === 0 ? 'left' : event.button === 2 ? 'right' : 'middle', gizmoDragging: dragging });
+      const action = missAction({ mode: gestureMode(props.gesture), button: event.button === 0 ? 'left' : event.button === 2 ? 'right' : 'middle', gizmoDragging: dragging });
       if (action.type === 'miss') props.onEditMiss();
       else if (action.type === 'deselect') props.onSelect(null, false);
     }}
@@ -83,7 +84,7 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       tipsView={props.tipsView}
       selected={selected.has(unit.id)}
       active={unit.id === activeId}
-      editMode={props.editMode}
+      gesture={props.gesture}
       modelVisible={props.modelVisible}
       wireframe={props.wireframe}
       onSelect={props.onSelect}
@@ -91,19 +92,15 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       onRemoveContact={props.onRemoveContact}
       onErase={props.onErase}
       onEditMiss={props.onEditMiss}
-      editTool={props.editTool}
       {...(props.liveTool ? { liveTool: props.liveTool } : {})}
-      {...(props.brush ? { brush: props.brush } : {})}
       selection={props.selection}
       onToggleContact={props.onToggleContact}
       onPaint={props.onPaint}
-      {...(props.zoneBrush ? { zoneBrush: props.zoneBrush } : {})}
-      showZones={props.showZones}
       onZoneStroke={props.onZoneStroke}
       problems={props.problems.filter((problem) => problem.unitId === unit.id)}
       {...(unit.id === activeId ? { onGroup: setActiveGroup } : {})}
     />)}
-    {activeId && activeGroup && props.editMode === 'off' && isTransformMode(props.gizmoMode) && <UnitTransformControls
+    {activeId && activeGroup && props.gesture.kind === 'none' && isTransformMode(props.gizmoMode) && <UnitTransformControls
       mode={props.gizmoMode}
       object={activeGroup}
       onDraggingChanged={setDragging}
