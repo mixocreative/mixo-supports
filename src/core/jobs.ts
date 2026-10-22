@@ -24,8 +24,6 @@ export interface ContactInputs {
   /** Automatic placement points (none before a placement). */
   points: readonly SupportPoint[];
   manual: readonly SupportPoint[];
-  /** Removals that take every contact within Erase radius. */
-  suppressed: readonly string[];
   /** Exact removals by contact ID. */
   deleted: readonly string[];
   zones: readonly ZoneStamp[];
@@ -68,12 +66,12 @@ const CONTACT_KIND: Record<SupportPoint['source'], NonNullable<SupportContact['k
 };
 
 /**
- * Final contacts in unit-local space: automatic minus suppressed, deleted and no-support zones,
+ * Final contacts in unit-local space: automatic minus deleted and no-support zones,
  * plus manual (manual contacts ignore zones and never join Auto Tree branches). A support that
  * lands in a zone is the support build's call: it reports those contacts as `dropped`.
  */
-export function jobContacts(inputs: ContactInputs, settings: Pick<LiveSupportSettings, 'eraseRadius'>): SupportContact[] {
-  return composeContacts(inputs.points, inputs.manual, inputs.suppressed, settings.eraseRadius, inputs.deleted)
+export function jobContacts(inputs: ContactInputs): SupportContact[] {
+  return composeContacts(inputs.points, inputs.manual, inputs.deleted)
     .map(({ id, position, normal, source }) => ({ id, position, normal, kind: CONTACT_KIND[source], origin: id.startsWith('manual-') ? 'manual' as const : 'auto' as const }))
     .filter((contact) => contact.origin === 'manual' || !zonedAt(inputs.zones, contact.position, contact.normal));
 }

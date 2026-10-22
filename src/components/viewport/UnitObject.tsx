@@ -211,7 +211,7 @@ export function UnitObject(props: UnitObjectProps) {
     else if (action.type === 'add') props.onAddContact(unit.id, point, surfaceNormal(event));
   };
 
-  /** Right-click removes within Remove radius in every tool; a left click selects (Click) or, with Ctrl, removes (Add). */
+  /** Right-click removes the support it hits (nearest within Remove radius for the model) in every tool; a left click selects (Click) or, with Ctrl, removes (Add). */
   const clickSupport = (event: ThreeEvent<MouseEvent>, right: boolean) => {
     if (!supports || event.faceIndex == null) return;
     // Braces, raft and labels belong to no contact: the pick continues behind them.

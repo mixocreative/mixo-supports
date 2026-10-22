@@ -405,7 +405,7 @@ export const ja: Dictionary = {
   'Number of sides of each support cylinder. Higher is rounder and heavier': '各サポート円柱の辺の数。高いほど丸くなり、ポリゴン数も増えます',
   'Extra tip snapping along the neck (SLASG). Usually leave off: contacts are already placed exactly on the surface, and this sinks tips deeper than Contact depth on curved faces': 'ネックに沿った先端の追加スナップです（SLASG）。通常はオフのままにしてください。接触点は既に表面上に正確に配置されており、オンにすると曲面で先端が接触深さより深くめり込みます',
   'Remove radius': '削除半径',
-  'Right-click (or Ctrl+click in Add supports) removes every support whose contact is within this distance of the click': '右クリック（「サポートを追加」では Ctrl+クリック）で、接触点がこの距離内にあるサポートをすべて削除します',
+  'Right-click (or Ctrl+click in Add supports) removes the support nearest the click, if its contact is within this distance': '右クリック（「サポートを追加」では Ctrl+クリック）で、クリック位置に最も近く、接触点がこの距離内にあるサポートを 1 つ削除します',
   'Chitubox Light support preset': 'Chitubox のライトサポートプリセット',
   'Chitubox Middle support preset': 'Chitubox のミドルサポートプリセット',
   'Chitubox Heavy support preset': 'Chitubox のヘビーサポートプリセット',

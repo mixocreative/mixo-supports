@@ -50,7 +50,7 @@ export function currentBuilds<T extends BuiltSupports>(units: readonly PrintUnit
 }
 
 /**
- * Final contacts in unit-local space: automatic minus suppressed, deleted and no-support zones, plus
+ * Final contacts in unit-local space: automatic minus deleted and no-support zones, plus
  * manual, minus those whose support the unit's latest build (`built`) dropped for landing in a zone.
  * Units are immutable, so each list is worked out once per unit object and build; it is frozen and
  * shared by every caller, never to be changed in place.
@@ -58,7 +58,7 @@ export function currentBuilds<T extends BuiltSupports>(units: readonly PrintUnit
 export function unitContacts(unit: PrintUnit, built: BuiltSupports | undefined): readonly SupportContact[] {
   let contacts = contactCache.get(unit);
   if (!contacts) {
-    contacts = Object.freeze(jobContacts(contactInputs(unit), resolveSettings(unit.settings)));
+    contacts = Object.freeze(jobContacts(contactInputs(unit)));
     contactCache.set(unit, contacts);
   }
   if (!built || built.dropped.length === 0) return contacts;
@@ -72,20 +72,19 @@ export function unitContacts(unit: PrintUnit, built: BuiltSupports | undefined):
 
 /** The unit's edits that decide its contacts. */
 function contactInputs(unit: PrintUnit): ContactInputs {
-  return { points: unit.placement?.points ?? [], manual: unit.manual, suppressed: unit.suppressed, deleted: unit.deleted, zones: unit.zones };
+  return { points: unit.placement?.points ?? [], manual: unit.manual, deleted: unit.deleted, zones: unit.zones };
 }
 
 const removedCache = new WeakMap<PrintUnit, number>();
 
 /**
- * How many of the unit's removals (suppressed and deleted IDs) hide a contact right now; one whose
+ * How many of the unit's removals (deleted IDs) hide a contact right now; one whose
  * spot is gone after a regeneration, or that was made before any placement, is not counted.
  */
 export function unitRemovedCount(unit: PrintUnit): number {
   let count = removedCache.get(unit);
   if (count === undefined) {
-    const settings = resolveSettings(unit.settings);
-    count = hidingRemovals(unit.placement?.points ?? [], unit.manual, unit.suppressed, settings.eraseRadius, unit.deleted).size;
+    count = hidingRemovals(unit.placement?.points ?? [], unit.deleted).size;
     removedCache.set(unit, count);
   }
   return count;

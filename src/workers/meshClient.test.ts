@@ -40,7 +40,7 @@ const job = (mesh = model): SupportJob => ({
   mesh,
   frame: { position: [0, 0, 0], rotation: [0, 0, 0] },
   settings: { ...defaultSupportSettings, roofSeededModes: [] } as LiveSupportSettings,
-  contacts: { points: [], manual: [], suppressed: [], deleted: [], zones: [] },
+  contacts: { points: [], manual: [], deleted: [], zones: [] },
   labelText: 'A',
   mode: 'preview',
 });

@@ -37,8 +37,8 @@ export function clickTool(live: { tool: EditTool; selectStyle: SelectStyle } | u
 /**
  * What a click means. `pass`: this hit does not take it, the object behind gets the click (or
  * none does). `none`: taken, nothing happens. `select`: pick the object (`additive` with Shift).
- * `add` a contact at the model point; `erase` every contact within Remove radius of the point;
- * `removeContact`: erase around the support's contact; `toggle` its selection; `miss`: tell the
+ * `add` a contact at the model point; `erase` the contact nearest the point within Remove radius;
+ * `removeContact`: remove that support's contact; `toggle` its selection; `miss`: tell the
  * user what to click instead.
  */
 export type PickAction =

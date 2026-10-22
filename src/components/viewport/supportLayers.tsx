@@ -6,6 +6,7 @@ import type { TriangleMesh } from '../../core/analysis/types';
 import type { GeneratedSupportMesh, SupportContact } from '../../core/supports/mesh';
 import { zoneOverlay } from '../../core/supports/overlayMesh';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
+import { contactToRemove } from '../../editing/removal';
 import { contactVertexRuns, selectionDelta } from '../../editing/selectionHighlight';
 import type { PrintUnit } from '../../state/project';
 import { resolveSettings } from '../../supports/unitSupports';
@@ -31,7 +32,8 @@ export function EditPreview({ hover, unit, contacts, brush }: { hover: Hover; un
   const ringTurn = useMemo(() => new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), hover.normal), [hover.normal]);
   const tipTurn = useMemo(() => new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hover.normal.clone().negate()), [hover.normal]);
   const radius = brush ? brush.radius : settings.eraseRadius;
-  const doomed = hover.remove && !brush ? points.filter((point) => point.distanceTo(hover.point) <= radius) : [];
+  const hit = hover.remove && !brush ? contactToRemove(contacts, hover.point.toArray(), radius) : undefined;
+  const doomed = hit ? [points[contacts.indexOf(hit)]!] : [];
   const length = settings.neckLength;
   const color = brush ? brush.color : hover.remove ? PREVIEW.remove : PREVIEW.ring;
   return <group>
@@ -159,11 +161,12 @@ export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMe
   </mesh>;
 }
 
-/** Contact ids within the Remove radius of a unit-local point: what a remove click there takes. */
+/** Contact ids a remove click at a unit-local point takes: the one nearest within Click reach. */
 export function useDoomed(unit: PrintUnit, contacts: readonly SupportContact[], point: THREE.Vector3 | undefined): string[] {
   const eraseRadius = useMemo(() => resolveSettings(unit.settings).eraseRadius, [unit.settings]);
   if (!point) return [];
-  return contacts.filter((contact) => new THREE.Vector3(...contact.position).distanceTo(point) <= eraseRadius).map((contact) => contact.id);
+  const hit = contactToRemove(contacts, point.toArray(), eraseRadius);
+  return hit ? [hit.id] : [];
 }
 
 /** Support check findings, drawn through the model so hidden spots still show. */

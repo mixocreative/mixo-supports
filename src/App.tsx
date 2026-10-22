@@ -44,6 +44,7 @@ import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
 import { checkJobOf, currentBuild, currentBuilds, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { keyAction } from './editing/keys';
+import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
 import { busyStatus, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
@@ -329,7 +330,7 @@ export default function App() {
     for (const unit of units) {
       const settings = resolveSettings(unit.settings);
       // Placement runs on the rotated but untranslated model (placementJobOf) so moving a unit
-      // never shifts the sampling lattice; automatic IDs (and suppressions) stay stable.
+      // never shifts the sampling lattice; automatic IDs (and removals) stay stable.
       const orientation = orientationOf(unit);
       const key = `place:${unit.id}`;
       placing.current.add(unit.id);
@@ -535,7 +536,7 @@ export default function App() {
     else setStatus('No supports to remove.');
   };
   const clearManual = () => {
-    const count = forTargets((unit) => (unit.manual.length || unit.suppressed.length || unit.deleted.length ? { type: 'supports/clear-manual', unitId: unit.id } : undefined));
+    const count = forTargets((unit) => (unit.manual.length || unit.deleted.length ? { type: 'supports/clear-manual', unitId: unit.id } : undefined));
     setStatus(count ? 'Manual edits cleared; automatic contacts restored.' : 'No manual edits to clear.');
     if (count) offerUndo({ kind: 'clearManual' });
   };
@@ -613,27 +614,24 @@ export default function App() {
     setStatus(normal[1] > 0 ? 'Support added on a top face: it grows from below.' : 'Support added.');
   }, [dispatch]);
 
-  const removeContact = useCallback((unit: PrintUnit, contactId: string): SceneCommand => (
-    unit.manual.some((point) => point.id === contactId)
-      ? { type: 'manual/remove', unitId: unit.id, pointId: contactId }
-      : { type: 'suppression/add', unitId: unit.id, pointId: contactId }
-  ), []);
+  // A removal is exact: the manual support itself, or the automatic contact's id. Click reach only decides which support a click on the model hits.
+  const removeOne = useCallback((unit: PrintUnit, contactId: string) => {
+    dispatch({ type: 'batch', commands: deleteCommands(unit, [contactId]) });
+    setStatus('Removed 1 support; removals persist through regeneration.', { n: 1 }, 'Removed {n} supports; removals persist through regeneration.');
+  }, [dispatch, setStatus]);
 
-  // Like Blender's remove_manual_near: every contact within Erase Radius of the pick goes.
   const eraseNear = useCallback((unit: PrintUnit, local: [number, number, number]) => {
     const radius = resolveSettings(unit.settings).eraseRadius;
-    const hits = contactsOf(unit).filter(({ position: [x, y, z] }) => (x - local[0]) ** 2 + (y - local[1]) ** 2 + (z - local[2]) ** 2 <= radius * radius);
-    if (hits.length === 0) return setStatus('No support here: right-click a support, or the model within {radius} mm of one.', { radius });
-    dispatch({ type: 'batch', commands: hits.map((contact) => removeContact(unit, contact.id)) });
-    setStatus('Removed 1 support; removals persist through regeneration.', { n: hits.length }, 'Removed {n} supports; removals persist through regeneration.');
-  }, [contactsOf, dispatch, removeContact]);
+    const hit = contactToRemove(contactsOf(unit), local, radius);
+    if (!hit) return setStatus('No support here: right-click a support, or the model within {radius} mm of one.', { radius });
+    removeOne(unit, hit.id);
+  }, [contactsOf, removeOne, setStatus]);
 
   const onRemoveContact = useCallback((unitId: string, contactId: string) => {
     if (sessionRef.current.mode === 'zones') return;
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
-    const contact = unit && contactsOf(unit).find((candidate) => candidate.id === contactId);
-    if (unit && contact) eraseNear(unit, [...contact.position]);
-  }, [contactsOf, eraseNear]);
+    if (unit && contactsOf(unit).some((candidate) => candidate.id === contactId)) removeOne(unit, contactId);
+  }, [contactsOf, removeOne]);
 
   const onEditMiss = useCallback(() => {
     const message = missStatus(sessionRef.current);

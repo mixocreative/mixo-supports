@@ -1,5 +1,6 @@
 import type { PlacementResult, Region, SupportPoint, TriangleMesh } from '../core/analysis/types';
-import { rekeyPoints } from '../core/analysis/placement';
+import { contactsHiddenByMarkers, rekeyPoints } from '../core/analysis/placement';
+import { defaultSupportSettings } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { ModelTransform } from './transform';
 
@@ -31,8 +32,7 @@ export interface PrintUnit {
   placement?: PlacementResult;
   supports?: SupportMesh;
   manual: SupportPoint[];
-  suppressed: string[];
-  /** Exact removals by contact ID; unlike `suppressed` they never take neighbours with them. */
+  /** Exact removals by contact ID: each hides one automatic contact and nothing else. */
   deleted: string[];
   /** Ordered brush stamps of no-support zones (the last covering stamp wins); automatic contacts inside are dropped. */
   zones: ZoneStamp[];
@@ -62,8 +62,6 @@ export type SceneCommand =
   | { type: 'settings/set'; unitId: string; settings: SupportSettings }
   | { type: 'manual/add'; unitId: string; point: SupportPoint }
   | { type: 'manual/remove'; unitId: string; pointId: string }
-  | { type: 'suppression/add'; unitId: string; pointId: string }
-  | { type: 'suppression/remove'; unitId: string; pointId: string }
   | { type: 'deletion/add'; unitId: string; pointIds: string[] }
   | { type: 'deletion/set'; unitId: string; pointIds: string[] }
   | { type: 'zones/add'; unitId: string; stamps: ZoneStamp[] }
@@ -85,7 +83,7 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
       return scene.activeUnitId === command.unitId ? withoutActiveUnit(remaining) : remaining;
     }
     case 'supports/clear-manual':
-      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, manual: [], suppressed: [], deleted: [] }));
+      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, manual: [], deleted: [] }));
     case 'selection/set':
       return command.activeUnitId === undefined
         ? { ...withoutActiveUnit(scene), selectedUnitIds: [...command.unitIds] }
@@ -109,12 +107,6 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
       }));
     case 'manual/remove':
       return updateUnit(scene, command.unitId, (unit) => ({ ...unit, manual: unit.manual.filter((point) => point.id !== command.pointId) }));
-    case 'suppression/add':
-      return updateUnit(scene, command.unitId, (unit) => (
-        unit.suppressed.includes(command.pointId) ? unit : { ...unit, suppressed: [...unit.suppressed, command.pointId] }
-      ));
-    case 'suppression/remove':
-      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, suppressed: unit.suppressed.filter((id) => id !== command.pointId) }));
     case 'deletion/add':
       return updateUnit(scene, command.unitId, (unit) => ({
         ...unit,
@@ -183,20 +175,28 @@ export function sceneJsonReviver(_key: string, value: unknown): unknown {
 }
 
 /**
- * Saved projects before 11.0 (b) named automatic contacts from the turned frame while storing
- * unit-local positions. Re-key them from the stored position and follow the removal lists, so id
- * and position share a frame. A no-op on a unit already keyed that way.
+ * One-time migrations of units saved before 11.0.
+ * (b) Automatic contacts were named from the turned frame while their positions are unit-local:
+ * re-key them from the stored position and follow the removal list, so id and position share a
+ * frame (a no-op on a unit already keyed that way).
+ * (a) The retired `suppressed` list hid every contact within Remove radius of a marker, manual
+ * ones included. Each marker becomes exact `deleted` ids of the automatic contacts it hid at load
+ * time; manual supports it was hiding show again.
  */
-function rekeyLegacyIds(unit: PrintUnit): PrintUnit {
-  if (!unit.placement) return unit;
+function migrateRemovals(unit: PrintUnit & { suppressed?: string[] }): PrintUnit {
+  const { suppressed = [], ...rest } = unit;
+  if (!unit.placement) return rest;
   const { points, ids } = rekeyPoints(unit.placement.points);
-  if (ids.size === 0) return unit;
-  const follow = (list: string[]) => [...new Set(list.map((id) => ids.get(id) ?? id))];
-  return { ...unit, placement: { ...unit.placement, points }, suppressed: follow(unit.suppressed), deleted: follow(unit.deleted) };
+  const follow = (list: readonly string[]) => list.map((id) => ids.get(id) ?? id);
+  const radius = (unit.settings as { eraseRadius?: number }).eraseRadius ?? defaultSupportSettings.eraseRadius;
+  const hidden = follow(contactsHiddenByMarkers(unit.placement.points, suppressed, radius));
+  const deleted = [...new Set([...follow(unit.deleted), ...hidden])];
+  if (ids.size === 0 && deleted.length === unit.deleted.length) return rest;
+  return { ...rest, placement: { ...unit.placement, points }, deleted };
 }
 
 function normalizeUnit(unit: PrintUnit, copyMesh = true): PrintUnit {
-  return rekeyLegacyIds({
+  return migrateRemovals({
     ...unit,
     source: copyMesh ? cloneMesh(unit.source, 'source') : checkedMesh(unit.source, 'source'),
     id: normalizeString(unit.id, 'unit id'),
@@ -206,7 +206,6 @@ function normalizeUnit(unit: PrintUnit, copyMesh = true): PrintUnit {
     ...(unit.supports === undefined ? {} : { supports: normalizeSupportMesh(unit.supports) }),
     ...(unit.placement === undefined ? {} : { placement: normalizePlacement(unit.placement) }),
     manual: cloneJsonValue(unit.manual ?? []) as unknown as SupportPoint[],
-    suppressed: cloneJsonValue(unit.suppressed ?? []) as string[],
     deleted: cloneJsonValue(unit.deleted ?? []) as string[],
     zones: cloneJsonValue(unit.zones ?? []) as unknown as ZoneStamp[],
   });

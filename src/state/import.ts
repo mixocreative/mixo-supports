@@ -155,7 +155,6 @@ export function placeImportedUnits(
       transform: { position: [center[0]! + offset[0], center[1]! + offset[1], center[2]! + offset[2]], rotation: [0, 0, 0] },
       settings: { ...defaultSupportSettings, roofSeededModes: [] } as SupportSettings,
       manual: [],
-      suppressed: [],
       deleted: [],
       zones: [],
     };

@@ -26,7 +26,6 @@ const unitA: PrintUnit = {
   placement: { points: [contact], regions: [], contactPositions: new Float32Array([0, 0, 0]), contactNormals: new Float32Array([0, 0, 1]) },
   supports: { kind: 'support-mesh', data: { pillars: 1 } },
   manual: [],
-  suppressed: [],
   deleted: [],
   zones: [],
 };
@@ -68,13 +67,13 @@ describe('reduceScene', () => {
     expect(next.units[0].manual).toEqual([]);
   });
 
-  it('updates selection, transform, settings, manual contacts, and suppressions immutably', () => {
+  it('updates selection, transform, settings, manual contacts, and removals immutably', () => {
     const scene = reduceScene(emptyScene, { type: 'unit/add', unit: { ...unitA, supports: undefined, placement: undefined } });
     const selected = reduceScene(scene, { type: 'selection/set', unitIds: ['unit-a'], activeUnitId: 'unit-a' });
     const transformed = reduceScene(selected, { type: 'transform/set', unitId: 'unit-a', transform: { position: [1, 2, 3], rotation: [0, 1, 0] } });
     const configured = reduceScene(transformed, { type: 'settings/set', unitId: 'unit-a', settings: { preset: 'LIGHT' } });
     const edited = reduceScene(configured, { type: 'manual/add', unitId: 'unit-a', point: contact });
-    const suppressed = reduceScene(edited, { type: 'suppression/add', unitId: 'unit-a', pointId: 'auto-a' });
+    const suppressed = reduceScene(edited, { type: 'deletion/add', unitId: 'unit-a', pointIds: ['auto-a'] });
 
     expect(scene.selectedUnitIds).toEqual([]);
     expect(suppressed).toMatchObject({ selectedUnitIds: ['unit-a'], activeUnitId: 'unit-a' });
@@ -82,7 +81,7 @@ describe('reduceScene', () => {
       transform: { position: [1, 2, 3], rotation: [0, 1, 0] },
       settings: { preset: 'LIGHT' },
       manual: [contact],
-      suppressed: ['auto-a'],
+      deleted: ['auto-a'],
     });
     expect(suppressed.units[0]).not.toBe(scene.units[0]);
   });
@@ -117,10 +116,10 @@ describe('reduceScene', () => {
     expect(scene.units[0]!.zones).toEqual([]);
   });
 
-  it('normalizes a unit saved before manual edits existed (no manual or suppressed lists)', () => {
-    const { manual: _manual, suppressed: _suppressed, deleted: _deleted, zones: _zones, ...legacy } = unitA;
+  it('normalizes a unit saved before manual edits existed (no manual or deleted lists)', () => {
+    const { manual: _manual, deleted: _deleted, zones: _zones, ...legacy } = unitA;
     const scene = reduceScene(emptyScene, { type: 'unit/add', unit: legacy as PrintUnit });
-    expect(scene.units[0]).toMatchObject({ manual: [], suppressed: [], deleted: [], zones: [] });
+    expect(scene.units[0]).toMatchObject({ manual: [], deleted: [], zones: [] });
   });
 
   it('re-keys a project saved with turned-frame automatic ids, and its removals with it', () => {
@@ -134,6 +133,23 @@ describe('reduceScene', () => {
     expect(scene.units[0]!.placement!.points.map((point) => point.id)).toEqual(['auto-300_-500_0', 'auto-600_-500_0']);
     expect(scene.units[0]!.deleted).toEqual(['auto-300_-500_0', 'auto-9_9_9']);
     expect(deserializeScene(serializeScene(scene)).units[0]).toEqual(scene.units[0]);
+  });
+
+  it('migrates retired suppression markers into exact deleted ids on load, once', () => {
+    const at = (id: string, x: number): SupportPoint => ({ ...contact, id, position: [x, -5, 0] });
+    const old = {
+      ...unitA,
+      settings: { eraseRadius: 1.5 },
+      placement: { ...unitA.placement!, points: [at('auto-0_-500_0', 0), at('auto-100_-500_0', 1), at('auto-400_-500_0', 4)] },
+      manual: [{ ...at('manual-a', 0.5), id: 'manual-a' }],
+      suppressed: ['auto-0_-500_0'],
+    } as PrintUnit;
+    const scene = deserializeScene(serializeScene(reduceScene(emptyScene, { type: 'unit/add', unit: old })));
+    const unit = scene.units[0]! as PrintUnit & { suppressed?: unknown };
+    expect(unit.suppressed).toBeUndefined();
+    expect(unit.deleted).toEqual(['auto-0_-500_0', 'auto-100_-500_0']);
+    expect(unit.manual.map((point) => point.id)).toEqual(['manual-a']);
+    expect(deserializeScene(serializeScene(scene)).units[0]).toEqual(unit);
   });
 
   it('rejects runtime objects from settings and support payloads while retaining JSON-safe scenes', () => {
@@ -172,9 +188,9 @@ describe('reduceScene', () => {
   });
 
   it('clears manual edits, removes units, and applies batches atomically', () => {
-    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: { ...unitA, manual: [contact], suppressed: ['auto-a'] } });
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: { ...unitA, manual: [contact], deleted: ['auto-a'] } });
     const cleared = reduceScene(scene, { type: 'supports/clear-manual', unitId: 'unit-a' });
-    expect(cleared.units[0]).toMatchObject({ manual: [], suppressed: [] });
+    expect(cleared.units[0]).toMatchObject({ manual: [], deleted: [] });
     expect(cleared.units[0].placement).toBeDefined();
 
     const both = reduceScene(emptyScene, { type: 'batch', commands: [

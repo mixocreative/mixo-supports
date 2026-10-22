@@ -63,7 +63,7 @@ describe('placeImportedUnits', () => {
   it('centres each unit on its own pivot, lifts it, and keeps imports apart from existing units', () => {
     let next = 0;
     const [first] = placeImportedUnits([{ name: 'A', mesh: box }], [], { lift: 5, createId: () => `unit-${next++}` });
-    expect(first).toMatchObject({ id: 'unit-0', name: 'A', manual: [], suppressed: [] });
+    expect(first).toMatchObject({ id: 'unit-0', name: 'A', manual: [], deleted: [] });
     const world = meshBounds(applyTransform(first!.source, first!.transform));
     expect(world.min[1]).toBeCloseTo(5);
     expect(meshBounds(first!.source).min[0]).toBeCloseTo(-2);

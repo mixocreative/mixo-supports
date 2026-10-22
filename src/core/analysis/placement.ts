@@ -89,80 +89,32 @@ export function generatePlacement(mesh: TriangleMesh, settings: PlacementSetting
 }
 
 /**
- * Final contacts for one unit, as MIXO_ManualPoints builds them: automatic contacts plus manual
- * additions, then every contact within `eraseRadius` of a removal marker is deleted. Markers
- * are the removed automatic IDs, which encode their positions; with no radius only the exact
- * IDs are hidden.
- *
- * `deleted` lists exact removals, applied after that and never touching neighbours or manual
- * contacts. An ID that names no automatic contact hides nothing (`remapDeleted` re-keys them
- * when placement lands).
+ * Final contacts for one unit: the automatic contacts minus the exact `deleted` IDs, then every
+ * manual addition. A deleted ID that names no automatic contact hides nothing (`remapDeleted`
+ * re-keys them when placement lands); manual contacts are never hidden by a removal.
  */
-export function composeContacts(
-  auto: readonly SupportPoint[],
-  manual: readonly SupportPoint[],
-  suppressed: readonly string[],
-  eraseRadius = 0,
-  deleted: readonly string[] = [],
-): SupportPoint[] {
-  return compose(auto, manual, suppressed, eraseRadius, deleted);
+export function composeContacts(auto: readonly SupportPoint[], manual: readonly SupportPoint[], deleted: readonly string[] = []): SupportPoint[] {
+  const gone = new Set(deleted);
+  return [...auto.filter((point) => !gone.has(point.id)), ...manual];
+}
+
+/** The `deleted` IDs that hide an automatic contact right now; one whose spot is gone hides nothing. */
+export function hidingRemovals(auto: readonly SupportPoint[], deleted: readonly string[]): Set<string> {
+  const ids = new Set(auto.map((point) => point.id));
+  return new Set(deleted.filter((id) => ids.has(id)));
 }
 
 /**
- * The `suppressed` and `deleted` IDs that hide at least one contact in `composeContacts` with
- * the same arguments; a removal whose spot is gone (or that was never generated) hides nothing.
+ * The automatic contacts an old radius removal hid: those named by a marker, plus every one within
+ * `eraseRadius` of a marker's encoded spot. Only the one-time load migration of the retired
+ * `suppressed` list uses it.
  */
-export function hidingRemovals(
-  auto: readonly SupportPoint[],
-  manual: readonly SupportPoint[],
-  suppressed: readonly string[],
-  eraseRadius = 0,
-  deleted: readonly string[] = [],
-): Set<string> {
-  const hiding = new Set<string>();
-  compose(auto, manual, suppressed, eraseRadius, deleted, hiding);
-  return hiding;
-}
-
-/** `composeContacts`; with `hiding`, also collects every removal ID that hides a contact. */
-function compose(
-  auto: readonly SupportPoint[],
-  manual: readonly SupportPoint[],
-  suppressed: readonly string[],
-  eraseRadius: number,
-  deleted: readonly string[],
-  hiding?: Set<string>,
-): SupportPoint[] {
-  const hidden = new Set(suppressed);
-  const markers = suppressed.flatMap((id) => {
-    const at = positionFromId(id);
-    return at ? [{ id, at }] : [];
-  });
-  const erased = (point: SupportPoint) => {
-    let gone = false;
-    if (hidden.has(point.id)) {
-      if (!hiding) return true;
-      hiding.add(point.id);
-      gone = true;
-    }
-    if (eraseRadius <= 0) return gone;
-    for (const marker of markers) {
-      if (!(distance(marker.at, point.position) < eraseRadius)) continue;
-      if (!hiding) return true;
-      hiding.add(marker.id);
-      gone = true;
-    }
-    return gone;
-  };
-  const exact = new Set(deleted);
-  const remainingAuto = auto.filter((point) => {
-    if (exact.has(point.id)) {
-      hiding?.add(point.id);
-      return false;
-    }
-    return !erased(point);
-  });
-  return [...remainingAuto, ...manual.filter((point) => !erased(point))];
+export function contactsHiddenByMarkers(auto: readonly SupportPoint[], markers: readonly string[], eraseRadius: number): string[] {
+  const named = new Set(markers);
+  const spots = eraseRadius > 0 ? markers.map(positionFromId).filter((spot): spot is Vector => spot !== undefined) : [];
+  return auto
+    .filter((point) => named.has(point.id) || spots.some((spot) => distance(spot, point.position) < eraseRadius))
+    .map((point) => point.id);
 }
 
 /**

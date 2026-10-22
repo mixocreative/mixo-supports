@@ -18,8 +18,7 @@ const unit: PrintUnit = {
   placement: { points: [point('auto-0', 0), point('auto-1', 3)], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() },
   supports: { kind: 'live', data: { transform: generated } },
   manual: [point('manual-a', -3)],
-  suppressed: ['auto-1'],
-  deleted: [],
+  deleted: ['auto-1'],
   zones: [],
 };
 
@@ -27,7 +26,7 @@ describe('unit supports', () => {
   it('hides automatic contacts inside a no-support zone but keeps manual ones', () => {
     const zoned: PrintUnit = {
       ...unit,
-      suppressed: [],
+      deleted: [],
       manual: [point('manual-a', 0)],
       zones: [{ center: [0, -5, 0], radius: 1, normal: [0, -1, 0], kind: 'paint' }],
     };
@@ -56,8 +55,8 @@ describe('unit supports', () => {
 
   it('counts only the removals that hide a contact', () => {
     expect(unitRemovedCount(unit)).toBe(1);
-    // A suppression of a spot that is gone and a deletion made before any placement hide nothing.
-    expect(unitRemovedCount({ ...unit, suppressed: ['auto-1', 'auto-9999_9999_9999'] })).toBe(1);
+    // A deletion of a spot that is gone and one made before any placement hide nothing.
+    expect(unitRemovedCount({ ...unit, deleted: ['auto-1', 'auto-9999_9999_9999'] })).toBe(1);
     expect(unitRemovedCount({ ...unit, placement: undefined, deleted: ['auto-0'] })).toBe(0);
   });
 
@@ -145,7 +144,7 @@ describe('deleted contacts after Regenerate on a rotated unit', () => {
     const { transformPoint } = await import('../state/transform');
     const { deleteCommands } = await import('./selection');
     const rotated = { position: [0, 10, 0] as [number, number, number], rotation: [0, Math.PI / 2, 0] as [number, number, number] };
-    const base: PrintUnit = { ...unit, transform: rotated, placement: undefined, supports: undefined, manual: [], suppressed: [], deleted: [] };
+    const base: PrintUnit = { ...unit, transform: rotated, placement: undefined, supports: undefined, manual: [], deleted: [] };
     const orientation = orientationOf(base);
     const idOf = (p: readonly number[]) => `auto-${p.map((v) => Math.round(v * 100)).join('_')}`;
     // Placement reports contacts in the turned frame, named by that frame, as runPlacementJob does.

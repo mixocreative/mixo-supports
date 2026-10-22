@@ -144,7 +144,7 @@ export const SETTING_GROUPS: Group[] = [
       bool('lowPolyMode', 'Low poly mode', 'Lighter support geometry for faster viewport feedback; export always uses the full geometry'),
       int('resolution', 'Resolution', 'Number of sides of each support cylinder. Higher is rounder and heavier'),
       bool('autoSnap', 'Auto snap', 'Extra tip snapping along the neck (SLASG). Usually leave off: contacts are already placed exactly on the surface, and this sinks tips deeper than Contact depth on curved faces'),
-      mm('eraseRadius', 'Remove radius', 0.1, 'Right-click (or Ctrl+click in Add supports) removes every support whose contact is within this distance of the click'),
+      mm('eraseRadius', 'Remove radius', 0.1, 'Right-click (or Ctrl+click in Add supports) removes the support nearest the click, if its contact is within this distance'),
     ],
   },
 ];

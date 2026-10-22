@@ -409,7 +409,7 @@ export const zhHant: Dictionary = {
   'Number of sides of each support cylinder. Higher is rounder and heavier': '每根支撐圓柱的邊數。越高越圓，面數也越多',
   'Extra tip snapping along the neck (SLASG). Usually leave off: contacts are already placed exactly on the surface, and this sinks tips deeper than Contact depth on curved faces': '沿頸部方向的額外支撐頭吸附（SLASG）。通常保持關閉：接觸點已精確放在表面上，開啟後在曲面上支撐頭會比接觸深度陷得更深',
   'Remove radius': '移除半徑',
-  'Right-click (or Ctrl+click in Add supports) removes every support whose contact is within this distance of the click': '右鍵點擊（或在「新增支撐」中按 Ctrl+點擊）時，移除接觸點在此距離內的所有支撐',
+  'Right-click (or Ctrl+click in Add supports) removes the support nearest the click, if its contact is within this distance': '右鍵點擊（或在「新增支撐」中按 Ctrl+點擊）時，移除最靠近點擊處且接觸點在此距離內的支撐',
   'Chitubox Light support preset': 'Chitubox 輕型支撐預設組合',
   'Chitubox Middle support preset': 'Chitubox 中型支撐預設組合',
   'Chitubox Heavy support preset': 'Chitubox 重型支撐預設組合',
