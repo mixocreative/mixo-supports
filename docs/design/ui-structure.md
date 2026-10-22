@@ -1334,6 +1334,18 @@ ring mark. 5. The Regenerate report. Steps 1 and 2 ship without any UI change.
 - Two reviewers (C, D) said Check must use per-support settings. Dismissed: `checkJobOf` reads
   positions, angle and spacing only (11.1).
 
+### 12.5 Owner answers (2026-10-22)
+
+- C1 to C14: confirmed as written.
+- Q1: Esc clears the selection first, then exits. While a selection exists the status line says "Esc again to exit".
+- Q2: Check findings stay live inside Support Edit Mode. Fix frames the spot and adds a support without leaving the mode. The edit bar offers Generate when the object has no supports.
+- Q3: strict isolation. No "Switch to zones" button. The owner prefers the peace of mind of separate modes.
+- Q4: the right panel splits into "Object: {scope}" (always live) and "Support shape: defaults or n selected". In Edit mode placement settings say "applies on next Generate".
+- Q5: the registry is a typed descriptor table with tests and a `disabledReason`; no generic renderer.
+- Q6: the Add tool gets an Add | Remove switch.
+- Q7, Q8: verified by the implementer in the browser.
+- Audit item "Drag over on empty space": a drag that starts on the model or a support selects; a drag on empty space orbits.
+
 ---
 
 ## 13. UI behaviour audit
