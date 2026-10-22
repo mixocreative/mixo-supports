@@ -22,7 +22,7 @@ export function AddFlash({ at, radius }: { at: AddedAt; radius: number }) {
   });
   if (over) return null;
   return <mesh ref={mesh} position={at.point} quaternion={turn} renderOrder={23} raycast={() => undefined}>
-    <torusGeometry args={[radius, Math.max(0.05, radius * 0.12), 8, 32]} />
+    <torusGeometry args={[radius, Math.max(0.15, radius * 0.1), 8, 32]} />
     <meshBasicMaterial color={PREVIEW.remove} depthTest={false} transparent opacity={0.9} />
   </mesh>;
 }

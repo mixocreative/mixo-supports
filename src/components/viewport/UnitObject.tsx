@@ -282,7 +282,7 @@ export function UnitObject(props: UnitObjectProps) {
       <SupportBodies supports={supports} geometry={supportGeometry} ids={preview.ghost} opacity={SEE_THROUGH} color={PREVIEW[preview.ghostTone]} />
     </>}
     {editing && !zoning && <CustomisedMarks unit={unit} contacts={contacts} />}
-    {props.added && <AddFlash key={props.added.seq} at={props.added} radius={Math.max(0.8, resolveSettings(unit.settings).pillarDiameter * 1.5)} />}
+    {props.added && <AddFlash key={props.added.seq} at={props.added} radius={Math.max(2, resolveSettings(unit.settings).eraseRadius)} />}
     {props.problems.length > 0 && <ProblemMarkers problems={props.problems} />}
   </group>;
 }
