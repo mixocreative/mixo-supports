@@ -1,0 +1,37 @@
+name: Walk
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: walk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  walk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      WALK_OUT: walk-out
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - run: mkdir -p walk-out && npm run walk 2>&1 | tee walk-out/walk.log
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walk-failure
+          path: walk-out
+          if-no-files-found: warn
+          retention-days: 7

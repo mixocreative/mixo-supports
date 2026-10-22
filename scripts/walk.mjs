@@ -1,7 +1,7 @@
 // Browser walk: `npm run walk`. Starts Vite, drives headless Chromium through the editor on a fixture
 // model, prints PASS/FAIL lines with numbers, exits 1 on any FAIL, and always stops Vite.
 import { spawn, execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
@@ -95,6 +95,8 @@ function installedChromium() {
 
 async function launch() {
   const args = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+  // WALK_CHROMIUM names a browser to use; otherwise Playwright's own install is tried, then the newest one on disk.
+  if (process.env.WALK_CHROMIUM) return chromium.launch({ headless: true, executablePath: process.env.WALK_CHROMIUM, args });
   try {
     return await chromium.launch({ headless: true, args });
   } catch (error) {
@@ -523,7 +525,8 @@ async function walk(url, scratch) {
   check('h no console errors or warnings', errors.length === 0, errors.length ? errors.slice(0, 3).join(' || ') : '0 messages');
 }
 
-const scratch = mkdtempSync(path.join(tmpdir(), 'mixo-walk-'));
+// WALK_OUT: where a failing run leaves its screenshots and files (CI uploads it); a passing run removes them.
+const scratch = process.env.WALK_OUT ? (mkdirSync(path.resolve(process.env.WALK_OUT), { recursive: true }), mkdtempSync(path.join(path.resolve(process.env.WALK_OUT), 'run-'))) : mkdtempSync(path.join(tmpdir(), 'mixo-walk-'));
 async function stopAll() {
   await browser?.close().catch(() => {});
   stopVite(vite);
