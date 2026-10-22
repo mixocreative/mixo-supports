@@ -1,30 +1,30 @@
 import { meshTier, TRIANGLE_BUDGET, type Runtime } from '../core/budget';
-import { gesture, type GestureKind } from './gesture';
+import { gesture, type Gesture } from './gesture';
 import type { EditSession, SessionEvent } from './session';
 import type { EditMode, StatusMessage } from './types';
 
 // Status lines are i18n keys (data); the host translates them where they are shown.
 
 /** What a click or drag does now, per gesture: the current tool in Support Edit Mode, the brush in zones mode. */
-const GESTURE_STATUS: Record<GestureKind, string | undefined> = {
-  none: undefined,
+const GESTURE_STATUS = {
   zones: 'Paint where supports must not grow; drag on the model.',
   add: 'Support Edit Mode: click the model to add, right-click a support to remove.',
+  remove: 'Support Edit Mode: click a support, or the model next to one, to remove it.',
   pick: 'Support Edit Mode: click supports to select them, right-click a support to remove.',
   drag: 'Support Edit Mode: drag the circle over supports to select them. Supports hidden behind the model are skipped.',
-};
+} as const;
+const gestureStatus = (press: Gesture): string | undefined => (press.kind === 'none' ? undefined : press.kind === 'add' && press.remove ? GESTURE_STATUS.remove : GESTURE_STATUS[press.kind]);
 
 /**
  * A Support Edit Mode click that hit neither the model nor a support: what to click instead.
  * Nothing in Drag over: a stroke may start anywhere, and a tap already selected what the circle covered.
  */
-const MISS_STATUS: Record<GestureKind, string | undefined> = {
-  none: undefined,
-  zones: undefined,
+const MISS_STATUS = {
   add: 'Nothing under the cursor: click the model to add, right-click a support to remove.',
+  remove: 'Nothing under the cursor: click a support, or the model next to one, to remove it.',
   pick: 'No support here: click a support to select it.',
-  drag: undefined,
-};
+} as const;
+const missKey = (press: Gesture): string | undefined => (press.kind === 'add' ? MISS_STATUS[press.remove ? 'remove' : 'add'] : press.kind === 'pick' ? MISS_STATUS.pick : undefined);
 
 /** What Esc does while supports are selected: the first press clears them, the next one leaves the mode. */
 const ESC_AGAIN = 'Esc again to exit';
@@ -32,7 +32,7 @@ const ESC_AGAIN = 'Esc again to exit';
 const keyed = (key: string | undefined): StatusMessage | undefined => (key ? { key } : undefined);
 
 export function editStatus(session: EditSession): StatusMessage | undefined {
-  return keyed(GESTURE_STATUS[gesture(session).kind]);
+  return keyed(gestureStatus(gesture(session)));
 }
 
 /** What the status line rests on in a mode: how Esc leaves while supports are selected, else the tool line. */
@@ -60,7 +60,7 @@ export function sessionStatus(previous: EditSession, next: EditSession, event: S
 }
 
 export function missStatus(session: EditSession): StatusMessage | undefined {
-  return keyed(MISS_STATUS[gesture(session).kind]);
+  return keyed(missKey(gesture(session)));
 }
 
 /** Why a heavy active object takes no hand edits, and what still works; undefined when it is not heavy. */

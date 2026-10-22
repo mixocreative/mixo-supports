@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+
 import type { LiveSupportSettings, PresetName, RoofMode, SettingKey } from '../core/supports/settings';
 import { settingLimits } from '../core/supports/settings';
-import { enteredValue, escapeValue, formatNumber, readNumberInput, stepNumber, type NumberLimits } from '../editing/numberInput';
+import { resolve, type CommandId, type UiState } from '../editing/commands';
+import { NumberField } from './NumberField';
 import { t } from '../i18n';
 import { hint } from './hint';
 
@@ -10,7 +11,7 @@ type BooleanKey = { [K in SettingKey]: LiveSupportSettings[K] extends boolean ? 
 type ChoiceKey = 'contactShape' | 'tipSection' | 'tipProfile';
 
 type Field = (
-  | { kind: 'number'; key: NumberKey; label: string; unit?: 'mm' | '°' | '%'; step?: number; hint: string }
+  | ({ kind: 'number'; key: NumberKey; unit?: 'mm' | '°' | '%'; step?: number } & ({ label: string; hint: string } | { command: CommandId }))
   | { kind: 'boolean'; key: BooleanKey; label: string; hint: string }
   | { kind: 'text'; key: 'labelText'; label: string; placeholder: string; hint: string }
   | { kind: 'preview'; key: 'previewMode'; label: string; hint: string }
@@ -144,7 +145,7 @@ export const SETTING_GROUPS: Group[] = [
       bool('lowPolyMode', 'Low poly mode', 'Lighter support geometry for faster viewport feedback; export always uses the full geometry'),
       int('resolution', 'Resolution', 'Number of sides of each support cylinder. Higher is rounder and heavier'),
       bool('autoSnap', 'Auto snap', 'Extra tip snapping along the neck (SLASG). Usually leave off: contacts are already placed exactly on the surface, and this sinks tips deeper than Contact depth on curved faces'),
-      mm('eraseRadius', 'Remove radius', 0.1, 'Right-click (or Ctrl+click in Add supports) removes the support nearest the click, if its contact is within this distance'),
+      { kind: 'number', key: 'eraseRadius', unit: 'mm', step: 0.1, command: 'setting.clickReach' },
     ],
   },
 ];
@@ -161,6 +162,8 @@ export const ROOF_HINTS = {
 
 export interface SettingsPanelProps {
   settings: LiveSupportSettings;
+  /** What the registry's rules read: fields that are registry rows take their label and hint from it. */
+  ui: UiState;
   autoLabel: string;
   disabled: boolean;
   /** The panel is locked (zones): inert and dimmed. */
@@ -170,7 +173,7 @@ export interface SettingsPanelProps {
   onRoofMode: (mode: RoofMode) => void;
 }
 
-export default function SettingsPanel({ settings, autoLabel, disabled, locked = false, onChange, onPreset, onRoofMode }: SettingsPanelProps) {
+export default function SettingsPanel({ settings, ui, autoLabel, disabled, locked = false, onChange, onPreset, onRoofMode }: SettingsPanelProps) {
   return <fieldset className="settings" disabled={disabled} {...(locked ? { inert: '' } : {})}>
     <div className="field-row" title={t('Chitubox support preset. Editing any value switches to Custom')}>
       <span>{t('Preset')}</span>
@@ -190,8 +193,10 @@ export default function SettingsPanel({ settings, autoLabel, disabled, locked = 
       <summary>{t(group.title)}</summary>
       {group.fields.filter((field) => !field.when || field.when(settings)).map((field) => {
         switch (field.kind) {
-          case 'number':
-            return <NumberField key={field.key} label={t(field.label)} unit={field.unit} step={field.step ?? 0.1} limits={settingLimits[field.key]} value={settings[field.key]} hint={t(field.hint)} onChange={(value) => onChange(field.key, value)} />;
+          case 'number': {
+            const { label, hint: text } = 'command' in field ? resolve(field.command, ui) : field;
+            return <NumberField key={field.key} label={t(label)} unit={field.unit} step={field.step ?? 0.1} limits={settingLimits[field.key]} value={settings[field.key]} hint={t(text)} onChange={(value) => onChange(field.key, value)} />;
+          }
           case 'boolean':
             return <label key={field.key} className="check" title={t(field.hint)}><input type="checkbox" checked={settings[field.key]} aria-description={t(field.hint)} onChange={(event) => onChange(field.key, event.target.checked)} /> {t(field.label)}</label>;
           case 'text':
@@ -208,59 +213,4 @@ export default function SettingsPanel({ settings, autoLabel, disabled, locked = 
       })}
     </details>)}
   </fieldset>;
-}
-
-/**
- * A forgiving number field (editing/numberInput): "2mm", "2 mm" and "2,5" are read as numbers, and
- * values outside the setting's limits are clamped instead of rejected. A value inside the limits
- * applies as it is typed; leaving the field (or Enter) applies the clamped value and tidies the
- * text; Esc puts back the value the field had on focus (or was last entered with Enter); Arrow Up /
- * Down step. Full-width digits are read too.
- */
-function NumberField({ label, unit, step, value, limits, hint, onChange }: { label: string; unit?: string; step: number; value: number; limits: NumberLimits; hint?: string; onChange: (value: number) => void }) {
-  const [text, setText] = useState<string>();
-  /** The value when the field got focus, or was last entered with Enter: what Esc puts back. */
-  const onFocus = useRef<number>();
-  const shown = text ?? formatNumber(value);
-  /** Applies the typed value (held to the limits); returns the value the field now holds. */
-  const commit = (): number => {
-    const next = enteredValue(text, limits, value);
-    if (next !== value) onChange(next);
-    setText(undefined);
-    return next;
-  };
-  return <label className="field-row" title={hint}>
-    <span>{label}</span>
-    <span className="number">
-      <input
-        type="text"
-        inputMode="decimal"
-        spellCheck={false}
-        value={shown}
-        {...(hint ? { 'aria-description': hint } : {})}
-        onChange={(event) => {
-          setText(event.target.value);
-          const read = readNumberInput(event.target.value, limits);
-          if (read && !read.clamped && read.value !== value) onChange(read.value);
-        }}
-        onFocus={() => { onFocus.current = value; }}
-        onBlur={() => commit()}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') onFocus.current = commit();
-          else if (event.key === 'Escape') {
-            const original = escapeValue(onFocus.current, value);
-            if (original !== undefined) onChange(original);
-            setText(undefined);
-          }
-          else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-            event.preventDefault();
-            const current = readNumberInput(shown, limits)?.value ?? value;
-            onChange(stepNumber(current, step, event.key === 'ArrowUp' ? 1 : -1, limits));
-            setText(undefined);
-          }
-        }}
-      />
-      {unit && <small>{unit}</small>}
-    </span>
-  </label>;
 }

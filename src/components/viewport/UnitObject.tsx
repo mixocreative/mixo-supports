@@ -166,7 +166,7 @@ export function UnitObject(props: UnitObjectProps) {
     setHover({
       point: event.object.worldToLocal(event.point.clone()),
       normal: event.face?.normal.clone() ?? new THREE.Vector3(0, -1, 0),
-      remove: event.ctrlKey || event.metaKey,
+      remove: event.ctrlKey || event.metaKey || (gesture.kind === 'add' && gesture.remove),
     });
   };
   const hoverSupport = (event: ThreeEvent<PointerEvent>) => {
@@ -195,7 +195,7 @@ export function UnitObject(props: UnitObjectProps) {
     shift: event.shiftKey,
     travel: event.delta,
     mode: editMode,
-    ...clickTool(props.liveTool?.(), { tool: gesture.kind === 'add' ? 'add' : 'select', brush: gesture.kind === 'drag' }),
+    ...clickTool(props.liveTool?.(), { tool: gesture.kind === 'add' ? 'add' : 'select', brush: gesture.kind === 'drag', remove: gesture.kind === 'add' && gesture.remove }),
     active: props.active,
     contact,
   });
@@ -211,7 +211,7 @@ export function UnitObject(props: UnitObjectProps) {
     else if (action.type === 'add') props.onAddContact(unit.id, point, surfaceNormal(event));
   };
 
-  /** Right-click removes the support it hits (nearest within Remove radius for the model) in every tool; a left click selects (Click) or, with Ctrl, removes (Add). */
+  /** Right-click removes the support it hits (nearest within Click reach for the model) in every tool; a left click selects (Click) or, with Ctrl or in Remove, removes (Add). */
   const clickSupport = (event: ThreeEvent<MouseEvent>, right: boolean) => {
     if (!supports || event.faceIndex == null) return;
     // Braces, raft and labels belong to no contact: the pick continues behind them.

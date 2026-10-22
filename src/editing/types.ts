@@ -6,6 +6,8 @@
 export type EditMode = 'off' | 'edit' | 'zones';
 /** Support Edit Mode tool: Add supports clicks the model to add; Select supports picks supports to act on. */
 export type EditTool = 'add' | 'select';
+/** Add supports: a click adds a support, or (Remove) removes the one it hits: the touch path of the right-click. */
+export type AddAction = 'add' | 'remove';
 /** Select supports: Click picks one support at a time; Drag over (the brush) paints a selection. */
 export type SelectStyle = 'click' | 'brush';
 /** Drag over adds supports to the selection or takes them out of it. */

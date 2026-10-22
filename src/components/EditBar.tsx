@@ -1,9 +1,11 @@
 import { resolve, type CommandId, type UiState } from '../editing/commands';
 import type { Gesture } from '../editing/gesture';
 import type { SessionEvent } from '../editing/session';
+import { settingLimits } from '../core/supports/settings';
 import { t } from '../i18n';
 import { CommandButton } from './CommandButton';
 import { KeyCaps } from './KeyCaps';
+import { NumberField } from './NumberField';
 import { RangeField } from './RangeField';
 import { Segmented } from './Segmented';
 import { BrushIcon, PointerIcon } from './ToolIcons';
@@ -21,20 +23,23 @@ export function DoneButton({ ui, run }: { ui: UiState; run: (id: CommandId) => v
 }
 
 /** What a click or drag does, on the badge. */
-const BADGE: Record<EditGesture['kind'], string> = {
+const BADGE = {
   add: 'Click the model to add supports',
+  remove: 'Click a support to remove it',
   pick: 'Click supports to select',
   drag: 'Drag over supports to select',
-};
+} as const;
 
 /**
  * Support Edit Mode's chrome over the viewport (Blender mixo.support_place): the red frame, the
  * badge saying what a click does, and the bar with the tools, the selection's actions and Done.
  */
-export function EditBar({ gesture, unitName, ui, send, run }: {
+export function EditBar({ gesture, unitName, ui, clickReach, send, run }: {
   gesture: EditGesture;
   unitName: string | undefined;
   ui: UiState;
+  /** The active object's Click reach (the registry's setting.clickReach): its value and how to set it. */
+  clickReach: { value: number; onChange: (value: number) => void };
   send: (event: SessionEvent) => void;
   run: (id: CommandId) => void;
 }) {
@@ -42,7 +47,7 @@ export function EditBar({ gesture, unitName, ui, send, run }: {
     <div className="edit-frame" aria-hidden="true" />
     <div className="edit-badge" role="status">
       {t('Support Edit Mode')}<span>{unitName}</span>
-      <b>{t(BADGE[gesture.kind])}</b>
+      <b>{t(BADGE[gesture.kind === 'add' && gesture.remove ? 'remove' : gesture.kind])}</b>
     </div>
     <div className="edit-bar">
       <div className="edit-row">
@@ -68,6 +73,13 @@ export function EditBar({ gesture, unitName, ui, send, run }: {
           { value: 'unselect', label: t('Unselect'), hint: 'Dragging takes supports out of the selection' },
         ]} />}
       </div>
+      {gesture.kind === 'add' && <div className="edit-row">
+        <Segmented label={t('What a click does')} value={ui.addAction} onChange={(action) => run(action === 'add' ? 'edit.add' : 'edit.remove')} options={(['edit.add', 'edit.remove'] as const).map((id) => {
+          const { label, hint: text } = resolve(id, ui);
+          return { value: id === 'edit.add' ? 'add' as const : 'remove' as const, label: t(label), hint: text };
+        })} />
+        <ClickReachField ui={ui} {...clickReach} />
+      </div>}
       <div className="edit-row">
         {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
         <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{gesture.kind === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
@@ -78,4 +90,10 @@ export function EditBar({ gesture, unitName, ui, send, run }: {
       </div>
     </div>
   </>;
+}
+
+/** Click reach from the registry as a number field: the same control as the Advanced row of the right panel. */
+function ClickReachField({ ui, value, onChange }: { ui: UiState; value: number; onChange: (value: number) => void }) {
+  const { label, hint } = resolve('setting.clickReach', ui);
+  return <NumberField label={t(label)} unit="mm" step={0.1} limits={settingLimits.eraseRadius} value={value} hint={t(hint)} onChange={onChange} />;
 }

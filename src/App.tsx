@@ -802,6 +802,9 @@ export default function App() {
       case 'edit.generate': return generate(sceneRef.current.activeUnitId ? [sceneRef.current.activeUnitId] : undefined);
       case 'mode.zones': return send({ type: 'enterZones' });
       case 'mode.exit': return send({ type: 'exit' });
+      case 'edit.add': return send({ type: 'setAddAction', action: 'add' });
+      case 'edit.remove': return send({ type: 'setAddAction', action: 'remove' });
+      case 'setting.clickReach': return; // a field: set through its input
       case 'edit.clearSelection': return clearSelection();
       case 'edit.deleteSelection': return deleteSelected();
     }
@@ -825,7 +828,7 @@ export default function App() {
   const scopeGenerated = scopeUnits.length > 0 && scopeUnits.every((unit) => unit.supports);
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
-    mode: editMode, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount,
+    mode: editMode, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction,
     selection: selection.size, activeSupported: Boolean(activeUnit?.supports), generating, canUndo, canRedo: history.future.length > 0, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
   };
   const command = (id: CommandId) => resolve(id, ui);
@@ -963,7 +966,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} hidden={zonesHidden} ui={ui} send={send} run={runCommand} onClear={clearActiveZones} />
-          : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} send={send} run={runCommand} />}
+          : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value) => onSettingChange('eraseRadius', value) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>
         {lockNoteOf('right')}
@@ -971,6 +974,7 @@ export default function App() {
         {!activeUnit && <p className="help">{t('Select an object to edit its settings. Changes apply to every selected object.')}</p>}
         <SettingsPanel
           settings={activeSettings}
+          ui={ui}
           autoLabel={activeIndex >= 0 ? labelForIndex(activeIndex) : 'A'}
           disabled={!activeUnit}
           locked={locked('settings')}

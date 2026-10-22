@@ -21,6 +21,11 @@ describe('editStatus', () => {
     expect(editStatus(at({ mode: 'edit', tool: 'add', selectStyle: 'brush' }))).toEqual({ key: ADD });
   });
 
+  it('says what a click removes while the Add tool is on Remove', () => {
+    expect(editStatus(at({ mode: 'edit', tool: 'add', addAction: 'remove' }))).toEqual({ key: 'Support Edit Mode: click a support, or the model next to one, to remove it.' });
+    expect(missStatus(at({ mode: 'edit', tool: 'add', addAction: 'remove' }))?.key).toMatch(/to remove it\.$/);
+  });
+
   it('says what zones mode paints, and nothing outside the modes', () => {
     expect(editStatus(at({ mode: 'zones' }))).toEqual({ key: ZONES });
     expect(editStatus(at({ mode: 'off' }))).toBeUndefined();

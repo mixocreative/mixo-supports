@@ -39,13 +39,14 @@ describe('hover hints', () => {
   });
 
   it('every setting has a hint', () => {
-    expect(SETTING_GROUPS.flatMap((group) => group.fields).filter((field) => !field.hint)).toEqual([]);
+    expect(SETTING_GROUPS.flatMap((group) => group.fields).filter((field) => !('command' in field) && !('hint' in field && field.hint))).toEqual([]);
   });
 
   it('Overhang angle and Ridge angle say what lower and higher do', () => {
     const fields = SETTING_GROUPS.flatMap((group) => group.fields);
     for (const key of ['scatterAngle', 'scatterRidgeAngle']) {
-      const text = fields.find((field) => field.key === key)!.hint;
+      const field = fields.find((candidate) => candidate.key === key)!;
+      const text = 'hint' in field ? field.hint : '';
       expect(text, key).toMatch(/lower/i);
       expect(text, key).toMatch(/higher/i);
     }

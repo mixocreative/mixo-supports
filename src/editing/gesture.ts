@@ -10,7 +10,8 @@ import type { EditMode, ZoneKind } from './types';
 export type Gesture =
   | { kind: 'none' }
   | { kind: 'zones'; brush: { radius: number; kind: ZoneKind } }
-  | { kind: 'add' }
+  /** `remove`: a click removes the support it hits instead of adding one. */
+  | { kind: 'add'; remove: boolean }
   | { kind: 'pick' }
   /** `sizing`: the circle's size slider is held or was just moved. */
   | { kind: 'drag'; brush: Brush; sizing: boolean };
@@ -22,7 +23,7 @@ export function gesture(session: EditSession): Gesture {
     case 'off': return { kind: 'none' };
     case 'zones': return { kind: 'zones', brush: { radius: session.zoneRadius, kind: session.zoneKind } };
     case 'edit':
-      if (session.tool === 'add') return { kind: 'add' };
+      if (session.tool === 'add') return { kind: 'add', remove: session.addAction === 'remove' };
       return session.selectStyle === 'click' ? { kind: 'pick' } : { kind: 'drag', brush: { radius: session.brushRadius, mode: session.brushMode }, sizing: session.brushSizing };
   }
 }

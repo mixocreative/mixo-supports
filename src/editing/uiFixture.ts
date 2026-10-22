@@ -3,7 +3,7 @@ import type { EditMode } from './types';
 
 /** A state with an active, supported object selected and nothing running: the base the tests vary. */
 export const READY: UiState = {
-  mode: 'off', active: true, heavy: undefined, units: 1, selectedObjects: 1, selection: 0, activeSupported: true,
+  mode: 'off', active: true, heavy: undefined, units: 1, selectedObjects: 1, tool: 'add', addAction: 'add', selection: 0, activeSupported: true,
   canUndo: true, canRedo: true, modelsVisible: true, wireframe: false, generated: false, generating: false,
 };
 
@@ -14,5 +14,5 @@ const BOOLS = [true, false];
 export const STATES: UiState[] = MODES.flatMap((mode) => BOOLS.flatMap((active) => [undefined, 1_600_000].flatMap((heavy) =>
   [0, 3].flatMap((selection) => BOOLS.flatMap((canUndo) => BOOLS.flatMap((hasUnits) => BOOLS.flatMap((generated) => BOOLS.map((generating) => at({
     mode, active, heavy, selection, canUndo, canRedo: !canUndo, units: hasUnits ? 2 : 0, selectedObjects: hasUnits ? 1 : 0,
-    generated, generating, activeSupported: generated, modelsVisible: canUndo, wireframe: generated,
+    generated, generating, activeSupported: generated, tool: canUndo ? 'add' : 'select', addAction: generated ? 'remove' : 'add', modelsVisible: canUndo, wireframe: generated,
   })))))))));

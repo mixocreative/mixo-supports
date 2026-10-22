@@ -204,3 +204,17 @@ describe('the left panel commands', () => {
     expect(resolve('objects.delete', READY).role).toBe('destructive');
   });
 });
+
+describe('the Add | Remove switch and Click reach', () => {
+  it('the switch shows under the Add tool only, and presses the chosen action', () => {
+    expect(resolve('edit.add', at({ mode: 'edit', tool: 'add', addAction: 'add' }))).toMatchObject({ visible: true, pressed: true });
+    expect(resolve('edit.remove', at({ mode: 'edit', tool: 'add', addAction: 'add' }))).toMatchObject({ visible: true, pressed: false });
+    expect(resolve('edit.remove', at({ mode: 'edit', tool: 'add', addAction: 'remove' })).pressed).toBe(true);
+    for (const change of [{ mode: 'edit', tool: 'select' }, { mode: 'off' }, { mode: 'zones' }] as const) expect(resolve('edit.remove', at(change)).visible).toBe(false);
+  });
+
+  it('Click reach is one row for both places that show it, and needs an object', () => {
+    expect(resolve('setting.clickReach', READY)).toMatchObject({ label: 'Click reach', enabled: true });
+    expect(resolve('setting.clickReach', at({ active: false }))).toMatchObject({ enabled: false, disabledReason: { key: 'Select an object first.' } });
+  });
+});

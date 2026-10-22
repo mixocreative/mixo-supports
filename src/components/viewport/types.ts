@@ -3,7 +3,7 @@ import type { GeneratedSupportMesh } from '../../core/supports/mesh';
 import type { ZoneStamp } from '../../core/supports/zones';
 import type { Vector } from '../../core/vec3';
 import type { Gesture } from '../../editing/gesture';
-import type { BrushMode, EditTool, SelectStyle } from '../../editing/types';
+import type { AddAction, BrushMode, EditTool, SelectStyle } from '../../editing/types';
 import type { PrintScene } from '../../state/project';
 import type { ModelTransform } from '../../state/transform';
 
@@ -28,7 +28,7 @@ export interface ObjectViewportProps {
    * The edit tool as it is now. The canvas renders a step behind the DOM, so a click right after a
    * tool switch would otherwise act with the previous tool; clicks read this instead of `gesture`.
    */
-  liveTool?: () => { tool: EditTool; selectStyle: SelectStyle };
+  liveTool?: () => { tool: EditTool; selectStyle: SelectStyle; addAction: AddAction };
   /** Selected contact ids of the active object. */
   selection: ReadonlySet<string>;
   onToggleContact: (unitId: string, contactId: string) => void;

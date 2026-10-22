@@ -42,7 +42,7 @@ describe('i18n', () => {
     for (const group of SETTING_GROUPS) {
       keys.add(group.title);
       for (const field of group.fields) {
-        keys.add(field.label);
+        if ('label' in field) keys.add(field.label);
         if ('hint' in field && field.hint) keys.add(field.hint);
         if (field.kind === 'text') keys.add(field.placeholder);
         if (field.kind === 'choice') field.options.forEach((option) => keys.add(option.label));

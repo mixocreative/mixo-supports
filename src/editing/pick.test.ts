@@ -3,7 +3,7 @@ import { CLICK_TOLERANCE, clickTool, missAction, pickAction, type PickAction, ty
 
 const base: PickInput = {
   hit: 'model', button: 'left', ctrl: false, shift: false, travel: 0,
-  mode: 'edit', tool: 'add', selectStyle: 'click', active: true, contact: true,
+  mode: 'edit', tool: 'add', selectStyle: 'click', addAction: 'add', active: true, contact: true,
 };
 const pick = (change: Partial<PickInput>) => pickAction({ ...base, ...change });
 
@@ -38,6 +38,13 @@ describe('pickAction', () => {
     ['add: Ctrl+click on a support removes it', { hit: 'support', ctrl: true }, { type: 'removeContact' }],
     ['add: right-click on a support removes it', { hit: 'support', button: 'right' }, { type: 'removeContact' }],
     ['add: braces and raft pass through', { hit: 'support', button: 'right', contact: false }, { type: 'pass' }],
+    // Add supports → Remove: the left click is the touch path of the right-click.
+    ['remove: click on the model erases', { addAction: 'remove' }, { type: 'erase' }],
+    ['remove: click on a support removes it', { addAction: 'remove', hit: 'support' }, { type: 'removeContact' }],
+    ['remove: a brace passes through', { addAction: 'remove', hit: 'support', contact: false }, { type: 'pass' }],
+    ['remove: right-click still removes', { addAction: 'remove', hit: 'support', button: 'right' }, { type: 'removeContact' }],
+    ['remove only belongs to Add: Click still toggles', { addAction: 'remove', tool: 'select', hit: 'support' }, { type: 'toggle' }],
+    ['remove only belongs to Add: Drag over passes through', { addAction: 'remove', tool: 'select', selectStyle: 'brush', hit: 'support' }, { type: 'pass' }],
     // Select supports → Click.
     ['click: click on the model says to click a support', { tool: 'select' }, { type: 'miss' }],
     ['click: Ctrl+click on the model is a miss too', { tool: 'select', ctrl: true }, { type: 'miss' }],
@@ -77,15 +84,15 @@ describe('missAction', () => {
 });
 
 describe('clickTool', () => {
-  it('takes the tool and select style from the live session, not the step-behind canvas (a click right after Select supports must not add a support)', () => {
-    expect(clickTool({ tool: 'select', selectStyle: 'click' }, { tool: 'add', brush: false })).toEqual({ tool: 'select', selectStyle: 'click' });
+  it('takes the tool, select style and Add action from the live session, not the step-behind canvas (a click right after Select supports must not add a support)', () => {
+    expect(clickTool({ tool: 'select', selectStyle: 'click', addAction: 'add' }, { tool: 'add', brush: false, remove: false })).toEqual({ tool: 'select', selectStyle: 'click', addAction: 'add' });
     // The live session carries more (its mode, its selection): only the tool is taken from it.
-    const session = { mode: 'zones' as const, tool: 'add' as const, selectStyle: 'brush' as const };
-    expect(clickTool(session, { tool: 'select', brush: false })).toEqual({ tool: 'add', selectStyle: 'brush' });
+    const session = { mode: 'zones' as const, tool: 'add' as const, selectStyle: 'brush' as const, addAction: 'remove' as const };
+    expect(clickTool(session, { tool: 'select', brush: false, remove: false })).toEqual({ tool: 'add', selectStyle: 'brush', addAction: 'remove' });
   });
 
   it('falls back to what the canvas rendered without a live session', () => {
-    expect(clickTool(undefined, { tool: 'select', brush: true })).toEqual({ tool: 'select', selectStyle: 'brush' });
-    expect(clickTool(undefined, { tool: 'add', brush: false })).toEqual({ tool: 'add', selectStyle: 'click' });
+    expect(clickTool(undefined, { tool: 'select', brush: true, remove: false })).toEqual({ tool: 'select', selectStyle: 'brush', addAction: 'add' });
+    expect(clickTool(undefined, { tool: 'add', brush: false, remove: true })).toEqual({ tool: 'add', selectStyle: 'click', addAction: 'remove' });
   });
 });

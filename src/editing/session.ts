@@ -1,6 +1,6 @@
 import type { SupportContact } from '../core/supports/mesh';
 import { paintSelection, pruneSelection, toggleSelection } from './selection';
-import type { BrushMode, EditMode, EditTool, SelectStyle, ZoneKind } from './types';
+import type { AddAction, BrushMode, EditMode, EditTool, SelectStyle, ZoneKind } from './types';
 
 /**
  * The editing session of the active object: which mode is on, its tools and the selected
@@ -14,6 +14,8 @@ export interface EditSession {
   /** Triangles of the active object when it is heavy: it takes no hand edits (Edit Mode, zones). */
   heavy: number | undefined;
   tool: EditTool;
+  /** Under the Add tool: a click adds or removes. */
+  addAction: AddAction;
   selectStyle: SelectStyle;
   brushMode: BrushMode;
   /** Drag over circle radius in screen px (slider 8–80, step 4): a view setting, so the object's Remove radius stays untouched. */
@@ -34,6 +36,7 @@ export const initialSession: EditSession = {
   activeUnitId: undefined,
   heavy: undefined,
   tool: 'add',
+  addAction: 'add',
   selectStyle: 'click',
   brushMode: 'select',
   brushRadius: 24,
@@ -57,6 +60,7 @@ export type SessionEvent =
   | { type: 'activeUnitChanged'; id: string | undefined; heavy?: number | undefined }
   | { type: 'contactsChanged'; contacts: readonly SupportContact[] }
   | { type: 'setTool'; tool: EditTool }
+  | { type: 'setAddAction'; action: AddAction }
   | { type: 'setSelectStyle'; style: SelectStyle }
   | { type: 'setBrushMode'; mode: BrushMode }
   | { type: 'setBrushRadius'; radius: number }
@@ -101,6 +105,7 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
       // Ids that no longer exist (undo, regeneration) drop out.
       return withSelection(state, pruneSelection(state.selection, event.contacts));
     case 'setTool': return set(state, 'tool', event.tool);
+    case 'setAddAction': return set(state, 'addAction', event.action);
     case 'setSelectStyle': return set(state, 'selectStyle', event.style);
     case 'setBrushMode': return set(state, 'brushMode', event.mode);
     case 'setBrushRadius': return set(state, 'brushRadius', event.radius);

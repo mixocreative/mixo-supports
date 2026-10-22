@@ -8,9 +8,9 @@ describe('gesture: what a press or drag does now, over every mode and tool (tabl
   const table: [EditSession['mode'], EditSession['tool'], EditSession['selectStyle'], ReturnType<typeof gesture>][] = [
     ['off', 'add', 'click', { kind: 'none' }],
     ['off', 'select', 'brush', { kind: 'none' }],
-    ['edit', 'add', 'click', { kind: 'add' }],
+    ['edit', 'add', 'click', { kind: 'add', remove: false }],
     // Add ignores the select style.
-    ['edit', 'add', 'brush', { kind: 'add' }],
+    ['edit', 'add', 'brush', { kind: 'add', remove: false }],
     ['edit', 'select', 'click', { kind: 'pick' }],
     ['edit', 'select', 'brush', { kind: 'drag', brush: { radius: 32, mode: 'unselect' }, sizing: false }],
     // Zones mode paints whatever the Support Edit Mode tool was.
@@ -21,5 +21,12 @@ describe('gesture: what a press or drag does now, over every mode and tool (tabl
     const now = gesture(at({ mode, tool, selectStyle }));
     expect(now).toEqual(expected);
     expect(gestureMode(now)).toBe(mode);
+  });
+});
+
+describe('gesture: the Add | Remove switch', () => {
+  it('turns the Add tool into the remove click, and only while Add is the tool', () => {
+    expect(gesture(at({ mode: 'edit', tool: 'add', addAction: 'remove' }))).toEqual({ kind: 'add', remove: true });
+    expect(gesture(at({ mode: 'edit', tool: 'select', addAction: 'remove' })).kind).toBe('pick');
   });
 });

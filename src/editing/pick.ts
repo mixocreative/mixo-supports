@@ -1,4 +1,4 @@
-import type { EditMode, EditTool, SelectStyle } from './types';
+import type { AddAction, EditMode, EditTool, SelectStyle } from './types';
 
 /** Pointer travel (px) above which a click is treated as an orbit drag and ignored. */
 export const CLICK_TOLERANCE = 4;
@@ -19,6 +19,7 @@ export interface PickInput {
   mode: EditMode;
   tool: EditTool;
   selectStyle: SelectStyle;
+  addAction: AddAction;
   /** The hit object is the active one. */
   active: boolean;
   contact: boolean;
@@ -29,15 +30,15 @@ export interface PickInput {
  * after a tool switch reads the session as it is now (`live`); without one it falls back to what
  * the canvas last rendered.
  */
-export function clickTool(live: { tool: EditTool; selectStyle: SelectStyle } | undefined, rendered: { tool: EditTool; brush: boolean }): { tool: EditTool; selectStyle: SelectStyle } {
-  if (live) return { tool: live.tool, selectStyle: live.selectStyle };
-  return { tool: rendered.tool, selectStyle: rendered.brush ? 'brush' : 'click' };
+export function clickTool(live: Pick<PickInput, 'tool' | 'selectStyle' | 'addAction'> | undefined, rendered: { tool: EditTool; brush: boolean; remove: boolean }): Pick<PickInput, 'tool' | 'selectStyle' | 'addAction'> {
+  if (live) return { tool: live.tool, selectStyle: live.selectStyle, addAction: live.addAction };
+  return { tool: rendered.tool, selectStyle: rendered.brush ? 'brush' : 'click', addAction: rendered.remove ? 'remove' : 'add' };
 }
 
 /**
  * What a click means. `pass`: this hit does not take it, the object behind gets the click (or
  * none does). `none`: taken, nothing happens. `select`: pick the object (`additive` with Shift).
- * `add` a contact at the model point; `erase` the contact nearest the point within Remove radius;
+ * `add` a contact at the model point; `erase` the contact nearest the point within Click reach;
  * `removeContact`: remove that support's contact; `toggle` its selection; `miss`: tell the
  * user what to click instead.
  */
@@ -55,8 +56,8 @@ export function pickAction(input: PickInput): PickAction {
     // Supports take clicks only on the object being edited, never while painting zones.
     if (mode !== 'edit' || !active) return { type: 'pass' };
     const toggle = !right && clickSelecting;
-    // A plain left click in Add (or any left click in Drag over) passes through to the model behind.
-    if (!right && !toggle && (tool === 'select' || !ctrl)) return { type: 'pass' };
+    // A plain left click in Add (or any left click in Drag over) passes through to the model behind; Remove takes it.
+    if (!right && !toggle && (tool === 'select' || !(ctrl || input.addAction === 'remove'))) return { type: 'pass' };
     if (!input.contact) return { type: 'pass' };
     return { type: toggle ? 'toggle' : 'removeContact' };
   }
@@ -67,7 +68,7 @@ export function pickAction(input: PickInput): PickAction {
   if (right) return { type: 'erase' };
   // Selecting never adds: Click says to click a support; Drag over owns the left button.
   if (tool === 'select') return { type: clickSelecting ? 'miss' : 'none' };
-  return { type: ctrl ? 'erase' : 'add' };
+  return { type: ctrl || input.addAction === 'remove' ? 'erase' : 'add' };
 }
 
 /** A click that hit no object: what to click in a mode; outside them a left click clears the object selection. */

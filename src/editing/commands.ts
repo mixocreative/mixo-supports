@@ -1,4 +1,4 @@
-import type { EditMode, StatusMessage } from './types';
+import type { AddAction, EditMode, EditTool, StatusMessage } from './types';
 import { busyStatus } from './status';
 
 /**
@@ -14,7 +14,8 @@ export const COMMAND_IDS = [
   'transform.select', 'transform.move', 'transform.rotate',
   'supports.generate',
   'mode.edit', 'mode.zones', 'mode.exit',
-  'edit.generate', 'edit.clearSelection', 'edit.deleteSelection',
+  'edit.generate', 'edit.add', 'edit.remove', 'edit.clearSelection', 'edit.deleteSelection',
+  'setting.clickReach',
 ] as const;
 export type CommandId = (typeof COMMAND_IDS)[number];
 
@@ -32,6 +33,9 @@ export interface UiState {
   units: number;
   /** Objects selected in the left panel. */
   selectedObjects: number;
+  /** Support Edit Mode's tool, and under Add whether a click adds or removes. */
+  tool: EditTool;
+  addAction: AddAction;
   /** Supports selected in Support Edit Mode. */
   selection: number;
   /** The active object has supports (generated or hand-added). */
@@ -157,6 +161,16 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     visible: (s) => s.mode === 'edit' && !s.activeSupported, enabled: (s) => !s.generating,
     disabledReason: (s) => (s.generating ? generatingReason : undefined),
   },
+  'edit.add': addChoice('add', 'Add', 'Each click adds a support on the model'),
+  'edit.remove': addChoice('remove', 'Remove', 'Each click removes the support it hits, or the one nearest a click on the model within Click reach. Right-click does the same'),
+  /** A number field, set through its input: the Add bar and the right panel's Advanced render this one row. */
+  'setting.clickReach': {
+    role: 'secondary',
+    label: () => 'Click reach',
+    hint: () => 'How far from a support a click may land and still pick it. Only that one support is removed',
+    visible: always, enabled: (s) => s.active,
+    disabledReason: (s) => (s.active ? undefined : { key: 'Select an object first.' }),
+  },
   'edit.clearSelection': {
     role: 'secondary', shortcut: 'Esc',
     label: () => 'Clear selection', hint: () => 'Unselect every support at once. Undo on the notice brings the selection back',
@@ -168,6 +182,15 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     visible: (s) => s.mode === 'edit' && s.selection > 0, enabled: always, disabledReason: never,
   },
 };
+
+/** The Add | Remove switch under the Add tool. */
+function addChoice(action: AddAction, label: string, hint: string): Command {
+  return {
+    role: 'secondary', label: () => label, hint: () => hint,
+    visible: (s) => s.mode === 'edit' && s.tool === 'add', enabled: always, disabledReason: never,
+    pressed: (s) => s.addAction === action,
+  };
+}
 
 /** The gizmo choices of the Transform group: live outside the modes, with an object to move. */
 function transformChoice(label: string, hint: string, shortcut?: string): Command {
