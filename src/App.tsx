@@ -4,6 +4,7 @@ import type { Object3D } from 'three';
 import { labelForIndex } from './core/analysis/mesh';
 import type { SupportProblem } from './core/analysis/supportCheck';
 import type { SupportPoint } from './core/analysis/types';
+import type { Vector } from './core/vec3';
 import JobActivityPanel from './components/JobActivity';
 import { AnalysisClient } from './workers/analysisClient';
 import { ImportClient } from './workers/importClient';
@@ -23,12 +24,15 @@ import { ObjectList } from './components/ObjectList';
 import { ProblemList } from './components/ProblemList';
 import { ZonesBar } from './components/ZonesBar';
 import { Segmented } from './components/Segmented';
+import { isAbort, RUNTIME, triangleCount } from './components/appShared';
+import { useFixSpot } from './components/useFixSpot';
+import { useRegenerate } from './components/useRegenerate';
 import { hint } from './components/hint';
 import { canUndo as historyCanUndo, createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
 import { gltfRawMeshes, placeImportedUnits } from './state/import';
 import { setDisplayMesh, setPrebuiltBvh } from './state/meshExtras';
-import { detectRuntime, memoryInfo } from './state/runtime';
-import { assertGenerateMemory, assertMemoryCapacity, assertPlateCapacity, assertTriangleCapacity, memoryCapBytes, meshTier, refusalLimit } from './core/budget';
+import { memoryInfo } from './state/runtime';
+import { assertMemoryCapacity, assertPlateCapacity, assertTriangleCapacity, memoryCapBytes, meshTier, refusalLimit } from './core/budget';
 import { TriangleGate } from './core/jobGate';
 import { PlateLedger, type PlateScene } from './core/plateLedger';
 import { estimateTriangles, ESTIMATE_HEAD_BYTES } from './core/import/estimate';
@@ -42,18 +46,15 @@ import { deleteCommands } from './supports/selection';
 import { gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
-import { checkJobOf, currentBuild, currentBuilds, hiddenByZones, orientationOf, placedPoints, placementCommands, placementJobOf, placementPending, placementSignature, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
+import { checkJobOf, currentBuild, currentBuilds, hiddenByZones, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { resolve, type CommandId, type UiState } from './editing/commands';
 import { keyAction } from './editing/keys';
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
 import { contactToRemove } from './editing/removal';
-import { FIX_TOOL_EVENTS, initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
+import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
 import { busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
-import { atSpot, checkStatus, coverRadius, exportStatus, joinRun, recheckStatus, runToken, tallyChecks, uncovered, type CheckTally, type FixSpot } from './editing/check';
-import { landedStatus, RegenerateQueue, regeneratingStatus } from './editing/regenerate';
-import type { StatusMessage } from './editing/types';
-import { landPlacements, type FinishedPlacement } from './supports/landing';
+import { checkStatus, exportStatus, joinRun, runToken, tallyChecks, uncovered, type CheckTally } from './editing/check';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
 import type { BrushMode } from './editing/types';
@@ -94,12 +95,9 @@ export interface UnitProblem extends SupportProblem {
   inZone: boolean;
 }
 
-/** Runtime tier for the triangle budgets (web, or an Electron-like desktop shell). */
-const RUNTIME = detectRuntime();
 /** A .gltf (JSON) up to this size is read whole for its pre-parse triangle count. */
 const GLTF_ESTIMATE_BYTES = 16 * 1024 * 1024;
 
-const triangleCount = (unit: PrintUnit) => unit.source.indices.length / 3;
 /** Heavy-job admission for the whole app: placements, preview builds and exports share it. */
 const HEAVY_JOBS = new TriangleGate(refusalLimit(RUNTIME));
 /** The plate guard across imports that run at once: each holds what it adds while it reads. */
@@ -116,8 +114,6 @@ async function estimateHeadBytes(file: File): Promise<number> {
   }
   return ESTIMATE_HEAD_BYTES;
 }
-
-const isAbort = (error: unknown) => error instanceof Error && error.name === 'AbortError';
 
 
 export default function App() {
@@ -182,12 +178,6 @@ export default function App() {
   /** Tips only: the user's choice, else on by itself below the plate (editing/view). */
   const [tips, setTips] = useState(TIPS_START);
   const onBelowPlate = useCallback((below: boolean) => setTips((state) => tipsCamera(state, below)), []);
-  /** Unit to open in Support Edit Mode once it is the active unit ("Fix" on a check finding). */
-  const [editTarget, setEditTarget] = useState<{ unitId: string; spot: FixSpot }>();
-  /** The spot a check finding's Fix framed: the next support added near it covers it. */
-  const fixSpot = useRef<FixSpot | undefined>(undefined);
-  /** A support was added at a Fix spot: its finding stays listed, marked, until the re-check says if the spot is covered. */
-  const [rechecking, setRechecking] = useState<FixSpot>();
   const [modelVisible, setModelVisible] = useState(true);
   const [wireframe, setWireframe] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -257,13 +247,22 @@ export default function App() {
     p?.dispose(); e?.dispose(); a?.dispose();
   }, []);
 
+  const { generate, generating, regenQueued, scheduleRegenerate, forgetPlacing } = useRegenerate({
+    sceneRef, mode: editMode, targets, analysis, unitName, dispatch, offerUndo, setStatus, setStatusMessage,
+  });
+
   const requested = useRef(new Map<string, { unit: PrintUnit; index: number }>());
   const buildTimers = useRef(new Map<string, number>());
-  const placing = useRef(new Set<string>());
-  /** A placement job is running (the registry's Generate waits for it). */
-  const [generating, setGenerating] = useState(false);
   /** Findings by unit, with the unit version and support build they checked. */
   const [problems, setProblems] = useState<ReadonlyMap<string, { unit: PrintUnit; mesh: GeneratedSupportMesh | undefined; items: UnitProblem[] }>>(new Map());
+  const showProblem = useCallback((problem: { unitId: string; position: Vector; area: number }) => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === problem.unitId);
+    if (unit) setFocus((current) => ({ point: transformPoint(unit.transform, problem.position), area: problem.area, seq: (current?.seq ?? 0) + 1 }));
+  }, []);
+
+  const { fix: fixProblem, noteAdded, isRechecking, stopRechecking } = useFixSpot({
+    sceneRef, sessionRef, units: scene.units, activeUnitId: scene.activeUnitId, editMode, built, problems, send, dispatch, setStatus, setStatusMessage, showProblem,
+  });
 
   /** A unit left the scene: stop its work and free what the workers hold for it. */
   const forgetUnit = useCallback((unitId: string) => {
@@ -273,15 +272,14 @@ export default function App() {
     workers.current.export?.forget(unitId);
     workers.current.analysis?.cancel(`place:${unitId}`);
     workers.current.analysis?.cancel(`check:${unitId}`);
-    placing.current.delete(unitId);
-    setGenerating(placing.current.size > 0);
+    forgetPlacing(unitId);
     setProblems((current) => {
       if (!current.has(unitId)) return current;
       const next = new Map(current);
       next.delete(unitId);
       return next;
     });
-  }, []);
+  }, [forgetPlacing]);
 
   useEffect(() => {
     const ids = new Set(scene.units.map((unit) => unit.id));
@@ -323,62 +321,6 @@ export default function App() {
       }, BUILD_DELAY_MS));
     });
   }, [scene.units, forgetUnit, preview, setStatus, unitName]);
-
-  // ---- Placement -----------------------------------------------------------------------
-  /** `cause`: a placement setting changed (the status says so), else the Generate or Regenerate button. */
-  const generate = useCallback((unitIds?: readonly string[], cause: 'button' | 'placement' = 'button') => {
-    const current = sceneRef.current;
-    const units = unitIds ? current.units.filter((unit) => unitIds.includes(unit.id)) : targets(current);
-    if (units.length === 0) return setStatus('Import a model before generating supports.');
-    // The job gate runs at most the refusal limit's triangles at once; refuse when even that
-    // could not fit in half the memory a small device reports (deviceMemory under 8; 8 is clamped).
-    const generating = units.reduce((sum, unit) => sum + triangleCount(unit), 0);
-    try {
-      assertGenerateMemory(Math.min(generating, refusalLimit(RUNTIME)), RUNTIME, memoryInfo().deviceMemoryGb);
-    } catch (error) {
-      return setStatusMessage(errorStatus('place', codedJobError(error)));
-    }
-    let failure: StatusMessage | undefined;
-    const finished = units.map((unit) => {
-      // Placement runs on the rotated but untranslated model (placementJobOf) so moving a unit
-      // never shifts the sampling lattice; automatic IDs (and removals) stay stable.
-      const settings = resolveSettings(unit.settings);
-      const orientation = orientationOf(unit);
-      placing.current.add(unit.id);
-      setGenerating(true);
-      const settle = () => {
-        placing.current.delete(unit.id);
-        setGenerating(placing.current.size > 0);
-      };
-      return analysis().place(`place:${unit.id}`, placementJobOf(unit), { key: 'Placing contacts on {name}', vars: { name: unitName(unit.id) } }).then((result): FinishedPlacement | undefined => {
-        settle();
-        return result ? { unitId: unit.id, orientation, settings, result } : undefined; // no result: replaced by a newer request for this unit
-      }, (error: unknown) => {
-        settle();
-        failure = isAbort(error) ? { key: 'Support placement cancelled; existing supports kept.' } : errorStatus('place', codedJobError(error), { name: unit.name });
-        return undefined;
-      });
-    });
-    // Objects placed together land together: one history step, so one Undo covers them all.
-    void Promise.all(finished).then((results) => {
-      const { commands, landed, again } = landPlacements(sceneRef.current.units, results.filter((entry) => entry !== undefined));
-      // A rotation made meanwhile turned the contacts away: place again for the new orientation.
-      if (again.length > 0) {
-        generate(again.map((unit) => unit.id), cause);
-        setStatus('{name} was rotated while its contacts were placed: placing them again.', { name: again[0]!.name });
-      }
-      if (landed.length > 0) {
-        dispatch({ type: 'batch', commands });
-        // A regeneration says what it did to hand work, and Undo brings the old supports back.
-        const message = landedStatus(landed);
-        setStatusMessage(message);
-        if (landed.every((entry) => entry.report)) offerUndo({ kind: 'regenerate', message });
-      }
-      if (failure) setStatusMessage(failure);
-    });
-    if (units.every((unit) => unit.supports)) setStatusMessage(regeneratingStatus({ n: units.length, name: units[0]!.name }, cause));
-    else setStatus('Analysing overhangs for 1 object.', { n: units.length }, 'Analysing overhangs for {n} objects.');
-  }, [analysis, dispatch, offerUndo, setStatus, targets, unitName]);
 
   // ---- Support check -------------------------------------------------------------------
   /** Running checks by unit id, with the unit version they check (a second caller joins, editing/check). */
@@ -422,12 +364,12 @@ export default function App() {
       if (!entry) return [];
       const mesh = currentBuild(unit, built.get(unit.id));
       if (entry.unit === unit && entry.mesh === mesh) return entry.items;
-      const open = uncovered(entry.items, unitContacts(unit, mesh), resolveSettings(unit.settings).scatterSpacing, (finding) => rechecking?.unitId === unit.id && atSpot(finding.position, rechecking));
+      const open = uncovered(entry.items, unitContacts(unit, mesh), resolveSettings(unit.settings).scatterSpacing, isRechecking);
       stale ||= open.length > 0;
       return open;
     });
     return { listedProblems: listed, outOfDate: stale };
-  }, [built, problems, rechecking, scene.units]);
+  }, [built, isRechecking, problems, scene.units]);
   const recheckTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     const stale = scene.units.filter((unit) => {
@@ -440,27 +382,11 @@ export default function App() {
     // A recheck replaced by a newer one says nothing (the newer one runs); a failure or a cancel is
     // said, since the edited unit's findings stay hidden until a check finishes.
     recheckTimer.current = window.setTimeout(() => void runCheck(stale).catch((error: unknown) => {
-      setRechecking(undefined);
+      stopRechecking();
       if (isAbort(error)) setStatus('Support check cancelled.');
       else setStatusMessage(errorStatus('check', codedJobError(error)));
     }), 600);
-  }, [built, failedBuilds, problems, runCheck, scene.units, setStatus]);
-
-  // The re-check that follows a support added at a Fix spot decides whether the spot is covered.
-  useEffect(() => {
-    if (!rechecking) return;
-    const unit = scene.units.find((candidate) => candidate.id === rechecking.unitId);
-    if (!unit) return setRechecking(undefined);
-    const entry = problems.get(unit.id);
-    if (!entry || entry.unit !== unit || entry.mesh !== currentBuild(unit, built.get(unit.id))) return;
-    setRechecking(undefined);
-    setStatusMessage(recheckStatus(rechecking, entry.items));
-  }, [built, problems, rechecking, scene.units]);
-
-  const showProblem = useCallback((problem: UnitProblem) => {
-    const unit = sceneRef.current.units.find((candidate) => candidate.id === problem.unitId);
-    if (unit) setFocus((current) => ({ point: transformPoint(unit.transform, problem.position), area: problem.area, seq: (current?.seq ?? 0) + 1 }));
-  }, []);
+  }, [built, failedBuilds, problems, runCheck, scene.units, setStatus, stopRechecking]);
 
   const checkSupports = useCallback(() => {
     const units = targets(sceneRef.current).filter((unit) => unit.supports);
@@ -471,22 +397,6 @@ export default function App() {
       (error: unknown) => (isAbort(error) ? setStatus('Support check cancelled.') : setStatusMessage(errorStatus('check', codedJobError(error)))),
     );
   }, [runCheck, setStatus, targets]);
-
-  const generateRef = useRef(generate);
-  generateRef.current = generate;
-  /** A placement change is waiting out its burst: the pending note holds back, the regeneration is on its way. */
-  const [regenQueued, setRegenQueued] = useState(false);
-  const regenerateQueue = useRef<RegenerateQueue>();
-  regenerateQueue.current ??= new RegenerateQueue((ids) => {
-    const live = ids.filter((id) => sceneRef.current.units.find((unit) => unit.id === id)?.supports);
-    if (live.length > 0) generateRef.current(live, 'placement');
-  }, setRegenQueued);
-  const scheduleRegenerate = useCallback((unitIds: string[]) => regenerateQueue.current!.schedule(unitIds), []);
-  // A mode takes the supports over: a regeneration still queued for a change made before it does not run behind it.
-  useEffect(() => {
-    if (editMode !== 'off') regenerateQueue.current!.cancel();
-  }, [editMode]);
-  useEffect(() => () => regenerateQueue.current!.cancel(), []);
 
   // ---- Import --------------------------------------------------------------------------
   const importFiles = useCallback(async (files: readonly File[]) => {
@@ -612,34 +522,6 @@ export default function App() {
     offerUndo({ kind: 'clearZones', hidden: zonesHidden });
   }, [dispatch, offerUndo, setStatus, zonesHidden]);
 
-  const fixProblem = useCallback((problem: UnitProblem) => {
-    showProblem(problem);
-    const { mode } = sessionRef.current;
-    if (mode === 'zones') return setStatusMessage(busyStatus(mode));
-    const unit = sceneRef.current.units.find((candidate) => candidate.id === problem.unitId);
-    if (!unit) return;
-    const spot: FixSpot = { unitId: unit.id, position: problem.position, radius: coverRadius(resolveSettings(unit.settings).scatterSpacing, problem.area) };
-    // Inside Support Edit Mode on the same object the spot is framed and the Add tool waits for the click.
-    if (mode === 'edit' && sceneRef.current.activeUnitId === unit.id) {
-      fixSpot.current = spot;
-      FIX_TOOL_EVENTS.forEach(send);
-      return setStatus('Click the framed spot to add a support.');
-    }
-    send({ type: 'leave' });
-    dispatch({ type: 'selection/set', unitIds: [unit.id], activeUnitId: unit.id });
-    setEditTarget({ unitId: unit.id, spot });
-  }, [dispatch, send, setStatus, showProblem]);
-  useEffect(() => {
-    if (!editTarget || scene.activeUnitId !== editTarget.unitId) return;
-    setEditTarget(undefined);
-    send({ type: 'enterEdit' });
-    FIX_TOOL_EVENTS.forEach(send);
-    fixSpot.current = editTarget.spot;
-    setStatus('Click the framed spot to add a support.');
-  }, [editTarget, scene.activeUnitId, send, setStatus]);
-  // A framed spot belongs to one visit of the mode.
-  useEffect(() => { if (editMode !== 'edit') fixSpot.current = undefined; }, [editMode]);
-
   const onSelect = useCallback((unitId: string | null, additive: boolean) => {
     const current = sceneRef.current;
     const { mode } = sessionRef.current;
@@ -676,13 +558,8 @@ export default function App() {
       type: 'supports/set', unitId, supports: { kind: 'live', data: { transform: { position: [...unit.transform.position], rotation: [...unit.transform.rotation] } } },
     }];
     dispatch({ type: 'batch', commands: [...commands, { type: 'manual/add', unitId, point: contact }] });
-    const spot = fixSpot.current;
-    if (spot && spot.unitId === unitId && atSpot(contact.position, spot)) {
-      fixSpot.current = undefined;
-      setRechecking(spot);
-      setStatus('Support added near the spot. Re-checking…');
-    } else setStatus(normal[1] > 0 ? 'Support added on a top face: it grows from below.' : 'Support added.');
-  }, [dispatch, setStatus]);
+    if (!noteAdded(unitId, contact.position)) setStatus(normal[1] > 0 ? 'Support added on a top face: it grows from below.' : 'Support added.');
+  }, [dispatch, noteAdded, setStatus]);
 
   // A removal is exact: the manual support itself, or the automatic contact's id. Click reach only decides which support a click on the model hits.
   const removeOne = useCallback((unit: PrintUnit, contactId: string) => {
@@ -953,7 +830,7 @@ export default function App() {
         <section className="support-check" {...(locked('check') ? { inert: '' } : {})}>
           <h3>{t('Check supports')}</h3>
           <button onClick={checkSupports} disabled={!scene.units.some((unit) => unit.supports)} {...hint('Finds islands and overhangs no contact reaches, before you print.')}>{t('Check for unsupported spots')}</button>
-          <ProblemList problems={listedProblems} outOfDate={outOfDate} rechecking={(problem) => rechecking?.unitId === problem.unitId && atSpot(problem.position, rechecking)} unitName={unitName} onShow={showProblem} onFix={fixProblem} />
+          <ProblemList problems={listedProblems} outOfDate={outOfDate} rechecking={isRechecking} unitName={unitName} onShow={showProblem} onFix={fixProblem} />
           <p className="help">{t('Finds islands and overhangs no contact reaches, before you print.')}</p>
         </section>
       </aside>
