@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { CANCEL_LINGER_MS, ERROR_LINGER_MS, fractionOf, JobActivity, LONG_JOB_MS, MIN_VISIBLE_MS, SHOW_DELAY_MS } from './jobActivity';
+import { CANCEL_LINGER_MS, fractionOf, JobActivity, LONG_JOB_MS, MIN_VISIBLE_MS, SHOW_DELAY_MS } from './jobActivity';
 
 let now = 0;
 let activity: JobActivity;
@@ -64,12 +64,15 @@ describe('job activity (NN/g response-time rules)', () => {
     expect(activity.view()).toEqual([]);
   });
 
-  it('never fails silently: a failure shows even when the job was too quick to appear, then lingers', () => {
+  it('never fails silently: a failure shows even when the job was too quick to appear, and stays until dismissed', () => {
     const job = activity.begin({ label });
     const error = Object.assign(new Error('Import timed out after 300000 ms'), { code: 'timeout' });
     job.end(error);
     expect(activity.view()).toMatchObject([{ state: 'failed', error: { code: 'timeout', message: 'Import timed out after 300000 ms' } }]);
-    now += ERROR_LINGER_MS;
+    now += 24 * 60 * 60 * 1000;
+    const [kept] = activity.view();
+    expect(kept).toMatchObject({ state: 'failed' });
+    activity.dismiss(kept!.id);
     expect(activity.view()).toEqual([]);
   });
 

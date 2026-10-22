@@ -408,7 +408,7 @@ export default function App() {
     // said, since the edited unit's findings stay hidden until a check finishes.
     recheckTimer.current = window.setTimeout(() => void runCheck(stale).catch((error: unknown) => {
       stopRechecking();
-      if (isAbort(error)) setStatus('Support check cancelled.');
+      if (isAbort(error)) setStatus('Support check cancelled. Supports unchanged.');
       else setStatusMessage(errorStatus('check', codedJobError(error)));
     }), 600);
   }, [built, failedBuilds, problems, runCheck, scene.units, setStatus, stopRechecking]);
@@ -419,7 +419,7 @@ export default function App() {
     setStatus('Checking supports on 1 object.', { n: units.length }, 'Checking supports on {n} objects.');
     runCheck(units).then(
       (tally) => setStatusMessage(checkStatus(tally)),
-      (error: unknown) => (isAbort(error) ? setStatus('Support check cancelled.') : setStatusMessage(errorStatus('check', codedJobError(error)))),
+      (error: unknown) => (isAbort(error) ? setStatus('Support check cancelled. Supports unchanged.') : setStatusMessage(errorStatus('check', codedJobError(error)))),
     );
   }, [runCheck, setStatus, targets]);
 

@@ -27,7 +27,7 @@ export function failureText(row: JobRow): string {
 export function rowText(row: JobRow): { label: string; meta: string } {
   const label = translateMessage(row.label);
   if (row.state === 'failed') return { label: failureText(row), meta: '' };
-  if (row.state === 'cancelled') return { label: t('{label}: cancelled.', { label }), meta: '' };
+  if (row.state === 'cancelled') return { label: t('{label}: cancelled. Supports unchanged.', { label }), meta: '' };
   if (row.cancelling) return { label, meta: t('Cancelling…') };
   const meta: string[] = [];
   if (row.percent !== null) meta.push(`${row.percent}%`);

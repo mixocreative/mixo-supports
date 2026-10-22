@@ -11,8 +11,7 @@ export const SHOW_DELAY_MS = 400;
 export const MIN_VISIBLE_MS = 500;
 /** After this long a job without progress shows its elapsed time. */
 export const LONG_JOB_MS = 10_000;
-/** A failure stays readable this long (or until dismissed); a cancel is acknowledged this long. */
-export const ERROR_LINGER_MS = 8_000;
+/** A failure stays listed until it is dismissed; a cancel is acknowledged this long. */
 export const CANCEL_LINGER_MS = 1_500;
 /** Time left only once the rate is known (at least 3 s of progress and 10 % done). */
 export const ETA_MIN_MS = 3_000;
@@ -180,10 +179,9 @@ export class JobActivity {
         const wasShown = entry.shownAt !== null;
         // A failure always surfaces, even one that ended before the show delay.
         if (entry.outcome === 'failed' && entry.shownAt === null) entry.shownAt = entry.endedAt;
-        const linger = entry.outcome === 'failed' ? ERROR_LINGER_MS
-          : entry.outcome === 'cancelled' && wasShown ? CANCEL_LINGER_MS
-            : wasShown ? Math.max(0, MIN_VISIBLE_MS - (entry.endedAt - entry.shownAt!)) : 0;
-        if (now - entry.endedAt >= linger || (!wasShown && entry.outcome !== 'failed')) {
+        const linger = entry.outcome === 'cancelled' && wasShown ? CANCEL_LINGER_MS
+          : wasShown ? Math.max(0, MIN_VISIBLE_MS - (entry.endedAt - entry.shownAt!)) : 0;
+        if (entry.outcome !== 'failed' && (now - entry.endedAt >= linger || !wasShown)) {
           this.entries.delete(entry.id);
           continue;
         }

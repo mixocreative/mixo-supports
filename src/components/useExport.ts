@@ -1,10 +1,10 @@
 import { useCallback, useState, type MutableRefObject } from 'react';
 import { errorStatus } from '../editing/errors';
 import { exportStatus, type CheckTally } from '../editing/check';
-import type { Message } from '../i18n';
+import { plural, type Message } from '../i18n';
 import type { PrintScene, PrintUnit } from '../state/project';
 import { exportUnits, planExport, type ExportKind } from '../supports/export';
-import { currentBuilds, supportJobOf, type UnitBuild } from '../supports/unitSupports';
+import { currentBuilds, supportJobOf, unitContacts, type UnitBuild } from '../supports/unitSupports';
 import type { SupportMeshClient } from '../workers/meshClient';
 import { codedJobError } from '../workers/jobErrors';
 import { isAbort, type SetStatus } from './appShared';
@@ -55,7 +55,9 @@ export function useExport(host: {
         anchor.click();
         window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
-      const names = written.map((file) => file.fileName).join(', ');
+      // The file names and how many supports the files hold, as the status names them.
+      const count = units.reduce((sum, [unit]) => sum + unitContacts(unit, builtRef.current.get(unit.id)?.mesh).length, 0);
+      const names = `${written.map((file) => file.fileName).join(', ')} (${plural(count, '1 support', '{n} supports')})`;
       setStatusMessage(exportStatus(names, await checking));
     } catch (error) {
       if (isAbort(error)) setStatus('Export cancelled; no file was written.');

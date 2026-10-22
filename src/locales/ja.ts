@@ -474,11 +474,9 @@ export const ja: Dictionary = {
   '{m} min {s} s': '{m} 分 {s} 秒',
   'about {time} left': '残り約 {time}',
   '{time} so far': '経過 {time}',
-  '{label}: cancelled.': '{label}：キャンセルしました。',
   'Import cancelled; nothing was added.': '読み込みをキャンセルしました。何も追加されていません。',
   'Export cancelled; no file was written.': '書き出しをキャンセルしました。ファイルは作成されていません。',
   'Support placement cancelled; existing supports kept.': 'サポートの配置をキャンセルしました。既存のサポートはそのままです。',
-  'Support check cancelled.': 'サポートの確認をキャンセルしました。',
   'Too detailed to edit by hand ({n} triangles). Generate and export still use the full model.': 'モデルが細かすぎるため手動では編集できません（三角形 {n} 個）。生成と書き出しは完全なモデルで行われます。',
   '{name} is a heavy model ({n} triangles, over {budget}): the view shows a simplified copy and hand editing is off. Generate and export use the full model.': '{name} は大容量のモデルです（三角形 {n} 個、{budget} 超）：表示は簡略版で、手動編集はできません。生成と書き出しは完全なモデルで行われます。',
   '{name} is a large model ({n} triangles): the view shows contact tips only to stay smooth. Turn off Tips only to see whole supports.': '{name} は大きなモデルです（三角形 {n} 個）：動作を軽くするため接触先端のみ表示しています。サポート全体を見るには「先端のみ」をオフにしてください。',
@@ -505,4 +503,6 @@ export const ja: Dictionary = {
   'Deleted 1 object.': '1 個のオブジェクトを削除しました。',
   'Deleted {n} objects.': '{n} 個のオブジェクトを削除しました。',
   'Remove the supports of the selected objects. Models and manual edits are kept. Undo brings them back': '選択したオブジェクトのサポートを削除します。モデルと手動編集は残ります。「元に戻す」で復元できます',
+  '{label}: cancelled. Supports unchanged.': '{label}：キャンセルしました。サポートは変更されていません。',
+  'Support check cancelled. Supports unchanged.': 'サポートの確認をキャンセルしました。サポートは変更されていません。',
 };

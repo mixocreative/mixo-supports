@@ -25,6 +25,6 @@ describe('job activity texts', () => {
     setLanguage('ja');
     expect(failureText(row({ state: 'failed', error: { code: 'bad-stl', message: 'damaged' } }))).not.toContain('damaged');
     setLanguage('zh-Hant');
-    expect(rowText(row({ state: 'cancelled' })).label).toBe('正在匯入 statue.stl：已取消。');
+    expect(rowText(row({ state: 'cancelled' })).label).toBe('正在匯入 statue.stl：已取消。支撐保持不變。');
   });
 });
