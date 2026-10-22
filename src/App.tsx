@@ -11,7 +11,8 @@ import { createAnalysisWorker, createImportWorker, createMeshWorker } from './wo
 import { SupportMeshClient } from './workers/meshClient';
 import type { PreparedMesh } from './workers/importProtocol';
 import { codedJobError } from './workers/jobErrors';
-import ObjectViewport, { acceptModelFile, type GizmoMode, type ViewRequest } from './components/ObjectViewport';
+import ObjectViewport, { acceptModelFile } from './components/ObjectViewport';
+import type { GizmoMode, ViewRequest } from './components/viewport/types';
 import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
 import { hint } from './components/hint';

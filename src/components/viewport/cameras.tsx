@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import type { Vector } from '../../core/vec3';
 import { belowPlate, boundsSphere, frameView, spotView } from '../../editing/view';
-import type { ViewRequest } from '../ObjectViewport';
+import type { ViewRequest } from './types';
 
 /**
  * Frames the selected objects (every object when none is selected): `bottom` looks straight

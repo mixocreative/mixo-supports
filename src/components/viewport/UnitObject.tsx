@@ -16,14 +16,17 @@ import { unitContacts } from '../../supports/unitSupports';
 import { PREVIEW, ZONE_OPACITY, SEE_THROUGH, BRUSH_CURSOR } from './style';
 import { useGeometry } from './geometry';
 import { type Hover, EditPreview, SupportBodies, ZoneLayer, useDoomed, ProblemMarkers, useSelectionColors } from './supportLayers';
+import type { ObjectViewportProps } from './types';
 import { OCCLUDER, useScreenBrush } from './useScreenBrush';
-import type { ObjectViewportProps } from '../ObjectViewport';
 
 function toVector(vector: THREE.Vector3): Vector {
   return [vector.x, vector.y, vector.z];
 }
 
-interface UnitObjectProps extends Omit<ObjectViewportProps, 'scene' | 'supportMeshes' | 'gizmoMode' | 'onTransform' | 'problems' | 'focus' | 'viewRequest' | 'onBelowPlate'> {
+/** The viewport settings and callbacks one object takes, plus its own unit, supports and state. */
+interface UnitObjectProps extends Pick<ObjectViewportProps,
+  | 'editMode' | 'editTool' | 'liveTool' | 'brush' | 'zoneBrush' | 'selection' | 'showZones' | 'tipsView' | 'modelVisible' | 'wireframe'
+  | 'onSelect' | 'onAddContact' | 'onRemoveContact' | 'onErase' | 'onEditMiss' | 'onToggleContact' | 'onPaint' | 'onZoneStroke'> {
   problems: readonly SupportProblem[];
   unit: PrintUnit;
   supports?: GeneratedSupportMesh;
