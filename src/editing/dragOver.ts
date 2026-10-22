@@ -22,7 +22,7 @@ export interface DragOver {
    * A stroke keeps going off the canvas.
    */
   move(at: Point, pointer: PointerState, brush: Brush): boolean;
-  /** The pointer left the canvas: outside a stroke the hover is cleared. True when the circle hides. */
+  /** The pointer left the canvas: outside a stroke the hover is cleared and the circle hides (false). */
   leave(): boolean;
 }
 
@@ -46,9 +46,9 @@ export function createDragOver(stroke: Stroke, scheduler: BrushScheduler, onStro
       return true;
     },
     leave() {
-      if (stroke.active) return false;
+      if (stroke.active) return true;
       scheduler.clearHover();
-      return true;
+      return false;
     },
   };
 }

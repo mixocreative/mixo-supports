@@ -140,10 +140,11 @@ export function useScreenBrush(options: {
     circle.className = 'brush-circle';
     circle.hidden = true;
     host.appendChild(circle);
-    /** The pointer's canvas point and the canvas size it saw. */
+    /** The pointer's canvas point; the hit test takes the canvas size it saw before any rule runs. */
     const locate = (event: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
-      return { at: [event.clientX - rect.left, event.clientY - rect.top] as const, width: rect.width, height: rect.height };
+      view.resize(rect.width, rect.height);
+      return [event.clientX - rect.left, event.clientY - rect.top] as const;
     };
     const show = ([x, y]: readonly [number, number], brush: Brush) => {
       canvas.style.cursor = BRUSH_CURSOR.select;
@@ -159,21 +160,18 @@ export function useScreenBrush(options: {
     const move = (event: PointerEvent) => {
       const { brush } = live.current.options;
       if (!brush) return;
-      const { at, width, height } = locate(event);
-      view.resize(width, height);
+      const at = locate(event);
       if (dragOver.move(at, { held: (event.buttons & 1) !== 0, onCanvas: event.target === canvas }, brush)) show(at, brush);
       else hide();
     };
     const down = (event: PointerEvent) => {
       const { brush } = live.current.options;
       if (!brush) return;
-      const { at, width, height } = locate(event);
-      if (!dragOver.down(event.button, at, brush)) return;
-      view.resize(width, height);
-      show(at, brush);
+      const at = locate(event);
+      if (dragOver.down(event.button, at, brush)) show(at, brush);
     };
     const leave = () => {
-      if (dragOver.leave()) hide();
+      if (!dragOver.leave()) hide();
     };
     // Capture on the canvas: runs before the orbit controls (listening on its parent) see the press.
     canvas.addEventListener('pointerdown', down, { capture: true });

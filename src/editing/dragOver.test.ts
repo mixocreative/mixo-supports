@@ -115,7 +115,7 @@ function rig(options: { bodies?: BodySegments; hidden?: (x: number) => boolean }
     get preview() { return preview; },
     hover(at: Point) { return move(at, false); },
     offCanvas(at: Point) { return move(at, false, false); },
-    /** True when the circle hides. */
+    /** True when the circle still shows. */
     leave() { return Boolean(view && dragOver.leave()); },
     press(at: Point) { if (view && brush) dragOver.down(0, at, brush); },
     drag(at: Point) { return move(at, true); },
@@ -301,9 +301,9 @@ describe('Drag over pipeline (characterization)', () => {
     const view = rig();
     expect(view.hover([50, 30])).toBe(true);
     expect(view.offCanvas([150, 30])).toBe(false);
-    expect(view.leave()).toBe(true);
-    view.press([5, 30]);
     expect(view.leave()).toBe(false);
+    view.press([5, 30]);
+    expect(view.leave()).toBe(true);
     expect(view.drag([150, 30])).toBe(true);
     view.release();
     expect(view.offCanvas([150, 30])).toBe(false);

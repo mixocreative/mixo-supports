@@ -156,7 +156,7 @@ quoted here are the ones the code uses.
   (`undefined` when it is gone or the brush is off), its only lifetime input. What a pointer
   event means is `createDragOver(stroke, scheduler, onStrokeStart)` (`editing/dragOver`): the
   host calls `down(button, at, brush)`, `move(at, { held, onCanvas }, brush)` and `leave()` with
-  canvas points, and shows or hides the circle as they answer.
+  canvas points; each answers whether the circle shows.
 
 ### 5.4 Tips only: `tipsOf`
 
