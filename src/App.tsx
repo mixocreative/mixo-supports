@@ -64,6 +64,7 @@ import { checkStatus, joinRun, runToken, tallyChecks, uncovered, type CheckTally
 import { stepKind } from './state/stepKind';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
+import TermsDialog from './components/TermsDialog';
 import type { BrushMode } from './editing/types';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
@@ -133,6 +134,7 @@ export default function App() {
   const cancelEdit = useCallback((edit: string) => dispatchHistory({ type: 'cancelEdit', edit }), []);
 
   const [lang, setLang] = useState<Lang>(detectLanguage);
+  const [termsOpen, setTermsOpen] = useState(false);
   setLanguage(lang);
   const chooseLanguage = (next: Lang) => {
     setLanguage(next, true);
@@ -982,6 +984,8 @@ export default function App() {
       {contactCounts && <span className={building(activeUnit!) ? 'building' : undefined} aria-busy={building(activeUnit!) || undefined} {...hint('Automatic supports you removed by hand. Clear manual edits brings them back')}>{t('{auto} automatic, {manual} manual, {removed} removed', contactCounts)}</span>}
       {/* Announced to screen readers, so errors and step results are heard too. */}
       <strong role="status" aria-live="polite">{translateMessage(status)}</strong>
+      <button type="button" className="link-button" onClick={() => setTermsOpen(true)} {...hint('Read the terms of use')}>{t('Terms')}</button>
     </footer>
+    {termsOpen && <TermsDialog lang={lang} onClose={() => setTermsOpen(false)} />}
   </main>;
 }

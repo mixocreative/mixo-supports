@@ -583,3 +583,13 @@ button.attention { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--blue); }
 .shape-head { display: flex; align-items: center; gap: 8px; }
 .shape-head h3 { flex: 1; min-width: 0; }
 .shape-head button { width: auto; margin: 0 0 10px; padding: 3px 10px; flex: none; white-space: nowrap; }
+
+footer strong + .link-button { margin-left: 0; }
+.link-button { height: auto; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: inherit; text-decoration: underline; }
+.link-button:hover:not(:disabled) { background: transparent; color: var(--ink); }
+dialog.terms { max-width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 20px 24px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--paper); color: var(--ink); overflow: auto; }
+dialog.terms::backdrop { background: rgba(0, 0, 0, .35); }
+dialog.terms h2 { margin-bottom: 8px; }
+dialog.terms p { margin: 0 0 10px; font-size: 12.5px; line-height: 1.7; }
+dialog.terms .terms-item { display: flex; gap: 6px; }
+dialog.terms .terms-item > span { flex: none; }

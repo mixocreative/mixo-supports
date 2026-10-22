@@ -552,4 +552,9 @@ export const ja: Dictionary = {
   'Could not open {name} ({error}). The plate is unchanged.': '{name} を開けませんでした（{error}）。プレートの内容は変わっていません。',
   'Could not save {name} ({error}). Nothing was written; try again.': '{name} を保存できませんでした（{error}）。何も書き込まれていません。もう一度お試しください。',
   'Save cancelled; no file was written.': '保存を取り消しました。ファイルは書き込まれていません。',
+  'Terms': '利用規約',
+  'Terms of use': '利用規約',
+  'Close': '閉じる',
+  'The terms are shown in English for this language.': '利用規約は英語版のみ表示されます。',
+  'Read the terms of use': '利用規約を読みます',
 };

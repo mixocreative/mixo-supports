@@ -556,4 +556,9 @@ export const zhHant: Dictionary = {
   'Could not open {name} ({error}). The plate is unchanged.': '無法開啟 {name}（{error}）。底板上的內容沒有變動。',
   'Could not save {name} ({error}). Nothing was written; try again.': '無法儲存 {name}（{error}）。沒有寫入任何內容，請再試一次。',
   'Save cancelled; no file was written.': '已取消儲存，沒有寫入任何檔案。',
+  'Terms': '使用條款',
+  'Terms of use': '使用條款',
+  'Close': '關閉',
+  'The terms are shown in English for this language.': '此語言僅提供英文版條款。',
+  'Read the terms of use': '閱讀使用條款',
 };

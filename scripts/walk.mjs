@@ -527,6 +527,17 @@ async function walk(url, scratch) {
     await page.screenshot({ path: path.join(scratch, 'walk-error.png') }).catch(() => {});
     note(`screenshot ${path.join(scratch, 'walk-error.png')}`);
   }
+  try {
+    await page.locator('footer').getByRole('button', { name: 'Terms' }).click();
+    const dialog = page.locator('dialog.terms');
+    await dialog.waitFor({ state: 'visible', timeout: 5000 });
+    check('j Terms opens the bundled terms in a dialog', /Terms of Use/.test(await dialog.innerText()));
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'hidden', timeout: 5000 });
+    check('j Escape closes the Terms dialog', true);
+  } catch (error) {
+    check('j Terms dialog', false, error.message);
+  }
   check('h no request leaves localhost', outside.length === 0, outside.length ? outside.slice(0, 3).join(' || ') : '0 external requests');
   check('h no console errors or warnings', errors.length === 0, errors.length ? errors.slice(0, 3).join(' || ') : '0 messages');
 }
