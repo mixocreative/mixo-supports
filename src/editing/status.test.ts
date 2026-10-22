@@ -31,7 +31,7 @@ describe('sessionStatus', () => {
   const editing = at({ mode: 'edit' });
 
   it('entering Support Edit Mode or switching tool says what the tool does', () => {
-    expect(after(active, { type: 'toggleEdit', activeUnitId: 'u1' })).toEqual({ key: ADD });
+    expect(after(active, { type: 'toggleEdit' })).toEqual({ key: ADD });
     expect(after(editing, { type: 'setTool', tool: 'select' })).toEqual({ key: CLICK });
     expect(after(at({ mode: 'edit', tool: 'select' }), { type: 'setSelectStyle', style: 'brush' })).toEqual({ key: BRUSH });
   });
@@ -49,20 +49,20 @@ describe('sessionStatus', () => {
   });
 
   it('leaving a mode says the edits are kept', () => {
-    expect(after(editing, { type: 'toggleEdit', activeUnitId: 'u1' })).toEqual({ key: 'Support edits kept.' });
+    expect(after(editing, { type: 'toggleEdit' })).toEqual({ key: 'Support edits kept.' });
     expect(after(at({ mode: 'zones', zonesReturn: 'off' }), { type: 'closeZones' })).toEqual({ key: 'No-support zones kept.' });
   });
 
   it('zones mode opens with its hint and Done back in Edit Mode restores the tool message', () => {
-    expect(after(active, { type: 'openZones', from: 'off', activeUnitId: 'u1' })).toEqual({ key: ZONES });
-    expect(after(editing, { type: 'openZones', from: 'edit', activeUnitId: 'u1' })).toEqual({ key: ZONES });
+    expect(after(active, { type: 'openZones', from: 'off' })).toEqual({ key: ZONES });
+    expect(after(editing, { type: 'openZones', from: 'edit' })).toEqual({ key: ZONES });
     expect(after(at({ mode: 'zones', zonesReturn: 'edit', tool: 'select' }), { type: 'closeZones' })).toEqual({ key: CLICK });
   });
 
   it('a forced exit or a no-op leaves the status line to the host', () => {
     expect(after(editing, { type: 'leave' })).toBeUndefined();
     expect(after(editing, { type: 'activeUnitChanged', id: undefined })).toBeUndefined();
-    expect(after(at({ mode: 'zones' }), { type: 'toggleEdit', activeUnitId: 'u1' })).toBeUndefined();
+    expect(after(at({ mode: 'zones' }), { type: 'toggleEdit' })).toBeUndefined();
   });
 });
 

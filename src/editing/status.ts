@@ -37,8 +37,9 @@ export function editStatus(session: EditSession): StatusMessage | undefined {
  * forced exit (`leave`, the object gone) is left to the host, which says why.
  */
 export function sessionStatus(previous: EditSession, next: EditSession, event: SessionEvent): StatusMessage | undefined {
-  if (event.type === 'toggleEdit' && previous.mode === 'off' && !event.activeUnitId) return { key: 'Select an object to edit its supports.' };
-  if (event.type === 'openZones' && !event.activeUnitId) return { key: 'Select an object first.' };
+  const entering = (event.type === 'toggleEdit' && previous.mode === 'off') || event.type === 'openZones';
+  if (entering && previous.activeUnitId === undefined) return { key: event.type === 'toggleEdit' ? 'Select an object to edit its supports.' : 'Select an object first.' };
+  if (entering && previous.heavy !== undefined) return heavyStatus(previous);
   if (event.type === 'toggleEdit' && previous.mode === 'edit' && next.mode === 'off') return { key: 'Support edits kept.' };
   if (event.type === 'closeZones' && previous.mode === 'zones' && next.mode === 'off') return { key: 'No-support zones kept.' };
   if (next.mode === 'off' || next === previous) return undefined;
@@ -48,6 +49,12 @@ export function sessionStatus(previous: EditSession, next: EditSession, event: S
 
 export function missStatus(session: EditSession): StatusMessage | undefined {
   return keyed(MISS_STATUS[gesture(session).kind]);
+}
+
+/** Why a heavy active object takes no hand edits, and what still works; undefined when it is not heavy. */
+export function heavyStatus(session: EditSession): StatusMessage | undefined {
+  if (session.heavy === undefined) return undefined;
+  return { key: 'Too detailed to edit by hand ({n} triangles). Generate and export still use the full model.', vars: { n: session.heavy.toLocaleString() } };
 }
 
 /** Another object was picked while a mode is on: finish the mode first. */

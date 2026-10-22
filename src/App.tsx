@@ -16,7 +16,7 @@ import type { GizmoMode, ViewRequest } from './components/viewport/types';
 import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
 import { hint } from './components/hint';
-import { editModeButton, zonesButton, type ModeButton } from './editing/modeButtons';
+import { editModeButton, zonesButton } from './editing/modeButtons';
 import { canUndo as historyCanUndo, createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
 import { gltfRawMeshes, placeImportedUnits } from './state/import';
 import { setDisplayMesh, setPrebuiltBvh } from './state/meshExtras';
@@ -39,13 +39,13 @@ import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type L
 import { checkJobOf, currentBuild, currentBuilds, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { keyAction } from './editing/keys';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
-import { busyStatus, missStatus, sessionStatus } from './editing/status';
+import { busyStatus, heavyStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
 import { checkStatus, exportStatus, joinRun, runToken, tallyChecks, type CheckTally } from './editing/check';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
 import { BrushIcon, PointerIcon } from './components/ToolIcons';
-import type { BrushMode, ZonesReturn } from './editing/types';
+import type { BrushMode } from './editing/types';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
 type HistoryAction = { type: 'command'; command: SceneCommand } | { type: 'undo' } | { type: 'redo' };
@@ -119,9 +119,6 @@ async function estimateHeadBytes(file: File): Promise<number> {
 }
 
 const isAbort = (error: unknown) => error instanceof Error && error.name === 'AbortError';
-/** Why a heavy object cannot be edited by hand, and what still works. */
-const HEAVY_EDIT = 'Too detailed to edit by hand ({n} triangles). Generate and export still use the full model.';
-const isHeavy = (unit: PrintUnit | undefined) => unit !== undefined && meshTier(triangleCount(unit), RUNTIME) === 'heavy';
 
 
 export default function App() {
@@ -204,9 +201,8 @@ export default function App() {
 
   const activeUnit = scene.units.find((unit) => unit.id === scene.activeUnitId);
   const activeIndex = activeUnit ? scene.units.indexOf(activeUnit) : -1;
-  /** A heavy active object takes no hand edits (Edit Mode, zones); generation and export still run. */
-  const activeHeavy = isHeavy(activeUnit);
-  const heavyHint = activeHeavy ? t(HEAVY_EDIT, { n: triangleCount(activeUnit!).toLocaleString() }) : undefined;
+  /** Triangles of a heavy active object: the session refuses hand edits on it (Edit Mode, zones); generation and export still run. */
+  const activeHeavy = activeUnit && meshTier(triangleCount(activeUnit), RUNTIME) === 'heavy' ? triangleCount(activeUnit) : undefined;
   /** A large model on the plate keeps the tips view on above the plate too (to stay smooth), until switched off. */
   const largeTips = useMemo(() => scene.units.some((unit) => meshTier(triangleCount(unit), RUNTIME) === 'large'), [scene.units]);
   const tipsContext = { large: largeTips, zones: editMode === 'zones' };
@@ -214,7 +210,7 @@ export default function App() {
   // Support Edit Mode belongs to the active unit: it ends when that unit goes (delete, undo).
   // The selection empties on leaving a mode or changing the active object; ids that no longer
   // exist (undo, regeneration) drop out.
-  useEffect(() => send({ type: 'activeUnitChanged', id: activeUnit?.id }), [activeUnit?.id, send]);
+  useEffect(() => send({ type: 'activeUnitChanged', id: activeUnit?.id, heavy: activeHeavy }), [activeUnit?.id, activeHeavy, send]);
   // ---- Support meshes ------------------------------------------------------------------
   // Built in the preview worker from scene state; a unit keeps showing its previous mesh until
   // the new one arrives, and units that did not change are not rebuilt. Each mesh keeps the unit
@@ -572,28 +568,6 @@ export default function App() {
     dispatch({ type: 'batch', commands: ids.map((unitId) => ({ type: 'unit/remove' as const, unitId })) });
     setStatus('Deleted 1 object (undo restores).', { n: ids.length }, 'Deleted {n} objects (undo restores).');
   }, [dispatch]);
-  // Entering a mode or switching tool says what a click or drag now does (editing/status).
-  /** A heavy object takes no hand edits: entering Edit Mode or zones says why instead. */
-  const refuseHeavy = useCallback((): boolean => {
-    const active = sceneRef.current.units.find((unit) => unit.id === sceneRef.current.activeUnitId);
-    if (sessionRef.current.mode !== 'off' || !isHeavy(active)) return false;
-    setStatus(HEAVY_EDIT, { n: triangleCount(active!).toLocaleString() });
-    return true;
-  }, [setStatus]);
-  const toggleEditMode = useCallback(() => {
-    if (!refuseHeavy()) send({ type: 'toggleEdit', activeUnitId: sceneRef.current.activeUnitId });
-  }, [refuseHeavy, send]);
-  /** Enters zones mode for the active object; Done returns to `from`. From Edit Mode the undo floor it set stays. */
-  const openZones = useCallback((from: ZonesReturn) => {
-    if (!refuseHeavy()) send({ type: 'openZones', from, activeUnitId: sceneRef.current.activeUnitId });
-  }, [refuseHeavy, send]);
-  const closeZones = useCallback(() => send({ type: 'closeZones' }), [send]);
-  /** A left-panel mode button: enters its mode, or exits it exactly like Done. */
-  const pressModeButton = useCallback(({ event }: ModeButton) => {
-    if (event.type === 'openZones') openZones(event.from);
-    else if (event.type === 'closeZones') closeZones();
-    else toggleEditMode();
-  }, [closeZones, openZones, toggleEditMode]);
   /** One stroke is one undo step, on the active object only. */
   const onZoneStroke = useCallback((unitId: string, stamps: ZoneStamp[]) => {
     if (sessionRef.current.mode !== 'zones' || unitId !== sceneRef.current.activeUnitId || stamps.length === 0) return;
@@ -619,8 +593,8 @@ export default function App() {
   useEffect(() => {
     if (!editTarget || scene.activeUnitId !== editTarget) return;
     setEditTarget(undefined);
-    toggleEditMode();
-  }, [editTarget, scene.activeUnitId, toggleEditMode]);
+    send({ type: 'toggleEdit' });
+  }, [editTarget, scene.activeUnitId, send]);
 
   const onSelect = useCallback((unitId: string | null, additive: boolean) => {
     const current = sceneRef.current;
@@ -811,8 +785,8 @@ export default function App() {
       switch (action.type) {
         case 'undo': return undo();
         case 'redo': return dispatchHistory({ type: 'redo' });
-        case 'toggleEdit': return toggleEditMode();
-        case 'leaveMode': return editMode === 'zones' ? closeZones() : toggleEditMode();
+        case 'toggleEdit': return send({ type: 'toggleEdit' });
+        case 'leaveMode': return send({ type: editMode === 'zones' ? 'closeZones' : 'toggleEdit' });
         case 'deleteSelection': return deleteSelected();
         case 'clearSelection': return clearSelection();
         case 'deleteObjects': return deleteUnits();
@@ -822,7 +796,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [clearSelection, closeZones, deleteSelected, deleteUnits, editMode, selection, toggleEditMode, undo]);
+  }, [clearSelection, deleteSelected, deleteUnits, editMode, selection, send, undo]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -840,8 +814,9 @@ export default function App() {
   // Once every unit in scope has supports, the one generate action becomes Regenerate.
   const scopeUnits = targets(scene);
   const scopeGenerated = scopeUnits.length > 0 && scopeUnits.every((unit) => unit.supports);
-  const editButton = editModeButton(editMode, Boolean(activeUnit) && !activeHeavy);
-  const zonesModeButton = zonesButton(editMode, Boolean(activeUnit) && !activeHeavy);
+  const editButton = editModeButton(session);
+  const zonesModeButton = zonesButton(session);
+  const heavy = heavyStatus(session);
 
   return <main>
     <header>
@@ -896,13 +871,13 @@ export default function App() {
         </section>
         <section>
           <h3>{t('Edit supports')}</h3>
-          <button aria-pressed={editButton.pressed} onClick={() => pressModeButton(editButton)} disabled={editButton.disabled} {...hint(editButton.hint)}>{t(editButton.label)}</button>
-          <p className="help">{heavyHint ?? (activeUnit ? t('Add or remove supports by clicking the model. Tab toggles.') : t('Select an object first.'))}</p>
+          <button aria-pressed={editButton.pressed} onClick={() => send(editButton.event)} disabled={editButton.disabled} {...hint(editButton.hint)}>{t(editButton.label)}</button>
+          <p className="help">{heavy ? translateMessage(heavy) : activeUnit ? t('Add or remove supports by clicking the model. Tab toggles.') : t('Select an object first.')}</p>
         </section>
         <section>
           <h3>{t('No-support zones')}{activeUnit && <small className="count">{activeUnit.zones.length ? t('Painted') : t('None')}</small>}</h3>
           {/* Stacked full width like Edit supports: the Exit label fits on one line in every language. */}
-          <button aria-pressed={zonesModeButton.pressed} onClick={() => pressModeButton(zonesModeButton)} disabled={zonesModeButton.disabled} {...hint(zonesModeButton.hint)}>{t(zonesModeButton.label)}</button>
+          <button aria-pressed={zonesModeButton.pressed} onClick={() => send(zonesModeButton.event)} disabled={zonesModeButton.disabled} {...hint(zonesModeButton.hint)}>{t(zonesModeButton.label)}</button>
           <button className="danger" aria-label={t('Clear all zones')} onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear')}</button>
           <p className="help">{t('Paint where supports must not grow. Manual supports stay.')}</p>
         </section>
@@ -975,7 +950,7 @@ export default function App() {
         </div>
         {editMode === 'off' ? <>
           <div className="viewport-object-status">{activeUnit ? activeUnit.name : t('Nothing selected')}</div>
-          <button className="viewport-edit-toggle" onClick={toggleEditMode} disabled={!activeUnit || activeHeavy} {...hint(activeHeavy ? HEAVY_EDIT : activeUnit ? 'Add or remove supports by clicking (Tab)' : 'Select an object first.', activeHeavy ? { n: triangleCount(activeUnit!).toLocaleString() } : undefined)}>
+          <button className="viewport-edit-toggle" onClick={() => send(editButton.event)} disabled={editButton.disabled} {...hint(heavy ? heavy.key : activeUnit ? 'Add or remove supports by clicking (Tab)' : 'Select an object first.', heavy?.vars)}>
             {t('Edit supports')}
           </button>
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
@@ -1000,7 +975,7 @@ export default function App() {
             {!tips.below && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
             <div className="edit-row">
               <button className="danger" onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear all zones')}</button>
-              <button className="primary edit-done" onClick={closeZones} {...hint('Finish painting zones (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
+              <button className="primary edit-done" onClick={() => send({ type: 'closeZones' })} {...hint('Finish painting zones (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
             </div>
           </div>
         </> : <>
@@ -1045,13 +1020,13 @@ export default function App() {
               {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
               <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{editTool === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
               <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
-              <button onClick={() => openZones('edit')} {...hint('Switch to painting no-support zones; Done comes back here')}>{t('Edit no-support zones →')}</button>
+              <button onClick={() => send({ type: 'openZones', from: 'edit' })} {...hint('Switch to painting no-support zones; Done comes back here')}>{t('Edit no-support zones →')}</button>
               {selection.size > 0 && <>
                 <span className="edit-count">{t('{n} selected', { n: selection.size })}</span>
                 <button className="danger" onClick={deleteSelected} {...hint('Delete the selected supports (Delete key). Undo brings them back')}>{t('Delete')}</button>
                 <button onClick={clearSelection} {...hint('Unselect every support at once (Esc). Undo on the notice brings the selection back')}>{t('Clear selection')}</button>
               </>}
-              <button className="primary edit-done" onClick={toggleEditMode} {...hint('Finish editing supports (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
+              <button className="primary edit-done" onClick={() => send({ type: 'toggleEdit' })} {...hint('Finish editing supports (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
             </div>
           </div>
         </>}
