@@ -78,12 +78,25 @@ export function joinRun<T>(running: Map<string, { token: object; promise: Promis
 /** How near a new support must land to cover a finding: the support spacing, or the finding's own size when that is larger. */
 export const coverRadius = (spacing: number, area: number): number => Math.max(spacing, Math.sqrt(area));
 
+/** A check finding being fixed: its place in the object's frame and how near a new support must land to cover it. */
+export interface FixSpot { unitId: string; position: Vector; radius: number }
+
+/** Whether `position` (the object's frame) lies within the spot's cover radius. */
+export const atSpot = (position: Vector, spot: FixSpot): boolean => Math.hypot(position[0] - spot.position[0], position[1] - spot.position[1], position[2] - spot.position[2]) <= spot.radius;
+
+/** The status line once the re-check that follows a support added at a Fix spot has finished: the real check says whether it is still unsupported. */
+export function recheckStatus(spot: FixSpot, findings: readonly { position: Vector }[]): StatusMessage {
+  return findings.some((finding) => atSpot(finding.position, spot)) ? { key: 'Still unsupported here.' } : { key: 'Spot covered.' };
+}
+
 /**
  * The findings of an out of date check that no support covers yet: a finding goes the moment a
- * support (added by hand or placed again) lands within its cover radius, without waiting for a new check.
+ * support (added by hand or placed again) lands within its cover radius, without waiting for a new
+ * check. `keep` names findings that stay listed whatever lands near them (the spot being re-checked).
  */
-export function uncovered<P extends { position: Vector; area: number }>(findings: readonly P[], supports: readonly { position: Vector }[], spacing: number): P[] {
+export function uncovered<P extends { position: Vector; area: number }>(findings: readonly P[], supports: readonly { position: Vector }[], spacing: number, keep?: (finding: P) => boolean): P[] {
   return findings.filter((finding) => {
+    if (keep?.(finding)) return true;
     const radius = coverRadius(spacing, finding.area);
     return !supports.some((support) => Math.hypot(support.position[0] - finding.position[0], support.position[1] - finding.position[1], support.position[2] - finding.position[2]) <= radius);
   });

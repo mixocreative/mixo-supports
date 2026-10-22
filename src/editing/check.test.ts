@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkStatus, coverRadius, exportStatus, joinRun, runToken, tallyChecks, uncovered } from './check';
+import { atSpot, checkStatus, coverRadius, exportStatus, joinRun, recheckStatus, runToken, tallyChecks, uncovered } from './check';
 
 const CLEAN = 'No unsupported spots found.';
 
@@ -99,5 +99,21 @@ describe('findings of an out of date check', () => {
     // The larger finding is covered from further away.
     expect(uncovered(findings, [{ position: [29, 0, 0] }], 3)).toEqual([findings[0]]);
     expect(uncovered(findings, [{ position: [1, 0, 0] }, { position: [25, 0, 0] }], 3)).toEqual([]);
+  });
+});
+
+describe('a Fix spot is covered only when the re-check says so', () => {
+  const spot = { unitId: 'u', position: [0, 0, 0] as [number, number, number], radius: 3 };
+
+  it('keeps the spot listed while a support landed near it, but still drops other covered findings', () => {
+    const findings = [{ position: [0, 0, 0] as [number, number, number], area: 1 }, { position: [20, 0, 0] as [number, number, number], area: 1 }];
+    const supports = [{ position: [1, 0, 0] as [number, number, number] }, { position: [20, 1, 0] as [number, number, number] }];
+    expect(uncovered(findings, supports, 3, (finding) => atSpot(finding.position, spot))).toEqual([findings[0]]);
+  });
+
+  it('says Spot covered when the new check has no finding there, Still unsupported here when it does', () => {
+    expect(recheckStatus(spot, [{ position: [40, 0, 0] }])).toEqual({ key: 'Spot covered.' });
+    expect(recheckStatus(spot, [])).toEqual({ key: 'Spot covered.' });
+    expect(recheckStatus(spot, [{ position: [2, 1, 0] }])).toEqual({ key: 'Still unsupported here.' });
   });
 });

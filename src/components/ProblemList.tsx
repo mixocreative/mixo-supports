@@ -6,10 +6,12 @@ import { hint } from './hint';
 const SHOWN = 12;
 
 /** Support check findings: what and where, Show me (frame it) and Fix (open Support Edit Mode on its object). */
-export function ProblemList<P extends SupportProblem & { unitId: string; inZone: boolean }>({ problems, outOfDate, unitName, onShow, onFix }: {
+export function ProblemList<P extends SupportProblem & { unitId: string; inZone: boolean }>({ problems, outOfDate, rechecking, unitName, onShow, onFix }: {
   problems: readonly P[];
   /** The supports changed since these findings were made: they are listed until the re-check replaces them. */
   outOfDate: boolean;
+  /** A support was added at this finding's spot: it stays listed, marked, until the re-check says if it is covered. */
+  rechecking: (problem: P) => boolean;
   unitName: (unitId: string) => string;
   onShow: (problem: P) => void;
   onFix: (problem: P) => void;
@@ -21,7 +23,7 @@ export function ProblemList<P extends SupportProblem & { unitId: string; inZone:
         <span className={`problem-kind ${problem.kind}`} aria-hidden="true" />
         <span className="problem-text">
           {problem.kind === 'island' ? t('Island') : t('Uncovered overhang')}
-          <small>{unitName(problem.unitId)}{problem.kind === 'overhang' ? ` · ${t('{n} mm²', { n: Math.round(problem.area) })}` : ''}{problem.inZone ? ` · ${t('in a no-support zone')}` : ''}</small>
+          <small>{unitName(problem.unitId)}{problem.kind === 'overhang' ? ` · ${t('{n} mm²', { n: Math.round(problem.area) })}` : ''}{problem.inZone ? ` · ${t('in a no-support zone')}` : ''}{rechecking(problem) ? ` · ${t('re-checking')}` : ''}</small>
         </span>
         <button onClick={() => onShow(problem)} {...hint('Frame the camera on this spot')}>{t('Show me')}</button>
         <button onClick={() => onFix(problem)} {...hint('Open Support Edit Mode on this object to add supports here')}>{t('Fix')}</button>

@@ -37,7 +37,6 @@ import { applyTransform, inverseTransformDirection, inverseTransformPoint, trans
 import { exportUnits, planExport, type ExportKind } from './supports/export';
 import type { GeneratedSupportMesh } from './core/supports/mesh';
 import { meshBounds } from './core/supports/meshQuery';
-import type { Vector } from './core/vec3';
 import { problemInZone, type ZoneStamp } from './core/supports/zones';
 import { deleteCommands } from './supports/selection';
 import { gesture, type GestureKind } from './editing/gesture';
@@ -51,15 +50,12 @@ import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
 import { busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
-import { checkStatus, coverRadius, exportStatus, joinRun, runToken, tallyChecks, uncovered, type CheckTally } from './editing/check';
+import { atSpot, checkStatus, coverRadius, exportStatus, joinRun, recheckStatus, runToken, tallyChecks, uncovered, type CheckTally, type FixSpot } from './editing/check';
 import { regenReport, regeneratedStatus, regeneratingStatus } from './editing/regenerate';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
 import type { BrushMode } from './editing/types';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
-
-/** A check finding being fixed: its place in the object's frame and how near a new support must land to cover it. */
-interface FixSpot { unitId: string; position: Vector; radius: number }
 
 type HistoryAction = { type: 'command'; command: SceneCommand } | { type: 'undo' } | { type: 'redo' };
 
@@ -189,6 +185,8 @@ export default function App() {
   const [editTarget, setEditTarget] = useState<{ unitId: string; spot: FixSpot }>();
   /** The spot a check finding's Fix framed: the next support added near it covers it. */
   const fixSpot = useRef<FixSpot | undefined>(undefined);
+  /** A support was added at a Fix spot: its finding stays listed, marked, until the re-check says if the spot is covered. */
+  const [rechecking, setRechecking] = useState<FixSpot>();
   const [modelVisible, setModelVisible] = useState(true);
   const [wireframe, setWireframe] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -422,12 +420,12 @@ export default function App() {
       if (!entry) return [];
       const mesh = currentBuild(unit, built.get(unit.id));
       if (entry.unit === unit && entry.mesh === mesh) return entry.items;
-      const open = uncovered(entry.items, unitContacts(unit, mesh), resolveSettings(unit.settings).scatterSpacing);
+      const open = uncovered(entry.items, unitContacts(unit, mesh), resolveSettings(unit.settings).scatterSpacing, (finding) => rechecking?.unitId === unit.id && atSpot(finding.position, rechecking));
       stale ||= open.length > 0;
       return open;
     });
     return { listedProblems: listed, outOfDate: stale };
-  }, [built, problems, scene.units]);
+  }, [built, problems, rechecking, scene.units]);
   const recheckTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     const stale = scene.units.filter((unit) => {
@@ -439,10 +437,23 @@ export default function App() {
     window.clearTimeout(recheckTimer.current);
     // A recheck replaced by a newer one says nothing (the newer one runs); a failure or a cancel is
     // said, since the edited unit's findings stay hidden until a check finishes.
-    recheckTimer.current = window.setTimeout(() => void runCheck(stale).catch((error: unknown) => (
-      isAbort(error) ? setStatus('Support check cancelled.') : setStatusMessage(errorStatus('check', codedJobError(error)))
-    )), 600);
+    recheckTimer.current = window.setTimeout(() => void runCheck(stale).catch((error: unknown) => {
+      setRechecking(undefined);
+      if (isAbort(error)) setStatus('Support check cancelled.');
+      else setStatusMessage(errorStatus('check', codedJobError(error)));
+    }), 600);
   }, [built, failedBuilds, problems, runCheck, scene.units, setStatus]);
+
+  // The re-check that follows a support added at a Fix spot decides whether the spot is covered.
+  useEffect(() => {
+    if (!rechecking) return;
+    const unit = scene.units.find((candidate) => candidate.id === rechecking.unitId);
+    if (!unit) return setRechecking(undefined);
+    const entry = problems.get(unit.id);
+    if (!entry || entry.unit !== unit || entry.mesh !== currentBuild(unit, built.get(unit.id))) return;
+    setRechecking(undefined);
+    setStatusMessage(recheckStatus(rechecking, entry.items));
+  }, [built, problems, rechecking, scene.units]);
 
   const showProblem = useCallback((problem: UnitProblem) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === problem.unitId);
@@ -660,9 +671,10 @@ export default function App() {
     }];
     dispatch({ type: 'batch', commands: [...commands, { type: 'manual/add', unitId, point: contact }] });
     const spot = fixSpot.current;
-    if (spot && spot.unitId === unitId && Math.hypot(...contact.position.map((value, axis) => value - spot.position[axis]!)) <= spot.radius) {
+    if (spot && spot.unitId === unitId && atSpot(contact.position, spot)) {
       fixSpot.current = undefined;
-      setStatus('Spot covered.');
+      setRechecking(spot);
+      setStatus('Support added near the spot. Re-checking…');
     } else setStatus(normal[1] > 0 ? 'Support added on a top face: it grows from below.' : 'Support added.');
   }, [dispatch, setStatus]);
 
@@ -935,7 +947,7 @@ export default function App() {
         <section className="support-check" {...(locked('check') ? { inert: '' } : {})}>
           <h3>{t('Check supports')}</h3>
           <button onClick={checkSupports} disabled={!scene.units.some((unit) => unit.supports)} {...hint('Finds islands and overhangs no contact reaches, before you print.')}>{t('Check for unsupported spots')}</button>
-          <ProblemList problems={listedProblems} outOfDate={outOfDate} unitName={unitName} onShow={showProblem} onFix={fixProblem} />
+          <ProblemList problems={listedProblems} outOfDate={outOfDate} rechecking={(problem) => rechecking?.unitId === problem.unitId && atSpot(problem.position, rechecking)} unitName={unitName} onShow={showProblem} onFix={fixProblem} />
           <p className="help">{t('Finds islands and overhangs no contact reaches, before you print.')}</p>
         </section>
       </aside>
