@@ -128,6 +128,12 @@ function meshSummary(mesh: GeneratedSupportMesh) {
   return { vertices: mesh.positions.length / 3, triangles: mesh.indices.length / 3, hash: meshHash(mesh) };
 }
 
+/** The fixture's unit after Generate with the variant's settings, as the goldens build it. */
+export function supportedUnit(fixture: GoldenFixture, variant: GoldenVariant): PrintUnit {
+  const settings = variantSettings(variant);
+  return generate(importedUnit(fixture, settings), settings).supported;
+}
+
 /** Everything a golden records for one fixture and settings variant. */
 export function goldenSnapshot(fixture: GoldenFixture, variant: GoldenVariant) {
   const settings = variantSettings(variant);

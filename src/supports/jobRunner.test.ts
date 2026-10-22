@@ -59,3 +59,21 @@ describe('runSupportJob: zones are unit-local, landings are cast in the generati
     expect(runSupportJob(job(standing, still, contacts)).dropped).toEqual([]);
   });
 });
+
+describe('runSupportJob: per-support settings travel with the job', () => {
+  const model = boxes([[-5, 20, -5], [5, 24, 5]]);
+  const contacts: ContactInputs = {
+    points: [point('auto-a', [-2, 20, 0], [0, -1, 0]), point('auto-b', [2, 20, 0], [0, -1, 0])],
+    manual: [], deleted: [], zones: [],
+    contactSettings: { 'auto-a': { contactShape: 'SPHERE', touchDiameter: 1.4, baseDiameter: 4 } },
+  };
+
+  it('builds the same mesh from a worker copy of the job (structured clone), and the override changes it', () => {
+    const sent = job(model, still, contacts);
+    const built = runSupportJob(sent);
+    const received = runSupportJob(structuredClone(sent));
+    expect(Array.from(received.positions)).toEqual(Array.from(built.positions));
+    expect(built.components.filter((component) => component.part === 'tip').map((component) => component.contactId)).toEqual(['auto-a']);
+    expect(Array.from(runSupportJob(job(model, still, { ...contacts, contactSettings: {} })).positions)).not.toEqual(Array.from(built.positions));
+  });
+});
