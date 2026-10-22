@@ -119,4 +119,10 @@ describe('i18n', () => {
     languages(['fr']);
     expect(detectLanguage()).toBe('en');
   });
+
+  it('keeps zh-Hant in Taiwan wording, free of mainland terms', () => {
+    const MAINLAND = ['文件', '默認', '界面', '設置', '對象', '信息', '鼠標', '打印', '軟件', '質量', '視頻', '屏幕', '菜單', '網絡', '數據', '加載', '創建', '用戶', '保存'];
+    const text = Object.values(DICTIONARY['zh-Hant']).join(' ');
+    expect(MAINLAND.filter((term) => text.includes(term))).toEqual([]);
+  });
 });
