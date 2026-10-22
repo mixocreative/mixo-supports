@@ -34,4 +34,11 @@ describe('open project', () => {
     now += 60_000;
     expect(jobs.view()).toEqual([]);
   });
+
+  it('says the models were not imported when they were dropped with the project', async () => {
+    const { calls, host: h } = host();
+    await openProjectFile(file, h, true);
+    expect(calls.status).toHaveBeenCalledWith({ key: 'Open the project alone; models were not imported.' });
+    expect(calls.replace).toHaveBeenCalledTimes(1);
+  });
 });

@@ -545,6 +545,7 @@ export const zhHant: Dictionary = {
   'Undo opening the project': '復原開啟專案',
   'Redo opening the project': '重做開啟專案',
   'Opened {name}.': '已開啟 {name}。',
+  'Open the project alone; models were not imported.': '僅開啟專案；未匯入模型。',
   'Saved {name}.': '已儲存 {name}。',
   'Opening {name}': '正在開啟 {name}',
   'Saving {name}': '正在儲存 {name}',

@@ -541,6 +541,7 @@ export const ja: Dictionary = {
   'Undo opening the project': 'プロジェクトを開いたことを元に戻す',
   'Redo opening the project': 'プロジェクトを開いたことをやり直す',
   'Opened {name}.': '{name} を開きました。',
+  'Open the project alone; models were not imported.': 'プロジェクトだけを開きました。モデルは読み込まれていません。',
   'Saved {name}.': '{name} を保存しました。',
   'Opening {name}': '{name} を開いています',
   'Saving {name}': '{name} を保存しています',

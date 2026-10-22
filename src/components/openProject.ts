@@ -2,7 +2,7 @@ import { refusalLimit, type Runtime } from '../core/budget';
 import type { PrintScene } from '../state/project';
 import { triangleCountOf } from '../state/projectFile';
 import type { JobActivity } from '../workers/jobActivity';
-import { openedStatus, openFailure, ProjectTooLarge } from '../editing/project';
+import { MODELS_IGNORED, openedStatus, openFailure, ProjectTooLarge } from '../editing/project';
 import { importRefusal } from '../editing/status';
 import type { EditMode, StatusMessage } from '../editing/types';
 import type { UndoAction } from '../editing/toast';
@@ -22,7 +22,7 @@ export interface OpenHost {
 }
 
 /** Open a project file: read it, check it fits, replace the plate as one history step. Every path ends its job row. */
-export async function openProjectFile(file: File, host: OpenHost): Promise<void> {
+export async function openProjectFile(file: File, host: OpenHost, modelsIgnored = false): Promise<void> {
   const job = host.jobs.begin({ label: { key: 'Opening {name}', vars: { name: file.name } }, blocking: true, context: 'project' });
   try {
     const opened = await host.read(file);
@@ -36,7 +36,7 @@ export async function openProjectFile(file: File, host: OpenHost): Promise<void>
     const hadObjects = host.hadObjects();
     host.replace(opened);
     host.markSaved(opened);
-    host.setStatusMessage(openedStatus(file.name));
+    host.setStatusMessage(modelsIgnored ? MODELS_IGNORED : openedStatus(file.name));
     if (hadObjects) host.offerUndo({ kind: 'openProject', name: file.name });
   } catch (error) {
     host.setStatusMessage(openFailure(error, file.name));

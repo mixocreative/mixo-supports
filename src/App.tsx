@@ -787,7 +787,7 @@ export default function App() {
     setIsDraggingOver(false);
     const files = [...event.dataTransfer.files];
     const project = files.find((file) => isProjectFile(file.name));
-    void (project ? openProject(project) : importFiles(files));
+    void (project ? openProject(project, files.length > 1) : importFiles(files));
   };
 
   const contactCounts = activeUnit ? {

@@ -13,6 +13,8 @@ export class ProjectFileError extends Error {
 /** Status lines of Save project and Open project. Keys are i18n keys (src/i18n.ts). */
 
 export const savedStatus = (name: string): StatusMessage => ({ key: 'Saved {name}.', vars: { name } });
+/** Shown in place of the opened line when model files were dropped together with the project. */
+export const MODELS_IGNORED: StatusMessage = { key: 'Open the project alone; models were not imported.' };
 export const openedStatus = (name: string): StatusMessage => ({ key: 'Opened {name}.', vars: { name } });
 
 /** A project too big for this device's plate, found before it replaces anything. */

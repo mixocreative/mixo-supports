@@ -46,7 +46,7 @@ export function useProjectFile(host: {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
-  const openProject = useCallback(async (file: File) => {
+  const openProject = useCallback(async (file: File, modelsIgnored = false) => {
     const refusal = importRefusal(modeRef.current.mode);
     if (refusal) return refused(refusal);
     if (busy.current) return;
@@ -56,7 +56,7 @@ export function useProjectFile(host: {
         jobs: jobActivity, runtime: RUNTIME, read: (blob) => unpackProject(blob, refusalLimit(RUNTIME)), mode: () => modeRef.current.mode,
         hadObjects: () => sceneRef.current.units.length > 0, replace, markSaved: (opened) => { saved.current = opened; },
         setStatusMessage, offerUndo, refused,
-      });
+      }, modelsIgnored);
     } finally {
       busy.current = false;
     }
