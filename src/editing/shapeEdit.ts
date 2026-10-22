@@ -33,6 +33,11 @@ export function shapePatch<K extends ShapeKey>(view: ShapeView, key: K, value: S
   return view[key] === value ? undefined : { [key]: value };
 }
 
+/** The selected supports that still exist: the ids the region shows and every edit writes to. */
+export function liveSelection(selection: ReadonlySet<string>, live: readonly string[]): string[] {
+  return live.filter((id) => selection.has(id));
+}
+
 /** The ids among `ids` that have settings of their own. */
 export function customisedAmong(overrides: ShapeOverrides, ids: readonly string[]): string[] {
   return ids.filter((id) => (overrides[id] ? Object.keys(overrides[id]!).length > 0 : false));

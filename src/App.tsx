@@ -51,7 +51,7 @@ import { checkJobOf, currentBuild, currentBuilds, hiddenByZones, orientationOf, 
 import { resolve, type CommandId, type UiState } from './editing/commands';
 import { effectiveBrushMode } from './editing/selection';
 import { keyAction } from './editing/keys';
-import { customisedAmong, scopeCounts, shapePatch, shapeView } from './editing/shapeEdit';
+import { customisedAmong, liveSelection, scopeCounts, shapePatch, shapeView } from './editing/shapeEdit';
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
 import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
@@ -227,7 +227,7 @@ export default function App() {
   const activeSettings = useMemo(() => resolveSettings(activeUnit?.settings), [activeUnit?.settings]);
   // The Support shape region and the header count (editing/shapeEdit): the supports selected in Support Edit Mode, else the defaults.
   const activeIds = useMemo(() => activeContacts.map((contact) => contact.id), [activeContacts]);
-  const selectedIds = useMemo(() => (editMode === 'edit' ? activeIds.filter((id) => selection.has(id)) : []), [activeIds, editMode, selection]);
+  const selectedIds = useMemo(() => (editMode === 'edit' ? liveSelection(selection, activeIds) : []), [activeIds, editMode, selection]);
   const activeOverrides = activeUnit?.contactSettings ?? NO_OVERRIDES;
   const customisedActive = customisedAmong(activeOverrides, activeIds).length;
   const customisedSelected = customisedAmong(activeOverrides, selectedIds).length;
@@ -681,22 +681,22 @@ export default function App() {
   /** A committed Support shape value: the selected supports' own, or, with none selected, the object's defaults. */
   const onShapeChange = useCallback(<K extends SettingKey>(key: K, value: LiveSupportSettings[K], edit?: string) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
-    const ids = unit && sessionRef.current.mode === 'edit' ? [...sessionRef.current.selection] : [];
+    const ids = unit && sessionRef.current.mode === 'edit' ? liveSelection(sessionRef.current.selection, contactsOf(unit).map((contact) => contact.id)) : [];
     if (!unit || ids.length === 0) return onSettingChange(key, value, edit);
     const patch = shapePatch(shapeView(resolveSettings(unit.settings), unit.contactSettings, ids), key as ShapeKey, value as never);
     if (patch) dispatch({ type: 'contactSettings/set', unitId: unit.id, contactIds: ids, patch }, edit);
-  }, [dispatch, onSettingChange]);
+  }, [contactsOf, dispatch, onSettingChange]);
 
   const resetSelected = useCallback(() => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
     if (!unit || sessionRef.current.mode !== 'edit') return;
-    const ids = customisedAmong(unit.contactSettings, [...sessionRef.current.selection]);
+    const ids = customisedAmong(unit.contactSettings, liveSelection(sessionRef.current.selection, contactsOf(unit).map((contact) => contact.id)));
     if (ids.length === 0) return;
     dispatch({ type: 'contactSettings/reset', unitId: unit.id, contactIds: ids });
     const message = { key: 'Reset 1 support to the defaults.', other: 'Reset {n} supports to the defaults.', vars: { n: ids.length } };
     setStatusMessage(message);
     offerUndo({ kind: 'resetCustomised', count: ids.length });
-  }, [dispatch, offerUndo]);
+  }, [contactsOf, dispatch, offerUndo]);
 
   /** The active object's customised supports, selected: outside Support Edit Mode it enters the mode first. */
   const selectCustomised = useCallback(() => {

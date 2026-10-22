@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
-import { customisedAmong, scopeCounts, shapeHeading, shapePatch, shapeView } from './shapeEdit';
+import { customisedAmong, liveSelection, scopeCounts, shapeHeading, shapePatch, shapeView } from './shapeEdit';
 
 const defaults: LiveSupportSettings = { ...defaultSupportSettings, roofSeededModes: [] };
 const overrides = { a: { pointDiameter: 0.5 }, b: { pointDiameter: 0.5, neckLength: 4 }, c: {} };
@@ -37,5 +37,16 @@ describe('counts', () => {
   it('names the heading for the defaults and for a selection', () => {
     expect(shapeHeading(0)).toEqual({ key: 'Support shape · defaults' });
     expect(shapeHeading(3)).toEqual({ key: 'Support shape · {n} selected', vars: { n: 3 } });
+  });
+});
+
+describe('liveSelection', () => {
+  it('drops selected ids whose supports are gone, so an edit reads the view the region shows', () => {
+    const ids = liveSelection(new Set(['a', 'ghost']), ['a', 'b', 'c']);
+    expect(ids).toEqual(['a']);
+    const view = shapeView(defaults, overrides, ids);
+    expect(view.pointDiameter).toBe(0.5);
+    expect(shapePatch(view, 'pointDiameter', 0.5)).toBeUndefined();
+    expect(shapePatch(shapeView(defaults, overrides, ['a', 'ghost']), 'pointDiameter', 0.5)).toEqual({ pointDiameter: 0.5 });
   });
 });
