@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SETTING_GROUPS } from './components/SettingsPanel';
 
-const SOURCES = import.meta.glob<string>(['./App.tsx', './components/SettingsPanel.tsx', './components/UndoToast.tsx', './components/RangeField.tsx', './components/Segmented.tsx', './components/EditBar.tsx', './components/ZonesBar.tsx'], { query: '?raw', import: 'default', eager: true });
+const SOURCES = import.meta.glob<string>(['./App.tsx', './components/SettingsPanel.tsx', './components/UndoToast.tsx', './components/RangeField.tsx', './components/Segmented.tsx', './components/EditBar.tsx', './components/ZonesBar.tsx', './components/ModeEntry.tsx', './components/ProblemList.tsx'], { query: '?raw', import: 'default', eager: true });
 
 /** Every JSX opening tag `<name …>` in `code`, attributes included (braces may hold `>`). */
 function openingTags(code: string, name: string): string[] {

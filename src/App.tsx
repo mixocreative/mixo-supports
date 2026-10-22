@@ -17,10 +17,11 @@ import type { GizmoMode, ViewRequest } from './components/viewport/types';
 import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
 import { EditBar } from './components/EditBar';
-import { ClearZonesButton, ZonesBar } from './components/ZonesBar';
+import { ModeSections, ViewportEditToggle } from './components/ModeEntry';
+import { ProblemList } from './components/ProblemList';
+import { ZonesBar } from './components/ZonesBar';
 import { Segmented } from './components/Segmented';
 import { hint } from './components/hint';
-import { editModeButton, zonesButton } from './editing/modeButtons';
 import { canUndo as historyCanUndo, createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
 import { gltfRawMeshes, placeImportedUnits } from './state/import';
 import { setDisplayMesh, setPrebuiltBvh } from './state/meshExtras';
@@ -43,7 +44,7 @@ import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type L
 import { checkJobOf, currentBuild, currentBuilds, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { keyAction } from './editing/keys';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
-import { busyStatus, heavyStatus, importStatus, missStatus, sessionStatus } from './editing/status';
+import { busyStatus, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
 import { checkStatus, exportStatus, joinRun, runToken, tallyChecks, type CheckTally } from './editing/check';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
@@ -792,9 +793,6 @@ export default function App() {
   const scopeGenerated = scopeUnits.length > 0 && scopeUnits.every((unit) => unit.supports);
   /** The one generate action, in the header and the left panel (Regenerate in blue). */
   const generateButton = (label: string) => <button className={scopeGenerated ? 'primary regen' : 'primary'} onClick={() => generate()} disabled={scene.units.length === 0} {...hint('Place automatic supports on the selected objects, or on every object when none is selected')}>{label}</button>;
-  const editButton = editModeButton(session);
-  const zonesModeButton = zonesButton(session);
-  const heavy = heavyStatus(session);
 
   return <main>
     <header>
@@ -847,18 +845,7 @@ export default function App() {
             { value: 'rotate', label: t('Rotate'), hint: 'Rotate the active object with the gizmo (R)' },
           ]} />
         </section>
-        <section>
-          <h3>{t('Edit supports')}</h3>
-          <button aria-pressed={editButton.pressed} onClick={() => send(editButton.event)} disabled={editButton.disabled} {...hint(editButton.hint)}>{t(editButton.label)}</button>
-          <p className="help">{heavy ? translateMessage(heavy) : activeUnit ? t('Add or remove supports by clicking the model. Tab toggles.') : t('Select an object first.')}</p>
-        </section>
-        <section>
-          <h3>{t('No-support zones')}{activeUnit && <small className="count">{activeUnit.zones.length ? t('Painted') : t('None')}</small>}</h3>
-          {/* Stacked full width like Edit supports: the Exit label fits on one line in every language. */}
-          <button aria-pressed={zonesModeButton.pressed} onClick={() => send(zonesModeButton.event)} disabled={zonesModeButton.disabled} {...hint(zonesModeButton.hint)}>{t(zonesModeButton.label)}</button>
-          <ClearZonesButton compact disabled={!activeUnit?.zones.length} onClear={clearActiveZones} />
-          <p className="help">{t('Paint where supports must not grow. Manual supports stay.')}</p>
-        </section>
+        <ModeSections session={session} zones={activeUnit?.zones.length} send={send} onClearZones={clearActiveZones} />
         <section>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
           {generateButton(t(scopeGenerated ? 'Regenerate' : 'Generate supports'))}
@@ -868,18 +855,7 @@ export default function App() {
         <section className="support-check">
           <h3>{t('Check supports')}</h3>
           <button onClick={checkSupports} disabled={!scene.units.some((unit) => unit.supports)} {...hint('Finds islands and overhangs no contact reaches, before you print.')}>{t('Check for unsupported spots')}</button>
-          {currentProblems.length > 0 && <ul className="problems">
-            {currentProblems.slice(0, 12).map((problem, index) => <li key={`${problem.unitId}-${index}`}>
-              <span className={`problem-kind ${problem.kind}`} aria-hidden="true" />
-              <span className="problem-text">
-                {problem.kind === 'island' ? t('Island') : t('Uncovered overhang')}
-                <small>{unitName(problem.unitId)}{problem.kind === 'overhang' ? ` · ${t('{n} mm²', { n: Math.round(problem.area) })}` : ''}{problem.inZone ? ` · ${t('in a no-support zone')}` : ''}</small>
-              </span>
-              <button onClick={() => showProblem(problem)} {...hint('Frame the camera on this spot')}>{t('Show me')}</button>
-              <button className="primary" onClick={() => fixProblem(problem)} {...hint('Open Support Edit Mode on this object to add supports here')}>{t('Fix')}</button>
-            </li>)}
-          </ul>}
-          {currentProblems.length > 12 && <p className="help">{t('and {n} more', { n: currentProblems.length - 12 })}</p>}
+          <ProblemList problems={currentProblems} unitName={unitName} onShow={showProblem} onFix={fixProblem} />
           <p className="help">{t('Finds islands and overhangs no contact reaches, before you print.')}</p>
         </section>
       </aside>
@@ -927,9 +903,7 @@ export default function App() {
         </div>
         {press.kind === 'none' ? <>
           <div className="viewport-object-status">{activeUnit ? activeUnit.name : t('Nothing selected')}</div>
-          <button className="viewport-edit-toggle" onClick={() => send(editButton.event)} disabled={editButton.disabled} {...hint(heavy ? heavy.key : activeUnit ? 'Add or remove supports by clicking (Tab)' : 'Select an object first.', heavy?.vars)}>
-            {t('Edit supports')}
-          </button>
+          <ViewportEditToggle session={session} hasObject={Boolean(activeUnit)} send={send} />
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} send={send} onClear={clearActiveZones} />
