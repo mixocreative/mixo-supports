@@ -1,4 +1,4 @@
-import type { AddAction, BrushMode, EditMode, EditTool, SelectStyle, StatusMessage } from './types';
+import type { AddAction, BrushMode, EditMode, EditTool, SelectStyle, StatusMessage, StepKind } from './types';
 import { busyStatus } from './status';
 
 /**
@@ -54,6 +54,9 @@ export interface UiState {
   /** Undo and Redo as the host can run them now (Undo stops at the mode's floor). */
   canUndo: boolean;
   canRedo: boolean;
+  /** What the step Undo would take back, and the step Redo would bring back, named by kind. */
+  undoStep: StepKind | undefined;
+  redoStep: StepKind | undefined;
   modelsVisible: boolean;
   wireframe: boolean;
   /** Every object in scope has supports, so the one generate action reads Regenerate. */
@@ -83,6 +86,14 @@ interface Command {
   runs?(s: UiState): CommandId;
 }
 
+const UNDO_HINTS: Record<StepKind, string> = {
+  addObjects: 'Undo the import', deleteObjects: 'Undo deleting objects', generate: 'Undo generating supports', removeSupports: 'Undo removing the supports',
+  clearManual: 'Undo clearing manual edits', addSupport: 'Undo adding a support', deleteSupports: 'Undo deleting supports', zones: 'Undo the zone change', move: 'Undo moving the object', settings: 'Undo the settings change',
+};
+const REDO_HINTS: Record<StepKind, string> = {
+  addObjects: 'Redo the import', deleteObjects: 'Redo deleting objects', generate: 'Redo generating supports', removeSupports: 'Redo removing the supports',
+  clearManual: 'Redo clearing manual edits', addSupport: 'Redo adding a support', deleteSupports: 'Redo deleting supports', zones: 'Redo the zone change', move: 'Redo moving the object', settings: 'Redo the settings change',
+};
 const editable = (s: UiState) => s.active && s.heavy === undefined;
 const always = () => true;
 const never = () => undefined;
@@ -99,13 +110,13 @@ const generatingReason: StatusMessage = { key: 'Supports are being generated: wa
 export const COMMANDS: Readonly<Record<CommandId, Command>> = {
   'history.undo': {
     role: 'secondary', shortcut: 'Ctrl+Z',
-    label: () => 'Undo', hint: () => 'Undo',
+    label: () => 'Undo', hint: (s) => (s.undoStep ? UNDO_HINTS[s.undoStep] : 'Undo'),
     visible: always, enabled: (s) => s.canUndo,
     disabledReason: (s) => (s.canUndo ? undefined : { key: s.mode === 'off' ? 'Nothing to undo.' : 'Nothing to undo here: leave the mode to undo earlier steps.' }),
   },
   'history.redo': {
     role: 'secondary', shortcut: 'Ctrl+Shift+Z',
-    label: () => 'Redo', hint: () => 'Redo',
+    label: () => 'Redo', hint: (s) => (s.redoStep ? REDO_HINTS[s.redoStep] : 'Redo'),
     visible: always, enabled: (s) => s.canRedo,
     disabledReason: (s) => (s.canRedo ? undefined : { key: 'Nothing to redo.' }),
   },

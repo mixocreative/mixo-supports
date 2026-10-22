@@ -4,7 +4,8 @@ import { CodedError, ERROR_CODES, ERROR_CONTEXTS, errorStatus } from './editing/
 import { COMMAND_IDS, resolve } from './editing/commands';
 import { regeneratedStatus } from './editing/regenerate';
 import { undoToast } from './editing/toast';
-import { STATES } from './editing/uiFixture';
+import { STEP_KINDS } from './editing/types';
+import { READY, STATES } from './editing/uiFixture';
 import { DICTIONARY, STAGE_KEYS, detectLanguage, plural, setLanguage, t, translateMessage } from './i18n';
 
 /** Source text of every non-test module, keyed './path'. */
@@ -62,7 +63,8 @@ describe('i18n', () => {
 
   it('translates every label, hint and reason of every command', () => {
     const keys = new Set<string>();
-    for (const state of STATES) {
+    const named = STEP_KINDS.map((kind) => ({ ...READY, undoStep: kind, redoStep: kind }));
+    for (const state of [...STATES, ...named]) {
       for (const id of COMMAND_IDS) {
         const command = resolve(id, state);
         if (!command.visible) continue;

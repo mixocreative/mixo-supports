@@ -59,6 +59,7 @@ import { initialSession, reduceSession, startsEditing, type SessionEvent } from 
 import { busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
 import { checkStatus, joinRun, runToken, tallyChecks, uncovered, type CheckTally } from './editing/check';
+import { stepKind } from './state/stepKind';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
 import type { BrushMode } from './editing/types';
@@ -169,6 +170,8 @@ export default function App() {
     if (message) setStatusMessage(message);
   }, []);
   const canUndo = historyCanUndo(history, editMode === 'off' ? undefined : undoFloor.current);
+  const undoStep = canUndo ? stepKind(history.past.at(-1), history.present) : undefined;
+  const redoStep = stepKind(history.present, history.future[0]);
   /** Steps back unless the mode's floor stops it; false when nothing was undone. */
   const undo = useCallback((): boolean => {
     if (!historyCanUndo(historyRef.current, sessionRef.current.mode === 'off' ? undefined : undoFloor.current)) return false;
@@ -773,7 +776,7 @@ export default function App() {
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
     mode: editMode, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction, method: session.selectStyle, dragAction: effectiveBrushMode(session.brushMode, session.shiftHeld),
-    selection: selection.size, customisedActive, customisedSelected, customisedTargeted: bandCounts.customised, customisedOthers: Math.max(0, bandCounts.customised - customisedActive), activeSupported: Boolean(activeUnit?.supports), generating, canUndo, canRedo: history.future.length > 0, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
+    selection: selection.size, customisedActive, customisedSelected, customisedTargeted: bandCounts.customised, customisedOthers: Math.max(0, bandCounts.customised - customisedActive), activeSupported: Boolean(activeUnit?.supports), generating, canUndo, canRedo: history.future.length > 0, undoStep, redoStep, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
   };
   const command = (id: CommandId) => resolve(id, ui);
   useEffect(() => {

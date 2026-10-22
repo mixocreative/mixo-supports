@@ -15,6 +15,10 @@ export type BrushMode = 'select' | 'unselect';
 /** The zone brush paints no-support zones or erases them. */
 export type ZoneKind = 'paint' | 'erase';
 
+/** What one history step did, in the words Undo and Redo name it by. */
+export const STEP_KINDS = ['addObjects', 'deleteObjects', 'generate', 'removeSupports', 'clearManual', 'addSupport', 'deleteSupports', 'zones', 'move', 'settings'] as const;
+export type StepKind = (typeof STEP_KINDS)[number];
+
 /**
  * A status line as an i18n key and its values, so the host translates it (and re-translates it
  * when the language changes); `other` is the plural key picked when `vars.n` is not 1.
