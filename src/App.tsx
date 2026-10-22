@@ -43,7 +43,7 @@ import { deleteCommands } from './supports/selection';
 import { gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
-import { checkJobOf, currentBuild, currentBuilds, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
+import { checkJobOf, currentBuild, currentBuilds, hiddenByZones, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { resolve, type CommandId, type UiState } from './editing/commands';
 import { keyAction } from './editing/keys';
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
@@ -230,6 +230,8 @@ export default function App() {
   const activeMesh = activeUnit ? built.get(activeUnit.id)?.mesh : undefined;
   const activeContacts = useMemo(() => (activeUnit ? unitContacts(activeUnit, activeMesh) : []), [activeUnit, activeMesh]);
   useEffect(() => send({ type: 'contactsChanged', contacts: activeContacts }), [activeContacts, send]);
+  /** Supports the active object's zones hide, in the build the viewport shows. */
+  const zonesHidden = useMemo(() => (activeUnit ? hiddenByZones(activeUnit, activeMesh) : 0), [activeUnit, activeMesh]);
   const activeSettings = useMemo(() => resolveSettings(activeUnit?.settings), [activeUnit?.settings]);
   const targets = useCallback((current: PrintScene) => {
     const selected = current.units.filter((unit) => current.selectedUnitIds.includes(unit.id));
@@ -572,8 +574,8 @@ export default function App() {
     if (!unitId || !sceneRef.current.units.find((unit) => unit.id === unitId)?.zones.length) return;
     dispatch({ type: 'zones/clear', unitId });
     setStatus('No-support zones cleared.');
-    offerUndo({ kind: 'clearZones', hidden: activeMesh?.dropped.length ?? 0 });
-  }, [activeMesh, dispatch, offerUndo, setStatus]);
+    offerUndo({ kind: 'clearZones', hidden: zonesHidden });
+  }, [dispatch, offerUndo, setStatus, zonesHidden]);
 
   const fixProblem = useCallback((problem: UnitProblem) => {
     showProblem(problem);
@@ -960,7 +962,7 @@ export default function App() {
           <div className="viewport-object-status">{activeUnit ? activeUnit.name : t('Nothing selected')}</div>
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
-          ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} hidden={activeMesh?.dropped.length ?? 0} ui={ui} send={send} run={runCommand} onClear={clearActiveZones} />
+          ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} hidden={zonesHidden} ui={ui} send={send} run={runCommand} onClear={clearActiveZones} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>

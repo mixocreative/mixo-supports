@@ -70,6 +70,16 @@ export function unitContacts(unit: PrintUnit, built: BuiltSupports | undefined):
   return kept;
 }
 
+/**
+ * How many automatic supports the unit's no-support zones hide: the contacts a zone takes out of
+ * the list, plus those the shown build dropped because their column lands in a zone.
+ */
+export function hiddenByZones(unit: PrintUnit, built: BuiltSupports | undefined): number {
+  if (unit.zones.length === 0) return 0;
+  const inputs = contactInputs(unit);
+  return jobContacts({ ...inputs, zones: [] }).length - unitContacts(unit, built).length;
+}
+
 /** The unit's edits that decide its contacts. */
 function contactInputs(unit: PrintUnit): ContactInputs {
   return { points: unit.placement?.points ?? [], manual: unit.manual, deleted: unit.deleted, zones: unit.zones };

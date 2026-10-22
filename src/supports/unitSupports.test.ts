@@ -4,7 +4,7 @@ import { identityTransform, type PrintUnit } from '../state/project';
 import { applyTransform } from '../state/transform';
 import { meshBounds } from '../core/supports/meshQuery';
 import { defaultSupportSettings } from '../core/supports/settings';
-import { resolveSettings, unitContacts, unitRemovedCount, unitSupportMesh } from './unitSupports';
+import { hiddenByZones, resolveSettings, unitContacts, unitRemovedCount, unitSupportMesh } from './unitSupports';
 
 // A closed 10 mm cube: its underside (y = -5) is where the contacts sit.
 const source: TriangleMesh = {
@@ -31,6 +31,13 @@ describe('unit supports', () => {
       zones: [{ center: [0, -5, 0], radius: 1, normal: [0, -1, 0], kind: 'paint' }],
     };
     expect(unitContacts(zoned, undefined).map((contact) => contact.id)).toEqual(['auto-1', 'manual-a']);
+  });
+
+  it('counts the supports its zones hide: those a zone covers and those a build dropped', () => {
+    const zoned: PrintUnit = { ...unit, deleted: [], manual: [], zones: [{ center: [0, -5, 0], radius: 1, normal: [0, -1, 0], kind: 'paint' }] };
+    expect(hiddenByZones(unit, undefined)).toBe(0);
+    expect(hiddenByZones(zoned, undefined)).toBe(1);
+    expect(hiddenByZones(zoned, { dropped: ['auto-1'] })).toBe(2);
   });
 
   it('computes the contacts once per unit object and hands out a read-only list', () => {
