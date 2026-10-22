@@ -6,6 +6,7 @@ import type { GeneratedSupportMesh } from '../../core/supports/mesh';
 import type { Vector } from '../../core/vec3';
 import { createBrushScheduler, type Brush, type FrameTest } from '../../editing/brushScheduler';
 import { createDragOver } from '../../editing/dragOver';
+import { createHoverProbe } from '../../editing/hoverProbe';
 import { bodySegments, brushHitsFrom, cachedVisibility, hiddenByModel, projectBodies, type BodySegments } from '../../editing/screenBrush';
 import type { Stroke } from '../../editing/stroke';
 import type { BrushMode } from '../../editing/types';
@@ -20,28 +21,33 @@ export const SUPPORT_MESH = { strokeStart: 'support' };
 
 /** Samples around the pointer (as shares of the circle's radius) that may reach a support: a support is thin. */
 const SUPPORT_REACH = [1, 0.5] as const;
-const AROUND = 8;
+const AROUND_ANGLES = Array.from({ length: 8 }, (_, step) => (step * Math.PI * 2) / 8);
 
 /**
- * Whether a press at canvas point `at` is on the object: its model or a support under the pointer, or
+ * Whether a point on the canvas is on the object: its model or a support under the pointer, or
  * a support the circle reaches (a support is a thin line, so the circle grabs it from nearby;
  * a support behind the model does not count, the model in front is what is under the pointer).
+ * The raycaster, the pointer vector and the target list are made once and reused by every test.
  */
-function onObject(root: THREE.Object3D, camera: THREE.Camera, size: { width: number; height: number }, at: readonly [number, number], radius: number): boolean {
-  const targets: THREE.Object3D[] = [];
-  root.traverseVisible((object) => {
-    if (object.userData.strokeStart) targets.push(object);
-  });
-  if (targets.length === 0) return false;
+function createObjectTest() {
   const raycaster = new THREE.Raycaster() as THREE.Raycaster & { firstHitOnly?: boolean };
   raycaster.firstHitOnly = true;
-  const first = (x: number, y: number): unknown => {
-    raycaster.setFromCamera(new THREE.Vector2((x / size.width) * 2 - 1, 1 - (y / size.height) * 2), camera);
-    return raycaster.intersectObjects(targets, false)[0]?.object.userData.strokeStart;
+  const pointer = new THREE.Vector2();
+  const targets: THREE.Object3D[] = [];
+  const collect = (object: THREE.Object3D) => {
+    if (object.userData.strokeStart) targets.push(object);
   };
-  if (first(at[0], at[1])) return true;
-  return SUPPORT_REACH.some((share) => Array.from({ length: AROUND }, (_, step) => (step * Math.PI * 2) / AROUND)
-    .some((angle) => first(at[0] + Math.cos(angle) * radius * share, at[1] + Math.sin(angle) * radius * share) === 'support'));
+  return (root: THREE.Object3D, camera: THREE.Camera, size: { width: number; height: number }, at: readonly [number, number], radius: number): boolean => {
+    targets.length = 0;
+    root.traverseVisible(collect);
+    if (targets.length === 0) return false;
+    const first = (x: number, y: number): unknown => {
+      raycaster.setFromCamera(pointer.set((x / size.width) * 2 - 1, 1 - (y / size.height) * 2), camera);
+      return raycaster.intersectObjects(targets, false)[0]?.object.userData.strokeStart;
+    };
+    if (first(at[0], at[1])) return true;
+    return SUPPORT_REACH.some((share) => AROUND_ANGLES.some((angle) => first(at[0] + Math.cos(angle) * radius * share, at[1] + Math.sin(angle) * radius * share) === 'support'));
+  };
 }
 
 /** A visible model with its pick index and world → model matrix (rigid, so distances carry over). */
@@ -178,9 +184,10 @@ export function useScreenBrush(options: {
       view.resize(rect.width, rect.height);
       return [event.clientX - rect.left, event.clientY - rect.top] as const;
     };
+    const objectTest = createObjectTest();
     const objectAt = (at: readonly [number, number], radius: number) => {
       const root = live.current.options.group.current;
-      return Boolean(root) && onObject(root!, camera, { width: canvas.clientWidth, height: canvas.clientHeight }, at, radius);
+      return Boolean(root) && objectTest(root!, camera, { width: canvas.clientWidth, height: canvas.clientHeight }, at, radius);
     };
     const show = ([x, y]: readonly [number, number], brush: Brush) => {
       setOver(true);
@@ -193,15 +200,37 @@ export function useScreenBrush(options: {
       setOver(false);
       circle.hidden = true;
     };
+    /** The latest hover move, shown again when a frame's rays change what is under the pointer. */
+    let hover: readonly [number, number] | undefined;
+    // The rays run once a frame for the latest pointer, not on every move; the circle follows the
+    // pointer meanwhile with the last answer, and a changed answer shows or hides it at the frame.
+    const probe = createHoverProbe({
+      test: objectAt,
+      requestFrame: (run) => requestAnimationFrame(run),
+      cancelFrame: (handle) => cancelAnimationFrame(handle),
+      onAnswer: (onObject) => {
+        const { brush } = live.current.options;
+        if (!hover || !brush || options.stroke.active) return;
+        if (dragOver.move(hover, { held: false, onCanvas: true, onObject }, brush)) show(hover, brush);
+        else hide();
+      },
+    });
     const move = (event: PointerEvent) => {
       const { brush } = live.current.options;
       if (!brush) return;
       const at = locate(event);
       const held = (event.buttons & 1) !== 0;
       const onCanvas = event.target === canvas;
-      // The rays are cast only when the answer matters: a stroke runs on, and an orbit shows nothing.
-      const over = onCanvas && !held && !options.stroke.active && objectAt(at, brush.radius);
-      if (dragOver.move(at, { held, onCanvas, onObject: over || options.stroke.active }, brush)) show(at, brush);
+      // The rays are asked for only when the answer matters: a stroke runs on, and an orbit shows nothing.
+      const ask = onCanvas && !held && !options.stroke.active;
+      if (ask) {
+        hover = at;
+        probe.ask(at, brush.radius);
+      } else {
+        hover = undefined;
+        probe.reset();
+      }
+      if (dragOver.move(at, { held, onCanvas, onObject: (ask && probe.answer) || options.stroke.active }, brush)) show(at, brush);
       else hide();
     };
     const down = (event: PointerEvent) => {
@@ -211,6 +240,8 @@ export function useScreenBrush(options: {
       if (dragOver.down(event.button, at, brush, event.button === 0 && objectAt(at, brush.radius))) show(at, brush);
     };
     const leave = () => {
+      hover = undefined;
+      probe.reset();
       if (!dragOver.leave()) hide();
     };
     // Capture on the canvas: runs before the orbit controls (listening on its parent) see the press.
@@ -221,6 +252,7 @@ export function useScreenBrush(options: {
       canvas.removeEventListener('pointerdown', down, { capture: true });
       canvas.removeEventListener('pointerleave', leave);
       window.removeEventListener('pointermove', move);
+      probe.reset();
       circle.remove();
       setOver(false);
     };
