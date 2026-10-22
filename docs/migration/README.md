@@ -160,14 +160,15 @@ quoted here are the ones the code uses.
 
 ### 5.4 Tips only: `tipsOf`
 
-- When `tipsShown(tips, largeModel, mode === 'zones')` is true, draw and pick `tipsOf(mesh)` instead
+- When `tipsButton(tips, { large: largeModel, zones: mode === 'zones' }).shown` is true, draw and pick `tipsOf(mesh)` instead
   of the full mesh (tips and necks, plus the landing end of a pillar flagged `landingReach`; same
   vertices, its own `components`). Use the core-frame
   camera height: Y is not mirrored, so the Babylon camera's `position.y` works directly.
-- Feed `tipsCamera(tips, belowPlate(camera.y))` every frame and `tipsToggle(tips, largeModel)` on
+- Feed `tipsCamera(tips, belowPlate(camera.y))` every frame and `tipsPress(tips, context)` on
   the button: tips turn on by themselves below the plate and a click switches them off; crossing
-  the plate hands the choice back to the camera. The button is disabled only while painting zones,
-  which force tips on without changing the state (UI spec sections 4 and 8).
+  the plate hands the choice back to the camera. Painting zones forces tips on without changing
+  the state: the button reads `forced` (aria-disabled, a press does nothing) and its `hint` says
+  why (UI spec sections 4 and 8).
 - Not the same as the `previewMode: 'ONLY_TIP'` setting, which builds a tips-only mesh.
 
 ### 5.5 No-support zone layer: vertex colours

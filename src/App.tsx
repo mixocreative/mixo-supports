@@ -34,7 +34,7 @@ import type { Vector } from './core/vec3';
 import { problemInZone, type ZoneStamp } from './core/supports/zones';
 import { deleteCommands } from './supports/selection';
 import { gesture, type GestureKind } from './editing/gesture';
-import { TIPS_START, tipsCamera, tipsShown, tipsToggle } from './editing/view';
+import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
 import { checkJobOf, currentBuild, currentBuilds, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { keyAction } from './editing/keys';
@@ -209,8 +209,8 @@ export default function App() {
   const heavyHint = activeHeavy ? t(HEAVY_EDIT, { n: triangleCount(activeUnit!).toLocaleString() }) : undefined;
   /** A large model on the plate keeps the tips view on above the plate too (to stay smooth), until switched off. */
   const largeTips = useMemo(() => scene.units.some((unit) => meshTier(triangleCount(unit), RUNTIME) === 'large'), [scene.units]);
-  // Painting zones shows the tips at both ends of every support over the blue layer (editing/view).
-  const tipsOn = tipsShown(tips, largeTips, editMode === 'zones');
+  const tipsContext = { large: largeTips, zones: editMode === 'zones' };
+  const tipsOnly = tipsButton(tips, tipsContext);
   // Support Edit Mode belongs to the active unit: it ends when that unit goes (delete, undo).
   // The selection empties on leaving a mode or changing the active object; ids that no longer
   // exist (undo, regeneration) drop out.
@@ -957,17 +957,12 @@ export default function App() {
           problems={currentProblems}
           {...(focus ? { focus } : {})}
           {...(viewRequest ? { viewRequest } : {})}
-          tipsView={tipsOn}
+          tipsView={tipsOnly.shown}
           onBelowPlate={onBelowPlate}
         />
         <div className="viewport-view" role="group" aria-label={t('View')}>
-          <button
-            aria-pressed={tipsOn}
-            // Zones force the tips view: the button stays focusable (its hint says why) but does nothing.
-            onClick={() => { if (editMode !== 'zones') setTips((state) => tipsToggle(state, largeTips)); }}
-            aria-disabled={editMode === 'zones'}
-            {...hint(editMode === 'zones' ? 'While painting no-support zones only the contact tips show, so the surface stays visible.' : tipsOn ? 'Only contact tips show. Turns on by itself below the plate; click to switch off. Export stays full.' : 'Show only the contact tips: no pillars, braces or raft. Turns on by itself below the plate. Export stays full.')}
-          >{t('Tips only')}</button>
+          {/* Forced by zones, the button stays focusable (its hint says why) but does nothing. */}
+          <button aria-pressed={tipsOnly.shown} aria-disabled={tipsOnly.forced} onClick={() => setTips((state) => tipsPress(state, tipsContext))} {...hint(tipsOnly.hint)}>{t('Tips only')}</button>
           <button onClick={() => requestView('fit')} disabled={scene.units.length === 0} {...hint('Frame the selection from the current angle')}>{t('Fit view')}</button>
           <button onClick={() => requestView('bottom')} disabled={scene.units.length === 0} {...hint('Look straight up at the selection to check contact points')}>{t('Bottom view')}</button>
         </div>

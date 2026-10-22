@@ -42,7 +42,7 @@ export interface ObjectViewportProps {
   focus?: { point: Vector; area: number; seq: number };
   /** A new `seq` turns the camera to look straight up at the selection (or every object). */
   viewRequest?: ViewRequest;
-  /** Show only the contact tips (the host decides: editing/view `tipsShown`). */
+  /** Show only the contact tips (the host decides: editing/view `tipsButton`). */
   tipsView: boolean;
   /** The camera went below the plate (or back above it). */
   onBelowPlate: (below: boolean) => void;

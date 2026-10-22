@@ -91,15 +91,37 @@ export interface TipsState {
 /** Start: camera above the plate, following it. */
 export const TIPS_START: TipsState = { manual: null, below: false };
 
+/** What Tips only depends on besides its state: a large model on the plate, and painting zones. */
+export interface TipsContext {
+  /** A large model keeps the tips view on above the plate too, to stay smooth. */
+  large: boolean;
+  /** Painting no-support zones forces the tips view. */
+  zones: boolean;
+}
+
+/** The Tips only button as shown; `hint` is an i18n key. */
+export interface TipsButton {
+  /** Only contact tips show. */
+  shown: boolean;
+  /** Painting zones forces the tips view: the button reads as on and a press does nothing. */
+  forced: boolean;
+  hint: string;
+}
+
 /**
- * Only contact tips show: always while painting no-support zones (`zones`: the tips at both ends
- * of every support sit on the surface to paint, and pillars would hide the blue layer), else the
- * user's choice when there is one, else below the plate (or, with `autoAbove`, also above it: a
- * large model keeps the tips view on to stay smooth). Zones never change the state, so leaving
- * them brings the previous view back.
+ * Only contact tips show: always while painting no-support zones (the tips at both ends of every
+ * support sit on the surface to paint, and pillars would hide the blue layer), else the user's
+ * choice when there is one, else below the plate (or, with a large model, also above it). Zones
+ * never change the state, so leaving them brings the previous view back.
  */
-export function tipsShown(state: TipsState, autoAbove = false, zones = false): boolean {
-  return zones || (state.manual ?? (state.below || autoAbove));
+export function tipsButton(state: TipsState, { large, zones }: TipsContext): TipsButton {
+  const shown = zones || (state.manual ?? (state.below || large));
+  const hint = zones
+    ? 'While painting no-support zones only the contact tips show, so the surface stays visible.'
+    : shown
+      ? 'Only contact tips show. Turns on by itself below the plate; click to switch off. Export stays full.'
+      : 'Show only the contact tips: no pillars, braces or raft. Turns on by itself below the plate. Export stays full.';
+  return { shown, forced: zones, hint };
 }
 
 /** The camera is on the given side of the plate: crossing it resets the choice to automatic. */
@@ -107,7 +129,8 @@ export function tipsCamera(state: TipsState, below: boolean): TipsState {
   return below === state.below ? state : { manual: null, below };
 }
 
-/** The Tips only button: flips what shows now, on either side of the plate. */
-export function tipsToggle(state: TipsState, autoAbove = false): TipsState {
-  return { ...state, manual: !tipsShown(state, autoAbove) };
+/** A press on the Tips only button: flips what shows now, on either side of the plate; nothing while forced. */
+export function tipsPress(state: TipsState, context: TipsContext): TipsState {
+  const button = tipsButton(state, context);
+  return button.forced ? state : { ...state, manual: !button.shown };
 }
