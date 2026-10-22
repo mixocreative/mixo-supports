@@ -146,7 +146,13 @@ quoted here are the ones the code uses.
   with `disableDepthWrite`; Drag over → Unselect previews the selected ones under the brush in
   grey `#3b3631` and takes them off the solid red. A remove click's targets show solid red.
 - Which ids: `session.selection`, `brushHits(bodySegments(shown), projectBodies(...), from, to, radiusPx, isVisible, want)` for the
-  brush, `notSelected` to keep a selected support solid under a Select preview.
+  brush, `brushPreview(selection, brushed, mode)` for what to draw solid and what see-through (and
+  in which tone) under the brush.
+- Drag over's frame loop is `createBrushScheduler(port)` (`editing/brushScheduler`): the host
+  binds the hit test to its projection and visibility once per frame (`port.frame()`), supplies
+  the selection, `commit`, `preview`, a clock and animation frames, forwards pointer presses,
+  samples and hovers, and calls `setSupports(count)` whenever the support mesh changes
+  (`undefined` when it is gone or the brush is off).
 
 ### 5.4 Tips only: `tipsOf`
 
@@ -193,7 +199,7 @@ At the hover point, oriented to the surface normal (core frame, then `toLeftHand
 - Support Edit Mode: `crosshair` on the canvas. Over the active object with a brush (Drag over,
   zones): the 24 × 24 brush SVG, hot spot (3, 21), tip red `#7f0019` (Drag over), blue
   `#1d3461` (Paint zones) or grey `#3b3631` (Erase zones), `crosshair` fallback. The data URL is
-  `brushCursor` in `src/components/ObjectViewport.tsx`; set it as `scene.hoverCursor` or on
+  `brushCursor` in `src/components/viewport/style.ts`; set it as `scene.hoverCursor` or on
   the canvas style.
 - During a stroke turn the camera's pointer input off (`camera.detachControl()`), and back on
   when `createStroke`'s `onEnd` runs.
@@ -213,7 +219,7 @@ At the hover point, oriented to the surface normal (core frame, then `toLeftHand
 
 ## 6. Editing rules wiring
 
-Same as this app's `App.tsx` and `ObjectViewport.tsx`, with Babylon events:
+Same as this app's `App.tsx` and `components/viewport/UnitObject.tsx`, with Babylon events:
 - Keep one `EditSession`; send every UI event through `reduceSession`, show
   `sessionStatus(previous, next, event)`, and record the undo floor with `startsEditing`.
 - Keyboard: `keyAction({ key, ctrl, shift, target, mode, hasSelection })` on `keydown`; call
