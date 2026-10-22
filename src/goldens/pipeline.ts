@@ -118,8 +118,8 @@ function generate(unit: PrintUnit, settings: LiveSupportSettings) {
 }
 
 /** Support check problems (App: runCheck), in the checked frame. */
-function check(unit: PrintUnit, settings: LiveSupportSettings, orientation: ModelTransform, keep: (index: number) => boolean) {
-  const contacts = unitContacts(unit).filter((_, index) => keep(index)).map((contact) => transformPoint(orientation, contact.position));
+function check(unit: PrintUnit, built: GeneratedSupportMesh, settings: LiveSupportSettings, orientation: ModelTransform, keep: (index: number) => boolean) {
+  const contacts = unitContacts(unit, built).filter((_, index) => keep(index)).map((contact) => transformPoint(orientation, contact.position));
   const problems = checkSupports(applyTransform(unit.source, orientation), contacts, { overhangAngleDegrees: settings.scatterAngle, spacing: settings.scatterSpacing });
   return problems.map((problem: SupportProblem) => ({ kind: problem.kind, position: roundVector(problem.position), area: round(problem.area) }));
 }
@@ -136,7 +136,7 @@ export function goldenSnapshot(fixture: GoldenFixture, variant: GoldenVariant) {
   const exported = unitSupportMesh(supported, 0, 'export');
 
   // Export: the active unit's printable file, assembled the way the mesh worker does.
-  const [file] = planExport({ ...emptyScene, units: [supported], selectedUnitIds: [supported.id], activeUnitId: supported.id }, 'active-printable');
+  const [file] = planExport({ ...emptyScene, units: [supported], selectedUnitIds: [supported.id], activeUnitId: supported.id }, 'active-printable', new Map([[supported.id, preview]]));
   const stl = encodeStl(file!.parts
     .map((part) => ({ mesh: part.content === 'model' ? supported.source : exported, transform: supported.transform }))
     .filter((part) => part.mesh.indices.length > 0));
@@ -164,8 +164,8 @@ export function goldenSnapshot(fixture: GoldenFixture, variant: GoldenVariant) {
     exportMesh: meshSummary(exported),
     stl: { bytes: stl.byteLength, hash: bytesHash(stl) },
     check: {
-      allContacts: check(supported, settings, orientation, () => true),
-      everyOtherContact: check(supported, settings, orientation, (index) => index % 2 === 0),
+      allContacts: check(supported, preview, settings, orientation, () => true),
+      everyOtherContact: check(supported, preview, settings, orientation, (index) => index % 2 === 0),
     },
     contactAtTriangle: picks,
   };

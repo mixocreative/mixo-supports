@@ -55,13 +55,14 @@ function cachedRemesh(source: object, frame: JobTransform, model: ReturnType<typ
 }
 
 /**
- * Support mesh of one unit in its local space, ready to render under the unit's parent group. The
- * remesh and raft caches are keyed on `job.mesh`, so passing the same mesh object again keeps them warm.
+ * Support mesh of one unit in its local space, ready to render under the unit's parent group, with
+ * the automatic contacts it left out for landing in a no-support zone (`dropped`). The remesh and
+ * raft caches are keyed on `job.mesh`, so passing the same mesh object again keeps them warm.
  */
 export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): GeneratedSupportMesh {
   const { frame, settings } = job;
   if (frame === null) return buildSupportMesh([], defaultSupportSettings);
-  const contacts = jobContacts(job.contacts, settings, { model: job.mesh, frame }).map((contact) => ({
+  const contacts = jobContacts(job.contacts, settings).map((contact) => ({
     id: contact.id,
     position: transformPoint(frame, contact.position),
     normal: transformDirection(frame, contact.normal),
@@ -77,6 +78,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     ...(settings.scatterAutoTree && settings.scatterSafeDistance !== 0 ? { scatterRemesh: cachedRemesh(job.mesh, frame, model, 0, settings.scatterSpacing / 4) } : {}),
     ...(settings.raftEnabled || settings.roofMode !== 'OFF' ? { raftOutline: cachedOutline(job.mesh, frame, model, settings) } : {}),
     ...(onProgress ? { onProgress } : {}),
+    zones: job.contacts.zones.map((stamp) => ({ ...stamp, center: transformPoint(frame, stamp.center), normal: transformDirection(frame, stamp.normal) })),
   });
   onProgress?.(1, 'Done');
   return inverseTransformMesh(mesh, frame);

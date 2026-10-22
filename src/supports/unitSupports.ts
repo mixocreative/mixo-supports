@@ -20,21 +20,30 @@ export function resolveSettings(settings: SupportSettings | undefined): LiveSupp
 }
 
 const contactCache = new WeakMap<PrintUnit, readonly SupportContact[]>();
+const builtCache = new WeakMap<PrintUnit, { dropped: readonly string[]; contacts: readonly SupportContact[] }>();
+
+/** What the unit's latest support build reported: the automatic contacts it left out for landing in a zone. */
+export type BuiltSupports = Pick<GeneratedSupportMesh, 'dropped'>;
 
 /**
  * Final contacts in unit-local space: automatic minus suppressed, deleted and no-support zones, plus
- * manual. Units are immutable, so the list is worked out once per unit object; it is frozen and
+ * manual, minus those whose support the unit's latest build (`built`) dropped for landing in a zone.
+ * Units are immutable, so each list is worked out once per unit object and build; it is frozen and
  * shared by every caller, never to be changed in place.
  */
-export function unitContacts(unit: PrintUnit): readonly SupportContact[] {
+export function unitContacts(unit: PrintUnit, built: BuiltSupports | undefined): readonly SupportContact[] {
   let contacts = contactCache.get(unit);
   if (!contacts) {
-    // Once supports exist, a column landing on a zoned surface below drops its contact too.
-    const landing = unit.supports === undefined ? undefined : { model: unit.source, frame: generationTransform(unit) };
-    contacts = Object.freeze(jobContacts(contactInputs(unit), resolveSettings(unit.settings), landing));
+    contacts = Object.freeze(jobContacts(contactInputs(unit), resolveSettings(unit.settings)));
     contactCache.set(unit, contacts);
   }
-  return contacts;
+  if (!built || built.dropped.length === 0) return contacts;
+  const cached = builtCache.get(unit);
+  if (cached?.dropped === built.dropped) return cached.contacts;
+  const dropped = new Set(built.dropped);
+  const kept = Object.freeze(contacts.filter((contact) => !dropped.has(contact.id)));
+  builtCache.set(unit, { dropped: built.dropped, contacts: kept });
+  return kept;
 }
 
 /** The unit's edits that decide its contacts. */
@@ -90,13 +99,13 @@ export function placementJobOf(unit: PrintUnit): PlacementJob {
   return { mesh: unit.source, orientation: orientationOf(unit), settings: toPlacementSettings(resolveSettings(unit.settings)) };
 }
 
-/** Support check of the unit's current contacts, in the same turned frame as placement. */
-export function checkJobOf(unit: PrintUnit): CheckJob {
+/** Support check of the unit's current contacts (as its latest build left them), in the same turned frame as placement. */
+export function checkJobOf(unit: PrintUnit, built: BuiltSupports | undefined): CheckJob {
   const settings = resolveSettings(unit.settings);
   return {
     mesh: unit.source,
     orientation: orientationOf(unit),
-    contacts: unitContacts(unit).map((contact) => [...contact.position]),
+    contacts: unitContacts(unit, built).map((contact) => [...contact.position]),
     settings: { overhangAngleDegrees: settings.scatterAngle, spacing: settings.scatterSpacing },
   };
 }

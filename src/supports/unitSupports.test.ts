@@ -31,17 +31,27 @@ describe('unit supports', () => {
       manual: [point('manual-a', 0)],
       zones: [{ center: [0, -5, 0], radius: 1, normal: [0, -1, 0], kind: 'paint' }],
     };
-    expect(unitContacts(zoned).map((contact) => contact.id)).toEqual(['auto-1', 'manual-a']);
+    expect(unitContacts(zoned, undefined).map((contact) => contact.id)).toEqual(['auto-1', 'manual-a']);
   });
 
   it('computes the contacts once per unit object and hands out a read-only list', () => {
-    const first = unitContacts(unit);
-    expect(unitContacts(unit)).toBe(first);
+    const first = unitContacts(unit, undefined);
+    expect(unitContacts(unit, undefined)).toBe(first);
     expect(Object.isFrozen(first)).toBe(true);
     // A changed unit is a new object: its own list.
     const zoned: PrintUnit = { ...unit, zones: [{ center: [0, -5, 0], radius: 1, normal: [0, -1, 0], kind: 'paint' }] };
-    expect(unitContacts(zoned)).not.toBe(first);
-    expect(unitContacts(zoned).map((contact) => contact.id)).toEqual(['manual-a']);
+    expect(unitContacts(zoned, undefined)).not.toBe(first);
+    expect(unitContacts(zoned, undefined).map((contact) => contact.id)).toEqual(['manual-a']);
+  });
+
+  it('leaves out the contacts the latest build dropped for landing in a zone, once per unit and build', () => {
+    const built = { dropped: ['auto-0'] };
+    const kept = unitContacts(unit, built);
+    expect(kept.map((contact) => contact.id)).toEqual(['manual-a']);
+    expect(Object.isFrozen(kept)).toBe(true);
+    expect(unitContacts(unit, built)).toBe(kept);
+    // A build that dropped nothing gives the unit's full list back.
+    expect(unitContacts(unit, { dropped: [] })).toBe(unitContacts(unit, undefined));
   });
 
   it('counts only the removals that hide a contact', () => {
@@ -53,7 +63,7 @@ describe('unit supports', () => {
 
   it('merges settings over defaults and composes contacts', () => {
     expect(resolveSettings({ preset: 'HEAVY', touchDiameter: 1 })).toMatchObject({ preset: 'HEAVY', touchDiameter: 1, raftEnabled: true });
-    expect(unitContacts(unit).map((contact) => contact.id)).toEqual(['auto-0', 'manual-a']);
+    expect(unitContacts(unit, undefined).map((contact) => contact.id)).toEqual(['auto-0', 'manual-a']);
   });
 
   it('builds supports in unit space that reach the plate at the generation transform', () => {

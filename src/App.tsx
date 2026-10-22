@@ -197,7 +197,21 @@ export default function App() {
   // The selection empties on leaving a mode or changing the active object; ids that no longer
   // exist (undo, regeneration) drop out.
   useEffect(() => send({ type: 'activeUnitChanged', id: activeUnit?.id }), [activeUnit?.id, send]);
-  const activeContacts = useMemo(() => (activeUnit ? unitContacts(activeUnit) : []), [activeUnit]);
+  // ---- Support meshes ------------------------------------------------------------------
+  // Built in the preview worker from scene state; a unit keeps showing its previous mesh until
+  // the new one arrives, and units that did not change are not rebuilt. Each mesh keeps the unit
+  // version it was built from: its `dropped` contacts (zoned landings) decide the unit's contacts,
+  // counts, checks and export plan, and a unit edited since shows its counts as still building.
+  const [built, setBuilt] = useState<ReadonlyMap<string, { unit: PrintUnit; mesh: GeneratedSupportMesh }>>(new Map());
+  const builtRef = useRef(built);
+  builtRef.current = built;
+  const supportMeshes = useMemo(() => new Map([...built].map(([id, entry]) => [id, entry.mesh])), [built]);
+  /** The unit's contacts as its latest build left them (see `built`). */
+  const contactsOf = useCallback((unit: PrintUnit) => unitContacts(unit, builtRef.current.get(unit.id)?.mesh), []);
+  /** Whether the unit changed since its shown supports were built (counts follow once the build returns). */
+  const building = (unit: PrintUnit) => unit.supports !== undefined && built.get(unit.id)?.unit !== unit;
+  const activeMesh = activeUnit ? built.get(activeUnit.id)?.mesh : undefined;
+  const activeContacts = useMemo(() => (activeUnit ? unitContacts(activeUnit, activeMesh) : []), [activeUnit, activeMesh]);
   useEffect(() => send({ type: 'contactsChanged', contacts: activeContacts }), [activeContacts, send]);
   const activeSettings = useMemo(() => resolveSettings(activeUnit?.settings), [activeUnit?.settings]);
   const targets = useCallback((current: PrintScene) => {
@@ -228,14 +242,11 @@ export default function App() {
     p?.dispose(); e?.dispose(); a?.dispose();
   }, []);
 
-  // ---- Support meshes ------------------------------------------------------------------
-  // Built in the preview worker from scene state; a unit keeps showing its previous mesh until
-  // the new one arrives, and units that did not change are not rebuilt.
-  const [supportMeshes, setSupportMeshes] = useState<ReadonlyMap<string, GeneratedSupportMesh>>(new Map());
   const requested = useRef(new Map<string, { unit: PrintUnit; index: number }>());
   const buildTimers = useRef(new Map<string, number>());
   const placing = useRef(new Set<string>());
-  const [problems, setProblems] = useState<ReadonlyMap<string, { unit: PrintUnit; items: UnitProblem[] }>>(new Map());
+  /** Findings by unit, with the unit version and support build they checked. */
+  const [problems, setProblems] = useState<ReadonlyMap<string, { unit: PrintUnit; mesh: GeneratedSupportMesh | undefined; items: UnitProblem[] }>>(new Map());
 
   /** A unit left the scene: stop its work and free what the workers hold for it. */
   const forgetUnit = useCallback((unitId: string) => {
@@ -263,7 +274,7 @@ export default function App() {
       requested.current.delete(id);
       forgetUnit(id);
     }
-    setSupportMeshes((current) => {
+    setBuilt((current) => {
       const kept = new Map([...current].filter(([id]) => ids.has(id)));
       return kept.size === current.size ? current : kept;
     });
@@ -274,7 +285,7 @@ export default function App() {
       window.clearTimeout(buildTimers.current.get(unit.id));
       if (unit.supports === undefined) {
         const empty = unitSupportMesh(unit, index);
-        setSupportMeshes((current) => new Map(current).set(unit.id, empty));
+        setBuilt((current) => new Map(current).set(unit.id, { unit, mesh: empty }));
         return;
       }
       buildTimers.current.set(unit.id, window.setTimeout(() => {
@@ -282,7 +293,7 @@ export default function App() {
         if (requested.current.get(unit.id)?.unit !== unit) return;
         preview().build(unit.id, supportJobOf(unit, index, 'preview'), { key: 'Building supports for {name}', vars: { name: unitName(unit.id) } }).then((mesh) => {
           if (!mesh || requested.current.get(unit.id)?.unit !== unit) return;
-          setSupportMeshes((current) => new Map(current).set(unit.id, mesh));
+          setBuilt((current) => new Map(current).set(unit.id, { unit, mesh }));
         }, (error: unknown) => setStatusMessage(errorStatus('build', codedJobError(error), { name: unit.name })));
       }, BUILD_DELAY_MS));
     });
@@ -348,7 +359,8 @@ export default function App() {
       const orientation = orientationOf(unit);
       const key = `check:${unit.id}`;
       {
-        const found = await joinRun(checksRunning.current, unit.id, unit, () => analysis().check(key, checkJobOf(unit), { key: 'Checking supports on {name}', vars: { name: unitName(unit.id) } }));
+        const mesh = builtRef.current.get(unit.id)?.mesh;
+        const found = await joinRun(checksRunning.current, unit.id, unit, () => analysis().check(key, checkJobOf(unit, mesh), { key: 'Checking supports on {name}', vars: { name: unitName(unit.id) } }));
         if (!found) return undefined;
         // Spots face down on the plate: plate down in unit-local space keeps a zone on the far side of a thin floor out.
         const down = inverseTransformDirection(orientation, [0, -1, 0]);
@@ -356,7 +368,7 @@ export default function App() {
           const position = inverseTransformPoint(orientation, problem.position);
           return { ...problem, unitId: unit.id, position, inZone: problemInZone(unit.zones, position, down) };
         });
-        setProblems((current) => new Map(current).set(unit.id, { unit, items }));
+        setProblems((current) => new Map(current).set(unit.id, { unit, mesh, items }));
         const inZone = items.filter((problem) => problem.inZone).length;
         return { spots: items.length - inZone, inZone };
       }
@@ -364,14 +376,19 @@ export default function App() {
     return tallyChecks(checked);
   }, [analysis, unitName]);
 
-  /** Findings for units unchanged since their check (an edited unit is re-checked shortly). */
+  /** Findings for units and builds unchanged since their check (an edited unit is re-checked once rebuilt). */
   const currentProblems = useMemo(() => scene.units.flatMap((unit) => {
     const entry = problems.get(unit.id);
-    return entry && entry.unit === unit ? entry.items : [];
-  }), [problems, scene.units]);
+    return entry && entry.unit === unit && entry.mesh === built.get(unit.id)?.mesh ? entry.items : [];
+  }), [built, problems, scene.units]);
   const recheckTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
-    const stale = scene.units.filter((unit) => unit.supports && problems.has(unit.id) && problems.get(unit.id)!.unit !== unit);
+    const stale = scene.units.filter((unit) => {
+      const entry = problems.get(unit.id);
+      const latest = built.get(unit.id);
+      // Re-checked once the unit's build is current, so the check sees the contacts that build kept.
+      return unit.supports && entry && latest?.unit === unit && (entry.unit !== unit || entry.mesh !== latest.mesh);
+    });
     if (stale.length === 0) return;
     window.clearTimeout(recheckTimer.current);
     // A recheck replaced by a newer one says nothing (the newer one runs); a failure or a cancel is
@@ -379,7 +396,7 @@ export default function App() {
     recheckTimer.current = window.setTimeout(() => void runCheck(stale).catch((error: unknown) => (
       isAbort(error) ? setStatus('Support check cancelled.') : setStatusMessage(errorStatus('check', codedJobError(error)))
     )), 600);
-  }, [problems, runCheck, scene.units, setStatus]);
+  }, [built, problems, runCheck, scene.units, setStatus]);
 
   const showProblem = useCallback((problem: UnitProblem) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === problem.unitId);
@@ -624,18 +641,18 @@ export default function App() {
   // Like Blender's remove_manual_near: every contact within Erase Radius of the pick goes.
   const eraseNear = useCallback((unit: PrintUnit, local: [number, number, number]) => {
     const radius = resolveSettings(unit.settings).eraseRadius;
-    const hits = unitContacts(unit).filter(({ position: [x, y, z] }) => (x - local[0]) ** 2 + (y - local[1]) ** 2 + (z - local[2]) ** 2 <= radius * radius);
+    const hits = contactsOf(unit).filter(({ position: [x, y, z] }) => (x - local[0]) ** 2 + (y - local[1]) ** 2 + (z - local[2]) ** 2 <= radius * radius);
     if (hits.length === 0) return setStatus('No support here: right-click a support, or the model within {radius} mm of one.', { radius });
     dispatch({ type: 'batch', commands: hits.map((contact) => removeContact(unit, contact.id)) });
     setStatus('Removed 1 support; removals persist through regeneration.', { n: hits.length }, 'Removed {n} supports; removals persist through regeneration.');
-  }, [dispatch, removeContact]);
+  }, [contactsOf, dispatch, removeContact]);
 
   const onRemoveContact = useCallback((unitId: string, contactId: string) => {
     if (sessionRef.current.mode === 'zones') return;
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
-    const contact = unit && unitContacts(unit).find((candidate) => candidate.id === contactId);
+    const contact = unit && contactsOf(unit).find((candidate) => candidate.id === contactId);
     if (unit && contact) eraseNear(unit, [...contact.position]);
-  }, [eraseNear]);
+  }, [contactsOf, eraseNear]);
 
   const onEditMiss = useCallback(() => {
     const message = missStatus(sessionRef.current);
@@ -652,17 +669,17 @@ export default function App() {
     if (sessionRef.current.mode !== 'edit' || unitId !== sceneRef.current.activeUnitId) return;
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
     // A support deleted a moment ago can still be under the cursor until the mesh rebuilds.
-    if (!unit || !unitContacts(unit).some((contact) => contact.id === contactId)) return;
+    if (!unit || !contactsOf(unit).some((contact) => contact.id === contactId)) return;
     send({ type: 'toggleContact', id: contactId });
-  }, [send]);
+  }, [contactsOf, send]);
 
   const onPaint = useCallback((unitId: string, ids: readonly string[], mode: BrushMode) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
     if (sessionRef.current.mode !== 'edit' || !unit || unit.id !== sceneRef.current.activeUnitId) return;
     // A support deleted a moment ago can still be drawn until the mesh rebuilds.
-    const alive = new Set(unitContacts(unit).map((contact) => contact.id));
+    const alive = new Set(contactsOf(unit).map((contact) => contact.id));
     send({ type: 'paint', ids: ids.filter((id) => alive.has(id)), mode });
-  }, [send]);
+  }, [contactsOf, send]);
 
   /** Clear selection (button or Esc): at once, with Undo on a toast when anything was selected. */
   const clearSelection = useCallback(() => {
@@ -682,9 +699,9 @@ export default function App() {
     }
     // Supports deleted since are not selected again.
     const unit = sceneRef.current.units.find((candidate) => candidate.id === sessionRef.current.activeUnitId);
-    const alive = new Set(unit ? unitContacts(unit).map((contact) => contact.id) : []);
+    const alive = new Set(unit ? contactsOf(unit).map((contact) => contact.id) : []);
     send({ type: 'restoreSelection', ids: current.action.ids.filter((id) => alive.has(id)) });
-  }, [send, setStatus, toast, undo]);
+  }, [contactsOf, send, setStatus, toast, undo]);
   // The toast goes once its Undo would undo something else (a later edit, undo, leaving the mode).
   useEffect(() => {
     if (!toast) return;
@@ -697,18 +714,18 @@ export default function App() {
   const deleteSelected = useCallback(() => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
     if (!unit) return;
-    const alive = new Set(unitContacts(unit).map((contact) => contact.id));
+    const alive = new Set(contactsOf(unit).map((contact) => contact.id));
     const ids = [...selection].filter((id) => alive.has(id));
     send({ type: 'clearSelection' });
     if (ids.length === 0) return;
     dispatch({ type: 'batch', commands: deleteCommands(unit, ids) });
     setStatus('Deleted 1 support.', { n: ids.length }, 'Deleted {n} supports.');
-  }, [dispatch, selection, send, setStatus]);
+  }, [contactsOf, dispatch, selection, send, setStatus]);
 
   const [exporting, setExporting] = useState(false);
   const runExport = async (kind: ExportKind) => {
     const current = sceneRef.current;
-    const files = planExport(current, kind);
+    const files = planExport(current, kind, supportMeshes);
     if (files.length === 0) {
       if (kind.startsWith('active') && !current.activeUnitId) return setStatus('Select an object to export.');
       // Supports only, and every unit in scope had its contacts deleted or zoned out.
@@ -784,7 +801,7 @@ export default function App() {
   };
 
   const contactCounts = activeUnit ? {
-    auto: unitContacts(activeUnit).filter((contact) => !contact.id.startsWith('manual-')).length,
+    auto: activeContacts.filter((contact) => !contact.id.startsWith('manual-')).length,
     manual: activeUnit.manual.length,
     removed: unitRemovedCount(activeUnit),
   } : undefined;
@@ -831,7 +848,7 @@ export default function App() {
                   <b>{resolveSettings(unit.settings).labelText || labelForIndex(index)}</b>
                   <span title={unit.name}>{unit.name}</span>
                   {/* Compact row: the support count alone, spelled out on hover. */}
-                  <small title={unit.supports ? plural(unitContacts(unit).length, '1 support', '{n} supports') : t('No supports yet')}>{unit.supports ? unitContacts(unit).length : '–'}</small>
+                  <small className={building(unit) ? 'building' : undefined} aria-busy={building(unit) || undefined} title={unit.supports ? plural(unitContacts(unit, built.get(unit.id)?.mesh).length, '1 support', '{n} supports') : t('No supports yet')}>{unit.supports ? unitContacts(unit, built.get(unit.id)?.mesh).length : '–'}</small>
                 </button>
               </li>;
             })}
@@ -962,7 +979,6 @@ export default function App() {
             </div>
             {!tips.below && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
             {/* CIA-05: zones test the landing of each support, not the shared junction landing of a tree (see release-3 backlog). */}
-            {activeUnit && activeSettings.scatterAutoTree && <p className="edit-note" role="note">{t('Tree supports: the shared foot of a tree is not checked against zones yet.')}</p>}
             <div className="edit-row">
               <button className="danger" onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear all zones')}</button>
               <button className="primary edit-done" onClick={closeZones} {...hint('Finish painting zones (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
@@ -1042,7 +1058,7 @@ export default function App() {
     <footer>
       <span>{plural(scene.units.length, '1 object', '{n} objects')}</span>
       {activeUnit && <span>{t('{n} triangles', { n: (activeUnit.source.indices.length / 3).toLocaleString() })}</span>}
-      {contactCounts && <span>{t('{auto} automatic, {manual} manual, {removed} removed', contactCounts)}</span>}
+      {contactCounts && <span className={building(activeUnit!) ? 'building' : undefined} aria-busy={building(activeUnit!) || undefined}>{t('{auto} automatic, {manual} manual, {removed} removed', contactCounts)}</span>}
       {/* Announced to screen readers, so errors and step results are heard too. */}
       <strong role="status" aria-live="polite">{translateMessage(status)}</strong>
     </footer>

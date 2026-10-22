@@ -10,7 +10,7 @@ import type { SupportProblem } from '../core/analysis/supportCheck';
 import type { TriangleMesh } from '../core/analysis/types';
 import type { PrintScene, PrintUnit } from '../state/project';
 import type { ModelTransform } from '../state/transform';
-import type { GeneratedSupportMesh } from '../core/supports/mesh';
+import type { GeneratedSupportMesh, SupportContact } from '../core/supports/mesh';
 import { contactAtTriangle, tipsOf } from '../core/supports/meshQuery';
 import { notSelected } from '../editing/selection';
 import { contactVertexRuns, frameBudget, selectionDelta } from '../editing/selectionPaint';
@@ -165,13 +165,13 @@ function toVector(vector: THREE.Vector3): Vector {
  * Remove radius ring with the contacts a click would remove highlighted, or (Drag over, zone
  * brush) the brush ring alone in its colour.
  */
-function EditPreview({ hover, unit, brush }: { hover: Hover; unit: PrintUnit; brush?: { radius: number; color: string } }) {
+function EditPreview({ hover, unit, contacts, brush }: { hover: Hover; unit: PrintUnit; contacts: readonly SupportContact[]; brush?: { radius: number; color: string } }) {
   const settings = useMemo(() => resolveSettings(unit.settings), [unit.settings]);
-  const contacts = useMemo(() => unitContacts(unit).map((contact) => new THREE.Vector3(...contact.position)), [unit]);
+  const points = useMemo(() => contacts.map((contact) => new THREE.Vector3(...contact.position)), [contacts]);
   const ringTurn = useMemo(() => new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), hover.normal), [hover.normal]);
   const tipTurn = useMemo(() => new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hover.normal.clone().negate()), [hover.normal]);
   const radius = brush ? brush.radius : settings.eraseRadius;
-  const doomed = hover.remove && !brush ? contacts.filter((contact) => contact.distanceTo(hover.point) <= radius) : [];
+  const doomed = hover.remove && !brush ? points.filter((point) => point.distanceTo(hover.point) <= radius) : [];
   const length = settings.neckLength;
   const color = brush ? brush.color : hover.remove ? PREVIEW.remove : PREVIEW.ring;
   return <group>
@@ -300,9 +300,8 @@ function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMesh; geo
 }
 
 /** Contact ids within the Remove radius of a unit-local point: what a remove click there takes. */
-function useDoomed(unit: PrintUnit, point: THREE.Vector3 | undefined): string[] {
+function useDoomed(unit: PrintUnit, contacts: readonly SupportContact[], point: THREE.Vector3 | undefined): string[] {
   const eraseRadius = useMemo(() => resolveSettings(unit.settings).eraseRadius, [unit.settings]);
-  const contacts = useMemo(() => unitContacts(unit), [unit]);
   if (!point) return [];
   return contacts.filter((contact) => new THREE.Vector3(...contact.position).distanceTo(point) <= eraseRadius).map((contact) => contact.id);
 }
@@ -674,7 +673,8 @@ function UnitObject(props: UnitObjectProps) {
   const strokeStamps = useRef<ZoneStamp[]>([]);
   const [stroke, setStroke] = useState<readonly ZoneStamp[]>([]);
   const zones = useMemo(() => (stroke.length ? [...unit.zones, ...stroke] : unit.zones), [unit.zones, stroke]);
-  const contacts = useMemo(() => unitContacts(unit), [unit]);
+  // The contacts the shown build kept (its zoned landings dropped).
+  const contacts = useMemo(() => unitContacts(unit, props.supports), [unit, props.supports]);
   const [hover, setHover] = useState<Hover | null>(null);
   /** Select supports → Click: the contact whose support is under the pointer. */
   const [pointed, setPointed] = useState<string | null>(null);
@@ -683,7 +683,7 @@ function UnitObject(props: UnitObjectProps) {
     setPointed(null);
   };
   useEffect(leave, [editing, zoning, selecting, clickSelecting]);
-  const doomed = useDoomed(unit, editing && hover?.remove ? hover.point : undefined);
+  const doomed = useDoomed(unit, contacts, editing && hover?.remove ? hover.point : undefined);
   const selectedIds = useMemo(() => [...props.selection], [props.selection]);
 
   // Drag over and the zone brush: the canvas shows the brush cursor while the pointer is over this object.
@@ -891,7 +891,7 @@ function UnitObject(props: UnitObjectProps) {
       {/* Keyed: three compiles vertex colours into the shader, so turning them on needs a new material. */}
       <meshStandardMaterial key={selectionColored ? 'selection' : 'plain'} color={selectionColored ? '#ffffff' : supportColor} vertexColors={selectionColored} metalness={0} roughness={0.9} />
     </mesh>}
-    {editing && hover && !brush && <EditPreview hover={hover} unit={unit} {...(zoneBrush
+    {editing && hover && !brush && <EditPreview hover={hover} unit={unit} contacts={contacts} {...(zoneBrush
       ? { brush: { radius: zoneBrush.radius, color: zoneBrush.kind === 'paint' ? PREVIEW.zone : PREVIEW.ring } }
       : {})} />}
     {editing && !zoning && supports && supportGeometry && <>

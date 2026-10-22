@@ -2,9 +2,10 @@ import type { ProgressCallback, TriangleMesh } from '../analysis/types';
 import { tipDepth, tipRadius, type LiveSupportSettings, type TipSection } from './settings';
 import { autoTreeLayout, type AutoTree } from './autotree';
 import type { RemeshTarget } from './remesh';
-import { columnLanding, lineTarget, neckDirection, sinkInto, upDirection, type LineTarget } from './landing';
+import { columnLanding, lineTarget, neckDirection, sinkInto, treeLanding, upDirection, type Landing, type LineTarget } from './landing';
 import { MeshBuilder, MIN_LENGTH } from './meshBuilder';
 import { addStructures } from './raftGeometry';
+import { zonedAt, type ZoneStamp } from './zones';
 import { add, dot, normalizeOrDown, scale, subtract, type Vector } from '../vec3';
 
 export type Point2 = [number, number];
@@ -48,6 +49,8 @@ export interface SupportComponent {
 export interface GeneratedSupportMesh extends TriangleMesh {
   parts: SupportPart[];
   components: SupportComponent[];
+  /** Automatic contacts this build left out because their support lands in a no-support zone. */
+  dropped: string[];
 }
 
 export interface SupportMeshOptions {
@@ -65,6 +68,12 @@ export interface SupportMeshOptions {
   scatterRemesh?: RemeshTarget;
   /** Called as the build advances (normals, columns, trees, structures). */
   onProgress?: ProgressCallback;
+  /**
+   * No-support zones in plate space. An automatic column whose landing on `model` falls in one
+   * (landing point and landed-on normal, same-side rule), or an Auto Tree whose junction lands in
+   * one, is not built; its contact ids go to `dropped`. Manual contacts are never dropped.
+   */
+  zones?: readonly ZoneStamp[];
 }
 
 export interface Column {
@@ -146,22 +155,35 @@ export function buildSupportMesh(
   const layout = settings.scatterAutoTree
     ? autoTreeLayout(contacts, options.model, settings, options.scatterRemesh, progress && ((fraction) => progress(0.5 + 0.1 * fraction, 'Laying out trees')))
     : undefined;
-  const trees = layout && !tipOnly ? layout.trees : [];
+  // The zone test runs on this build's own landings: the same target, normals and rays as the geometry.
+  const zones = options.zones?.some((stamp) => stamp.kind === 'paint') ? options.zones : undefined;
+  const zoned = (landing: Landing | undefined) => zones !== undefined && landing !== undefined && zonedAt(zones, landing.point, landing.normal);
+  const dropped = new Set<number>();
+  const zonedTrees = new Set(zones ? layout?.trees.filter((tree) => zoned(treeLanding(tree, settings, ray).hit)) : []);
+  for (const tree of zonedTrees) for (const member of tree.members) dropped.add(member);
+  const inTree = new Set(layout?.trees.flatMap((tree) => tree.members));
+  const trees = layout && !tipOnly ? layout.trees.filter((tree) => !zonedTrees.has(tree)) : [];
   const treeOf = new Map<number, number>();
   trees.forEach((tree, t) => tree.members.forEach((member) => treeOf.set(member, t)));
 
   contacts.forEach((contact, index) => {
     if (index % 8 === 0) progress?.(0.6 + 0.25 * index / total, 'Building columns');
-    if (treeOf.has(index) || layout?.removed.has(index)) return;
+    if (treeOf.has(index) || layout?.removed.has(index) || dropped.has(index)) return;
     const column = contactColumn(contact, settings, ray, tipOnly);
     if (!column) return;
+    // A tips-only preview casts no landing for its geometry, so it casts one for the zone test alone.
+    // Tree members are tested at their junction above, also when a tips-only preview draws them as columns.
+    if (zones && contact.tree !== false && !inTree.has(index) && zoned(tipOnly ? columnLanding(contact, settings, ray).hit : column.landing)) {
+      dropped.add(index);
+      return;
+    }
     if (spheres) {
       builder.begin('tip', contact.id);
       builder.sphere(column.tip, settings.touchDiameter / 2, segments);
       builder.end();
       if (column.landing) {
         builder.begin('tip', contact.id);
-        builder.sphere(column.landing, settings.touchDiameter / 2, segments);
+        builder.sphere(column.landing.point, settings.touchDiameter / 2, segments);
         builder.end();
       }
     }
@@ -203,7 +225,7 @@ export function buildSupportMesh(
     if (settings.trussEnabled) addBraces(builder, columns, settings, segments);
     addStructures(builder, footprints, settings, options, segments, raftTop);
   }
-  return builder.finish();
+  return builder.finish([...dropped].sort((a, b) => a - b).map((index) => contacts[index]!.id));
 }
 
 /**
@@ -282,8 +304,7 @@ export function treeGeometry(tree: AutoTree, contacts: readonly SupportContact[]
   });
 
   const junction = tree.junction;
-  const source: Vector = [junction[0], junction[1] + settings.pillarDiameter, junction[2]];
-  const hit = ray?.cast(source, ray.height);
+  const { source, hit } = treeLanding(tree, settings, ray);
   const treeRadius = pillarRadius * Math.sqrt(1 + (tree.members.length - 1) * (settings.treeSectionIncrement / 100));
   let end: CurveNode[];
   let junctionRadius: number;
@@ -335,7 +356,7 @@ interface ContactColumn {
   /** Filleted tube curve from the tip down to the transition bottom or the landing point. */
   curve: CurveNode[];
   /** Where the column lands on the model, when it does. */
-  landing?: Vector;
+  landing?: Landing;
 }
 
 /**
@@ -364,7 +385,7 @@ function contactColumn(contact: SupportContact, settings: Readonly<LiveSupportSe
     // No clamping: like Blender, a short column folds back up to Bottom Thickness.
     chain.push({ point: [bend[0], bend[1] - settings.pillarDiameter, bend[2]], radius: pillarRadius });
   }
-  return { tip, curve: filletPolyline(chain, settings.pillarDiameter / 2, 3), ...(hit ? { landing: hit.point } : {}) };
+  return { tip, curve: filletPolyline(chain, settings.pillarDiameter / 2, 3), ...(hit ? { landing: hit } : {}) };
 }
 
 /** Full column curve for a plate-landing contact, ending with the foot (for parity tests). */

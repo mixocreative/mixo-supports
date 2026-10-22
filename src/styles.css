@@ -419,6 +419,8 @@ footer {
   font-variant-numeric: tabular-nums;
 }
 footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
+/* A count from the last build while the edited unit rebuilds (the job shows in the activity list). */
+.building { opacity: .55; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }

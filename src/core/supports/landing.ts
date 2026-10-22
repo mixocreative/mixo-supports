@@ -1,4 +1,5 @@
 import type { TriangleMesh } from '../analysis/types';
+import type { AutoTree } from './autotree';
 import type { LiveSupportSettings } from './settings';
 import type { SupportContact } from './mesh';
 import { meshBounds } from './meshQuery';
@@ -10,27 +11,32 @@ import { add, cross, normalizeOrDown, scale, subtract, type Vector } from '../ve
  * downward ray, and the neck directions that decide where the ray starts.
  */
 
+/** A point where a support lands on the model, with the landed-on surface normal (pointing up). */
+export interface Landing {
+  point: Vector;
+  normal: Vector;
+}
+
 /**
  * SLASG_Line landing ray of one contact: the neck's lower end `bend` (contact + neck direction x
  * Connection Length) and the model surface straight below it, when there is one (the column lands
- * there instead of on the plate). The one place this ray is cast: the column builder and the
- * no-support zone test (`exactLanding`) both use it.
+ * there instead of on the plate).
  */
-export function columnLanding(contact: SupportContact, settings: Readonly<LiveSupportSettings>, ray: LineTarget | undefined): { bend: Vector; hit?: { point: Vector; normal: Vector } } {
+export function columnLanding(contact: SupportContact, settings: Readonly<LiveSupportSettings>, ray: LineTarget | undefined): { bend: Vector; hit?: Landing } {
   const bend = add(contact.position, scale(neckDirection(normalizeOrDown(contact.normal), settings.maxNeckAngle), settings.neckLength));
   const hit = ray?.cast(bend, ray.height);
   return hit ? { bend, hit } : { bend };
 }
 
 /**
- * Where contacts' columns land on `model` (plate frame, Y up), cast as the builder casts them in a
- * Low Poly Mode preview ("Exact Shape": the exact model, no remesh, so no voxel build is needed;
- * the remeshed build lands within a voxel of it). Undefined: the column goes down to the plate.
- * The surface normal of a hit points up.
+ * SLASG_Tree2 landing ray of one Auto Tree: from Middle Ø above its junction straight down, and the
+ * model surface it hits, when there is one (the tree lands there instead of dropping a trunk).
  */
-export function exactLanding(model: TriangleMesh): (contact: SupportContact, settings: Readonly<LiveSupportSettings>) => { point: Vector; normal: Vector } | undefined {
-  const ray = new LineTarget(new DownRaycaster(model), undefined);
-  return (contact, settings) => columnLanding({ ...contact, normal: ray.normal(contact) }, settings, ray).hit;
+export function treeLanding(tree: AutoTree, settings: Readonly<LiveSupportSettings>, ray: LineTarget | undefined): { source: Vector; hit?: Landing } {
+  const [x, y, z] = tree.junction;
+  const source: Vector = [x, y + settings.pillarDiameter, z];
+  const hit = ray?.cast(source, ray.height);
+  return hit ? { source, hit } : { source };
 }
 
 /** `to` moved `depth` further along the direction from `from` to `to`. */
@@ -50,7 +56,7 @@ export class LineTarget {
     this.height = exact.height;
   }
 
-  cast(from: Vector, length: number): { point: Vector; normal: Vector } | undefined {
+  cast(from: Vector, length: number): Landing | undefined {
     const hint = this.exact.cast(from, length);
     if (!this.remesh || !hint) return hint;
     return this.remesh.castDown(from, length, hint.point[1] + 2 * this.remesh.voxel);

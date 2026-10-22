@@ -35,22 +35,22 @@ const scene: PrintScene = {
 
 describe('support export', () => {
   /** Parts of a planned file, built the way the export worker builds them. */
-  const parts = (kind: Parameters<typeof planExport>[1], file = 0): ExportPart[] => planExport(scene, kind)[file]!.parts.map((part) => {
+  const parts = (kind: Parameters<typeof planExport>[1], file = 0): ExportPart[] => planExport(scene, kind, new Map())[file]!.parts.map((part) => {
     const index = scene.units.findIndex((unit) => unit.id === part.unitId);
     const unit = scene.units[index]!;
     return { mesh: part.content === 'model' ? unit.source : unitSupportMesh(unit, index, 'export'), transform: unit.transform };
   });
 
   it('composes the active unit as printable or supports only', () => {
-    expect(planExport(scene, 'active-printable')).toEqual([{ fileName: 'Part-printable.stl', parts: [{ unitId: 'unit-a', content: 'model' }, { unitId: 'unit-a', content: 'supports' }] }]);
-    expect(planExport(scene, 'active-supports')[0]!.parts).toEqual([{ unitId: 'unit-a', content: 'supports' }]);
+    expect(planExport(scene, 'active-printable', new Map())).toEqual([{ fileName: 'Part-printable.stl', parts: [{ unitId: 'unit-a', content: 'model' }, { unitId: 'unit-a', content: 'supports' }] }]);
+    expect(planExport(scene, 'active-supports', new Map())[0]!.parts).toEqual([{ unitId: 'unit-a', content: 'supports' }]);
   });
 
   it('exports each unit separately and the whole scene together', () => {
-    const separate = planExport(scene, 'separate-printable');
+    const separate = planExport(scene, 'separate-printable', new Map());
     expect(separate.map((file) => file.fileName)).toEqual(['Part-printable.stl', 'Part-printable-2.stl', 'Bare-printable.stl']);
-    expect(planExport(scene, 'separate-supports')).toHaveLength(2);
-    const whole = planExport(scene, 'whole-printable');
+    expect(planExport(scene, 'separate-supports', new Map())).toHaveLength(2);
+    const whole = planExport(scene, 'whole-printable', new Map());
     expect(whole).toHaveLength(1);
     expect(whole[0]!.fileName).toBe('scene-printable.stl');
     expect(whole[0]!.parts.length).toBeGreaterThan(scene.units.length);
@@ -59,10 +59,16 @@ describe('support export', () => {
   it('never plans a supports part for a unit whose contacts are all gone (no empty STL)', () => {
     const emptied: PrintUnit = { ...unit('unit-a', 'Part', 0), deleted: ['auto-0'] };
     const bare = { ...scene, units: [emptied, scene.units[1]!, scene.units[2]!] };
-    expect(planExport(bare, 'active-supports')).toEqual([]);
-    expect(planExport(bare, 'active-printable')).toEqual([{ fileName: 'Part-printable.stl', parts: [{ unitId: 'unit-a', content: 'model' }] }]);
-    expect(planExport(bare, 'separate-supports').map((file) => file.parts)).toEqual([[{ unitId: 'unit-b', content: 'supports' }]]);
-    expect(planExport({ ...bare, units: [emptied], activeUnitId: 'unit-a' }, 'separate-supports')).toEqual([]);
+    expect(planExport(bare, 'active-supports', new Map())).toEqual([]);
+    expect(planExport(bare, 'active-printable', new Map())).toEqual([{ fileName: 'Part-printable.stl', parts: [{ unitId: 'unit-a', content: 'model' }] }]);
+    expect(planExport(bare, 'separate-supports', new Map()).map((file) => file.parts)).toEqual([[{ unitId: 'unit-b', content: 'supports' }]]);
+    expect(planExport({ ...bare, units: [emptied], activeUnitId: 'unit-a' }, 'separate-supports', new Map())).toEqual([]);
+  });
+
+  it('follows the latest build: a unit whose build dropped every contact (zoned landings) has no supports part', () => {
+    const built = new Map([['unit-a', { dropped: ['auto-0'] }]]);
+    expect(planExport(scene, 'active-supports', built)).toEqual([]);
+    expect(planExport(scene, 'active-printable', built)).toEqual([{ fileName: 'Part-printable.stl', parts: [{ unitId: 'unit-a', content: 'model' }] }]);
   });
 
   it('places geometry with the current unit transform and the plate at y = 0', () => {
