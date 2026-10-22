@@ -196,6 +196,8 @@ export interface SettingsPanelProps {
   /** The object's placement settings changed since its contacts were placed: Regenerate applies them. */
   placementPending?: boolean;
   onChange: <K extends SettingKey>(key: K, value: LiveSupportSettings[K], edit?: string) => void;
+  /** Esc in a number field: the host drops that edit's undo step. */
+  onCancelEdit: (edit: string) => void;
   onPreset: (preset: PresetName) => void;
   onRoofMode: (mode: RoofMode) => void;
 }
@@ -214,7 +216,7 @@ function DeferNote() {
  * placement, structure, raft, bracing, label). Support shape holds the tip, contact, neck and foot
  * keys one support may own, which read defaults until per-support selection lands.
  */
-export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, disabled, locked = false, deferPlacement = false, placementPending = false, onChange, onPreset, onRoofMode }: SettingsPanelProps) {
+export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, disabled, locked = false, deferPlacement = false, placementPending = false, onChange, onCancelEdit, onPreset, onRoofMode }: SettingsPanelProps) {
   /** A field of the shape region is shown when its rule holds for the support or for any value a differing key could take. */
   const shown = (field: Field, region: 'shape' | undefined) => {
     if (!field.when) return true;
@@ -233,7 +235,7 @@ export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, d
         case 'number': {
           const { label, hint: text } = 'command' in field ? resolve(field.command, ui) : field;
           const differs = region === 'shape' && value(field.key) === undefined;
-          return <NumberField key={field.key} label={t(label)} unit={field.unit} step={field.step ?? 0.1} limits={settingLimits[field.key]} value={value(field.key)} hint={t(differs ? MIXED_HINT : text)} onChange={(next, edit) => change(field.key, next, edit)} />;
+          return <NumberField key={field.key} label={t(label)} unit={field.unit} step={field.step ?? 0.1} limits={settingLimits[field.key]} value={value(field.key)} hint={t(differs ? MIXED_HINT : text)} onChange={(next, edit) => change(field.key, next, edit)} onCancel={onCancelEdit} />;
         }
         case 'boolean':
           return <label key={field.key} className="check" title={t(field.hint)}><input type="checkbox" checked={settings[field.key]} aria-description={t(field.hint)} onChange={(event) => onChange(field.key, event.target.checked)} /> {t(field.label)}</label>;
@@ -264,7 +266,7 @@ export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, d
             <button type="button" disabled className={settings.preset === 'CUSTOM' ? 'custom on' : 'custom'} {...hint('Values edited by hand')}>{t('Custom')}</button>
           </div>
         </div>
-        <NumberField label={t('Lift height')} unit="mm" step={0.5} limits={settingLimits.liftHeight} value={settings.liftHeight} onChange={(value, edit) => onChange('liftHeight', value, edit)} hint={t('Lowest model point above the plate')} />
+        <NumberField label={t('Lift height')} unit="mm" step={0.5} limits={settingLimits.liftHeight} value={settings.liftHeight} onChange={(value, edit) => onChange('liftHeight', value, edit)} onCancel={onCancelEdit} hint={t('Lowest model point above the plate')} />
         {deferPlacement && <DeferNote />}
         <div className="field-row" title={t('Structure above or around the model. Each mode gets its defaults the first time it is used')}>
           <span>{t('Roof / cage')}</span>

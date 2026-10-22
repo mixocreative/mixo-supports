@@ -10,7 +10,7 @@ const render = (selected: string[], band?: string) => renderToStaticMarkup(<Sett
   settings={settings}
   shape={{ selected: selected.length, view: shapeView(settings, {}, selected), rep: settings, onChange: () => {}, run: () => {}, band: band ? <div className="shape-band">{band}</div> : undefined }}
   ui={{ ...READY, mode: 'edit', selection: selected.length }}
-  autoLabel="A" scope="Part" disabled={false} onChange={() => {}} onPreset={() => {}} onRoofMode={() => {}}
+  autoLabel="A" scope="Part" disabled={false} onChange={() => {}} onCancelEdit={() => {}} onPreset={() => {}} onRoofMode={() => {}}
 />);
 
 describe('the right panel', () => {

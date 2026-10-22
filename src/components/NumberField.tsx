@@ -17,12 +17,14 @@ let editCount = 0;
  * is empty with a dash, writes nothing until a value is typed and entered, and applies nothing
  * while typing.
  */
-export function NumberField({ label, unit, step, value, limits, hint, onChange }: { label: string; unit?: string; step: number; value: number | undefined; limits: NumberLimits; hint?: string; onChange: (value: number, edit?: string) => void }) {
+export function NumberField({ label, unit, step, value, limits, hint, onChange, onCancel }: { label: string; unit?: string; step: number; value: number | undefined; limits: NumberLimits; hint?: string; onChange: (value: number, edit?: string) => void; onCancel?: (edit: string) => void }) {
   const [text, setText] = useState<string>();
   /** The value when the field got focus, or was last entered with Enter: what Esc puts back. */
   const onFocus = useRef<number>();
   /** The edit since focus (see above). */
   const edit = useRef<string>();
+  /** Enter applied a value since focus: Esc then goes back to that value, not to the one at focus. */
+  const entered = useRef(false);
   const shown = text ?? (value === undefined ? '' : formatNumber(value));
   /** Applies the typed value (held to the limits); returns the value the field now holds. */
   const commit = (): number | undefined => {
@@ -46,13 +48,15 @@ export function NumberField({ label, unit, step, value, limits, hint, onChange }
           const read = readNumberInput(event.target.value, limits);
           if (value !== undefined && read && !read.clamped && read.value !== value) onChange(read.value, edit.current);
         }}
-        onFocus={() => { onFocus.current = value; edit.current = `edit-${++editCount}`; }}
+        onFocus={() => { onFocus.current = value; entered.current = false; edit.current = `edit-${++editCount}`; }}
         onBlur={() => commit()}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') onFocus.current = commit();
+          if (event.key === 'Enter') { onFocus.current = commit(); entered.current = true; }
           else if (event.key === 'Escape') {
             const original = value === undefined ? undefined : escapeValue(onFocus.current, value);
-            if (original !== undefined) onChange(original, edit.current);
+            // Before any Enter the edit has nothing worth keeping: the host drops it whole, so a value another edit wrote (a support's own) comes back as it was.
+            if (onCancel && edit.current && !entered.current) onCancel(edit.current);
+            else if (original !== undefined) onChange(original, edit.current);
             setText(undefined);
           }
           else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Object3D } from 'three';
 import type { TriangleMesh } from '../core/analysis/types';
-import { canUndo, createSceneHistory, deserializeSceneHistory, HISTORY_LIMIT, redoScene, serializeSceneHistory, undoScene, withSceneCommand } from './history';
+import { cancelSceneEdit, canUndo, createSceneHistory, deserializeSceneHistory, HISTORY_LIMIT, redoScene, serializeSceneHistory, undoScene, withSceneCommand } from './history';
 import { emptyScene, identityTransform, type PrintUnit } from './project';
 
 const source: TriangleMesh = { positions: new Float32Array([0, 0, 0]), indices: new Uint32Array() };
@@ -157,5 +157,17 @@ describe('coalesced edits', () => {
     expect(canUndo(escaped)).toBe(canUndo(before));
     expect(undoScene(escaped).present).toBe(start.present);
     expect(set(escaped, 7, 'a').past).toHaveLength(before.past.length + 1);
+  });
+
+  it('cancels an edit whole, also when typing wrote a support its own value', () => {
+    const point = { id: 'm1', regionId: 0, position: [0, 0, 0], normal: [0, 0, 1], source: 'manual' } as never;
+    const withPoint = withSceneCommand(start, { type: 'manual/add', unitId: 'unit-a', point });
+    const own = (history: typeof withPoint, pointDiameter: number) => withSceneCommand(history, { type: 'contactSettings/set', unitId: 'unit-a', contactIds: ['m1'], patch: { pointDiameter } }, 'a');
+    const typed = own(own(withPoint, 0.9), 0.5);
+    const cancelled = cancelSceneEdit(typed, 'a');
+    expect(cancelled.present).toBe(withPoint.present);
+    expect(canUndo(cancelled)).toBe(canUndo(withPoint));
+    expect(cancelled.past).toHaveLength(withPoint.past.length);
+    expect(cancelSceneEdit(typed, 'other')).toBe(typed);
   });
 });

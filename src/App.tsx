@@ -29,7 +29,7 @@ import { isAbort, RUNTIME, triangleCount } from './components/appShared';
 import { useFixSpot } from './components/useFixSpot';
 import { useRegenerate } from './components/useRegenerate';
 import { hint } from './components/hint';
-import { canUndo as historyCanUndo, createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
+import { cancelSceneEdit, canUndo as historyCanUndo, createSceneHistory, redoScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
 import { gltfRawMeshes, placeImportedUnits } from './state/import';
 import { setDisplayMesh, setPrebuiltBvh } from './state/meshExtras';
 import { memoryInfo } from './state/runtime';
@@ -63,11 +63,12 @@ import UndoToast from './components/UndoToast';
 import type { BrushMode } from './editing/types';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
-type HistoryAction = { type: 'command'; command: SceneCommand; edit?: string } | { type: 'undo' } | { type: 'redo' };
+type HistoryAction = { type: 'command'; command: SceneCommand; edit?: string } | { type: 'cancelEdit'; edit: string } | { type: 'undo' } | { type: 'redo' };
 
 function historyReducer(history: SceneHistory, action: HistoryAction): SceneHistory {
   if (action.type === 'undo') return undoScene(history);
   if (action.type === 'redo') return redoScene(history);
+  if (action.type === 'cancelEdit') return cancelSceneEdit(history, action.edit);
   return withSceneCommand(history, action.command, action.edit);
 }
 
@@ -128,6 +129,8 @@ export default function App() {
   sceneRef.current = scene;
   /** `edit`: commands of one edit that share one undo step (a number field's typing). */
   const dispatch = useCallback((command: SceneCommand, edit?: string) => dispatchHistory({ type: 'command', command, ...(edit ? { edit } : {}) }), []);
+
+  const cancelEdit = useCallback((edit: string) => dispatchHistory({ type: 'cancelEdit', edit }), []);
 
   const [lang, setLang] = useState<Lang>(detectLanguage);
   setLanguage(lang);
@@ -963,6 +966,7 @@ export default function App() {
           disabled={!activeUnit}
           locked={locked('settings')}
           onChange={onSettingChange}
+          onCancelEdit={cancelEdit}
           onPreset={(preset) => changeSettings((settings) => applyPreset(preset, settings), false)}
           onRoofMode={(mode) => changeSettings((settings) => setRoofMode(settings, mode), false)}
         />

@@ -52,6 +52,13 @@ export function withSceneCommand(history: SceneHistory, command: SceneCommand, c
   return { past: [...history.past, history.present].slice(-HISTORY_LIMIT), present, future: [] };
 }
 
+/** Esc in an edit: its step goes, back to the scene before the edit's first command. Another edit's step stays. */
+export function cancelSceneEdit(history: SceneHistory, edit: string): SceneHistory {
+  const before = history.past.at(-1);
+  if (history.open !== edit || before === undefined) return history;
+  return { past: history.past.slice(0, -1), present: before, future: [] };
+}
+
 /**
  * Whether Undo can step back. `floor` is the scene a mode (Support Edit Mode, zones) was entered
  * with: undo inside the mode stops there. It is the snapshot itself, never an index into `past`,
