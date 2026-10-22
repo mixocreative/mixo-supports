@@ -12,7 +12,9 @@ export type UndoAction =
   /** `hidden`: supports the zones were hiding, which come back. */
   | { kind: 'clearZones'; hidden: number }
   | { kind: 'clearManual' }
-  | { kind: 'clearSelection'; ids: readonly string[]; unitId: string };
+  | { kind: 'clearSelection'; ids: readonly string[]; unitId: string }
+  /** A regeneration landed on an object (one history step): `message` is its report. */
+  | { kind: 'regenerate'; message: StatusMessage };
 
 export interface UndoToast {
   id: number;
@@ -23,7 +25,9 @@ export interface UndoToast {
 }
 
 export function undoToast(id: number, action: UndoAction): UndoToast {
-  const message: StatusMessage = action.kind === 'clearZones'
+  const message: StatusMessage = action.kind === 'regenerate'
+    ? action.message
+    : action.kind === 'clearZones'
     ? (action.hidden === 0 ? { key: 'No-support zones cleared.' } : { key: 'No-support zones cleared; 1 hidden support comes back.', other: 'No-support zones cleared; {n} hidden supports come back.', vars: { n: action.hidden } })
     : action.kind === 'clearManual'
       ? { key: 'Manual edits cleared; automatic contacts restored.' }

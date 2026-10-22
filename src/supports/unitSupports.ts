@@ -169,6 +169,18 @@ export function unitLowestY(unit: PrintUnit): number {
 }
 
 /**
+ * A finished placement's contacts as the unit stores them. They come back in the turned frame;
+ * unit-local space is that frame turned back, and their IDs are re-derived from the unit-local
+ * position, so an ID and the stored position share one frame.
+ */
+export function placedPoints(orientation: JobTransform, result: Pick<PlacementResult, 'points'>): SupportPoint[] {
+  return result.points.map((point): SupportPoint => {
+    const position = inverseTransformPoint(orientation, point.position);
+    return { ...point, id: positionId(position), position, normal: inverseTransformDirection(orientation, point.normal) };
+  });
+}
+
+/**
  * The commands that apply a finished placement to the unit as it is now (placement can take
  * tens of seconds on a big model, and the gizmo stays live meanwhile). A move made in the
  * meantime is kept: only the height changes, so the lowest point sits `liftHeight` above the
@@ -179,12 +191,7 @@ export function placementCommands(unit: PrintUnit, orientation: JobTransform, re
   if (unit.transform.rotation.some((angle, axis) => angle !== orientation.rotation[axis])) return undefined;
   const [x, y, z] = unit.transform.position;
   const transform: ModelTransform = { position: [x, y + liftHeight - unitLowestY(unit), z], rotation: [...unit.transform.rotation] };
-  // Contacts come back in the turned frame; unit-local space is that frame turned back. Their IDs
-  // are re-derived from the unit-local position, so an ID and the stored position share one frame.
-  const points = result.points.map((point): SupportPoint => {
-    const position = inverseTransformPoint(orientation, point.position);
-    return { ...point, id: positionId(position), position, normal: inverseTransformDirection(orientation, point.normal) };
-  });
+  const points = placedPoints(orientation, result);
   const deleted = remapDeleted(unit.deleted, points, matchRadius);
   return [
     { type: 'transform/set', unitId: unit.id, transform },

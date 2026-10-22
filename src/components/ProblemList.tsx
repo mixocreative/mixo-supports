@@ -6,13 +6,16 @@ import { hint } from './hint';
 const SHOWN = 12;
 
 /** Support check findings: what and where, Show me (frame it) and Fix (open Support Edit Mode on its object). */
-export function ProblemList<P extends SupportProblem & { unitId: string; inZone: boolean }>({ problems, unitName, onShow, onFix }: {
+export function ProblemList<P extends SupportProblem & { unitId: string; inZone: boolean }>({ problems, outOfDate, unitName, onShow, onFix }: {
   problems: readonly P[];
+  /** The supports changed since these findings were made: they are listed until the re-check replaces them. */
+  outOfDate: boolean;
   unitName: (unitId: string) => string;
   onShow: (problem: P) => void;
   onFix: (problem: P) => void;
 }) {
   return <>
+    {outOfDate && <p className="help stale" role="status">{t('Out of date, check again.')}</p>}
     {problems.length > 0 && <ul className="problems">
       {problems.slice(0, SHOWN).map((problem, index) => <li key={`${problem.unitId}-${index}`}>
         <span className={`problem-kind ${problem.kind}`} aria-hidden="true" />

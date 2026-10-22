@@ -1,3 +1,4 @@
+import type { Vector } from '../core/vec3';
 import type { StatusMessage } from './types';
 
 /**
@@ -72,4 +73,18 @@ export function joinRun<T>(running: Map<string, { token: object; promise: Promis
   };
   promise.then(clear, clear);
   return promise;
+}
+
+/** How near a new support must land to cover a finding: the support spacing, or the finding's own size when that is larger. */
+export const coverRadius = (spacing: number, area: number): number => Math.max(spacing, Math.sqrt(area));
+
+/**
+ * The findings of an out of date check that no support covers yet: a finding goes the moment a
+ * support (added by hand or placed again) lands within its cover radius, without waiting for a new check.
+ */
+export function uncovered<P extends { position: Vector; area: number }>(findings: readonly P[], supports: readonly { position: Vector }[], spacing: number): P[] {
+  return findings.filter((finding) => {
+    const radius = coverRadius(spacing, finding.area);
+    return !supports.some((support) => Math.hypot(support.position[0] - finding.position[0], support.position[1] - finding.position[1], support.position[2] - finding.position[2]) <= radius);
+  });
 }

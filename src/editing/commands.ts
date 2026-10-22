@@ -120,7 +120,9 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
   'supports.generate': {
     role: 'primary',
     label: (s) => (s.generating ? 'Generating supports…' : s.generated ? 'Regenerate' : 'Generate supports'),
-    hint: () => 'Place automatic supports on the selected objects, or on every object when none is selected',
+    hint: (s) => (s.generated
+      ? 'Replaces the automatic supports. Supports you added are kept, and so are removals where they still fit'
+      : 'Place automatic supports on the selected objects, or on every object when none is selected'),
     visible: always, enabled: (s) => s.units > 0 && !s.generating,
     disabledReason: (s) => (s.units === 0 ? { key: 'Import a model before generating supports.' } : s.generating ? generatingReason : undefined),
   },

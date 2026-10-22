@@ -2,13 +2,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { PRESET_HINTS, ROOF_HINTS, SETTING_GROUPS } from './components/SettingsPanel';
 import { CodedError, ERROR_CODES, ERROR_CONTEXTS, errorStatus } from './editing/errors';
 import { COMMAND_IDS, resolve } from './editing/commands';
+import { regeneratedStatus } from './editing/regenerate';
 import { undoToast } from './editing/toast';
 import { STATES } from './editing/uiFixture';
 import { DICTIONARY, STAGE_KEYS, detectLanguage, plural, setLanguage, t, translateMessage } from './i18n';
 
 /** Source text of every non-test module, keyed './path'. */
 const SOURCES = import.meta.glob<string>(['./**/*.ts', './**/*.tsx', '!./**/*.test.ts', '!./**/*.test.tsx'], { query: '?raw', import: 'default', eager: true });
-const UI_FILES = ['./App.tsx', './components/RangeField.tsx', './components/Segmented.tsx', './components/EditBar.tsx', './components/ZonesBar.tsx', './components/ModeEntry.tsx', './components/ProblemList.tsx', './components/ObjectList.tsx', './components/SettingsPanel.tsx', './components/JobActivity.tsx', './components/ObjectViewport.tsx', './components/UndoToast.tsx', './editing/status.ts', './editing/errors.ts', './editing/toast.ts', './editing/check.ts', './editing/view.ts'];
+const UI_FILES = ['./App.tsx', './components/RangeField.tsx', './components/Segmented.tsx', './components/EditBar.tsx', './components/ZonesBar.tsx', './components/ModeEntry.tsx', './components/ProblemList.tsx', './components/ObjectList.tsx', './components/SettingsPanel.tsx', './components/JobActivity.tsx', './components/ObjectViewport.tsx', './components/UndoToast.tsx', './editing/status.ts', './editing/errors.ts', './editing/toast.ts', './editing/check.ts', './editing/view.ts', './editing/regenerate.ts'];
 /** Quoted literals in UI files that are not shown to the user. */
 const NOT_UI = new Set(['Tab', 'Escape', 'Enter', 'Delete', 'Backspace', 'Unit', 'Mixo supports', 'ArrowUp', 'ArrowDown', 'CodedError', 'TimeoutError', '{error}', 'AbortError']);
 
@@ -34,7 +35,7 @@ describe('i18n', () => {
     }
     [...Object.values(PRESET_HINTS), ...Object.values(ROOF_HINTS)].forEach((text) => keys.add(text));
     for (const context of ERROR_CONTEXTS) for (const code of ERROR_CODES) keys.add(errorStatus(context, new CodedError(code, 'x')).key);
-    for (const action of [{ kind: 'clearZones', hidden: 0 }, { kind: 'clearZones', hidden: 2 }, { kind: 'clearManual' }, { kind: 'clearSelection', ids: ['a'], unitId: 'u' }] as const) {
+    for (const action of [{ kind: 'clearZones', hidden: 0 }, { kind: 'clearZones', hidden: 2 }, { kind: 'clearManual' }, { kind: 'clearSelection', ids: ['a'], unitId: 'u' }, { kind: 'regenerate', message: regeneratedStatus('x', 1, { added: 1, removed: 1, reset: 1 }) }] as const) {
       const { message } = undoToast(1, action);
       keys.add(message.key);
       if (message.other) keys.add(message.other);

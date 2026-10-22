@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkStatus, exportStatus, joinRun, runToken, tallyChecks } from './check';
+import { checkStatus, coverRadius, exportStatus, joinRun, runToken, tallyChecks, uncovered } from './check';
 
 const CLEAN = 'No unsupported spots found.';
 
@@ -82,5 +82,22 @@ describe('runToken', () => {
     finishOld('contacts of the old build');
     expect(await first).toBe('contacts of the old build');
     expect(await recheck).toBe('contacts of the new build');
+  });
+});
+
+describe('findings of an out of date check', () => {
+  const findings = [{ position: [0, 0, 0] as [number, number, number], area: 1 }, { position: [20, 0, 0] as [number, number, number], area: 100 }];
+
+  it('covers a spot within the support spacing, or the finding size when that is larger', () => {
+    expect(coverRadius(3, 1)).toBe(3);
+    expect(coverRadius(3, 100)).toBe(10);
+  });
+
+  it('drops a finding once a support lands on its spot and keeps the others', () => {
+    expect(uncovered(findings, [], 3)).toEqual(findings);
+    expect(uncovered(findings, [{ position: [1, 1, 0] }], 3)).toEqual([findings[1]]);
+    // The larger finding is covered from further away.
+    expect(uncovered(findings, [{ position: [29, 0, 0] }], 3)).toEqual([findings[0]]);
+    expect(uncovered(findings, [{ position: [1, 0, 0] }, { position: [25, 0, 0] }], 3)).toEqual([]);
   });
 });

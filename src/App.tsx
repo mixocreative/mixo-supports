@@ -43,7 +43,7 @@ import { deleteCommands } from './supports/selection';
 import { gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
-import { checkJobOf, currentBuild, currentBuilds, hiddenByZones, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
+import { checkJobOf, currentBuild, currentBuilds, hiddenByZones, orientationOf, placedPoints, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { resolve, type CommandId, type UiState } from './editing/commands';
 import { keyAction } from './editing/keys';
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
@@ -51,7 +51,8 @@ import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
 import { busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
-import { checkStatus, exportStatus, joinRun, runToken, tallyChecks, type CheckTally } from './editing/check';
+import { checkStatus, coverRadius, exportStatus, joinRun, runToken, tallyChecks, uncovered, type CheckTally } from './editing/check';
+import { regenReport, regeneratedStatus, regeneratingStatus } from './editing/regenerate';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
 import type { BrushMode } from './editing/types';
@@ -329,7 +330,8 @@ export default function App() {
   }, [scene.units, forgetUnit, preview, setStatus, unitName]);
 
   // ---- Placement -----------------------------------------------------------------------
-  const generate = useCallback((unitIds?: readonly string[]) => {
+  /** `cause`: a placement setting changed (the status says so), else the Generate or Regenerate button. */
+  const generate = useCallback((unitIds?: readonly string[], cause: 'button' | 'placement' = 'button') => {
     const current = sceneRef.current;
     const units = unitIds ? current.units.filter((unit) => unitIds.includes(unit.id)) : targets(current);
     if (units.length === 0) return setStatus('Import a model before generating supports.');
@@ -358,14 +360,19 @@ export default function App() {
         // Applied to the unit as it is now: a move made meanwhile stays, and the lowest model point
         // sits Lift Height above the plate (y = 0) where the supports stand. A rotation made
         // meanwhile turned the contacts away: place again for the new orientation.
-        const commands = placementCommands(now, orientation, result, settings.liftHeight, settings.scatterSpacing / 2);
+        const matchRadius = settings.scatterSpacing / 2;
+        const commands = placementCommands(now, orientation, result, settings.liftHeight, matchRadius);
         if (!commands) {
-          generate([unit.id]);
+          generate([unit.id], cause);
           setStatus('{name} was rotated while its contacts were placed: placing them again.', { name: unit.name });
           return;
         }
         dispatch({ type: 'batch', commands });
-        setStatus('{name}: {n} automatic contacts generated.', { name: unit.name, n: result.points.length });
+        if (!now.supports) return setStatus('{name}: {n} automatic contacts generated.', { name: unit.name, n: result.points.length });
+        // A regeneration says what it did to hand work, and Undo brings the old supports back.
+        const message = regeneratedStatus(unit.name, result.points.length, regenReport(now.manual.length, now.deleted, placedPoints(orientation, result), matchRadius));
+        setStatusMessage(message);
+        offerUndo({ kind: 'regenerate', message });
       }, (error: unknown) => {
         placing.current.delete(unit.id);
         setGenerating(placing.current.size > 0);
@@ -373,8 +380,9 @@ export default function App() {
         else setStatusMessage(errorStatus('place', codedJobError(error), { name: unit.name }));
       });
     }
-    setStatus('Analysing overhangs for 1 object.', { n: units.length }, 'Analysing overhangs for {n} objects.');
-  }, [analysis, dispatch, setStatus, targets, unitName]);
+    if (units.every((unit) => unit.supports)) setStatusMessage(regeneratingStatus({ n: units.length, name: units[0]!.name }, cause));
+    else setStatus('Analysing overhangs for 1 object.', { n: units.length }, 'Analysing overhangs for {n} objects.');
+  }, [analysis, dispatch, offerUndo, setStatus, targets, unitName]);
 
   // ---- Support check -------------------------------------------------------------------
   /** Running checks by unit id, with the unit version they check (a second caller joins, editing/check). */
@@ -406,11 +414,24 @@ export default function App() {
     return tallyChecks(checked);
   }, [analysis, unitName]);
 
-  /** Findings for units and builds unchanged since their check (an edited unit is re-checked once rebuilt). */
-  const currentProblems = useMemo(() => scene.units.flatMap((unit) => {
-    const entry = problems.get(unit.id);
-    return entry && entry.unit === unit && entry.mesh === currentBuild(unit, built.get(unit.id)) ? entry.items : [];
-  }), [built, problems, scene.units]);
+  /**
+   * The findings listed: those of units and builds unchanged since their check, and, for a unit
+   * edited since, its last findings that no support covers yet, marked out of date until its
+   * re-check (below) replaces them.
+   */
+  const { listedProblems, outOfDate } = useMemo(() => {
+    let stale = false;
+    const listed = scene.units.flatMap((unit) => {
+      const entry = problems.get(unit.id);
+      if (!entry) return [];
+      const mesh = currentBuild(unit, built.get(unit.id));
+      if (entry.unit === unit && entry.mesh === mesh) return entry.items;
+      const open = uncovered(entry.items, unitContacts(unit, mesh), resolveSettings(unit.settings).scatterSpacing);
+      stale ||= open.length > 0;
+      return open;
+    });
+    return { listedProblems: listed, outOfDate: stale };
+  }, [built, problems, scene.units]);
   const recheckTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     const stale = scene.units.filter((unit) => {
@@ -450,7 +471,7 @@ export default function App() {
     regenerateTimer.current = window.setTimeout(() => {
       const ids = [...regenerateQueue.current].filter((id) => sceneRef.current.units.find((unit) => unit.id === id)?.supports);
       regenerateQueue.current.clear();
-      if (ids.length > 0) generate(ids);
+      if (ids.length > 0) generate(ids, 'placement');
     }, REGENERATE_DELAY_MS);
   }, [generate]);
 
@@ -584,7 +605,7 @@ export default function App() {
     if (mode === 'zones') return setStatusMessage(busyStatus(mode));
     const unit = sceneRef.current.units.find((candidate) => candidate.id === problem.unitId);
     if (!unit) return;
-    const spot: FixSpot = { unitId: unit.id, position: problem.position, radius: Math.max(resolveSettings(unit.settings).scatterSpacing, Math.sqrt(problem.area)) };
+    const spot: FixSpot = { unitId: unit.id, position: problem.position, radius: coverRadius(resolveSettings(unit.settings).scatterSpacing, problem.area) };
     // Inside Support Edit Mode on the same object the spot is framed and the Add tool waits for the click.
     if (mode === 'edit' && sceneRef.current.activeUnitId === unit.id) {
       fixSpot.current = spot;
@@ -916,7 +937,7 @@ export default function App() {
         <section className="support-check" {...(locked('check') ? { inert: '' } : {})}>
           <h3>{t('Check supports')}</h3>
           <button onClick={checkSupports} disabled={!scene.units.some((unit) => unit.supports)} {...hint('Finds islands and overhangs no contact reaches, before you print.')}>{t('Check for unsupported spots')}</button>
-          <ProblemList problems={currentProblems} unitName={unitName} onShow={showProblem} onFix={fixProblem} />
+          <ProblemList problems={listedProblems} outOfDate={outOfDate} unitName={unitName} onShow={showProblem} onFix={fixProblem} />
           <p className="help">{t('Finds islands and overhangs no contact reaches, before you print.')}</p>
         </section>
       </aside>
@@ -944,7 +965,7 @@ export default function App() {
           onToggleContact={onToggleContact}
           onPaint={onPaint}
           onZoneStroke={onZoneStroke}
-          problems={currentProblems}
+          problems={listedProblems}
           {...(focus ? { focus } : {})}
           {...(viewRequest ? { viewRequest } : {})}
           tipsView={tipsOnly.shown}

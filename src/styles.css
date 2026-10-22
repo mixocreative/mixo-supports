@@ -552,3 +552,5 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 /* The zones button carries its state word (Painted / None) at the right end. */
 .mode-button { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .mode-button .state { color: var(--muted); font-size: 11px; }
+/* Findings of a check the supports have changed since: said above the list until the re-check replaces them. */
+.support-check .stale { color: var(--ink); font-weight: 500; margin: 8px 0 0; }
