@@ -15,6 +15,10 @@ export type UndoAction =
   | { kind: 'clearManual'; added: number; removed: number; customised: number }
   /** Selected supports follow the defaults again (one history step). */
   | { kind: 'resetCustomised'; count: number }
+  /** Supports of `count` objects removed (one history step); the models and hand edits stay. */
+  | { kind: 'removeSupports'; count: number }
+  /** `count` objects deleted (one history step). */
+  | { kind: 'deleteObjects'; count: number }
   | { kind: 'clearSelection'; ids: readonly string[]; unitId: string }
   /** A regeneration landed on an object (one history step): `message` is its report. */
   | { kind: 'regenerate'; message: StatusMessage };
@@ -36,6 +40,10 @@ export function undoToast(id: number, action: UndoAction): UndoToast {
       ? { key: 'Cleared {a} added, {r} removed, {c} customised.', vars: { a: action.added, r: action.removed, c: action.customised } }
       : action.kind === 'resetCustomised'
       ? { key: 'Reset 1 support to the defaults.', other: 'Reset {n} supports to the defaults.', vars: { n: action.count } }
+      : action.kind === 'removeSupports'
+      ? { key: 'Removed the supports of 1 object; the model and manual edits are kept.', other: 'Removed the supports of {n} objects; the models and manual edits are kept.', vars: { n: action.count } }
+      : action.kind === 'deleteObjects'
+      ? { key: 'Deleted 1 object.', other: 'Deleted {n} objects.', vars: { n: action.count } }
       : { key: 'Selection of 1 support cleared.', other: 'Selection of {n} supports cleared.', vars: { n: action.ids.length } };
   return { id, action, message };
 }

@@ -35,7 +35,7 @@ describe('i18n', () => {
     }
     [...Object.values(PRESET_HINTS), ...Object.values(ROOF_HINTS)].forEach((text) => keys.add(text));
     for (const context of ERROR_CONTEXTS) for (const code of ERROR_CODES) keys.add(errorStatus(context, new CodedError(code, 'x')).key);
-    for (const action of [{ kind: 'clearZones', hidden: 0 }, { kind: 'clearZones', hidden: 2 }, { kind: 'clearManual', added: 1, removed: 1, customised: 1 }, { kind: 'resetCustomised', count: 2 }, { kind: 'clearSelection', ids: ['a'], unitId: 'u' }, { kind: 'regenerate', message: regeneratedStatus('x', 1, { added: 1, removed: 1, reset: 1, customisedKept: 0, customisedReset: 0 }) }] as const) {
+    for (const action of [{ kind: 'clearZones', hidden: 0 }, { kind: 'clearZones', hidden: 2 }, { kind: 'clearManual', added: 1, removed: 1, customised: 1 }, { kind: 'resetCustomised', count: 2 }, { kind: 'removeSupports', count: 2 }, { kind: 'deleteObjects', count: 2 }, { kind: 'clearSelection', ids: ['a'], unitId: 'u' }, { kind: 'regenerate', message: regeneratedStatus('x', 1, { added: 1, removed: 1, reset: 1, customisedKept: 0, customisedReset: 0 }) }] as const) {
       const { message } = undoToast(1, action);
       keys.add(message.key);
       if (message.other) keys.add(message.other);
@@ -100,7 +100,7 @@ describe('i18n', () => {
     expect(plural(3, '1 object', '{n} objects')).toBe('3 objects');
     setLanguage('ja');
     expect(t('{n} objects', { n: 3 })).toBe('3 個のオブジェクト');
-    expect(translateMessage({ key: 'Deleted 1 object (undo restores).', vars: { n: 2 }, other: 'Deleted {n} objects (undo restores).' })).toBe('2 個のオブジェクトを削除しました（元に戻せます）。');
+    expect(translateMessage(undoToast(1, { kind: 'deleteObjects', count: 2 }).message)).toBe('2 個のオブジェクトを削除しました。');
     expect(t('Not a key')).toBe('Not a key');
     setLanguage('zh-Hant');
     expect(t('Support Edit Mode')).toBe('支撐編輯模式');

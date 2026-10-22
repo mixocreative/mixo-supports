@@ -519,8 +519,9 @@ export default function App() {
   const removeSupports = () => {
     send({ type: 'leave' });
     const count = forTargets((unit) => (unit.supports ? { type: 'supports/remove', unitId: unit.id } : undefined));
-    if (count) setStatus('Removed supports from 1 object; models untouched, manual edits kept for regeneration.', { n: count }, 'Removed supports from {n} objects; models untouched, manual edits kept for regeneration.');
-    else setStatus('No supports to remove.');
+    if (!count) return setStatus('No supports to remove.');
+    setStatusMessage(undoToast(0, { kind: 'removeSupports', count }).message);
+    offerUndo({ kind: 'removeSupports', count });
   };
   const clearManual = () => {
     const cleared = { added: 0, removed: 0, customised: 0 };
@@ -539,8 +540,9 @@ export default function App() {
     const ids = sceneRef.current.selectedUnitIds;
     if (ids.length === 0) return;
     dispatch({ type: 'batch', commands: ids.map((unitId) => ({ type: 'unit/remove' as const, unitId })) });
-    setStatus('Deleted 1 object (undo restores).', { n: ids.length }, 'Deleted {n} objects (undo restores).');
-  }, [dispatch]);
+    setStatusMessage(undoToast(0, { kind: 'deleteObjects', count: ids.length }).message);
+    offerUndo({ kind: 'deleteObjects', count: ids.length });
+  }, [dispatch, offerUndo]);
   /** One stroke is one undo step, on the active object only. */
   const onZoneStroke = useCallback((unitId: string, stamps: ZoneStamp[]) => {
     if (sessionRef.current.mode !== 'zones' || unitId !== sceneRef.current.activeUnitId || stamps.length === 0) return;
@@ -851,7 +853,7 @@ export default function App() {
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
           <CommandButton command={command('supports.generate')} run={runCommand} {...(scopeGenerated ? { className: scopePending ? 'regen attention' : 'regen' } : {})} />
           <button className="danger" onClick={clearManual} disabled={scene.units.length === 0} {...hint('Remove manual supports and bring back removed automatic ones, at once. Undo brings the edits back')}>{t('Clear manual edits')}</button>
-          <button className="danger" onClick={removeSupports} disabled={scene.units.length === 0} {...hint('Remove the supports of the selected objects. Models and manual edits are kept')}>{t('Remove supports')}</button>
+          <button className="danger" onClick={removeSupports} disabled={scene.units.length === 0} {...hint('Remove the supports of the selected objects. Models and manual edits are kept. Undo brings them back')}>{t('Remove supports')}</button>
         </section>
         <ModeSections ui={ui} run={runCommand} zones={activeUnit?.zones.length} />
         <section className="support-check" {...(locked('check') ? { inert: '' } : {})}>
