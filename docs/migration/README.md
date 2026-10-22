@@ -151,8 +151,9 @@ quoted here are the ones the code uses.
 - Drag over's frame loop is `createBrushScheduler(port)` (`editing/brushScheduler`): the host
   binds the hit test to its projection and visibility once per frame (`port.frame()`), supplies
   the selection, `commit`, `preview`, a clock and animation frames, forwards pointer presses,
-  samples and hovers, and calls `setSupports(count)` whenever the support mesh changes
-  (`undefined` when it is gone or the brush is off).
+  samples and hovers with the brush as it is at that moment (`sample(at, brush)`,
+  `hover(at, brush)`), and calls `setSupports(count)` whenever the support mesh changes
+  (`undefined` when it is gone or the brush is off), its only lifetime input.
 
 ### 5.4 Tips only: `tipsOf`
 

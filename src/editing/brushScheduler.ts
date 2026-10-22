@@ -10,10 +10,8 @@ export interface Brush {
 /** One frame's hit test, bound by the host to the current projection and visibility (`brushHitsFrom`). */
 export type FrameTest = (job: BrushJob, want: (id: string) => boolean, stop: () => boolean) => { hits: readonly string[]; next: number };
 
-/** What the scheduler needs from its host (the viewport): the brush, the hit test, the selection, time and frames. */
+/** What the scheduler needs from its host (the viewport): the hit test, the selection, time and frames. */
 export interface BrushPort {
-  /** The brush as it is now; undefined once Drag over is off. */
-  brush(): Brush | undefined;
   /** This frame's hit test; undefined while there is nothing to project the supports onto. */
   frame(): FrameTest | undefined;
   isSelected(id: string): boolean;
@@ -36,10 +34,10 @@ export interface BrushPort {
 export interface BrushScheduler {
   /** A stroke starts: its samples get a fresh painted set; the hover preview is dropped. */
   press(): void;
-  /** A pointer sample of the stroke, with the brush as it is now. */
-  sample(at: Point): void;
-  /** The circle rests at `at` outside a stroke: preview what it would change. */
-  hover(at: Point): void;
+  /** A pointer sample of the stroke, tested with `brush` as it is now. */
+  sample(at: Point, brush: Brush): void;
+  /** The circle rests at `at` outside a stroke: preview what `brush` would change there. */
+  hover(at: Point, brush: Brush): void;
   /** The circle left the canvas. */
   clearHover(): void;
   /**
@@ -73,8 +71,8 @@ export function frameBudget(renderMs: number): number {
 export function createBrushScheduler(port: BrushPort): BrushScheduler {
   const queue = createStrokeQueue();
   let total = 0;
-  /** The hover circle being tested, the support index reached and what it found so far. */
-  let hover: { at: Point; next: number; found: string[] } | undefined;
+  /** The hover circle being tested (from support index `job.next`) and what it found so far. */
+  let hover: { job: BrushJob; found: string[] } | undefined;
   let shown: readonly string[] = [];
   let frame = 0;
   /** When the last frame's hit tests ended, and the smoothed render time between frames (ms). */
@@ -91,8 +89,7 @@ export function createBrushScheduler(port: BrushPort): BrushScheduler {
   };
   function flush() {
     frame = 0;
-    const brush = port.brush();
-    if (!brush || (!queue.pending && !hover)) return;
+    if (!queue.pending && !hover) return;
     const started = port.now();
     // Time since the hit tests of the last frame is what rendering took (when frames run back to back).
     if (lastEnd > 0 && started - lastEnd < 1000) renderMs = renderMs * 0.7 + (started - lastEnd) * 0.3;
@@ -104,11 +101,12 @@ export function createBrushScheduler(port: BrushPort): BrushScheduler {
       // brush mode), however many samples were tested in it.
       queue.drain(total, (step, want) => test(step, want, stop), port.commit, port.isSelected);
     } else if (test && hover) {
-      const adding = brush.mode === 'select';
-      const part = test({ from: undefined, to: hover.at, next: hover.next, mode: brush.mode, radius: brush.radius }, (id) => port.isSelected(id) !== adding, stop);
-      hover.found.push(...part.hits);
-      hover.next = part.next;
-      show([...hover.found]);
+      const { job, found } = hover;
+      const adding = job.mode === 'select';
+      const part = test(job, (id) => port.isSelected(id) !== adding, stop);
+      found.push(...part.hits);
+      job.next = part.next;
+      show([...found]);
       if (part.next >= total) hover = undefined;
     }
     port.measure?.(started);
@@ -122,14 +120,12 @@ export function createBrushScheduler(port: BrushPort): BrushScheduler {
       hover = undefined;
       show([]);
     },
-    sample(at) {
-      const brush = port.brush();
-      if (!brush) return;
+    sample(at, brush) {
       queue.push(at, brush.mode, brush.radius);
       schedule();
     },
-    hover(at) {
-      hover = { at, next: 0, found: [] };
+    hover(at, brush) {
+      hover = { job: { from: undefined, to: at, next: 0, mode: brush.mode, radius: brush.radius }, found: [] };
       schedule();
     },
     clearHover() {

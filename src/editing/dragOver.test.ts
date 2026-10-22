@@ -64,7 +64,6 @@ function rig(options: { bodies?: BodySegments; hidden?: (x: number) => boolean }
   };
   let view: FrameTest | undefined;
   const scheduler = createBrushScheduler({
-    brush: () => brush,
     frame: () => view,
     isSelected: (id) => selection.has(id),
     commit: (ids, mode) => {
@@ -108,8 +107,8 @@ function rig(options: { bodies?: BodySegments; hidden?: (x: number) => boolean }
     if (!view || !brush) return;
     if (!onCanvas && !stroke.active) return scheduler.clearHover();
     const state = stroke.move(held);
-    if (state === 'sample') scheduler.sample(at);
-    else if (state === 'idle') scheduler.hover(at);
+    if (state === 'sample') scheduler.sample(at, brush);
+    else if (state === 'idle') scheduler.hover(at, brush);
   };
   return {
     log,
@@ -121,7 +120,7 @@ function rig(options: { bodies?: BodySegments; hidden?: (x: number) => boolean }
     press(at: Point) {
       if (!view || !brush || !stroke.begin(0)) return;
       scheduler.press();
-      scheduler.sample(at);
+      scheduler.sample(at, brush);
     },
     drag(at: Point) { move(at, true); },
     release() { stroke.end(); },

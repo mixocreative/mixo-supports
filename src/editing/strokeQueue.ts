@@ -30,7 +30,7 @@ export interface StrokeQueue {
   /** A new stroke: no previous point, a fresh painted set. Queued steps of the last stroke still drain, with their own set. */
   begin(): void;
   push(to: Point, mode: BrushMode, radius: number): void;
-  /** The brush went away (tool, mode or object change): queued steps are dropped. */
+  /** The supports went away (brush off, another object, or an empty mesh): queued steps are dropped. */
   clear(): void;
   /** The supports were rebuilt (support indices changed): every queued step starts over on the new ones. */
   rebase(): void;

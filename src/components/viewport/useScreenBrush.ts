@@ -116,7 +116,6 @@ export function useScreenBrush(options: {
   live.current = { options, view };
   // Outlives the support mesh: a rebuild mid-stroke keeps the queued samples.
   const [scheduler] = useState(() => createBrushScheduler({
-    brush: () => live.current.options.brush,
     frame: () => live.current.view?.frame(),
     isSelected: (id) => live.current.options.selection.has(id),
     commit: (ids, mode) => live.current.options.onPaint(ids, mode),
@@ -160,9 +159,10 @@ export function useScreenBrush(options: {
     const move = (event: PointerEvent) => {
       const at = place(event);
       if (!at) return;
-      const state = live.current.options.stroke.move((event.buttons & 1) !== 0);
-      if (state === 'sample') scheduler.sample(at);
-      else if (state === 'idle') scheduler.hover(at);
+      const { brush, stroke } = live.current.options;
+      const state = stroke.move((event.buttons & 1) !== 0);
+      if (state === 'sample') scheduler.sample(at, brush!);
+      else if (state === 'idle') scheduler.hover(at, brush!);
     };
     const down = (event: PointerEvent) => {
       const { brush, stroke, beginStroke } = live.current.options;
@@ -170,7 +170,7 @@ export function useScreenBrush(options: {
       beginStroke();
       scheduler.press();
       const at = place(event);
-      if (at) scheduler.sample(at);
+      if (at) scheduler.sample(at, brush);
     };
     const leave = () => {
       if (!live.current.options.stroke.active) hide();
