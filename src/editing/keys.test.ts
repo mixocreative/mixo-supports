@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { enterActsOn, keyAction, type KeyAction, type KeyInput, type KeyTarget } from './keys';
 import type { EditMode } from './types';
+import { READY } from './uiFixture';
 
 function element(tagName: string, attributes: Record<string, string> = {}, type?: string): KeyTarget {
   return {
@@ -35,11 +36,12 @@ describe('enterActsOn', () => {
 
 describe('keyAction', () => {
   const none: KeyAction = { command: undefined, preventDefault: false };
-  const press = (key: string, mode: EditMode, options: Partial<KeyInput> = {}) =>
-    keyAction({ key, ctrl: false, shift: false, target: null, mode, hasSelection: false, ...options });
+  type Options = Partial<Omit<KeyInput, 'ui'>> & { hasSelection?: boolean };
+  const press = (key: string, mode: EditMode, { hasSelection = false, ...options }: Options = {}) =>
+    keyAction({ key, ctrl: false, shift: false, target: null, ui: { ...READY, mode, selection: hasSelection ? 2 : 0 }, ...options });
 
   // Every row of the editor's key handler: key × mode × modifier, selection and focus guards.
-  const rows: [string, string, EditMode, Partial<KeyInput>, KeyAction][] = [
+  const rows: [string, string, EditMode, Options, KeyAction][] = [
     ['Ctrl+Z undoes', 'z', 'off', { ctrl: true }, { command: 'history.undo', preventDefault: true }],
     ['Ctrl+Z undoes in Edit Mode', 'z', 'edit', { ctrl: true }, { command: 'history.undo', preventDefault: true }],
     ['Ctrl+Z undoes in zones mode', 'z', 'zones', { ctrl: true }, { command: 'history.undo', preventDefault: true }],
@@ -92,6 +94,15 @@ describe('keyAction', () => {
 
   it.each(rows)('%s', (_, key, mode, options, expected) => {
     expect(press(key, mode, options)).toEqual(expected);
+  });
+
+  it('leaves out a command the registry has off', () => {
+    const idle = { ...READY, canUndo: false, active: false, selectedObjects: 0 };
+    const at = (key: string, options: Partial<KeyInput> = {}) => keyAction({ key, ctrl: false, shift: false, target: null, ui: idle, ...options });
+    expect(at('z', { ctrl: true }).command).toBeUndefined();
+    expect(at('g').command).toBeUndefined();
+    expect(at('r').command).toBeUndefined();
+    expect(at('Delete').command).toBeUndefined();
   });
 
   it('takes the document (no element focused) as no field', () => {

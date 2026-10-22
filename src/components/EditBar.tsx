@@ -1,14 +1,24 @@
-import { visibleIn, type CommandId, type UiState } from '../editing/commands';
+import { resolve, type CommandId, type UiState } from '../editing/commands';
 import type { Gesture } from '../editing/gesture';
 import type { SessionEvent } from '../editing/session';
 import { t } from '../i18n';
 import { CommandButton } from './CommandButton';
+import { KeyCaps } from './KeyCaps';
 import { RangeField } from './RangeField';
 import { Segmented } from './Segmented';
 import { BrushIcon, PointerIcon } from './ToolIcons';
 
 /** A Support Edit Mode gesture: Add supports, or Select supports by Click (`pick`) or Drag over (`drag`). */
 export type EditGesture = Extract<Gesture, { kind: 'add' | 'pick' | 'drag' }>;
+
+/** The edit bar's own actions, before Done. */
+const EDIT_BAR_COMMANDS = ['edit.generate', 'edit.clearSelection', 'edit.deleteSelection'] as const;
+
+/** Done: the registry's one exit, with its key as a cap. Both bars show it. */
+export function DoneButton({ ui, run }: { ui: UiState; run: (id: CommandId) => void }) {
+  const done = resolve('mode.exit', ui);
+  return <CommandButton command={done} run={run} className="edit-done">{done.shortcut && <> <kbd>{done.shortcut}</kbd></>}</CommandButton>;
+}
 
 /** What a click or drag does, on the badge. */
 const BADGE: Record<EditGesture['kind'], string> = {
@@ -61,11 +71,10 @@ export function EditBar({ gesture, unitName, ui, send, run }: {
       <div className="edit-row">
         {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
         <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{gesture.kind === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
-        <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
+        <span className="edit-hint"><KeyCaps shortcut={resolve('history.undo', ui).shortcut!} /> {t('undo')}</span>
         {ui.selection > 0 && <span className="edit-count">{t('{n} selected', { n: ui.selection })}</span>}
-        {visibleIn('editBar', ui).map((command) => <CommandButton key={command.id} command={command} run={run} className={command.role === 'primary' ? 'primary edit-done' : undefined}>
-          {command.id === 'edit.done' && <> <kbd>Esc</kbd></>}
-        </CommandButton>)}
+        {EDIT_BAR_COMMANDS.map((id) => resolve(id, ui)).filter((command) => command.visible).map((command) => <CommandButton key={command.id} command={command} run={run} />)}
+        <DoneButton ui={ui} run={run} />
       </div>
     </div>
   </>;

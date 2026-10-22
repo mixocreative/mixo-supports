@@ -1,5 +1,4 @@
-import type { CommandId } from './commands';
-import type { EditMode } from './types';
+import { resolve, type CommandId, type UiState } from './commands';
 
 /** The part of a key event target the keyboard rules look at (an HTMLElement satisfies it). */
 export interface KeyTarget {
@@ -47,14 +46,14 @@ export interface KeyInput {
   shift: boolean;
   /** The focused element (the event target), or null. */
   target: KeyTarget | null;
-  mode: EditMode;
-  /** Support Edit Mode has selected supports. */
-  hasSelection: boolean;
+  /** The registry's state: the mode, the selection, and what is enabled. */
+  ui: UiState;
 }
 
 /**
- * What a key press does: the registry command to run (undefined: nothing), and whether the browser's
- * own action is stopped. Tab is never taken: it moves focus.
+ * What a key press does: the registry command to run (undefined: nothing, also when the command is
+ * off in this state), and whether the browser's own action is stopped. Tab is never taken: it
+ * moves focus.
  */
 export interface KeyAction {
   command: CommandId | undefined;
@@ -65,8 +64,15 @@ const NONE: KeyAction = { command: undefined, preventDefault: false };
 const run = (command: CommandId, preventDefault = true): KeyAction => ({ command, preventDefault });
 
 /** The editor's keyboard rules, first match wins. Keys typed into a field that takes text are left alone. */
-export function keyAction({ key, ctrl, shift, target, mode, hasSelection }: KeyInput): KeyAction {
+export function keyAction({ key, ctrl, shift, target, ui }: KeyInput): KeyAction {
+  const action = bound({ key, ctrl, shift, target, ui });
+  return action.command && !resolve(action.command, ui).enabled ? { ...action, command: undefined } : action;
+}
+
+function bound({ key, ctrl, shift, target, ui }: KeyInput): KeyAction {
   if (takesText(target)) return NONE;
+  const { mode } = ui;
+  const hasSelection = ui.selection > 0;
   const lower = key.toLowerCase();
   const done = key === 'Escape' || (key === 'Enter' && !enterActsOn(target));
   if (ctrl && lower === 'z') return run(shift ? 'history.redo' : 'history.undo');

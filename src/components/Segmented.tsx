@@ -12,7 +12,7 @@ export type SegmentedOption<V extends string> = {
   lang?: string;
   /** The choice's own setting, stacked under its button (Drag over → Circle size). */
   under?: ReactNode;
-} & ({ hint: string } | { title: string });
+} & ({ hint: string; /** The registry key shown after the hint. */ shortcut?: string } | { title: string });
 
 /**
  * A group of buttons, one per choice; the chosen one is pressed (aria-pressed, the one pressed
@@ -29,7 +29,7 @@ export function Segmented<V extends string>({ options, value, onChange, label, c
 }) {
   return <div className={className} {...(label ? { role: 'group', 'aria-label': label } : {})}>
     {options.map((option) => {
-      const button = <button key={option.value} lang={option.lang} aria-pressed={value === option.value} onClick={() => onChange(option.value)} disabled={disabled} {...('hint' in option ? hint(option.hint) : { title: option.title })}>{option.icon}{option.label}</button>;
+      const button = <button key={option.value} lang={option.lang} aria-pressed={value === option.value} onClick={() => onChange(option.value)} disabled={disabled} {...('hint' in option ? hint(option.hint, undefined, option.shortcut) : { title: option.title })}>{option.icon}{option.label}</button>;
       return 'under' in option ? <div key={option.value} className="tool-stack">{button}{option.under}</div> : button;
     })}
   </div>;

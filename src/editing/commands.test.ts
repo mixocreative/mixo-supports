@@ -1,69 +1,80 @@
 import { describe, expect, it } from 'vitest';
-import { COMMAND_IDS, COMMANDS, resolve, visibleIn, type CommandId, type Region, type UiState } from './commands';
-import { keyAction } from './keys';
+import { COMMAND_IDS, COMMANDS, resolve, type CommandId, type UiState } from './commands';
+import { keyAction, type KeyInput } from './keys';
 import type { EditMode } from './types';
+import { READY, STATES } from './uiFixture';
 
-const base: UiState = {
-  mode: 'off', active: true, heavy: undefined, units: 1, selectedObjects: 1, selection: 0,
-  activeSupported: true, canUndo: true, canRedo: true, modelsVisible: true, wireframe: false, generated: false,
-};
-const at = (change: Partial<UiState>): UiState => ({ ...base, ...change });
+const at = (change: Partial<UiState>): UiState => ({ ...READY, ...change });
 
 const MODES: EditMode[] = ['off', 'edit', 'zones'];
 const BOOLS = [true, false];
-/** Every combination of the facts the rules read, small enough to walk whole. */
-const STATES: UiState[] = MODES.flatMap((mode) => BOOLS.flatMap((active) => [undefined, 1_600_000].flatMap((heavy) =>
-  [0, 3].flatMap((selection) => BOOLS.flatMap((canUndo) => BOOLS.flatMap((hasUnits) => BOOLS.map((generated) => at({
-    mode, active, heavy, selection, canUndo, canRedo: !canUndo, units: hasUnits ? 2 : 0, selectedObjects: hasUnits ? 1 : 0,
-    generated, modelsVisible: canUndo, wireframe: generated,
-  }))))))));
+
+/** "Ctrl+Shift+Z" as the key event that types it. */
+function pressOf(shortcut: string): Pick<KeyInput, 'key' | 'ctrl' | 'shift'> {
+  const parts = shortcut.split('+');
+  const name = parts[parts.length - 1]!;
+  return { key: name === 'Esc' ? 'Escape' : name.length === 1 ? name.toLowerCase() : name, ctrl: parts.includes('Ctrl'), shift: parts.includes('Shift') };
+}
 
 describe('the registry and the keyboard', () => {
   const KEYS = ['z', 'Z', 'y', 'Y', 'g', 'G', 'r', 'R', 'Delete', 'Backspace', 'Escape', 'Enter', 'Tab', 'x'];
-  const PRESSES = KEYS.flatMap((key) => MODES.flatMap((mode) => BOOLS.flatMap((hasSelection) => BOOLS.flatMap((ctrl) => BOOLS.map((shift) =>
-    keyAction({ key, ctrl, shift, target: null, mode, hasSelection }))))));
-  const bound = new Set(PRESSES.flatMap((action) => (action.command ? [action.command] : [])));
+  const PRESSES = STATES.flatMap((ui) => KEYS.flatMap((key) => BOOLS.flatMap((ctrl) => BOOLS.map((shift) =>
+    keyAction({ key, ctrl, shift, target: null, ui })))));
 
   it('maps every key binding to a registry command', () => {
+    const bound = new Set(PRESSES.flatMap((action) => (action.command ? [action.command] : [])));
     expect(bound.size).toBeGreaterThan(0);
     for (const command of bound) expect(COMMAND_IDS).toContain(command);
   });
 
-  it('binds every command that advertises a shortcut', () => {
-    const advertised = COMMAND_IDS.filter((id) => COMMANDS[id].shortcut);
-    expect(advertised.length).toBeGreaterThan(0);
-    for (const id of advertised) {
-      const runs = STATES.map((state) => resolve(id, state).runs);
-      expect(runs.some((target) => bound.has(target)), `${id} runs ${runs[0]}`).toBe(true);
+  it('binds each advertised shortcut to that exact command, in every state that shows it live', () => {
+    let checked = 0;
+    for (const id of COMMAND_IDS) {
+      for (const ui of STATES) {
+        const command = resolve(id, ui);
+        // The Delete button of the Objects group is shown in every mode; its key works outside them.
+        if (!command.shortcut || !command.visible || !command.enabled || (id === 'objects.delete' && ui.mode !== 'off')) continue;
+        // Esc with supports selected clears the selection first: the Exit controls run when the mode is next.
+        const expected = command.runs === 'mode.exit' && ui.mode === 'edit' && ui.selection > 0 ? 'edit.clearSelection' : command.runs;
+        expect(keyAction({ ...pressOf(command.shortcut), target: null, ui }).command, `${id} in ${ui.mode}`).toBe(expected);
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  it('does not advertise a key a command does not run on', () => {
+    for (const ui of STATES) {
+      for (const id of COMMAND_IDS) {
+        const { shortcut, visible, enabled } = resolve(id, ui);
+        if (shortcut && visible && !enabled) {
+          const action = keyAction({ ...pressOf(shortcut), target: null, ui });
+          expect(action.command, `${id} is off in ${ui.mode}`).not.toBe(id);
+        }
+      }
     }
   });
 
   it('never takes Tab', () => {
-    for (const mode of MODES) {
-      for (const hasSelection of BOOLS) {
-        expect(keyAction({ key: 'Tab', ctrl: false, shift: false, target: null, mode, hasSelection })).toEqual({ command: undefined, preventDefault: false });
+    for (const ui of STATES) {
+      expect(keyAction({ key: 'Tab', ctrl: false, shift: false, target: null, ui })).toEqual({ command: undefined, preventDefault: false });
+    }
+  });
+
+  it('runs no command that is off in the state of the press', () => {
+    for (const ui of STATES) {
+      for (const key of KEYS) {
+        const { command } = keyAction({ key, ctrl: true, shift: false, target: null, ui });
+        if (command) expect(resolve(command, ui).enabled, `${key} in ${ui.mode}`).toBe(true);
       }
     }
   });
 });
 
 describe('the registry shows each control once', () => {
-  const REGIONS: Region[] = ['header', 'left', 'editBar', 'zonesBar', 'keyboard'];
-
   it('keeps one row per id', () => {
     expect(new Set(COMMAND_IDS).size).toBe(COMMAND_IDS.length);
     expect(Object.keys(COMMANDS).sort()).toEqual([...COMMAND_IDS].sort());
-  });
-
-  it('shows no id twice, and no two controls with one label, in a region in any state', () => {
-    for (const state of STATES) {
-      for (const region of REGIONS) {
-        const shown = visibleIn(region, state);
-        expect(new Set(shown.map((command) => command.id)).size).toBe(shown.length);
-        const labels = shown.flatMap((command) => (command.label ? [command.label] : []));
-        expect(new Set(labels).size, `${region}: ${labels.join(', ')}`).toBe(labels.length);
-      }
-    }
   });
 
   it('says why a shown control is off, and only then', () => {
@@ -75,12 +86,11 @@ describe('the registry shows each control once', () => {
       }
     }
   });
-});
 
-describe('an object with no supports in Support Edit Mode', () => {
-  it('offers Generate in the edit bar until it has supports', () => {
-    expect(visibleIn('editBar', at({ mode: 'edit', activeSupported: false })).map((command) => command.id)).toEqual(['edit.generate', 'edit.done']);
-    expect(visibleIn('editBar', at({ mode: 'edit' })).map((command) => command.id)).toEqual(['edit.done']);
+  it('keeps key text out of the hints: it comes from the shortcut field', () => {
+    for (const state of STATES) {
+      for (const id of COMMAND_IDS) expect(resolve(id, state).hint, id).not.toMatch(/\((Esc|G|R|Delete|Ctrl|Enter)/);
+    }
   });
 });
 
@@ -89,38 +99,44 @@ describe('one exit', () => {
     const edit = at({ mode: 'edit' });
     const zones = at({ mode: 'zones' });
     expect(resolve('mode.edit', edit).runs).toBe('mode.exit');
-    expect(resolve('edit.done', edit).runs).toBe('mode.exit');
     expect(resolve('mode.zones', zones).runs).toBe('mode.exit');
-    expect(resolve('zones.done', zones).runs).toBe('mode.exit');
-    expect(visibleIn('keyboard', edit).map((command) => command.id)).toEqual(['mode.exit']);
+    expect(resolve('mode.exit', edit)).toMatchObject({ label: 'Done', role: 'primary', runs: 'mode.exit', visible: true });
+    expect(resolve('mode.exit', zones)).toMatchObject({ label: 'Done', visible: true });
+    expect(resolve('mode.exit', READY).visible).toBe(false);
   });
 
   it('the entry buttons run themselves outside the modes', () => {
-    expect(resolve('mode.edit', base).runs).toBe('mode.edit');
-    expect(resolve('mode.zones', base).runs).toBe('mode.zones');
+    expect(resolve('mode.edit', READY).runs).toBe('mode.edit');
+    expect(resolve('mode.zones', READY).runs).toBe('mode.zones');
   });
 
-  it('Done shows in its own mode only', () => {
-    expect(visibleIn('editBar', at({ mode: 'edit' })).map((command) => command.id)).toEqual(['edit.done']);
-    expect(visibleIn('zonesBar', at({ mode: 'zones' })).map((command) => command.id)).toEqual(['zones.done']);
-    expect(visibleIn('editBar', at({ mode: 'zones' }))).toEqual([]);
-    expect(visibleIn('editBar', base)).toEqual([]);
+  it('the edit bar offers Generate until the object has supports', () => {
+    expect(resolve('edit.generate', at({ mode: 'edit', activeSupported: false })).visible).toBe(true);
+    expect(resolve('edit.generate', at({ mode: 'edit' })).visible).toBe(false);
+    expect(resolve('edit.generate', at({ mode: 'zones', activeSupported: false })).visible).toBe(false);
+    expect(resolve('edit.generate', at({ mode: 'edit', activeSupported: false, generating: true }))).toMatchObject({ enabled: false, label: 'Generating supports…' });
   });
 
   it('the selection actions come with a selection', () => {
-    expect(visibleIn('editBar', at({ mode: 'edit', selection: 2 })).map((command) => command.id)).toEqual(['edit.clearSelection', 'edit.deleteSelection', 'edit.done']);
+    expect(resolve('edit.clearSelection', at({ mode: 'edit', selection: 2 })).visible).toBe(true);
+    expect(resolve('edit.deleteSelection', at({ mode: 'edit', selection: 2 })).visible).toBe(true);
+    expect(resolve('edit.deleteSelection', at({ mode: 'edit' })).visible).toBe(false);
   });
 });
 
 describe('the mode buttons: the entry button becomes the exit button', () => {
   it('outside the modes both enter, unpressed', () => {
-    expect(resolve('mode.edit', base)).toMatchObject({ label: 'Edit supports', pressed: false, enabled: true });
-    expect(resolve('mode.zones', base)).toMatchObject({ label: 'No-support zones', pressed: false, enabled: true });
+    expect(resolve('mode.edit', READY)).toMatchObject({ label: 'Edit supports', pressed: false, enabled: true, shortcut: undefined });
+    expect(resolve('mode.zones', READY)).toMatchObject({ label: 'No-support zones', pressed: false, enabled: true });
+  });
+
+  it('other commands are not two-state', () => {
+    expect(resolve('supports.generate', READY).pressed).toBeUndefined();
   });
 
   it('in Support Edit Mode its button reads Exit, pressed, live; zones waits', () => {
     const edit = at({ mode: 'edit' });
-    expect(resolve('mode.edit', edit)).toMatchObject({ label: 'Exit Support Edit Mode', hint: 'Finish editing supports (Esc)', pressed: true, enabled: true });
+    expect(resolve('mode.edit', edit)).toMatchObject({ label: 'Exit Support Edit Mode', hint: 'Finish editing supports', shortcut: 'Esc', pressed: true, enabled: true });
     expect(resolve('mode.zones', edit)).toMatchObject({ label: 'No-support zones', pressed: false, enabled: false, disabledReason: { key: 'Finish editing supports first: press Esc or Done.' } });
   });
 
@@ -163,21 +179,28 @@ describe('the header in a mode', () => {
 });
 
 describe('the left panel commands', () => {
-  it('Transform waits in a mode, with the mode named', () => {
+  it('Transform waits in a mode, with the mode named, and needs an object', () => {
     for (const id of ['transform.select', 'transform.move', 'transform.rotate'] as CommandId[]) {
-      expect(resolve(id, base).enabled).toBe(true);
+      expect(resolve(id, READY).enabled).toBe(true);
       expect(resolve(id, at({ mode: 'edit' }))).toMatchObject({ enabled: false, disabledReason: { key: 'Finish editing supports first: press Esc or Done.' } });
+      expect(resolve(id, at({ active: false }))).toMatchObject({ enabled: false, disabledReason: { key: 'Select an object first.' } });
     }
   });
 
   it('Generate reads Regenerate once everything has supports, and needs a model', () => {
-    expect(resolve('supports.generate', base).label).toBe('Generate supports');
+    expect(resolve('supports.generate', READY).label).toBe('Generate supports');
     expect(resolve('supports.generate', at({ generated: true })).label).toBe('Regenerate');
     expect(resolve('supports.generate', at({ units: 0 }))).toMatchObject({ enabled: false, disabledReason: { key: 'Import a model before generating supports.' } });
   });
 
+  it('Generate is busy while a placement runs, so a second press cannot start another', () => {
+    expect(resolve('supports.generate', at({ generating: true }))).toMatchObject({ enabled: false, label: 'Generating supports…', disabledReason: { key: 'Supports are being generated: wait for it to finish.' } });
+    expect(resolve('supports.generate', at({ generating: true, generated: true })).label).toBe('Generating supports…');
+  });
+
   it('Delete objects needs a selected object', () => {
     expect(resolve('objects.delete', at({ selectedObjects: 0 })).enabled).toBe(false);
-    expect(resolve('objects.delete', base).enabled).toBe(true);
+    expect(resolve('objects.delete', READY).enabled).toBe(true);
+    expect(resolve('objects.delete', READY).role).toBe('destructive');
   });
 });

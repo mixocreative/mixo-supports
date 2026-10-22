@@ -19,8 +19,8 @@ export function ModeSections({ ui, run, zones }: {
   const waiting = ui.mode === 'off' && !edit.enabled && !zonesMode.enabled ? edit.disabledReason : undefined;
   return <section>
     <h3>{t('Modes')}</h3>
-    <CommandButton command={edit} run={run} pressed locked={ui.mode !== 'off' && !edit.enabled} />
-    <CommandButton command={zonesMode} run={run} pressed locked={ui.mode !== 'off' && !zonesMode.enabled} className="mode-button">
+    <CommandButton command={edit} run={run} locked={ui.mode !== 'off' && !edit.enabled} />
+    <CommandButton command={zonesMode} run={run} locked={ui.mode !== 'off' && !zonesMode.enabled} className="mode-button">
       {zones !== undefined && !zonesMode.pressed && <small className="state">{zones ? t('Painted') : t('None')}</small>}
     </CommandButton>
     {waiting && <p className="help">{translateMessage(waiting)}</p>}

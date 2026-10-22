@@ -2,7 +2,8 @@ import { resolve, type CommandId, type UiState } from '../editing/commands';
 import type { Gesture } from '../editing/gesture';
 import type { SessionEvent } from '../editing/session';
 import { plural, t } from '../i18n';
-import { CommandButton } from './CommandButton';
+import { DoneButton } from './EditBar';
+import { KeyCaps } from './KeyCaps';
 import { hint } from './hint';
 import { RangeField } from './RangeField';
 import { Segmented } from './Segmented';
@@ -36,12 +37,12 @@ export function ZonesBar({ brush, unitName, belowPlate, hasZones, hidden, ui, se
           { value: 'erase', label: t('Erase'), hint: 'Erase no-support zones from the model' },
         ]} />
         <RangeField layout="row" label="Brush size" unit="{n} mm" hint="Radius of the zone brush" min={0.5} max={10} step={0.5} value={brush.radius} onChange={(radius) => send({ type: 'setZoneRadius', radius })} />
-        <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
+        <span className="edit-hint"><KeyCaps shortcut={resolve('history.undo', ui).shortcut!} /> {t('undo')}</span>
       </div>
       {!belowPlate && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
       <div className="edit-row">
         <button className="danger" onClick={onClear} disabled={!hasZones} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear all zones')}</button>
-        <CommandButton command={resolve('zones.done', ui)} run={run} className="primary edit-done"> <kbd>Esc</kbd></CommandButton>
+        <DoneButton ui={ui} run={run} />
       </div>
     </div>
   </>;

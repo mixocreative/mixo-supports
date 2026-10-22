@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { PRESET_HINTS, ROOF_HINTS, SETTING_GROUPS } from './components/SettingsPanel';
 import { CodedError, ERROR_CODES, ERROR_CONTEXTS, errorStatus } from './editing/errors';
+import { COMMAND_IDS, resolve } from './editing/commands';
 import { undoToast } from './editing/toast';
+import { STATES } from './editing/uiFixture';
 import { DICTIONARY, STAGE_KEYS, detectLanguage, plural, setLanguage, t, translateMessage } from './i18n';
 
 /** Source text of every non-test module, keyed './path'. */
@@ -49,6 +51,22 @@ describe('i18n', () => {
     expect(keys.size).toBeGreaterThan(150);
     for (const [lang, dictionary] of Object.entries(DICTIONARY)) {
       expect([...keys].filter((key) => !(key in dictionary)), lang).toEqual([]);
+    }
+  });
+
+  it('translates every label, hint and reason of every command', () => {
+    const keys = new Set<string>();
+    for (const state of STATES) {
+      for (const id of COMMAND_IDS) {
+        const command = resolve(id, state);
+        if (!command.visible) continue;
+        expect(command.label.length + command.hint.length, id).toBeGreaterThan(0);
+        for (const key of [command.label, command.hint, command.disabledReason?.key, command.disabledReason?.other]) if (key) keys.add(key);
+      }
+    }
+    expect(keys.size).toBeGreaterThan(25);
+    for (const [lang, dictionary] of Object.entries(DICTIONARY)) {
+      expect([...keys].filter((key) => !dictionary[key]), lang).toEqual([]);
     }
   });
 

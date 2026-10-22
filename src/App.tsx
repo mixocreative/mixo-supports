@@ -262,6 +262,8 @@ export default function App() {
   const requested = useRef(new Map<string, { unit: PrintUnit; index: number }>());
   const buildTimers = useRef(new Map<string, number>());
   const placing = useRef(new Set<string>());
+  /** A placement job is running (the registry's Generate waits for it). */
+  const [generating, setGenerating] = useState(false);
   /** Findings by unit, with the unit version and support build they checked. */
   const [problems, setProblems] = useState<ReadonlyMap<string, { unit: PrintUnit; mesh: GeneratedSupportMesh | undefined; items: UnitProblem[] }>>(new Map());
 
@@ -274,6 +276,7 @@ export default function App() {
     workers.current.analysis?.cancel(`place:${unitId}`);
     workers.current.analysis?.cancel(`check:${unitId}`);
     placing.current.delete(unitId);
+    setGenerating(placing.current.size > 0);
     setProblems((current) => {
       if (!current.has(unitId)) return current;
       const next = new Map(current);
@@ -343,9 +346,11 @@ export default function App() {
       const orientation = orientationOf(unit);
       const key = `place:${unit.id}`;
       placing.current.add(unit.id);
+      setGenerating(true);
       analysis().place(key, placementJobOf(unit), { key: 'Placing contacts on {name}', vars: { name: unitName(unit.id) } }).then((result) => {
         if (!result) return; // replaced by a newer request for this unit
         placing.current.delete(unit.id);
+        setGenerating(placing.current.size > 0);
         const now = sceneRef.current.units.find((candidate) => candidate.id === unit.id);
         if (!now) return;
         // Applied to the unit as it is now: a move made meanwhile stays, and the lowest model point
@@ -361,6 +366,7 @@ export default function App() {
         setStatus('{name}: {n} automatic contacts generated.', { name: unit.name, n: result.points.length });
       }, (error: unknown) => {
         placing.current.delete(unit.id);
+        setGenerating(placing.current.size > 0);
         if (isAbort(error)) setStatus('Support placement cancelled; existing supports kept.');
         else setStatusMessage(errorStatus('place', codedJobError(error), { name: unit.name }));
       });
@@ -793,30 +799,11 @@ export default function App() {
       }
       case 'edit.generate': return generate(sceneRef.current.activeUnitId ? [sceneRef.current.activeUnitId] : undefined);
       case 'mode.zones': return send({ type: 'enterZones' });
-      case 'mode.exit':
-      case 'edit.done':
-      case 'zones.done': return send({ type: 'exit' });
+      case 'mode.exit': return send({ type: 'exit' });
       case 'edit.clearSelection': return clearSelection();
       case 'edit.deleteSelection': return deleteSelected();
     }
   }, [clearSelection, deleteSelected, deleteUnits, generate, send, setStatus, undo]);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const action = keyAction({
-        key: event.key,
-        ctrl: event.ctrlKey || event.metaKey,
-        shift: event.shiftKey,
-        target: event.target as HTMLElement | null,
-        mode: editMode,
-        hasSelection: selection.size > 0,
-      });
-      if (action.preventDefault) event.preventDefault();
-      if (action.command) runCommand(action.command);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [editMode, runCommand, selection]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -837,9 +824,24 @@ export default function App() {
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
     mode: editMode, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount,
-    selection: selection.size, activeSupported: Boolean(activeUnit?.supports), canUndo, canRedo: history.future.length > 0, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
+    selection: selection.size, activeSupported: Boolean(activeUnit?.supports), generating, canUndo, canRedo: history.future.length > 0, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
   };
   const command = (id: CommandId) => resolve(id, ui);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const action = keyAction({
+        key: event.key,
+        ctrl: event.ctrlKey || event.metaKey,
+        shift: event.shiftKey,
+        target: event.target as HTMLElement | null,
+        ui,
+      });
+      if (action.preventDefault) event.preventDefault();
+      if (action.command) runCommand(action.command);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [runCommand, ui]);
   const locked = (section: Parameters<typeof sectionLocked>[0]) => sectionLocked(section, editMode);
   /** Locked sections are inert, so a click on one falls through to its panel: say why and pulse the note. */
   const blockedClick = (panel: Panel) => (event: React.MouseEvent<HTMLElement>) => {
@@ -894,13 +896,13 @@ export default function App() {
         <section {...(locked('transform') ? { inert: '' } : {})}>
           <h3>{t('Transform')}</h3>
           <Segmented value={gizmoMode} onChange={setGizmoMode} disabled={!command('transform.move').enabled} options={([['none', 'transform.select'], ['translate', 'transform.move'], ['rotate', 'transform.rotate']] as const).map(([value, id]) => {
-            const { label, hint: text } = command(id);
-            return { value, label: t(label!), hint: text! };
+            const { label, hint: text, shortcut } = command(id);
+            return { value, label: t(label), hint: text, ...(shortcut ? { shortcut } : {}) };
           })} />
         </section>
         <section {...(locked('supports') ? { inert: '' } : {})}>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
-          <CommandButton command={command('supports.generate')} run={runCommand} className={scopeGenerated ? 'primary regen' : 'primary'} />
+          <CommandButton command={command('supports.generate')} run={runCommand} {...(scopeGenerated ? { className: 'regen' } : {})} />
           <button className="danger" onClick={clearManual} disabled={scene.units.length === 0} {...hint('Remove manual supports and bring back removed automatic ones, at once. Undo brings the edits back')}>{t('Clear manual edits')}</button>
           <button className="danger" onClick={removeSupports} disabled={scene.units.length === 0} {...hint('Remove the supports of the selected objects. Models and manual edits are kept')}>{t('Remove supports')}</button>
         </section>

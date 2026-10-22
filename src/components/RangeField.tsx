@@ -24,8 +24,7 @@ export function RangeField({ layout, label, unit, hint: hintKey, value, min, max
     type="range" min={min} max={max} step={step} value={value}
     onChange={(event) => { onChange(Number(event.target.value)); onAdjust?.(true); }}
     onPointerDown={() => onAdjust?.(true)}
-    // A range keeps focus after a click; Esc and Delete belong to the editor again once it lets go.
-    onPointerUp={(event) => { onAdjust?.(false); event.currentTarget.blur(); }}
+    onPointerUp={() => onAdjust?.(false)}
     onKeyUp={() => onAdjust?.(false)}
     onBlur={() => onAdjust?.(false)}
     {...hint(hintKey)}
