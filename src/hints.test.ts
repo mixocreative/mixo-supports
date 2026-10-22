@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SETTING_GROUPS } from './components/SettingsPanel';
 
-const SOURCES = import.meta.glob<string>(['./App.tsx', './components/SettingsPanel.tsx', './components/UndoToast.tsx', './components/RangeField.tsx', './components/Segmented.tsx', './components/EditBar.tsx', './components/ZonesBar.tsx', './components/ModeEntry.tsx', './components/ProblemList.tsx', './components/ObjectList.tsx'], { query: '?raw', import: 'default', eager: true });
+const SOURCES = import.meta.glob<string>(['./App.tsx', './components/SettingsPanel.tsx', './components/UndoToast.tsx', './components/RangeField.tsx', './components/Segmented.tsx', './components/EditBar.tsx', './components/ZonesBar.tsx', './components/ModeEntry.tsx', './components/CommandButton.tsx', './components/ProblemList.tsx', './components/ObjectList.tsx'], { query: '?raw', import: 'default', eager: true });
 
 /** Every JSX opening tag `<name …>` in `code`, attributes included (braces may hold `>`). */
 function openingTags(code: string, name: string): string[] {
@@ -25,7 +25,7 @@ const hinted = (tag: string) => /\btitle=|\{\.\.\.hint\(/.test(tag);
 
 describe('hover hints', () => {
   it('finds the tool buttons and sliders', () => {
-    expect(Object.values(SOURCES).flatMap((code) => openingTags(code, 'button')).length).toBeGreaterThan(30);
+    expect(Object.values(SOURCES).flatMap((code) => openingTags(code, 'button')).length).toBeGreaterThan(15);
     expect(openingTags('<a onClick={() => x > 1}>', 'a')).toEqual(['<a onClick={() => x > 1}>']);
   });
 

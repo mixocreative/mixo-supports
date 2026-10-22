@@ -13,9 +13,6 @@ export const zhHant: Dictionary = {
   'Show models': '顯示模型',
   'Solid': '實體',
   'Wireframe': '線框',
-  'Generating supports': '正在產生支撐',
-  'Generate supports for {scope}': '為{scope}產生支撐',
-  'Regenerate supports for {scope}': '為{scope}重新產生支撐',
   'Generate supports': '產生支撐',
   '{n} selected': '已選取的 {n} 個',
   'all {n}': '全部 {n} 個',
@@ -450,6 +447,8 @@ export const zhHant: Dictionary = {
   'The plate would hold {n} triangles with {name}; the limit is {limit}. Delete or simplify an object first, then import again.': '加入 {name} 後底板上將有 {n} 個三角面，上限為 {limit}。請先刪除或簡化一個物件，再重新匯入。',
   'Generating supports for {n} triangles at once needs more memory than this device can give the editor. Generate fewer objects at a time, or simplify the models.': '同時為 {n} 個三角面產生支撐所需記憶體超出此裝置能提供給編輯器的上限。請一次為較少物件產生支撐，或簡化模型。',
   // Release 2 final fixes
+  'Nothing to undo.': '沒有可復原的步驟',
+  'Nothing to redo.': '沒有可重做的步驟',
   'Nothing to undo here: leave the mode to undo earlier steps.': '這裡沒有可復原的步驟：離開模式後即可復原更早的步驟。',
   'Nothing to export: {name} has no supports left.': '沒有可匯出的內容：{name} 已沒有任何支撐。',
   'Nothing to export: no object in this export has supports left.': '沒有可匯出的內容：這次匯出的物件都已沒有支撐。',

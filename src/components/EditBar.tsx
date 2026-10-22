@@ -1,7 +1,8 @@
+import { visibleIn, type CommandId, type UiState } from '../editing/commands';
 import type { Gesture } from '../editing/gesture';
 import type { SessionEvent } from '../editing/session';
 import { t } from '../i18n';
-import { hint } from './hint';
+import { CommandButton } from './CommandButton';
 import { RangeField } from './RangeField';
 import { Segmented } from './Segmented';
 import { BrushIcon, PointerIcon } from './ToolIcons';
@@ -20,14 +21,12 @@ const BADGE: Record<EditGesture['kind'], string> = {
  * Support Edit Mode's chrome over the viewport (Blender mixo.support_place): the red frame, the
  * badge saying what a click does, and the bar with the tools, the selection's actions and Done.
  */
-export function EditBar({ gesture, unitName, selected, send, onDelete, onClearSelection }: {
+export function EditBar({ gesture, unitName, ui, send, run }: {
   gesture: EditGesture;
   unitName: string | undefined;
-  /** How many supports are selected. */
-  selected: number;
+  ui: UiState;
   send: (event: SessionEvent) => void;
-  onDelete: () => void;
-  onClearSelection: () => void;
+  run: (id: CommandId) => void;
 }) {
   return <>
     <div className="edit-frame" aria-hidden="true" />
@@ -63,12 +62,10 @@ export function EditBar({ gesture, unitName, selected, send, onDelete, onClearSe
         {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
         <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{gesture.kind === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
         <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
-        {selected > 0 && <>
-          <span className="edit-count">{t('{n} selected', { n: selected })}</span>
-          <button className="danger" onClick={onDelete} {...hint('Delete the selected supports (Delete key). Undo brings them back')}>{t('Delete')}</button>
-          <button onClick={onClearSelection} {...hint('Unselect every support at once (Esc). Undo on the notice brings the selection back')}>{t('Clear selection')}</button>
-        </>}
-        <button className="primary edit-done" onClick={() => send({ type: 'exit' })} {...hint('Finish editing supports (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
+        {ui.selection > 0 && <span className="edit-count">{t('{n} selected', { n: ui.selection })}</span>}
+        {visibleIn('editBar', ui).map((command) => <CommandButton key={command.id} command={command} run={run} className={command.role === 'destructive' ? 'danger' : command.role === 'primary' ? 'primary edit-done' : undefined}>
+          {command.id === 'edit.done' && <> <kbd>Esc</kbd></>}
+        </CommandButton>)}
       </div>
     </div>
   </>;

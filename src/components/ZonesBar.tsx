@@ -1,6 +1,8 @@
+import { resolve, type CommandId, type UiState } from '../editing/commands';
 import type { Gesture } from '../editing/gesture';
 import type { SessionEvent } from '../editing/session';
 import { t } from '../i18n';
+import { CommandButton } from './CommandButton';
 import { hint } from './hint';
 import { RangeField } from './RangeField';
 import { Segmented } from './Segmented';
@@ -17,12 +19,14 @@ export function ClearZonesButton({ disabled, onClear, compact = false }: { disab
  * Zones mode's chrome over the viewport: the frame and badge in the zone colour, and the bar with
  * the brush, a note while the camera is above the plate (supports attach underneath), Clear and Done.
  */
-export function ZonesBar({ brush, unitName, belowPlate, hasZones, send, onClear }: {
+export function ZonesBar({ brush, unitName, belowPlate, hasZones, ui, send, run, onClear }: {
   brush: Extract<Gesture, { kind: 'zones' }>['brush'];
   unitName: string | undefined;
   belowPlate: boolean;
   hasZones: boolean;
+  ui: UiState;
   send: (event: SessionEvent) => void;
+  run: (id: CommandId) => void;
   onClear: () => void;
 }) {
   return <>
@@ -42,7 +46,7 @@ export function ZonesBar({ brush, unitName, belowPlate, hasZones, send, onClear 
       {!belowPlate && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
       <div className="edit-row">
         <ClearZonesButton disabled={!hasZones} onClear={onClear} />
-        <button className="primary edit-done" onClick={() => send({ type: 'exit' })} {...hint('Finish painting zones (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
+        <CommandButton command={resolve('zones.done', ui)} run={run} className="primary edit-done"> <kbd>Esc</kbd></CommandButton>
       </div>
     </div>
   </>;

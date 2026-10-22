@@ -12,9 +12,6 @@ export const ja: Dictionary = {
   'Show models': 'モデルを表示',
   'Solid': 'ソリッド',
   'Wireframe': 'ワイヤーフレーム',
-  'Generating supports': 'サポートを生成中',
-  'Generate supports for {scope}': '{scope}にサポートを生成',
-  'Regenerate supports for {scope}': '{scope}のサポートを再生成',
   'Generate supports': 'サポートを生成',
   '{n} selected': '選択中の {n} 個',
   'all {n}': '全 {n} 個',
@@ -446,6 +443,8 @@ export const ja: Dictionary = {
   'The plate would hold {n} triangles with {name}; the limit is {limit}. Delete or simplify an object first, then import again.': '{name} を加えるとプレート上の三角形が {n} 個になり、上限の {limit} を超えます。先にオブジェクトを削除するか簡略化してから、もう一度読み込んでください。',
   'Generating supports for {n} triangles at once needs more memory than this device can give the editor. Generate fewer objects at a time, or simplify the models.': '三角形 {n} 個分のサポートを一度に生成するには、このデバイスがエディターに割り当てられる以上のメモリが必要です。一度に生成するオブジェクトを減らすか、モデルを簡略化してください。',
   // Release 2 final fixes
+  'Nothing to undo.': '元に戻せる操作がありません',
+  'Nothing to redo.': 'やり直せる操作がありません',
   'Nothing to undo here: leave the mode to undo earlier steps.': 'ここでは元に戻せる操作がありません。モードを終了すると、それより前の操作を元に戻せます。',
   'Nothing to export: {name} has no supports left.': '書き出すものがありません：{name} にはサポートが残っていません。',
   'Nothing to export: no object in this export has supports left.': '書き出すものがありません：書き出し対象のオブジェクトにはサポートが残っていません。',

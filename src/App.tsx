@@ -17,6 +17,7 @@ import type { GizmoMode, ViewRequest } from './components/viewport/types';
 import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
 import { EditBar } from './components/EditBar';
+import { CommandButton } from './components/CommandButton';
 import { ModeSections, ViewportEditToggle } from './components/ModeEntry';
 import { ObjectList } from './components/ObjectList';
 import { ProblemList } from './components/ProblemList';
@@ -43,10 +44,11 @@ import { gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
 import { checkJobOf, currentBuild, currentBuilds, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
+import { resolve, type CommandId, type UiState } from './editing/commands';
 import { keyAction } from './editing/keys';
 import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
-import { busyStatus, importStatus, missStatus, sessionStatus } from './editing/status';
+import { busyStatus, heavyStatus, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
 import { checkStatus, exportStatus, joinRun, runToken, tallyChecks, type CheckTally } from './editing/check';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
@@ -187,7 +189,6 @@ export default function App() {
   const [modelVisible, setModelVisible] = useState(true);
   const [wireframe, setWireframe] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
 
   const activeUnit = scene.units.find((unit) => unit.id === scene.activeUnitId);
   const activeIndex = activeUnit ? scene.units.indexOf(activeUnit) : -1;
@@ -264,7 +265,7 @@ export default function App() {
     workers.current.export?.forget(unitId);
     workers.current.analysis?.cancel(`place:${unitId}`);
     workers.current.analysis?.cancel(`check:${unitId}`);
-    if (placing.current.delete(unitId)) setPendingCount(placing.current.size);
+    placing.current.delete(unitId);
     setProblems((current) => {
       if (!current.has(unitId)) return current;
       const next = new Map(current);
@@ -337,7 +338,6 @@ export default function App() {
       analysis().place(key, placementJobOf(unit), { key: 'Placing contacts on {name}', vars: { name: unitName(unit.id) } }).then((result) => {
         if (!result) return; // replaced by a newer request for this unit
         placing.current.delete(unit.id);
-        setPendingCount(placing.current.size);
         const now = sceneRef.current.units.find((candidate) => candidate.id === unit.id);
         if (!now) return;
         // Applied to the unit as it is now: a move made meanwhile stays, and the lowest model point
@@ -353,12 +353,10 @@ export default function App() {
         setStatus('{name}: {n} automatic contacts generated.', { name: unit.name, n: result.points.length });
       }, (error: unknown) => {
         placing.current.delete(unit.id);
-        setPendingCount(placing.current.size);
         if (isAbort(error)) setStatus('Support placement cancelled; existing supports kept.');
         else setStatusMessage(errorStatus('place', codedJobError(error), { name: unit.name }));
       });
     }
-    setPendingCount(placing.current.size);
     setStatus('Analysing overhangs for 1 object.', { n: units.length }, 'Analysing overhangs for {n} objects.');
   }, [analysis, dispatch, setStatus, targets, unitName]);
 
@@ -745,8 +743,31 @@ export default function App() {
     }
   };
 
-  // ---- Keyboard ------------------------------------------------------------------------
-  // The rules live in editing/keys; this only maps an action to the app's handlers.
+  // ---- Commands and keyboard -----------------------------------------------------------
+  // Buttons and keys run registry commands (editing/commands); the key rules live in editing/keys.
+  // The aliases (Done, the viewport Edit supports) run the command the registry says they run.
+  const runCommand = useCallback((id: CommandId) => {
+    switch (id) {
+      case 'history.undo': return void undo();
+      case 'history.redo': return dispatchHistory({ type: 'redo' });
+      case 'view.models': return setModelVisible((visible) => !visible);
+      case 'view.wireframe': return setWireframe((value) => !value);
+      case 'objects.delete': return deleteUnits();
+      case 'transform.select': return setGizmoMode('none');
+      case 'transform.move': return setGizmoMode('translate');
+      case 'transform.rotate': return setGizmoMode('rotate');
+      case 'supports.generate': return generate();
+      case 'mode.edit':
+      case 'vp.editToggle': return send({ type: 'enterEdit' });
+      case 'mode.zones': return send({ type: 'enterZones' });
+      case 'mode.exit':
+      case 'edit.done':
+      case 'zones.done': return send({ type: 'exit' });
+      case 'edit.clearSelection': return clearSelection();
+      case 'edit.deleteSelection': return deleteSelected();
+    }
+  }, [clearSelection, deleteSelected, deleteUnits, generate, send, undo]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const action = keyAction({
@@ -758,20 +779,11 @@ export default function App() {
         hasSelection: selection.size > 0,
       });
       if (action.preventDefault) event.preventDefault();
-      switch (action.type) {
-        case 'undo': return undo();
-        case 'redo': return dispatchHistory({ type: 'redo' });
-                case 'leaveMode': return send({ type: 'exit' });
-        case 'deleteSelection': return deleteSelected();
-        case 'clearSelection': return clearSelection();
-        case 'deleteObjects': return deleteUnits();
-        case 'gizmo': return setGizmoMode(action.mode);
-        case 'none': return;
-      }
+      if (action.command) runCommand(action.command);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [clearSelection, deleteSelected, deleteUnits, editMode, selection, send, undo]);
+  }, [editMode, runCommand, selection]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -789,8 +801,12 @@ export default function App() {
   // Once every unit in scope has supports, the one generate action becomes Regenerate.
   const scopeUnits = targets(scene);
   const scopeGenerated = scopeUnits.length > 0 && scopeUnits.every((unit) => unit.supports);
-  /** The one generate action, in the header and the left panel (Regenerate in blue). */
-  const generateButton = (label: string) => <button className={scopeGenerated ? 'primary regen' : 'primary'} onClick={() => generate()} disabled={scene.units.length === 0} {...hint('Place automatic supports on the selected objects, or on every object when none is selected')}>{label}</button>;
+  // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
+  const ui: UiState = {
+    mode: editMode, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount,
+    selection: selection.size, canUndo, canRedo: history.future.length > 0, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
+  };
+  const command = (id: CommandId) => resolve(id, ui);
 
   return <main>
     <header>
@@ -798,14 +814,13 @@ export default function App() {
       <div className="header-actions">
         <Segmented className="segmented lang" label={t('Language')} value={lang} onChange={chooseLanguage} options={LANGS.map((entry) => ({ value: entry.lang, label: entry.label, lang: entry.lang, title: entry.name }))} />
         <div className="toolbar-group">
-          <button onClick={undo} disabled={!canUndo} {...hint('Undo (Ctrl+Z)')}>{t('Undo')}</button>
-          <button onClick={() => dispatchHistory({ type: 'redo' })} disabled={history.future.length === 0} {...hint('Redo (Ctrl+Shift+Z)')}>{t('Redo')}</button>
+          <CommandButton command={command('history.undo')} run={runCommand} />
+          <CommandButton command={command('history.redo')} run={runCommand} />
         </div>
         <div className="toolbar-group">
-          <button onClick={() => setModelVisible((visible) => !visible)} {...hint(modelVisible ? 'Hide the models to see the supports alone. Export is not affected' : 'Show the models again')}>{modelVisible ? t('Hide models') : t('Show models')}</button>
-          <button onClick={() => setWireframe((value) => !value)} {...hint(wireframe ? 'Draw the models solid' : 'Draw the models as wireframes to see supports behind them')}>{wireframe ? t('Solid') : t('Wireframe')}</button>
+          <CommandButton command={command('view.models')} run={runCommand} />
+          <CommandButton command={command('view.wireframe')} run={runCommand} />
         </div>
-        {generateButton(pendingCount > 0 ? t('Generating supports') : t(scopeGenerated ? 'Regenerate supports for {scope}' : 'Generate supports for {scope}', { scope: scopeLabel }))}
       </div>
     </header>
     <section className="workspace">
@@ -821,20 +836,20 @@ export default function App() {
           building={building}
           onSelect={onSelect}
           onSelectAll={() => dispatch({ type: 'selection/set', unitIds: scene.units.map((unit) => unit.id), ...(scene.units[0] ? { activeUnitId: scene.activeUnitId ?? scene.units[0].id } : {}) })}
-          onDelete={deleteUnits}
+          deleteCommand={command('objects.delete')}
+          run={runCommand}
         />
         <section>
           <h3>{t('Transform')}</h3>
-          <Segmented value={gizmoMode} onChange={setGizmoMode} disabled={editMode !== 'off'} options={[
-            { value: 'none', label: t('Select'), hint: 'Select objects without a gizmo' },
-            { value: 'translate', label: t('Move'), hint: 'Move the active object with the gizmo (G)' },
-            { value: 'rotate', label: t('Rotate'), hint: 'Rotate the active object with the gizmo (R)' },
-          ]} />
+          <Segmented value={gizmoMode} onChange={setGizmoMode} disabled={!command('transform.move').enabled} options={([['none', 'transform.select'], ['translate', 'transform.move'], ['rotate', 'transform.rotate']] as const).map(([value, id]) => {
+            const { label, hint: text } = command(id);
+            return { value, label: t(label!), hint: text! };
+          })} />
         </section>
-        <ModeSections session={session} zones={activeUnit?.zones.length} send={send} onClearZones={clearActiveZones} />
+        <ModeSections ui={ui} run={runCommand} zones={activeUnit?.zones.length} heavy={heavyStatus(session)} onClearZones={clearActiveZones} />
         <section>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
-          {generateButton(t(scopeGenerated ? 'Regenerate' : 'Generate supports'))}
+          <CommandButton command={command('supports.generate')} run={runCommand} className={scopeGenerated ? 'primary regen' : 'primary'} />
           <button onClick={clearManual} disabled={scene.units.length === 0} {...hint('Remove manual supports and bring back removed automatic ones, at once. Undo brings the edits back')}>{t('Clear manual edits')}</button>
           <button onClick={removeSupports} disabled={scene.units.length === 0} {...hint('Remove the supports of the selected objects. Models and manual edits are kept')}>{t('Remove supports')}</button>
         </section>
@@ -889,11 +904,11 @@ export default function App() {
         </div>
         {press.kind === 'none' ? <>
           <div className="viewport-object-status">{activeUnit ? activeUnit.name : t('Nothing selected')}</div>
-          <ViewportEditToggle session={session} hasObject={Boolean(activeUnit)} send={send} />
+          <ViewportEditToggle ui={ui} run={runCommand} />
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
-          ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} send={send} onClear={clearActiveZones} />
-          : <EditBar gesture={press} unitName={activeUnit?.name} selected={selection.size} send={send} onDelete={deleteSelected} onClearSelection={clearSelection} />}
+          ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} ui={ui} send={send} run={runCommand} onClear={clearActiveZones} />
+          : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} send={send} run={runCommand} />}
       </section>
       <aside className="panel right">
         <h2>{t('Support settings')}{activeUnit ? <small>{activeUnit.name}{selectedCount > 1 ? ` ${t('and {n} more', { n: selectedCount - 1 })}` : ''}</small> : null}</h2>

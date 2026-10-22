@@ -1,14 +1,16 @@
 import { labelForIndex } from '../core/analysis/mesh';
+import type { CommandId, ResolvedCommand } from '../editing/commands';
 import { plural, t } from '../i18n';
 import type { PrintScene, PrintUnit } from '../state/project';
 import { resolveSettings } from '../supports/unitSupports';
+import { CommandButton } from './CommandButton';
 import { hint } from './hint';
 
 /**
  * The left panel's objects: one compact row each (raft label, name, support count), selection by
  * click, Shift+click or Ctrl+click, and Select all and Delete under the list.
  */
-export function ObjectList({ scene, supportCount, building, onSelect, onSelectAll, onDelete }: {
+export function ObjectList({ scene, supportCount, building, onSelect, onSelectAll, deleteCommand, run }: {
   scene: PrintScene;
   /** The unit's supports as its latest build left them. */
   supportCount: (unit: PrintUnit) => number;
@@ -16,7 +18,9 @@ export function ObjectList({ scene, supportCount, building, onSelect, onSelectAl
   building: (unit: PrintUnit) => boolean;
   onSelect: (unitId: string, additive: boolean) => void;
   onSelectAll: () => void;
-  onDelete: () => void;
+  /** The registry's objects.delete row. */
+  deleteCommand: ResolvedCommand;
+  run: (id: CommandId) => void;
 }) {
   const { units } = scene;
   return <section>
@@ -36,7 +40,7 @@ export function ObjectList({ scene, supportCount, building, onSelect, onSelectAl
     </ul>}
     <div className="row">
       <button onClick={onSelectAll} disabled={units.length === 0} {...hint('Select every object')}>{t('Select all')}</button>
-      <button onClick={onDelete} disabled={scene.selectedUnitIds.length === 0} {...hint('Delete the selected objects (Delete key). Undo brings them back')}>{t('Delete')}</button>
+      <CommandButton command={deleteCommand} run={run} />
     </div>
   </section>;
 }
