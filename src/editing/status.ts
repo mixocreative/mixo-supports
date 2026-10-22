@@ -74,6 +74,11 @@ export function busyStatus(mode: Exclude<EditMode, 'off'>): StatusMessage {
   return { key: mode === 'zones' ? 'Finish painting zones first: press Esc or Done.' : 'Finish editing supports first: press Esc or Done.' };
 }
 
+/** A file dropped or chosen while a mode is on: refused with the busy line, the mode stays; undefined outside the modes. */
+export function importRefusal(mode: EditMode): StatusMessage | undefined {
+  return mode === 'off' ? undefined : busyStatus(mode);
+}
+
 /**
  * The status line after an import added `added` objects: a heavy or large model, or a plate over the
  * triangle budget, says once what the editor does differently; else how many came in.

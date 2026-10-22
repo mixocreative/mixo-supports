@@ -48,7 +48,7 @@ import { resolve, type CommandId, type UiState } from './editing/commands';
 import { keyAction } from './editing/keys';
 import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
-import { busyStatus, heavyStatus, importStatus, missStatus, sessionStatus } from './editing/status';
+import { busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
 import { checkStatus, exportStatus, joinRun, runToken, tallyChecks, type CheckTally } from './editing/check';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
@@ -440,6 +440,9 @@ export default function App() {
 
   // ---- Import --------------------------------------------------------------------------
   const importFiles = useCallback(async (files: readonly File[]) => {
+    // A mode owns the scene until it is finished: a dropped or chosen file waits.
+    const refusal = importRefusal(sessionRef.current.mode);
+    if (refusal) return setStatusMessage(refusal);
     const accepted = files.filter(acceptModelFile);
     if (accepted.length === 0) return setStatusMessage(errorStatus('import', new CodedError('file-type', 'file-type')));
     /** The file being read, named in an error. */
@@ -492,7 +495,7 @@ export default function App() {
         units = [...units, ...placed];
         added.push(...placed);
       }
-      // Only an import that adds something ends Support Edit Mode or zones; a refused one leaves them.
+      // A mode that began while the files were read still ends here, so the new objects are never edited under it.
       send({ type: 'leave' });
       dispatch({ type: 'batch', commands: [
         // Handed over: the worker's fresh arrays, also the keys of their display copy and pick index.
@@ -862,7 +865,7 @@ export default function App() {
       </aside>
       <section
         className={`viewport${isDraggingOver ? ' viewport--dropping' : ''}${VIEWPORT_CLASS[press.kind]}`}
-        onDragOver={(event) => { event.preventDefault(); setIsDraggingOver(true); }}
+        onDragOver={(event) => { event.preventDefault(); setIsDraggingOver(sessionRef.current.mode === 'off'); }}
         onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDraggingOver(false); }}
         onDrop={dropImport}
       >

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { initialSession, reduceSession, type EditSession, type SessionEvent } from './session';
-import { busyStatus, editStatus, importStatus, missStatus, sessionStatus } from './status';
+import { busyStatus, editStatus, importRefusal, importStatus, missStatus, sessionStatus } from './status';
 
 const ADD = 'Support Edit Mode: click the model to add, right-click a support to remove.';
 const CLICK = 'Support Edit Mode: click supports to select them, right-click a support to remove.';
@@ -152,5 +152,13 @@ describe('importStatus', () => {
     expect(importStatus({ name: 'knot', triangles: 32_000 }, 32_000, 3, 'web')).toEqual({
       key: 'Imported 1 object. Generate to place supports.', vars: { n: 3 }, other: 'Imported {n} objects. Generate to place supports.',
     });
+  });
+});
+
+describe('importRefusal', () => {
+  it('refuses a file in either mode with the busy line of that mode, and lets it in outside them', () => {
+    expect(importRefusal('edit')).toEqual(busyStatus('edit'));
+    expect(importRefusal('zones')).toEqual({ key: 'Finish painting zones first: press Esc or Done.' });
+    expect(importRefusal('off')).toBeUndefined();
   });
 });
