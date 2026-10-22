@@ -124,11 +124,59 @@ export function contactsHiddenByMarkers(auto: readonly SupportPoint[], markers: 
  * placement samples that spot again. Both sides are unit-local, so the match is exact afterwards.
  */
 export function remapDeleted(deleted: readonly string[], points: readonly SupportPoint[], matchRadius: number): string[] {
+  const match = matchIds(deleted, points, matchRadius);
+  return [...new Set(deleted.map((id) => match.get(id) ?? id))];
+}
+
+/** What a fresh placement made of a unit's hand work, with the counts the Regenerate report gives. */
+export interface RekeyedHandWork<T> {
+  /** The removals re-keyed as `remapDeleted` does. */
+  deleted: string[];
+  /** Per-support settings under the id of the support they now belong to; manual supports keep theirs. */
+  overrides: Record<string, T>;
+  /** Removals that name a new contact, and removals no new contact matches. */
+  removals: { kept: number; reset: number };
+  /** Per-support settings kept, and those dropped because no new contact matches their id. */
+  customised: { kept: number; reset: number };
+}
+
+/**
+ * Follows a fresh placement with the unit's removals and per-support settings in one match, so a
+ * new contact is claimed by one of them at most. Settings of a manual support stay as they are; an
+ * automatic one's follow the match like a removal, and when nothing matches they are dropped (and
+ * counted) rather than kept for an id that names no support.
+ */
+export function rekeyHandWork<T>(deleted: readonly string[], overrides: Readonly<Record<string, T>>, manualIds: ReadonlySet<string>, points: readonly SupportPoint[], matchRadius: number): RekeyedHandWork<T> {
+  const automatic = Object.keys(overrides).filter((id) => !manualIds.has(id));
+  const match = matchIds([...deleted, ...automatic], points, matchRadius);
+  const out: Record<string, T> = {};
+  for (const [id, value] of Object.entries(overrides)) {
+    const target = manualIds.has(id) ? id : match.get(id);
+    if (target !== undefined) out[target] = value;
+  }
+  const removals = new Set(deleted);
+  const removalsKept = new Set([...removals].flatMap((id) => match.get(id) ?? [])).size;
+  const customisedKept = Object.keys(out).length;
+  return {
+    deleted: [...new Set(deleted.map((id) => match.get(id) ?? id))],
+    overrides: out,
+    removals: { kept: removalsKept, reset: removals.size - removalsKept },
+    customised: { kept: customisedKept, reset: Object.keys(overrides).length - customisedKept },
+  };
+}
+
+/**
+ * The new contact each stored ID names after a fresh placement: itself when a new contact has it,
+ * else the nearest new contact within `matchRadius` of its encoded spot that no earlier ID (or
+ * exact match) claimed. IDs with no match are absent.
+ */
+function matchIds(stored: readonly string[], points: readonly SupportPoint[], matchRadius: number): Map<string, string> {
   const ids = new Set(points.map((point) => point.id));
-  const claimed = new Set(deleted.filter((id) => ids.has(id)));
-  const out = new Set<string>();
-  for (const id of deleted) {
-    if (claimed.has(id)) { out.add(id); continue; }
+  const claimed = new Set(stored.filter((id) => ids.has(id)));
+  const match = new Map<string, string>();
+  for (const id of stored) {
+    if (match.has(id)) continue;
+    if (claimed.has(id)) { match.set(id, id); continue; }
     const target = positionFromId(id);
     let nearest: SupportPoint | undefined;
     let nearestDistance = matchRadius;
@@ -139,10 +187,12 @@ export function remapDeleted(deleted: readonly string[], points: readonly Suppor
         if (d < nearestDistance) { nearest = point; nearestDistance = d; }
       }
     }
-    if (nearest) claimed.add(nearest.id);
-    out.add(nearest ? nearest.id : id);
+    if (nearest) {
+      claimed.add(nearest.id);
+      match.set(id, nearest.id);
+    }
   }
-  return [...out];
+  return match;
 }
 
 /** Gives every automatic contact the ID its stored position encodes; `ids` maps each changed old ID to its new one. */

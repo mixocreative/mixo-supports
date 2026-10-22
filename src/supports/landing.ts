@@ -3,7 +3,7 @@ import type { JobTransform } from '../core/jobs';
 import type { LiveSupportSettings } from '../core/supports/settings';
 import { regenReport, type RegenReport } from '../editing/regenerate';
 import type { PrintUnit, SceneCommand } from '../state/project';
-import { placedPoints, placementCommands, placementSignature } from './unitSupports';
+import { placementCommands, placementSignature } from './unitSupports';
 
 /** A finished placement job: the unit's orientation and settings it ran with, and what it found. */
 export interface FinishedPlacement {
@@ -33,16 +33,16 @@ export function landPlacements(units: readonly PrintUnit[], finished: readonly F
     const now = units.find((unit) => unit.id === unitId);
     if (!now) continue;
     const matchRadius = settings.scatterSpacing / 2;
-    const unitCommands = placementCommands(now, orientation, result, settings.liftHeight, matchRadius, placementSignature(settings));
-    if (!unitCommands) {
+    const applied = placementCommands(now, orientation, result, settings.liftHeight, matchRadius, placementSignature(settings));
+    if (!applied) {
       again.push(now);
       continue;
     }
-    commands.push(...unitCommands);
+    commands.push(...applied.commands);
     landed.push({
       name: now.name,
       placed: result.points.length,
-      ...(now.supports ? { report: regenReport(now.manual.length, now.deleted, placedPoints(orientation, result), matchRadius) } : {}),
+      ...(now.supports ? { report: regenReport(now.manual.length, applied.handWork) } : {}),
     });
   }
   return { commands, landed, again };

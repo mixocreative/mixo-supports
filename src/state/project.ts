@@ -70,7 +70,8 @@ export type SceneCommand =
   | { type: 'manual/add'; unitId: string; point: SupportPoint }
   | { type: 'manual/remove'; unitId: string; pointId: string }
   | { type: 'deletion/add'; unitId: string; pointIds: string[] }
-  | { type: 'deletion/set'; unitId: string; pointIds: string[] }
+  /** A fresh placement's re-keyed hand work (see `rekeyHandWork`): removals and per-support settings together. */
+  | { type: 'handWork/set'; unitId: string; deleted: string[]; contactSettings: ContactSettings }
   | { type: 'zones/add'; unitId: string; stamps: ZoneStamp[] }
   | { type: 'zones/clear'; unitId: string }
   /** Gives each named support the patch's keys on top of its own (one history step for all of them). */
@@ -128,8 +129,8 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
         deleted: [...unit.deleted, ...new Set(command.pointIds.filter((id) => !unit.deleted.includes(id)))],
         contactSettings: withoutEntries(unit.contactSettings, command.pointIds),
       }));
-    case 'deletion/set':
-      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, deleted: [...new Set(command.pointIds)] }));
+    case 'handWork/set':
+      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, deleted: [...new Set(command.deleted)], contactSettings: normalizeContactSettings(command.contactSettings) }));
     case 'zones/add':
       if (command.stamps.length === 0) return scene;
       return updateUnit(scene, command.unitId, (unit) => ({ ...unit, zones: [...unit.zones, ...(cloneJsonValue(command.stamps) as unknown as ZoneStamp[])] }));

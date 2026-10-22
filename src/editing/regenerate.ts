@@ -1,5 +1,4 @@
-import { remapDeleted } from '../core/analysis/placement';
-import type { SupportPoint } from '../core/analysis/types';
+import type { RekeyedHandWork } from '../core/analysis/placement';
 import type { StatusMessage } from './types';
 
 /**
@@ -14,14 +13,15 @@ export interface RegenReport {
   removed: number;
   /** Removals no new support matches: reset, they hide nothing. */
   reset: number;
+  /** Supports with their own settings, kept. */
+  customisedKept: number;
+  /** Per-support settings whose support is gone: reset, dropped. */
+  customisedReset: number;
 }
 
-/** The report for one placement landing on an object: `deleted` are its removals before, `points` the contacts just placed. */
-export function regenReport(manual: number, deleted: readonly string[], points: readonly SupportPoint[], matchRadius: number): RegenReport {
-  const ids = new Set(points.map((point) => point.id));
-  // A removal is matched when its id names a new contact, or was re-keyed onto the nearest new one.
-  const matched = remapDeleted(deleted, points, matchRadius).filter((id) => ids.has(id)).length;
-  return { added: manual, removed: matched, reset: Math.max(0, new Set(deleted).size - matched) };
+/** The report for one placement landing on an object with `manual` added supports, from what the placement made of its hand work. */
+export function regenReport(manual: number, handWork: Pick<RekeyedHandWork<unknown>, 'removals' | 'customised'>): RegenReport {
+  return { added: manual, removed: handWork.removals.kept, reset: handWork.removals.reset, customisedKept: handWork.customised.kept, customisedReset: handWork.customised.reset };
 }
 
 /** Hand work worth a report: nothing is said when there was none to keep or reset. */
@@ -40,15 +40,21 @@ export function landedStatus(landed: readonly { name: string; placed: number; re
   if (landed.length === 1 && only) return only.report ? regeneratedStatus(only.name, only.placed, only.report) : { key: '{name}: {n} automatic contacts generated.', vars: { name: only.name, n: only.placed } };
   const reports = landed.flatMap((entry) => (entry.report ? [entry.report] : []));
   if (reports.length < landed.length) return { key: 'Generated supports for {n} objects.', vars: { n: landed.length } };
-  const total = reports.reduce((sum, report) => ({ added: sum.added + report.added, removed: sum.removed + report.removed, reset: sum.reset + report.reset }), { added: 0, removed: 0, reset: 0 });
+  const total = reports.reduce((sum, report): RegenReport => ({
+    added: sum.added + report.added,
+    removed: sum.removed + report.removed,
+    reset: sum.reset + report.reset,
+    customisedKept: sum.customisedKept + report.customisedKept,
+    customisedReset: sum.customisedReset + report.customisedReset,
+  }), { added: 0, removed: 0, reset: 0, customisedKept: 0, customisedReset: 0 });
   if (!hasHandWork(total)) return { key: 'Regenerated {n} objects.', vars: { n: landed.length } };
-  return { key: 'Regenerated {n} objects. Hand edits kept: {added} added, {removed} removed. Removals reset: {reset}.', vars: { n: landed.length, ...total } };
+  return { key: 'Regenerated {n} objects. Hand edits kept: {added} added, {removed} removed. Removals reset: {reset}.', vars: { n: landed.length, added: total.added, removed: total.removed, reset: total.reset } };
 }
 
 /** The status line (and the Undo toast) after a regeneration landed on an object. */
 export function regeneratedStatus(name: string, placed: number, report: RegenReport): StatusMessage {
   if (!hasHandWork(report)) return { key: '{name}: {n} automatic contacts generated.', vars: { name, n: placed } };
-  return { key: 'Regenerated {name}: {n} supports placed. Hand edits kept: {added} added, {removed} removed. Removals reset: {reset}.', vars: { name, n: placed, ...report } };
+  return { key: 'Regenerated {name}: {n} supports placed. Hand edits kept: {added} added, {removed} removed. Removals reset: {reset}.', vars: { name, n: placed, added: report.added, removed: report.removed, reset: report.reset } };
 }
 
 /** Settings edits come in bursts (typing a value): a placement change regenerates once it has been quiet this long. */

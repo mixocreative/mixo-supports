@@ -1,10 +1,10 @@
 import { labelForIndex } from '../core/analysis/mesh';
 import type { PlacementResult, ProgressCallback, SupportPoint } from '../core/analysis/types';
-import { hidingRemovals, positionId, remapDeleted } from '../core/analysis/placement';
+import { hidingRemovals, positionId, rekeyHandWork, type RekeyedHandWork } from '../core/analysis/placement';
 import { jobContacts, type CheckJob, type ContactInputs, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
 import type { GeneratedSupportMesh, SupportContact } from '../core/supports/mesh';
 import { defaultSupportSettings, toPlacementSettings, type LiveSupportSettings, type SettingKey } from '../core/supports/settings';
-import type { JSONObject, PrintUnit, SceneCommand, SupportSettings } from '../state/project';
+import type { ContactSettings, JSONObject, PrintUnit, SceneCommand, SupportSettings } from '../state/project';
 import { inverseTransformDirection, inverseTransformPoint, type ModelTransform } from '../state/transform';
 import { placementMatrix } from '../core/transform';
 import { runSupportJob } from './jobRunner';
@@ -215,17 +215,18 @@ export function placedPoints(orientation: JobTransform, result: Pick<PlacementRe
  * The commands that apply a finished placement to the unit as it is now (placement can take
  * tens of seconds on a big model, and the gizmo stays live meanwhile). A move made in the
  * meantime is kept: only the height changes, so the lowest point sits `liftHeight` above the
- * plate. `placed`: the placement settings it ran with (see `placementPending`). Undefined when
- * the unit was rotated since `orientation` was analysed: its contacts face the old way, so the
+ * plate. `placed`: the placement settings it ran with (see `placementPending`). The unit's removals
+ * and per-support settings follow the new contacts (`handWork` says what became of them). Undefined
+ * when the unit was rotated since `orientation` was analysed: its contacts face the old way, so the
  * caller places again rather than undo the rotation.
  */
-export function placementCommands(unit: PrintUnit, orientation: JobTransform, result: Pick<PlacementResult, 'points' | 'regions'>, liftHeight: number, matchRadius: number, placed?: JSONObject): SceneCommand[] | undefined {
+export function placementCommands(unit: PrintUnit, orientation: JobTransform, result: Pick<PlacementResult, 'points' | 'regions'>, liftHeight: number, matchRadius: number, placed?: JSONObject): { commands: SceneCommand[]; handWork: RekeyedHandWork<ContactSettings[string]> } | undefined {
   if (unit.transform.rotation.some((angle, axis) => angle !== orientation.rotation[axis])) return undefined;
   const [x, y, z] = unit.transform.position;
   const transform: ModelTransform = { position: [x, y + liftHeight - unitLowestY(unit), z], rotation: [...unit.transform.rotation] };
   const points = placedPoints(orientation, result);
-  const deleted = remapDeleted(unit.deleted, points, matchRadius);
-  return [
+  const handWork = rekeyHandWork(unit.deleted, unit.contactSettings, new Set(unit.manual.map((point) => point.id)), points, matchRadius);
+  const commands: SceneCommand[] = [
     { type: 'transform/set', unitId: unit.id, transform },
     {
       type: 'supports/set',
@@ -238,6 +239,7 @@ export function placementCommands(unit: PrintUnit, orientation: JobTransform, re
       },
       supports: { kind: 'live', data: { transform: { position: [...transform.position], rotation: [...transform.rotation] }, ...(placed ? { placed } : {}) } },
     },
-    { type: 'deletion/set', unitId: unit.id, pointIds: deleted },
+    { type: 'handWork/set', unitId: unit.id, deleted: handWork.deleted, contactSettings: handWork.overrides },
   ];
+  return { commands, handWork };
 }

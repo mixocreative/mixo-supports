@@ -35,7 +35,7 @@ describe('i18n', () => {
     }
     [...Object.values(PRESET_HINTS), ...Object.values(ROOF_HINTS)].forEach((text) => keys.add(text));
     for (const context of ERROR_CONTEXTS) for (const code of ERROR_CODES) keys.add(errorStatus(context, new CodedError(code, 'x')).key);
-    for (const action of [{ kind: 'clearZones', hidden: 0 }, { kind: 'clearZones', hidden: 2 }, { kind: 'clearManual' }, { kind: 'clearSelection', ids: ['a'], unitId: 'u' }, { kind: 'regenerate', message: regeneratedStatus('x', 1, { added: 1, removed: 1, reset: 1 }) }] as const) {
+    for (const action of [{ kind: 'clearZones', hidden: 0 }, { kind: 'clearZones', hidden: 2 }, { kind: 'clearManual' }, { kind: 'clearSelection', ids: ['a'], unitId: 'u' }, { kind: 'regenerate', message: regeneratedStatus('x', 1, { added: 1, removed: 1, reset: 1, customisedKept: 0, customisedReset: 0 }) }] as const) {
       const { message } = undoToast(1, action);
       keys.add(message.key);
       if (message.other) keys.add(message.other);

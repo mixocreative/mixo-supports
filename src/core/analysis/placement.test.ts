@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { composeContacts, contactsHiddenByMarkers, generatePlacement, hidingRemovals, remapDeleted } from './placement';
+import { composeContacts, contactsHiddenByMarkers, generatePlacement, hidingRemovals, rekeyHandWork, remapDeleted } from './placement';
 import type { PlacementSettings, TriangleMesh } from './types';
 import { GOLDEN_FIXTURES } from '../../goldens/fixtures';
 
@@ -184,6 +184,21 @@ describe('exact deletions', () => {
     const moved = [point(0.3), point(0.6)];
     expect(remapDeleted(['auto-0_100_0', 'auto-10_100_0'], moved, 1)).toEqual(['auto-30_100_0', 'auto-60_100_0']);
     expect(remapDeleted(['auto-0_100_0', 'auto-10_100_0'], [point(0.3), point(3)], 1)).toEqual(['auto-30_100_0', 'auto-10_100_0']);
+  });
+
+  it('per-support settings follow their support to its new id, drop when none is in range, and stay on manual supports', () => {
+    const moved = [point(0.3), point(3)];
+    const overrides = { 'auto-0_100_0': { neckLength: 4 }, 'auto-200_100_0': { neckLength: 5 }, 'auto-300_100_0': { neckLength: 6 }, 'manual-a': { neckLength: 7 } };
+    const rekeyed = rekeyHandWork([], overrides, new Set(['manual-a']), moved, 1);
+    expect(rekeyed.overrides).toEqual({ 'auto-30_100_0': { neckLength: 4 }, 'auto-300_100_0': { neckLength: 6 }, 'manual-a': { neckLength: 7 } });
+    expect(rekeyed.customised).toEqual({ kept: 3, reset: 1 });
+  });
+
+  it('a removal and per-support settings never claim the same new contact', () => {
+    const rekeyed = rekeyHandWork(['auto-0_100_0'], { 'auto-10_100_0': { neckLength: 4 } }, new Set(), [point(0.3), point(0.6)], 1);
+    expect(rekeyed.deleted).toEqual(['auto-30_100_0']);
+    expect(rekeyed.overrides).toEqual({ 'auto-60_100_0': { neckLength: 4 } });
+    expect(rekeyed.removals).toEqual({ kept: 1, reset: 0 });
   });
 });
 

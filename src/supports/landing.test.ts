@@ -51,7 +51,7 @@ describe('landPlacements (objects regenerated together land as one step)', () =>
 });
 
 describe('landedStatus', () => {
-  const report = { added: 1, removed: 2, reset: 0 };
+  const report = { added: 1, removed: 2, reset: 0, customisedKept: 0, customisedReset: 0 };
 
   it('reads as the single-object line for one object', () => {
     expect(landedStatus([{ name: 'A', placed: 4 }])).toEqual({ key: '{name}: {n} automatic contacts generated.', vars: { name: 'A', n: 4 } });
@@ -59,7 +59,7 @@ describe('landedStatus', () => {
 
   it('sums the hand work of several regenerated objects into one line', () => {
     expect(landedStatus([{ name: 'A', placed: 4, report }, { name: 'B', placed: 2, report }]).vars).toEqual({ n: 2, added: 2, removed: 4, reset: 0 });
-    expect(landedStatus([{ name: 'A', placed: 4, report: { added: 0, removed: 0, reset: 0 } }, { name: 'B', placed: 2, report: { added: 0, removed: 0, reset: 0 } }])).toEqual({ key: 'Regenerated {n} objects.', vars: { n: 2 } });
+    expect(landedStatus([{ name: 'A', placed: 4, report: { added: 0, removed: 0, reset: 0, customisedKept: 0, customisedReset: 0 } }, { name: 'B', placed: 2, report: { added: 0, removed: 0, reset: 0, customisedKept: 0, customisedReset: 0 } }])).toEqual({ key: 'Regenerated {n} objects.', vars: { n: 2 } });
     expect(landedStatus([{ name: 'A', placed: 4 }, { name: 'B', placed: 2, report }])).toEqual({ key: 'Generated supports for {n} objects.', vars: { n: 2 } });
   });
 });
