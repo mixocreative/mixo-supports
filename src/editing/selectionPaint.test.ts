@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contactVertexRuns, frameBudget, selectionDelta } from './selectionPaint';
+import { contactVertexRuns, selectionDelta } from './selectionPaint';
 
 describe('selectionDelta', () => {
   it('lists only what turned on and what turned off', () => {
@@ -22,16 +22,5 @@ describe('contactVertexRuns', () => {
     expect(runs.get('a')).toEqual([[0, 8]]);
     expect(runs.get('b')).toEqual([[11, 14]]);
     expect(runs.size).toBe(2);
-  });
-});
-
-describe('frameBudget', () => {
-  it('is 8 ms when rendering fills a 60 Hz frame, more when rendering is cheap or frames are long anyway, capped', () => {
-    expect(frameBudget(8.7)).toBe(8);
-    expect(frameBudget(2)).toBeCloseTo(1000 / 60 - 2, 9);
-    // Software rendering at ~320 ms a frame: a quarter of it more for hit tests hardly changes the frame rate.
-    expect(frameBudget(320)).toBe(80);
-    expect(frameBudget(2000)).toBe(100);
-    expect(frameBudget(Number.NaN)).toBe(8);
   });
 });

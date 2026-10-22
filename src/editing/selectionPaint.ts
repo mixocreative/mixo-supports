@@ -41,20 +41,3 @@ export function contactVertexRuns(mesh: { indices: Uint32Array; components: read
   }
   return runs;
 }
-
-/** Fewest ms of hit tests per frame. */
-const MIN_BUDGET = 8;
-/** Most ms of hit tests per frame. */
-const MAX_BUDGET = 100;
-/** A 60 Hz frame (ms). */
-const FRAME_MS = 1000 / 60;
-
-/**
- * Hit-test time for the next frame, given what rendering a frame costs now (ms): what is left of a
- * 60 Hz frame when rendering is cheap, and a quarter of the render time when frames are long
- * anyway (software GL), so the queue keeps up without changing the frame rate much; 8 to 100 ms.
- */
-export function frameBudget(renderMs: number): number {
-  if (!Number.isFinite(renderMs) || renderMs < 0) return MIN_BUDGET;
-  return Math.min(MAX_BUDGET, Math.max(MIN_BUDGET, FRAME_MS - renderMs, renderMs / 4));
-}

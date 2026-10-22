@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Vector } from '../core/vec3';
+import { createBrushScheduler, type Brush, type FrameTest } from './brushScheduler';
 import { brushHitsFrom, cachedVisibility, projectBodies, type BodySegments } from './screenBrush';
-import { frameBudget } from './selectionPaint';
 import { createStroke } from './stroke';
-import { createStrokeQueue } from './strokeQueue';
 import type { BrushMode } from './types';
 
 /**
@@ -38,138 +37,93 @@ function row(entries: Record<string, number>): BodySegments {
 const PILLARS = Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`s${index}`, -27.5 + index * 5]));
 
 /**
- * The viewport's side of Drag over, scripted: what the canvas and React would do around the
- * pure modules. `log` records every selection commit and every hover preview change, per frame.
+ * The viewport's side of Drag over, scripted: what useScreenBrush does around the scheduler. `log`
+ * records every selection commit and every hover preview change, per frame.
  */
 function rig(options: { bodies?: BodySegments; hidden?: (x: number) => boolean } = {}) {
   let clock = 0;
-  let brush: { radius: number; mode: BrushMode } | undefined = { radius: 6, mode: 'select' };
+  let brush: Brush | undefined = { radius: 6, mode: 'select' };
   let bodies: BodySegments | undefined = options.bodies ?? row(PILLARS);
-  const live = { get bodies() { return bodies; } };
   let selection: ReadonlySet<string> = new Set();
-  let committed = new Set<string>();
+  const committed = new Set<string>();
   let preview: readonly string[] = [];
   let frameNo = 0;
+  let pendingFrame: (() => void) | undefined;
   const log: string[] = [];
   const hidden = options.hidden ?? (() => false);
   const stroke = createStroke();
 
-  // The old useScreenBrush, line for line where it matters: the queue outlives the effect.
-  const queue = createStrokeQueue();
-  let effect: ReturnType<typeof startEffect> | undefined;
-  function startEffect(mesh: BodySegments) {
-    const bodies = mesh;
+  /** The host's hit test for one support mesh: its projection and its visibility cache. */
+  const viewOf = (mesh: BodySegments): FrameTest => {
+    const projected = projectBodies(mesh, FRONT, SIZE, SIZE);
     const visibility = cachedVisibility((point: Vector) => {
       clock += RAY_MS;
       return !hidden(point[0]);
     });
-    let projected: Float32Array | undefined;
-    let shown: readonly string[] = [];
-    const show = (ids: readonly string[]) => {
-      if (ids.length === shown.length && ids.every((id, index) => id === shown[index])) return;
-      shown = ids;
+    return (job, want, stop) => brushHitsFrom(job.next, mesh, projected, job.from, job.to, job.radius, visibility.isVisible, want, stop);
+  };
+  let view: FrameTest | undefined;
+  const scheduler = createBrushScheduler({
+    brush: () => brush,
+    frame: () => view,
+    isSelected: (id) => selection.has(id),
+    commit: (ids, mode) => {
+      log.push(`f${frameNo} ${mode} [${ids.join(' ')}]`);
+      for (const id of ids) {
+        if (mode === 'select') committed.add(id);
+        else committed.delete(id);
+      }
+    },
+    preview: (ids) => {
       preview = ids;
       log.push(`f${frameNo} preview [${ids.join(' ')}]`);
-    };
-    if (bodies.ids.length === 0) queue.clear();
-    else queue.rebase();
-    let hover: { at: Point; next: number; found: string[] } | undefined;
-    let frame = false;
-    let lastEnd = 0;
-    let renderMs = 8;
-    const flush = () => {
-      frame = false;
-      if (!brush || (!queue.pending && !hover)) return;
-      const started = clock;
-      if (lastEnd > 0 && started - lastEnd < 1000) renderMs = renderMs * 0.7 + (started - lastEnd) * 0.3;
-      const budget = frameBudget(renderMs);
-      const stop = () => clock - started > budget;
-      projected ??= projectBodies(bodies, FRONT, SIZE, SIZE);
-      if (queue.pending) {
-        queue.drain(
-          bodies.ids.length,
-          (step, want) => brushHitsFrom(step.next, bodies, projected!, step.from, step.to, step.radius, visibility.isVisible, want, stop),
-          (ids, mode) => {
-            log.push(`f${frameNo} ${mode} [${ids.join(' ')}]`);
-            for (const id of ids) {
-              if (mode === 'select') committed.add(id);
-              else committed.delete(id);
-            }
-          },
-          (id) => selection.has(id),
-        );
-      } else if (hover) {
-        const adding = brush.mode === 'select';
-        const part = brushHitsFrom(hover.next, bodies, projected, undefined, hover.at, brush.radius, visibility.isVisible, (id) => selection.has(id) !== adding, stop);
-        hover.found.push(...part.hits);
-        hover.next = part.next;
-        show([...hover.found]);
-        if (part.next >= bodies.ids.length) hover = undefined;
-      }
-      lastEnd = clock;
-      if (queue.pending || hover) schedule();
-    };
-    const schedule = () => {
-      frame = true;
-    };
-    const hide = () => {
-      hover = undefined;
-      show([]);
-    };
-    const handle = (at: Point, buttons: number, onCanvas: boolean, pressed = false) => {
-      if (!brush) return;
-      if (!onCanvas && !stroke.active) return hide();
-      const state = pressed ? 'sample' : stroke.move((buttons & 1) !== 0);
-      if (state === 'sample') queue.push(at, brush.mode, brush.radius);
-      else if (state === 'idle') hover = { at, next: 0, found: [] };
-      schedule();
-    };
-    if (queue.pending) schedule();
-    return {
-      move: (at: Point, buttons: number, onCanvas: boolean) => handle(at, buttons, onCanvas),
-      down: (at: Point) => {
-        if (!brush || !stroke.begin(0)) return;
-        queue.begin();
-        hover = undefined;
-        show([]);
-        handle(at, 1, true, true);
-      },
-      leave: () => {
-        if (!stroke.active) hide();
-      },
-      frame: () => {
-        if (frame) flush();
-      },
-      pending: () => frame,
-      stop: () => {
-        if (!brush || !live.bodies) queue.clear();
-        preview = [];
-      },
-    };
-  }
-  /** The effect's dependencies changed (brush on/off, a new support mesh). */
-  const restart = () => {
-    effect?.stop();
-    effect = brush && bodies ? startEffect(bodies) : undefined;
+    },
+    now: () => clock,
+    requestFrame: (run) => {
+      pendingFrame = run;
+      return 1;
+    },
+    cancelFrame: () => {
+      pendingFrame = undefined;
+    },
+  });
+  /** The brush or the support mesh changed. */
+  const update = () => {
+    const mesh = brush ? bodies : undefined;
+    view = mesh && viewOf(mesh);
+    scheduler.setSupports(mesh?.ids.length);
   };
-  restart();
+  update();
 
   const frame = () => {
     frameNo++;
     clock += RENDER_MS;
-    effect?.frame();
+    const run = pendingFrame;
+    pendingFrame = undefined;
+    run?.();
     // React renders the committed selection before the next frame.
     selection = new Set(committed);
+  };
+  const move = (at: Point, held: boolean, onCanvas = true) => {
+    if (!view || !brush) return;
+    if (!onCanvas && !stroke.active) return scheduler.clearHover();
+    const state = stroke.move(held);
+    if (state === 'sample') scheduler.sample(at);
+    else if (state === 'idle') scheduler.hover(at);
   };
   return {
     log,
     get selection() { return [...selection].sort(); },
     get preview() { return preview; },
-    hover(at: Point) { effect?.move(at, 0, true); },
-    offCanvas(at: Point) { effect?.move(at, 0, false); },
-    leave() { effect?.leave(); },
-    press(at: Point) { effect?.down(at); },
-    drag(at: Point) { effect?.move(at, 1, true); },
+    hover(at: Point) { move(at, false); },
+    offCanvas(at: Point) { move(at, false, false); },
+    leave() { if (view && !stroke.active) scheduler.clearHover(); },
+    press(at: Point) {
+      if (!view || !brush || !stroke.begin(0)) return;
+      scheduler.press();
+      scheduler.sample(at);
+    },
+    drag(at: Point) { move(at, true); },
     release() { stroke.end(); },
     /** A straight drag in `moves` pointer steps, one frame after each. */
     stroke(from: Point, to: Point, moves: number) {
@@ -183,13 +137,13 @@ function rig(options: { bodies?: BodySegments; hidden?: (x: number) => boolean }
     },
     setMode(mode: BrushMode) { if (brush) brush = { ...brush, mode }; },
     setRadius(radius: number) { if (brush) brush = { ...brush, radius }; },
-    brushOff() { brush = undefined; restart(); },
-    brushOn() { brush = { radius: 6, mode: 'select' }; restart(); },
-    supports(next: BodySegments | undefined) { bodies = next; restart(); },
+    brushOff() { brush = undefined; update(); },
+    brushOn() { brush = { radius: 6, mode: 'select' }; update(); },
+    supports(next: BodySegments | undefined) { bodies = next; update(); },
     frame,
     /** Frames until no work is left (a carried-over queue or hover drains). */
     settle() {
-      for (let guard = 0; guard < 1000 && effect?.pending(); guard++) frame();
+      for (let guard = 0; guard < 1000 && pendingFrame; guard++) frame();
       frame();
     },
   };
