@@ -16,7 +16,8 @@ import { CirclePreview } from './components/viewport/CirclePreview';
 import type { GizmoMode, ViewRequest } from './components/viewport/types';
 import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
-import { RangeField } from './components/RangeField';
+import { EditBar } from './components/EditBar';
+import { ClearZonesButton, ZonesBar } from './components/ZonesBar';
 import { Segmented } from './components/Segmented';
 import { hint } from './components/hint';
 import { editModeButton, zonesButton } from './editing/modeButtons';
@@ -47,7 +48,6 @@ import { CodedError, errorStatus } from './editing/errors';
 import { checkStatus, exportStatus, joinRun, runToken, tallyChecks, type CheckTally } from './editing/check';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
-import { BrushIcon, PointerIcon } from './components/ToolIcons';
 import type { BrushMode } from './editing/types';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
@@ -84,13 +84,6 @@ const VIEWPORT_CLASS: Record<GestureKind, string> = {
   pick: ' viewport--editing viewport--pick',
   drag: ' viewport--editing',
 };
-/** What a click or drag does in Support Edit Mode, on its badge. */
-const EDIT_BADGE: Record<Exclude<GestureKind, 'none' | 'zones'>, string> = {
-  add: 'Click the model to add supports',
-  pick: 'Click supports to select',
-  drag: 'Drag over supports to select',
-};
-
 /** A support check finding, its position in the unit's local frame. */
 export interface UnitProblem extends SupportProblem {
   unitId: string;
@@ -143,7 +136,7 @@ export default function App() {
   // active object, never in history. `send` steps it and says what changed on the status line.
   const [session, setSession] = useState(initialSession);
   const sessionRef = useRef(session);
-  const { mode: editMode, tool: editTool, selectStyle, brushMode, brushRadius, selection, zoneKind, zoneRadius } = session;
+  const { mode: editMode, selection } = session;
   const press = gesture(session);
   /** The tool as it is now, for canvas clicks (the canvas renders a step behind the DOM). */
   const liveTool = useCallback(() => sessionRef.current, []);
@@ -568,8 +561,9 @@ export default function App() {
     dispatch({ type: 'zones/add', unitId, stamps });
     setStatus(stamps[stamps.length - 1]!.kind === 'paint' ? 'Zone painted: automatic supports inside are hidden.' : 'Zone erased.');
   }, [dispatch, setStatus]);
-  const clearZones = useCallback((unitId: string) => {
-    if (!sceneRef.current.units.find((unit) => unit.id === unitId)?.zones.length) return;
+  const clearActiveZones = useCallback(() => {
+    const unitId = sceneRef.current.activeUnitId;
+    if (!unitId || !sceneRef.current.units.find((unit) => unit.id === unitId)?.zones.length) return;
     dispatch({ type: 'zones/clear', unitId });
     setStatus('No-support zones cleared.');
     offerUndo({ kind: 'clearZones' });
@@ -872,7 +866,7 @@ export default function App() {
           <h3>{t('No-support zones')}{activeUnit && <small className="count">{activeUnit.zones.length ? t('Painted') : t('None')}</small>}</h3>
           {/* Stacked full width like Edit supports: the Exit label fits on one line in every language. */}
           <button aria-pressed={zonesModeButton.pressed} onClick={() => send(zonesModeButton.event)} disabled={zonesModeButton.disabled} {...hint(zonesModeButton.hint)}>{t(zonesModeButton.label)}</button>
-          <button className="danger" aria-label={t('Clear all zones')} onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear')}</button>
+          <ClearZonesButton compact disabled={!activeUnit?.zones.length} onClear={clearActiveZones} />
           <p className="help">{t('Paint where supports must not grow. Manual supports stay.')}</p>
         </section>
         <section>
@@ -941,76 +935,15 @@ export default function App() {
         <div className="undo-toast-region" role="status" aria-live="polite">
           {toast && <UndoToast key={toast.id} toast={toast} onUndo={undoToastAction} onClose={closeToast} />}
         </div>
-        {editMode === 'off' ? <>
+        {press.kind === 'none' ? <>
           <div className="viewport-object-status">{activeUnit ? activeUnit.name : t('Nothing selected')}</div>
           <button className="viewport-edit-toggle" onClick={() => send(editButton.event)} disabled={editButton.disabled} {...hint(heavy ? heavy.key : activeUnit ? 'Add or remove supports by clicking (Tab)' : 'Select an object first.', heavy?.vars)}>
             {t('Edit supports')}
           </button>
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
-        </> : editMode === 'zones' ? <>
-          <div className="edit-frame" aria-hidden="true" />
-          <div className="edit-badge" role="status">
-            {t('Painting no-support zones')}<span>{activeUnit?.name}</span>
-          </div>
-          <div className="edit-bar">
-            <div className="edit-row">
-              <Segmented label={t('Zone brush')} value={zoneKind} onChange={(kind) => send({ type: 'setZoneKind', kind })} options={[
-                { value: 'paint', label: t('Paint'), hint: 'Paint no-support zones on the model' },
-                { value: 'erase', label: t('Erase'), hint: 'Erase no-support zones from the model' },
-              ]} />
-              <RangeField layout="row" label="Brush size" unit="{n} mm" hint="Radius of the zone brush" min={0.5} max={10} step={0.5} value={zoneRadius} onChange={(radius) => send({ type: 'setZoneRadius', radius })} />
-              <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
-            </div>
-            {!tips.below && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
-            <div className="edit-row">
-              <button className="danger" onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear all zones')}</button>
-              <button className="primary edit-done" onClick={() => send({ type: 'closeZones' })} {...hint('Finish painting zones (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
-            </div>
-          </div>
-        </> : <>
-          <div className="edit-frame" aria-hidden="true" />
-          <div className="edit-badge" role="status">
-            {t('Support Edit Mode')}<span>{activeUnit?.name}</span>
-            {press.kind !== 'none' && press.kind !== 'zones' && <b>{t(EDIT_BADGE[press.kind])}</b>}
-          </div>
-          <div className="edit-bar">
-            <div className="edit-row">
-              <Segmented label={t('Edit tool')} value={editTool} onChange={(tool) => send({ type: 'setTool', tool })} options={[
-                { value: 'add', label: t('Add supports'), hint: 'Click the model to add a support; right-click or Ctrl+click a support to remove it' },
-                { value: 'select', label: t('Select supports'), hint: 'Pick supports to delete several at once' },
-              ]} />
-              {editTool === 'select' && <Segmented className="tool-choice" label={t('How to select')} value={selectStyle} onChange={(style) => send({ type: 'setSelectStyle', style })} options={[
-                { value: 'click', icon: <PointerIcon />, label: t('Click'), hint: 'Click supports one at a time to select them' },
-                {
-                  value: 'brush', icon: <BrushIcon />, label: t('Drag over'), hint: 'Drag over supports to select many at once, starting anywhere in the view',
-                  // The tool's own size, under it: shown only while Drag over is the way to select.
-                  under: selectStyle === 'brush' && <RangeField
-                    layout="stack" label="Circle size" unit="{n} px" hint="Radius of the circle around the pointer, in screen pixels: supports it passes over are selected"
-                    min={8} max={80} step={4} value={brushRadius}
-                    onChange={(radius) => send({ type: 'setBrushRadius', radius })}
-                    onAdjust={(sizing) => send({ type: 'setBrushSizing', sizing })}
-                  />,
-                },
-              ]} />}
-              {press.kind === 'drag' && <Segmented label={t('Dragging over supports')} value={brushMode} onChange={(mode) => send({ type: 'setBrushMode', mode })} options={[
-                { value: 'select', label: t('Select'), hint: 'Dragging adds supports to the selection' },
-                { value: 'unselect', label: t('Unselect'), hint: 'Dragging takes supports out of the selection' },
-              ]} />}
-            </div>
-            <div className="edit-row">
-              {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
-              <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{editTool === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
-              <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
-              <button onClick={() => send({ type: 'openZones', from: 'edit' })} {...hint('Switch to painting no-support zones; Done comes back here')}>{t('Edit no-support zones →')}</button>
-              {selection.size > 0 && <>
-                <span className="edit-count">{t('{n} selected', { n: selection.size })}</span>
-                <button className="danger" onClick={deleteSelected} {...hint('Delete the selected supports (Delete key). Undo brings them back')}>{t('Delete')}</button>
-                <button onClick={clearSelection} {...hint('Unselect every support at once (Esc). Undo on the notice brings the selection back')}>{t('Clear selection')}</button>
-              </>}
-              <button className="primary edit-done" onClick={() => send({ type: 'toggleEdit' })} {...hint('Finish editing supports (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>
-            </div>
-          </div>
-        </>}
+        </> : press.kind === 'zones'
+          ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} send={send} onClear={clearActiveZones} />
+          : <EditBar gesture={press} unitName={activeUnit?.name} selected={selection.size} send={send} onDelete={deleteSelected} onClearSelection={clearSelection} />}
       </section>
       <aside className="panel right">
         <h2>{t('Support settings')}{activeUnit ? <small>{activeUnit.name}{selectedCount > 1 ? ` ${t('and {n} more', { n: selectedCount - 1 })}` : ''}</small> : null}</h2>
