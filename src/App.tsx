@@ -499,7 +499,7 @@ export default function App() {
     else setStatus('No supports to remove.');
   };
   const clearManual = () => {
-    const count = forTargets((unit) => (unit.manual.length || unit.deleted.length ? { type: 'supports/clear-manual', unitId: unit.id } : undefined));
+    const count = forTargets((unit) => (unit.manual.length || unit.deleted.length || Object.keys(unit.contactSettings).length ? { type: 'supports/clear-manual', unitId: unit.id } : undefined));
     setStatus(count ? 'Manual edits cleared; automatic contacts restored.' : 'No manual edits to clear.');
     if (count) offerUndo({ kind: 'clearManual' });
   };

@@ -13,7 +13,7 @@ const source: TriangleMesh = {
 const point = (id: string, x: number): SupportPoint => ({ id, regionId: 0, position: [x, -5, 0], normal: [0, -1, 0], source: 'interior' });
 const upright = { position: [0, 10, 0] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] };
 const unitOf = (id: string, supported: boolean): PrintUnit => ({
-  id, name: id, source, transform: upright, settings: { ...defaultSupportSettings }, manual: [], deleted: [], zones: [],
+  id, name: id, source, transform: upright, settings: { ...defaultSupportSettings }, manual: [], deleted: [], zones: [], contactSettings: {},
   ...(supported ? { placement: { points: [point('old', 0)], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() }, supports: { kind: 'live', data: { transform: upright } } } : {}),
 });
 const finished = (unit: PrintUnit, xs: number[]) => ({

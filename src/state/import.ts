@@ -157,6 +157,7 @@ export function placeImportedUnits(
       manual: [],
       deleted: [],
       zones: [],
+      contactSettings: {},
     };
   });
 }

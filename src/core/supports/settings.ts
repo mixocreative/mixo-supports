@@ -105,6 +105,49 @@ export type LiveSupportSettings = {
 export type SettingKey = Exclude<keyof LiveSupportSettings, 'preset' | 'roofSeededModes'>;
 type NumericKey = { [K in SettingKey]: LiveSupportSettings[K] extends number ? K : never }[SettingKey];
 
+/**
+ * The settings one support may own (tip, contact, neck and foot). Pillar thickness is not one:
+ * trees, braces and the raft share it, so it stays object-wide.
+ */
+export const SHAPE_KEYS = [
+  'contactShape', 'tipSection', 'tipCrossWidth', 'tipProfile',
+  'pointDiameter', 'touchDiameter', 'pointDepth', 'touchDepth', 'neckDiameter',
+  'neckLength', 'maxNeckAngle', 'baseDiameter', 'baseHeight',
+] as const satisfies readonly SettingKey[];
+export type ShapeKey = typeof SHAPE_KEYS[number];
+export type ShapeSettings = Pick<LiveSupportSettings, ShapeKey>;
+/** One support's own values: only the keys the user set; every other key follows the object. */
+export type ShapeOverride = Partial<ShapeSettings>;
+
+const SHAPE_CHOICES: { [K in ShapeKey]?: readonly LiveSupportSettings[K][] } = {
+  contactShape: ['NONE', 'SPHERE'],
+  tipSection: ['ROUND', 'SQUARE', 'CROSS'],
+  tipProfile: ['TAPERED', 'STRAIGHT'],
+};
+
+/** Untrusted input (a project file, a command) as a shape override: unknown keys and wrong values dropped, lengths clamped. */
+export function parseShapeOverride(value: unknown): ShapeOverride {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
+  const input = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of SHAPE_KEYS) {
+    const entry = input[key];
+    if (entry === undefined) continue;
+    const choices = SHAPE_CHOICES[key] as readonly unknown[] | undefined;
+    if (choices) {
+      if (choices.includes(entry)) out[key] = entry;
+    } else if (typeof entry === 'number' && Number.isFinite(entry)) {
+      out[key] = clampSetting(key as NumericKey, entry);
+    }
+  }
+  return out as ShapeOverride;
+}
+
+/** The settings a support is built with: the object's, with its own override on top. */
+export function withShape(settings: Readonly<LiveSupportSettings>, shape: ShapeOverride | undefined): Readonly<LiveSupportSettings> {
+  return shape ? { ...settings, ...shape } : settings;
+}
+
 const BASE_DIAMETER = 3;
 const BASE_HEIGHT = 1.2;
 

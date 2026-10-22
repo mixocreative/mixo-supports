@@ -22,7 +22,7 @@ function unit(id: string, name: string, x: number, supported = true): PrintUnit 
       placement: { points: [contact], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() },
       supports: { kind: 'live', data: { transform } },
     } : {}),
-    manual: [], deleted: [], zones: [],
+    manual: [], deleted: [], zones: [], contactSettings: {},
   };
 }
 

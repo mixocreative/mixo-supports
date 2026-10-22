@@ -6,7 +6,7 @@ import { emptyScene, identityTransform, type PrintUnit } from './project';
 
 const source: TriangleMesh = { positions: new Float32Array([0, 0, 0]), indices: new Uint32Array() };
 const unit: PrintUnit = {
-  id: 'unit-a', name: 'Unit A', source, transform: identityTransform, settings: {}, manual: [], deleted: [], zones: [],
+  id: 'unit-a', name: 'Unit A', source, transform: identityTransform, settings: {}, manual: [], deleted: [], zones: [], contactSettings: {},
 };
 
 describe('scene history', () => {

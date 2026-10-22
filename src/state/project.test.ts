@@ -28,6 +28,7 @@ const unitA: PrintUnit = {
   manual: [],
   deleted: [],
   zones: [],
+  contactSettings: {},
 };
 
 describe('reduceScene', () => {
@@ -191,6 +192,47 @@ describe('reduceScene', () => {
     expect(withManual.units[0].manual[0].position[0]).toBe(0);
     expect(() => reduceScene(scene, { type: 'supports/set', unitId: 'unit-a', placement: { ...placement, points: [{ ...contact, position: new Object3D() as never }] } })).toThrow('JSON-safe');
     expect(() => reduceScene(scene, { type: 'manual/add', unitId: 'unit-a', point: { ...contact, normal: new Object3D() as never } })).toThrow('JSON-safe');
+  });
+
+  describe('per-support settings', () => {
+    const manual: SupportPoint = { ...contact, id: 'manual-b' };
+    const withSupports = () => reduceScene(emptyScene, { type: 'unit/add', unit: { ...unitA, manual: [manual] } });
+    const own = (scene: PrintScene) => scene.units[0]!.contactSettings;
+
+    it('adding a support creates no override', () => {
+      const scene = reduceScene(withSupports(), { type: 'manual/add', unitId: 'unit-a', point: { ...contact, id: 'manual-c' } });
+      expect(own(scene)).toEqual({});
+    });
+
+    it('sets keys on many supports in one command and merges later keys', () => {
+      const set = reduceScene(withSupports(), { type: 'contactSettings/set', unitId: 'unit-a', contactIds: ['contact-a', 'manual-b'], patch: { pointDiameter: 0.6 } });
+      const more = reduceScene(set, { type: 'contactSettings/set', unitId: 'unit-a', contactIds: ['manual-b'], patch: { neckLength: 4 } });
+      expect(own(more)).toEqual({ 'contact-a': { pointDiameter: 0.6 }, 'manual-b': { pointDiameter: 0.6, neckLength: 4 } });
+    });
+
+    it('keeps only shape keys, valid choices and clamped lengths, and ignores ids that name no support', () => {
+      const patch = { pointDiameter: 0.01, contactShape: 'CUBE', pillarDiameter: 3, tipSection: 'CROSS' } as never;
+      const set = reduceScene(withSupports(), { type: 'contactSettings/set', unitId: 'unit-a', contactIds: ['contact-a', 'auto-gone'], patch });
+      expect(own(set)).toEqual({ 'contact-a': { pointDiameter: 0.05, tipSection: 'CROSS' } });
+      const scene = withSupports();
+      expect(reduceScene(scene, { type: 'contactSettings/set', unitId: 'unit-a', contactIds: ['contact-a'], patch: { pillarDiameter: 3 } as never })).toBe(scene);
+    });
+
+    it('reset, deleting the support, removing a manual one and Clear manual edits all drop the override', () => {
+      const set = reduceScene(withSupports(), { type: 'contactSettings/set', unitId: 'unit-a', contactIds: ['contact-a', 'manual-b'], patch: { baseDiameter: 4 } });
+      expect(Object.keys(own(reduceScene(set, { type: 'contactSettings/reset', unitId: 'unit-a', contactIds: ['contact-a'] })))).toEqual(['manual-b']);
+      expect(Object.keys(own(reduceScene(set, { type: 'deletion/add', unitId: 'unit-a', pointIds: ['contact-a'] })))).toEqual(['manual-b']);
+      expect(Object.keys(own(reduceScene(set, { type: 'manual/remove', unitId: 'unit-a', pointId: 'manual-b' })))).toEqual(['contact-a']);
+      expect(own(reduceScene(set, { type: 'supports/clear-manual', unitId: 'unit-a' }))).toEqual({});
+      expect(reduceScene(set, { type: 'contactSettings/reset', unitId: 'unit-a', contactIds: ['auto-gone'] })).toBe(set);
+    });
+
+    it('round-trips through the project file, and a project from before them loads with none', () => {
+      const set = reduceScene(withSupports(), { type: 'contactSettings/set', unitId: 'unit-a', contactIds: ['manual-b'], patch: { contactShape: 'SPHERE', touchDiameter: 1.2 } });
+      expect(own(deserializeScene(serializeScene(set)))).toEqual({ 'manual-b': { contactShape: 'SPHERE', touchDiameter: 1.2 } });
+      const { contactSettings: _contactSettings, ...legacy } = unitA;
+      expect(own(reduceScene(emptyScene, { type: 'unit/add', unit: legacy as PrintUnit }))).toEqual({});
+    });
   });
 
   it('faithfully round-trips a populated scene through JSON', () => {

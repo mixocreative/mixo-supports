@@ -20,6 +20,7 @@ const unit: PrintUnit = {
   manual: [point('manual-a', -3)],
   deleted: ['auto-1'],
   zones: [],
+  contactSettings: {},
 };
 
 describe('unit supports', () => {

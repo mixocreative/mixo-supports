@@ -1,6 +1,6 @@
 import type { PlacementResult, Region, SupportPoint, TriangleMesh } from '../core/analysis/types';
 import { contactsHiddenByMarkers, rekeyPoints, remapDeleted } from '../core/analysis/placement';
-import { defaultSupportSettings } from '../core/supports/settings';
+import { defaultSupportSettings, parseShapeOverride, type ShapeOverride } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { ModelTransform } from './transform';
 
@@ -36,7 +36,14 @@ export interface PrintUnit {
   deleted: string[];
   /** Ordered brush stamps of no-support zones (the last covering stamp wins); automatic contacts inside are dropped. */
   zones: ZoneStamp[];
+  /**
+   * Per-support settings by exact contact id (automatic or manual): only the keys the user set.
+   * A support without an entry follows `settings`; adding a support creates none.
+   */
+  contactSettings: ContactSettings;
 }
+
+export type ContactSettings = Record<string, ShapeOverride>;
 
 export interface PrintScene {
   units: PrintUnit[];
@@ -65,7 +72,11 @@ export type SceneCommand =
   | { type: 'deletion/add'; unitId: string; pointIds: string[] }
   | { type: 'deletion/set'; unitId: string; pointIds: string[] }
   | { type: 'zones/add'; unitId: string; stamps: ZoneStamp[] }
-  | { type: 'zones/clear'; unitId: string };
+  | { type: 'zones/clear'; unitId: string }
+  /** Gives each named support the patch's keys on top of its own (one history step for all of them). */
+  | { type: 'contactSettings/set'; unitId: string; contactIds: string[]; patch: ShapeOverride }
+  /** The named supports follow the object's settings again. */
+  | { type: 'contactSettings/reset'; unitId: string; contactIds: string[] };
 
 export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScene {
   switch (command.type) {
@@ -83,7 +94,7 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
       return scene.activeUnitId === command.unitId ? withoutActiveUnit(remaining) : remaining;
     }
     case 'supports/clear-manual':
-      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, manual: [], deleted: [] }));
+      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, manual: [], deleted: [], contactSettings: {} }));
     case 'selection/set':
       return command.activeUnitId === undefined
         ? { ...withoutActiveUnit(scene), selectedUnitIds: [...command.unitIds] }
@@ -106,11 +117,16 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
         manual: [...unit.manual, cloneJsonValue(command.point) as unknown as SupportPoint],
       }));
     case 'manual/remove':
-      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, manual: unit.manual.filter((point) => point.id !== command.pointId) }));
+      return updateUnit(scene, command.unitId, (unit) => ({
+        ...unit,
+        manual: unit.manual.filter((point) => point.id !== command.pointId),
+        contactSettings: withoutEntries(unit.contactSettings, [command.pointId]),
+      }));
     case 'deletion/add':
       return updateUnit(scene, command.unitId, (unit) => ({
         ...unit,
         deleted: [...unit.deleted, ...new Set(command.pointIds.filter((id) => !unit.deleted.includes(id)))],
+        contactSettings: withoutEntries(unit.contactSettings, command.pointIds),
       }));
     case 'deletion/set':
       return updateUnit(scene, command.unitId, (unit) => ({ ...unit, deleted: [...new Set(command.pointIds)] }));
@@ -120,7 +136,37 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
     case 'zones/clear':
       if (scene.units.find((unit) => unit.id === command.unitId)?.zones.length === 0) return scene;
       return updateUnit(scene, command.unitId, (unit) => ({ ...unit, zones: [] }));
+    case 'contactSettings/set': {
+      const patch = parseShapeOverride(command.patch);
+      const unit = scene.units.find((candidate) => candidate.id === command.unitId);
+      if (!unit || Object.keys(patch).length === 0) return scene;
+      const live = liveContactIds(unit);
+      const ids = command.contactIds.filter((id) => live.has(id));
+      if (ids.length === 0) return scene;
+      const contactSettings = { ...unit.contactSettings };
+      for (const id of ids) contactSettings[id] = { ...contactSettings[id], ...patch };
+      return updateUnit(scene, unit.id, () => ({ ...unit, contactSettings }));
+    }
+    case 'contactSettings/reset': {
+      const unit = scene.units.find((candidate) => candidate.id === command.unitId);
+      if (!unit) return scene;
+      const contactSettings = withoutEntries(unit.contactSettings, command.contactIds);
+      if (contactSettings === unit.contactSettings) return scene;
+      return updateUnit(scene, unit.id, () => ({ ...unit, contactSettings }));
+    }
   }
+}
+
+/** Ids of the supports the unit has now: automatic ones not removed, and manual ones. */
+function liveContactIds(unit: PrintUnit): Set<string> {
+  const deleted = new Set(unit.deleted);
+  return new Set([...(unit.placement?.points ?? []).map((point) => point.id).filter((id) => !deleted.has(id)), ...unit.manual.map((point) => point.id)]);
+}
+
+function withoutEntries(contactSettings: ContactSettings, ids: readonly string[]): ContactSettings {
+  if (!ids.some((id) => id in contactSettings)) return contactSettings;
+  const gone = new Set(ids);
+  return Object.fromEntries(Object.entries(contactSettings).filter(([id]) => !gone.has(id)));
 }
 
 function updateUnit(scene: PrintScene, unitId: string, update: (unit: PrintUnit) => PrintUnit): PrintScene {
@@ -211,7 +257,19 @@ function normalizeUnit(unit: PrintUnit, copyMesh = true): PrintUnit {
     manual: cloneJsonValue(unit.manual ?? []) as unknown as SupportPoint[],
     deleted: cloneJsonValue(unit.deleted ?? []) as string[],
     zones: cloneJsonValue(unit.zones ?? []) as unknown as ZoneStamp[],
+    contactSettings: normalizeContactSettings(unit.contactSettings),
   });
+}
+
+/** Saved or handed-in per-support settings, parsed; empty entries are dropped and a project from before them loads as none. */
+function normalizeContactSettings(value: unknown): ContactSettings {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: ContactSettings = {};
+  for (const [id, entry] of Object.entries(value)) {
+    const shape = parseShapeOverride(entry);
+    if (Object.keys(shape).length > 0) out[id] = shape;
+  }
+  return out;
 }
 
 function normalizeSupportMesh(mesh: SupportMesh): SupportMesh {
