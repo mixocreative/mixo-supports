@@ -25,7 +25,7 @@ import { canUndo as historyCanUndo, createSceneHistory, redoScene, undoScene, wi
 import { gltfRawMeshes, placeImportedUnits } from './state/import';
 import { setDisplayMesh, setPrebuiltBvh } from './state/meshExtras';
 import { detectRuntime, memoryInfo } from './state/runtime';
-import { assertGenerateMemory, assertMemoryCapacity, assertPlateCapacity, assertTriangleCapacity, memoryCapBytes, meshTier, refusalLimit, TRIANGLE_BUDGET } from './core/budget';
+import { assertGenerateMemory, assertMemoryCapacity, assertPlateCapacity, assertTriangleCapacity, memoryCapBytes, meshTier, refusalLimit } from './core/budget';
 import { TriangleGate } from './core/jobGate';
 import { PlateLedger, type PlateScene } from './core/plateLedger';
 import { estimateTriangles, ESTIMATE_HEAD_BYTES } from './core/import/estimate';
@@ -43,7 +43,7 @@ import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type L
 import { checkJobOf, currentBuild, currentBuilds, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { keyAction } from './editing/keys';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
-import { busyStatus, heavyStatus, missStatus, sessionStatus } from './editing/status';
+import { busyStatus, heavyStatus, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
 import { checkStatus, exportStatus, joinRun, runToken, tallyChecks, type CheckTally } from './editing/check';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
@@ -499,21 +499,9 @@ export default function App() {
         { type: 'selection/set', unitIds: added.map((unit) => unit.id), activeUnitId: added[0]!.id },
       ] });
       reservation.commit(added.map((unit) => unit.id));
-      // Big models: say what the editor does differently, once, at import.
       const heaviest = added.reduce((most, unit) => (triangleCount(unit) > triangleCount(most) ? unit : most));
-      const tier = meshTier(triangleCount(heaviest), RUNTIME);
       const plate = units.reduce((sum, unit) => sum + triangleCount(unit), 0);
-      const vars = { name: heaviest.name, n: triangleCount(heaviest).toLocaleString(), budget: TRIANGLE_BUDGET[RUNTIME].toLocaleString() };
-      if (tier === 'heavy') {
-        setStatus('{name} is a heavy model ({n} triangles, over {budget}): the view shows a simplified copy and hand editing is off. Generate and export use the full model.', vars);
-      } else if (plate > TRIANGLE_BUDGET[RUNTIME]) {
-        // The plate warning wins over the large-model note (Tips only still turns on: see largeTips).
-        setStatus('The plate now holds {n} triangles, more than the {budget} this app is tuned for; it may slow down.', { n: plate.toLocaleString(), budget: TRIANGLE_BUDGET[RUNTIME].toLocaleString() });
-      } else if (tier === 'large') {
-        setStatus('{name} is a large model ({n} triangles): the view shows contact tips only to stay smooth. Turn off Tips only to see whole supports.', vars);
-      } else {
-        setStatus('Imported 1 object. Generate to place supports.', { n: added.length }, 'Imported {n} objects. Generate to place supports.');
-      }
+      setStatusMessage(importStatus({ name: heaviest.name, triangles: triangleCount(heaviest) }, plate, added.length, RUNTIME));
     } catch (error) {
       reservation.release();
       if (isAbort(error)) setStatus('Import cancelled; nothing was added.');

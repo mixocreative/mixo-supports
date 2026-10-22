@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { initialSession, reduceSession, type EditSession, type SessionEvent } from './session';
-import { busyStatus, editStatus, missStatus, sessionStatus } from './status';
+import { busyStatus, editStatus, importStatus, missStatus, sessionStatus } from './status';
 
 const ADD = 'Support Edit Mode: click the model to add, right-click a support to remove.';
 const CLICK = 'Support Edit Mode: click supports to select them, right-click a support to remove.';
@@ -110,5 +110,37 @@ describe('busyStatus', () => {
   it('tells the user to finish the mode first', () => {
     expect(busyStatus('zones')).toEqual({ key: 'Finish painting zones first: press Esc or Done.' });
     expect(busyStatus('edit')).toEqual({ key: 'Finish editing supports first: press Esc or Done.' });
+  });
+});
+
+describe('importStatus', () => {
+  const n = (value: number) => value.toLocaleString();
+  const budget = n(1_500_000);
+
+  it('a heavy model says hand editing is off, before anything else', () => {
+    expect(importStatus({ name: 'big', triangles: 1_600_000 }, 2_000_000, 2, 'web')).toEqual({
+      key: '{name} is a heavy model ({n} triangles, over {budget}): the view shows a simplified copy and hand editing is off. Generate and export use the full model.',
+      vars: { name: 'big', n: n(1_600_000), budget },
+    });
+  });
+
+  it('a plate over the budget wins over the large-model note', () => {
+    expect(importStatus({ name: 'mid', triangles: 400_000 }, 1_600_000, 1, 'web')).toEqual({
+      key: 'The plate now holds {n} triangles, more than the {budget} this app is tuned for; it may slow down.',
+      vars: { n: n(1_600_000), budget },
+    });
+  });
+
+  it('a large model says the view shows tips only', () => {
+    expect(importStatus({ name: 'mid', triangles: 400_000 }, 400_000, 1, 'web')).toEqual({
+      key: '{name} is a large model ({n} triangles): the view shows contact tips only to stay smooth. Turn off Tips only to see whole supports.',
+      vars: { name: 'mid', n: n(400_000), budget },
+    });
+  });
+
+  it('otherwise counts the objects that came in', () => {
+    expect(importStatus({ name: 'knot', triangles: 32_000 }, 32_000, 3, 'web')).toEqual({
+      key: 'Imported 1 object. Generate to place supports.', vars: { n: 3 }, other: 'Imported {n} objects. Generate to place supports.',
+    });
   });
 });
