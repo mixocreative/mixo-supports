@@ -8,14 +8,6 @@ import { RangeField } from './RangeField';
 import { Segmented } from './Segmented';
 
 /**
- * Clears every no-support zone of the active object at once (Undo on the toast brings them back).
- * `compact`: the left panel's short label, named in full for screen readers.
- */
-export function ClearZonesButton({ disabled, onClear, compact = false }: { disabled: boolean; onClear: () => void; compact?: boolean }) {
-  return <button className="danger" {...(compact ? { 'aria-label': t('Clear all zones') } : {})} onClick={onClear} disabled={disabled} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t(compact ? 'Clear' : 'Clear all zones')}</button>;
-}
-
-/**
  * Zones mode's chrome over the viewport: the frame and badge in the zone colour, and the bar with
  * the brush, a note while the camera is above the plate (supports attach underneath), Clear and Done.
  */
@@ -45,7 +37,7 @@ export function ZonesBar({ brush, unitName, belowPlate, hasZones, ui, send, run,
       </div>
       {!belowPlate && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
       <div className="edit-row">
-        <ClearZonesButton disabled={!hasZones} onClear={onClear} />
+        <button className="danger" onClick={onClear} disabled={!hasZones} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear all zones')}</button>
         <CommandButton command={resolve('zones.done', ui)} run={run} className="primary edit-done"> <kbd>Esc</kbd></CommandButton>
       </div>
     </div>

@@ -49,7 +49,6 @@ export const ZONE_ONLY_WORDS = /\b(paint\w*|erase\w*|brush\w*)\b/i;
 /** Zone texts that do not say "zone" themselves (the zones bar and its status lines). */
 export const ZONE_TEXTS: readonly string[] = [
   'Paint', 'Erase', 'Brush size', 'Painted',
-  'Paint where supports must not grow. Manual supports stay.',
   'Paint where supports must not grow; drag on the model.',
   'Paint areas of the model where automatic supports must not grow',
   'Supports attach underneath: turn the view (Bottom view) to paint where they are.',

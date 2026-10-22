@@ -14,14 +14,13 @@ export const COMMAND_IDS = [
   'transform.select', 'transform.move', 'transform.rotate',
   'supports.generate',
   'mode.edit', 'mode.zones', 'mode.exit',
-  'vp.editToggle',
   'edit.clearSelection', 'edit.deleteSelection', 'edit.done',
   'zones.done',
 ] as const;
 export type CommandId = (typeof COMMAND_IDS)[number];
 
 /** Where a command's control lives. `keyboard`: a command with no control of its own. */
-export type Region = 'header' | 'left' | 'viewport' | 'editBar' | 'zonesBar' | 'keyboard';
+export type Region = 'header' | 'left' | 'editBar' | 'zonesBar' | 'keyboard';
 export type Role = 'primary' | 'secondary' | 'destructive' | 'toggle' | 'choice' | 'info';
 
 /** What the registry's rules read, built by the host from its own state. */
@@ -119,7 +118,7 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
   },
   'mode.edit': {
     region: 'left', role: 'secondary',
-    label: (s) => (s.mode === 'edit' ? 'Exit Support Edit Mode' : 'Enter Support Edit Mode'),
+    label: (s) => (s.mode === 'edit' ? 'Exit Support Edit Mode' : 'Edit supports'),
     hint: (s) => (s.mode === 'edit' ? 'Finish editing supports (Esc)' : ENTER_EDIT_HINT),
     visible: always,
     // Inside Support Edit Mode the button is its exit, in the same place.
@@ -130,7 +129,7 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
   },
   'mode.zones': {
     region: 'left', role: 'secondary',
-    label: (s) => (s.mode === 'zones' ? 'Exit no-support zones' : 'Paint zones'),
+    label: (s) => (s.mode === 'zones' ? 'Exit no-support zones' : 'No-support zones'),
     hint: (s) => (s.mode === 'zones' ? 'Finish painting zones (Esc or Enter)' : 'Paint areas of the model where automatic supports must not grow'),
     visible: always,
     enabled: (s) => (s.mode === 'zones' ? true : s.mode === 'off' && editable(s)),
@@ -142,12 +141,6 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     region: 'keyboard', role: 'info', shortcut: 'Esc',
     label: () => undefined, hint: () => undefined,
     visible: (s) => s.mode !== 'off', enabled: always, disabledReason: never,
-  },
-  'vp.editToggle': {
-    region: 'viewport', role: 'secondary',
-    label: () => 'Edit supports', hint: () => ENTER_EDIT_HINT,
-    visible: inMode('off'), enabled: editable, disabledReason: (s) => (editable(s) ? undefined : entryReason(s)),
-    runs: () => 'mode.edit',
   },
   'edit.clearSelection': {
     region: 'editBar', role: 'secondary', shortcut: 'Esc',

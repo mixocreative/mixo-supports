@@ -63,7 +63,7 @@ export function EditBar({ gesture, unitName, ui, send, run }: {
         <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{gesture.kind === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
         <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
         {ui.selection > 0 && <span className="edit-count">{t('{n} selected', { n: ui.selection })}</span>}
-        {visibleIn('editBar', ui).map((command) => <CommandButton key={command.id} command={command} run={run} className={command.role === 'destructive' ? 'danger' : command.role === 'primary' ? 'primary edit-done' : undefined}>
+        {visibleIn('editBar', ui).map((command) => <CommandButton key={command.id} command={command} run={run} className={command.role === 'primary' ? 'primary edit-done' : undefined}>
           {command.id === 'edit.done' && <> <kbd>Esc</kbd></>}
         </CommandButton>)}
       </div>

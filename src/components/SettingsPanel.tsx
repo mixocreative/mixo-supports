@@ -163,13 +163,15 @@ export interface SettingsPanelProps {
   settings: LiveSupportSettings;
   autoLabel: string;
   disabled: boolean;
+  /** The panel is locked (zones): inert and dimmed. */
+  locked?: boolean;
   onChange: <K extends SettingKey>(key: K, value: LiveSupportSettings[K]) => void;
   onPreset: (preset: PresetName) => void;
   onRoofMode: (mode: RoofMode) => void;
 }
 
-export default function SettingsPanel({ settings, autoLabel, disabled, onChange, onPreset, onRoofMode }: SettingsPanelProps) {
-  return <fieldset className="settings" disabled={disabled}>
+export default function SettingsPanel({ settings, autoLabel, disabled, locked = false, onChange, onPreset, onRoofMode }: SettingsPanelProps) {
+  return <fieldset className="settings" disabled={disabled} {...(locked ? { inert: '' } : {})}>
     <div className="field-row" title={t('Chitubox support preset. Editing any value switches to Custom')}>
       <span>{t('Preset')}</span>
       <div className="segmented">

@@ -18,7 +18,7 @@ import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
 import { EditBar } from './components/EditBar';
 import { CommandButton } from './components/CommandButton';
-import { ModeSections, ViewportEditToggle } from './components/ModeEntry';
+import { ModeSections } from './components/ModeEntry';
 import { ObjectList } from './components/ObjectList';
 import { ProblemList } from './components/ProblemList';
 import { ZonesBar } from './components/ZonesBar';
@@ -46,6 +46,7 @@ import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type L
 import { checkJobOf, currentBuild, currentBuilds, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { resolve, type CommandId, type UiState } from './editing/commands';
 import { keyAction } from './editing/keys';
+import { lockNote, sectionLocked, type Panel } from './editing/locks';
 import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
 import { busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
@@ -189,6 +190,8 @@ export default function App() {
   const [modelVisible, setModelVisible] = useState(true);
   const [wireframe, setWireframe] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  /** The last click on a locked region: its panel's lock note pulses (a new seq restarts the pulse). */
+  const [pulse, setPulse] = useState<{ panel: Panel; seq: number }>({ panel: 'left', seq: 0 });
 
   const activeUnit = scene.units.find((unit) => unit.id === scene.activeUnitId);
   const activeIndex = activeUnit ? scene.units.indexOf(activeUnit) : -1;
@@ -760,8 +763,7 @@ export default function App() {
       case 'transform.move': return setGizmoMode('translate');
       case 'transform.rotate': return setGizmoMode('rotate');
       case 'supports.generate': return generate();
-      case 'mode.edit':
-      case 'vp.editToggle': return send({ type: 'enterEdit' });
+      case 'mode.edit': return send({ type: 'enterEdit' });
       case 'mode.zones': return send({ type: 'enterZones' });
       case 'mode.exit':
       case 'edit.done':
@@ -810,6 +812,23 @@ export default function App() {
     selection: selection.size, canUndo, canRedo: history.future.length > 0, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
   };
   const command = (id: CommandId) => resolve(id, ui);
+  const locked = (section: Parameters<typeof sectionLocked>[0]) => sectionLocked(section, editMode);
+  /** Locked sections are inert, so a click on one falls through to its panel: say why and pulse the note. */
+  const blockedClick = (panel: Panel) => (event: React.MouseEvent<HTMLElement>) => {
+    const { mode } = sessionRef.current;
+    if (mode === 'off') return;
+    const onLocked = [...event.currentTarget.querySelectorAll('[inert]')].some((element) => {
+      const box = element.getBoundingClientRect();
+      return event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
+    });
+    if (!onLocked) return;
+    setStatusMessage(busyStatus(mode));
+    setPulse((current) => ({ panel, seq: current.seq + 1 }));
+  };
+  const lockNoteOf = (panel: Panel) => {
+    const note = lockNote(panel, editMode);
+    return note && <p key={pulse.panel === panel ? pulse.seq : 0} className="lock-note" role="note">{translateMessage(note)}</p>;
+  };
 
   return <main>
     <header>
@@ -827,8 +846,9 @@ export default function App() {
       </div>
     </header>
     <section className="workspace">
-      <aside className="panel left">
-        <label className="drop" title={t('Choose STL, GLB or glTF files, or drop them on the viewport')}>
+      <aside className="panel left" onClick={blockedClick('left')}>
+        {lockNoteOf('left')}
+        <label className="drop" {...(locked('import') ? { inert: '' } : {})} title={t('Choose STL, GLB or glTF files, or drop them on the viewport')}>
           <input type="file" aria-description={t('Choose STL, GLB or glTF files, or drop them on the viewport')} multiple accept=".stl,.glb,.gltf" onChange={(event) => { void importFiles([...(event.target.files ?? [])]); event.target.value = ''; }} />
           <strong>{t('Import models')}</strong>
           <small>{t('STL, GLB or glTF. Files stay on this device.')}</small>
@@ -840,23 +860,24 @@ export default function App() {
           onSelect={onSelect}
           onSelectAll={() => dispatch({ type: 'selection/set', unitIds: scene.units.map((unit) => unit.id), ...(scene.units[0] ? { activeUnitId: scene.activeUnitId ?? scene.units[0].id } : {}) })}
           deleteCommand={command('objects.delete')}
+          locked={locked('objects')}
           run={runCommand}
         />
-        <section>
+        <section {...(locked('transform') ? { inert: '' } : {})}>
           <h3>{t('Transform')}</h3>
           <Segmented value={gizmoMode} onChange={setGizmoMode} disabled={!command('transform.move').enabled} options={([['none', 'transform.select'], ['translate', 'transform.move'], ['rotate', 'transform.rotate']] as const).map(([value, id]) => {
             const { label, hint: text } = command(id);
             return { value, label: t(label!), hint: text! };
           })} />
         </section>
-        <ModeSections ui={ui} run={runCommand} zones={activeUnit?.zones.length} heavy={heavyStatus(session)} onClearZones={clearActiveZones} />
-        <section>
+        <section {...(locked('supports') ? { inert: '' } : {})}>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
           <CommandButton command={command('supports.generate')} run={runCommand} className={scopeGenerated ? 'primary regen' : 'primary'} />
-          <button onClick={clearManual} disabled={scene.units.length === 0} {...hint('Remove manual supports and bring back removed automatic ones, at once. Undo brings the edits back')}>{t('Clear manual edits')}</button>
-          <button onClick={removeSupports} disabled={scene.units.length === 0} {...hint('Remove the supports of the selected objects. Models and manual edits are kept')}>{t('Remove supports')}</button>
+          <button className="danger" onClick={clearManual} disabled={scene.units.length === 0} {...hint('Remove manual supports and bring back removed automatic ones, at once. Undo brings the edits back')}>{t('Clear manual edits')}</button>
+          <button className="danger" onClick={removeSupports} disabled={scene.units.length === 0} {...hint('Remove the supports of the selected objects. Models and manual edits are kept')}>{t('Remove supports')}</button>
         </section>
-        <section className="support-check">
+        <ModeSections ui={ui} run={runCommand} zones={activeUnit?.zones.length} />
+        <section className="support-check" {...(locked('check') ? { inert: '' } : {})}>
           <h3>{t('Check supports')}</h3>
           <button onClick={checkSupports} disabled={!scene.units.some((unit) => unit.supports)} {...hint('Finds islands and overhangs no contact reaches, before you print.')}>{t('Check for unsupported spots')}</button>
           <ProblemList problems={currentProblems} unitName={unitName} onShow={showProblem} onFix={fixProblem} />
@@ -907,24 +928,25 @@ export default function App() {
         </div>
         {press.kind === 'none' ? <>
           <div className="viewport-object-status">{activeUnit ? activeUnit.name : t('Nothing selected')}</div>
-          <ViewportEditToggle ui={ui} run={runCommand} />
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} ui={ui} send={send} run={runCommand} onClear={clearActiveZones} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} send={send} run={runCommand} />}
       </section>
-      <aside className="panel right">
+      <aside className="panel right" onClick={blockedClick('right')}>
+        {lockNoteOf('right')}
         <h2>{t('Support settings')}{activeUnit ? <small>{activeUnit.name}{selectedCount > 1 ? ` ${t('and {n} more', { n: selectedCount - 1 })}` : ''}</small> : null}</h2>
         {!activeUnit && <p className="help">{t('Select an object to edit its settings. Changes apply to every selected object.')}</p>}
         <SettingsPanel
           settings={activeSettings}
           autoLabel={activeIndex >= 0 ? labelForIndex(activeIndex) : 'A'}
           disabled={!activeUnit}
+          locked={locked('settings')}
           onChange={onSettingChange}
           onPreset={(preset) => changeSettings((settings) => applyPreset(preset, settings), false)}
           onRoofMode={(mode) => changeSettings((settings) => setRoofMode(settings, mode), false)}
         />
-        <section className="export">
+        <section className="export" {...(locked('export') ? { inert: '' } : {})}>
           <h3>{t('Export STL')}</h3>
           {EXPORTS.map((entry) => <button key={entry.kind} onClick={() => void runExport(entry.kind)} disabled={scene.units.length === 0 || exporting} {...hint(entry.hint)}>{t(entry.label)}</button>)}
           <p className="help">{t('Exports match the viewport at full resolution. Source models are never changed.')}</p>

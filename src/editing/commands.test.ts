@@ -48,7 +48,7 @@ describe('the registry and the keyboard', () => {
 });
 
 describe('the registry shows each control once', () => {
-  const REGIONS: Region[] = ['header', 'left', 'viewport', 'editBar', 'zonesBar', 'keyboard'];
+  const REGIONS: Region[] = ['header', 'left', 'editBar', 'zonesBar', 'keyboard'];
 
   it('keeps one row per id', () => {
     expect(new Set(COMMAND_IDS).size).toBe(COMMAND_IDS.length);
@@ -91,7 +91,6 @@ describe('one exit', () => {
   it('the entry buttons run themselves outside the modes', () => {
     expect(resolve('mode.edit', base).runs).toBe('mode.edit');
     expect(resolve('mode.zones', base).runs).toBe('mode.zones');
-    expect(resolve('vp.editToggle', base).runs).toBe('mode.edit');
   });
 
   it('Done shows in its own mode only', () => {
@@ -108,20 +107,20 @@ describe('one exit', () => {
 
 describe('the mode buttons: the entry button becomes the exit button', () => {
   it('outside the modes both enter, unpressed', () => {
-    expect(resolve('mode.edit', base)).toMatchObject({ label: 'Enter Support Edit Mode', pressed: false, enabled: true });
-    expect(resolve('mode.zones', base)).toMatchObject({ label: 'Paint zones', pressed: false, enabled: true });
+    expect(resolve('mode.edit', base)).toMatchObject({ label: 'Edit supports', pressed: false, enabled: true });
+    expect(resolve('mode.zones', base)).toMatchObject({ label: 'No-support zones', pressed: false, enabled: true });
   });
 
   it('in Support Edit Mode its button reads Exit, pressed, live; zones waits', () => {
     const edit = at({ mode: 'edit' });
     expect(resolve('mode.edit', edit)).toMatchObject({ label: 'Exit Support Edit Mode', hint: 'Finish editing supports (Esc)', pressed: true, enabled: true });
-    expect(resolve('mode.zones', edit)).toMatchObject({ label: 'Paint zones', pressed: false, enabled: false, disabledReason: { key: 'Finish editing supports first: press Esc or Done.' } });
+    expect(resolve('mode.zones', edit)).toMatchObject({ label: 'No-support zones', pressed: false, enabled: false, disabledReason: { key: 'Finish editing supports first: press Esc or Done.' } });
   });
 
   it('in zones mode its button reads Exit, pressed, live; Edit Mode waits', () => {
     const zones = at({ mode: 'zones' });
     expect(resolve('mode.zones', zones)).toMatchObject({ label: 'Exit no-support zones', pressed: true, enabled: true });
-    expect(resolve('mode.edit', zones)).toMatchObject({ label: 'Enter Support Edit Mode', enabled: false, disabledReason: { key: 'Finish painting zones first: press Esc or Done.' } });
+    expect(resolve('mode.edit', zones)).toMatchObject({ label: 'Edit supports', enabled: false, disabledReason: { key: 'Finish painting zones first: press Esc or Done.' } });
   });
 
   it('neither opens without an object, and a heavy object says why', () => {
@@ -130,7 +129,6 @@ describe('the mode buttons: the entry button becomes the exit button', () => {
     expect(resolve('mode.zones', none).enabled).toBe(false);
     const heavy = at({ heavy: 1_600_000 });
     expect(resolve('mode.edit', heavy)).toMatchObject({ enabled: false, disabledReason: { vars: { n: (1_600_000).toLocaleString() } } });
-    expect(resolve('vp.editToggle', heavy).enabled).toBe(false);
   });
 });
 

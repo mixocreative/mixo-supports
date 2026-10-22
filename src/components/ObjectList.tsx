@@ -10,7 +10,7 @@ import { hint } from './hint';
  * The left panel's objects: one compact row each (raft label, name, support count), selection by
  * click, Shift+click or Ctrl+click, and Select all and Delete under the list.
  */
-export function ObjectList({ scene, supportCount, building, onSelect, onSelectAll, deleteCommand, run }: {
+export function ObjectList({ scene, supportCount, building, onSelect, onSelectAll, deleteCommand, locked, run }: {
   scene: PrintScene;
   /** The unit's supports as its latest build left them. */
   supportCount: (unit: PrintUnit) => number;
@@ -20,10 +20,12 @@ export function ObjectList({ scene, supportCount, building, onSelect, onSelectAl
   onSelectAll: () => void;
   /** The registry's objects.delete row. */
   deleteCommand: ResolvedCommand;
+  /** A mode locks the list: inert and dimmed. */
+  locked: boolean;
   run: (id: CommandId) => void;
 }) {
   const { units } = scene;
-  return <section>
+  return <section {...(locked ? { inert: '' } : {})}>
     <h3>{t('Objects')}{units.length > 0 && <small className="count">{units.length}</small>}</h3>
     {units.length === 0 ? <p className="help">{t('Each STL, and each mesh inside a glTF, becomes its own object.')}</p> : <ul className="units">
       {units.map((unit, index) => {

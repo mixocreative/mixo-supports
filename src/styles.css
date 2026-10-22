@@ -212,15 +212,9 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
 }
 
 /* ---- Support Edit Mode (Blender mixo.support_place: frame, badge, key bar) ---- */
-.viewport-edit-toggle {
-  position: absolute;
-  top: 12px;
-  right: 14px;
-  z-index: 2;
-}
 .viewport-view {
   position: absolute;
-  top: 56px;
+  top: 12px;
   right: 14px;
   z-index: 2;
   display: flex;
@@ -539,3 +533,19 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
   pointer-events: none; box-sizing: border-box;
 }
 .brush-circle[data-mode='unselect'] { border-color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+
+/* ---- Locked panels (a mode is on): sections are inert and dimmed, one note says why ---- */
+.panel [inert] { opacity: .45; transition: opacity var(--dur); }
+.lock-note {
+  position: sticky; top: -20px; z-index: 1;
+  margin: -20px -20px 14px; padding: 10px 20px;
+  background: var(--paper); border-bottom: 1px solid var(--line);
+  font-size: 11.5px; line-height: 1.6; color: var(--muted);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lock-note { animation: lock-pulse .5s ease-out; }
+}
+@keyframes lock-pulse { 0%, 60% { background: var(--sunken); color: var(--ink); } }
+/* The zones button carries its state word (Painted / None) at the right end. */
+.mode-button { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.mode-button .state { color: var(--muted); font-size: 11px; }
