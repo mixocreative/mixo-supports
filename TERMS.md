@@ -11,6 +11,6 @@ mixosupports ("the App") is a free web app from Mixo Creative ("we"). By using i
 5. **No liability.** To the extent the law allows, we are not liable for any loss or damage arising from use of the App, including lost data, failed prints or lost profits. Nothing here limits liability that cannot be limited by law.
 6. **Our rights.** The App's code, design and name belong to Mixo Creative. These terms do not give you a licence to copy, redistribute or resell the App itself.
 7. **Third-party components.** The App includes open-source components under their own licences. See [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt). Product and company names belong to their owners; there is no affiliation or endorsement.
-8. **Governing law.** These terms are governed by the laws of Taiwan (Republic of China), and the Taipei District Court has first-instance jurisdiction, subject to mandatory consumer rights. **[ASSUMPTION: best guess from the owner's location; the owner may change this line.]**
+8. **Governing law.** These terms are governed by the laws of Taiwan (Republic of China), and the Taipei District Court has first-instance jurisdiction, subject to mandatory consumer rights.
 
 Contact: mixoadrian@gmail.com
