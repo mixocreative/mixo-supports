@@ -9,7 +9,8 @@ export const UNDO_TOAST_MS = 6000;
  * toast carries the ids to put back).
  */
 export type UndoAction =
-  | { kind: 'clearZones' }
+  /** `hidden`: supports the zones were hiding, which come back. */
+  | { kind: 'clearZones'; hidden: number }
   | { kind: 'clearManual' }
   | { kind: 'clearSelection'; ids: readonly string[]; unitId: string };
 
@@ -23,7 +24,7 @@ export interface UndoToast {
 
 export function undoToast(id: number, action: UndoAction): UndoToast {
   const message: StatusMessage = action.kind === 'clearZones'
-    ? { key: 'No-support zones cleared.' }
+    ? (action.hidden === 0 ? { key: 'No-support zones cleared.' } : { key: 'No-support zones cleared; 1 hidden support comes back.', other: 'No-support zones cleared; {n} hidden supports come back.', vars: { n: action.hidden } })
     : action.kind === 'clearManual'
       ? { key: 'Manual edits cleared; automatic contacts restored.' }
       : { key: 'Selection of 1 support cleared.', other: 'Selection of {n} supports cleared.', vars: { n: action.ids.length } };

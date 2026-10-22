@@ -7,7 +7,8 @@ describe('undoToast', () => {
   });
 
   it('says what was cleared', () => {
-    expect(undoToast(1, { kind: 'clearZones' }).message).toEqual({ key: 'No-support zones cleared.' });
+    expect(undoToast(1, { kind: 'clearZones', hidden: 0 }).message).toEqual({ key: 'No-support zones cleared.' });
+    expect(undoToast(1, { kind: 'clearZones', hidden: 3 }).message).toMatchObject({ vars: { n: 3 }, other: 'No-support zones cleared; {n} hidden supports come back.' });
     expect(undoToast(2, { kind: 'clearManual' }).message).toEqual({ key: 'Manual edits cleared; automatic contacts restored.' });
     expect(undoToast(3, { kind: 'clearSelection', ids: ['a', 'b'], unitId: 'u1' }).message).toEqual({
       key: 'Selection of 1 support cleared.', other: 'Selection of {n} supports cleared.', vars: { n: 2 },
@@ -20,7 +21,7 @@ describe('toastAlive', () => {
   const now = { scene, mode: 'edit' as const, activeUnitId: 'u1', selectionSize: 0 };
 
   it('a history clear stays undoable while the scene is the one it left', () => {
-    const toast = undoToast(1, { kind: 'clearZones' });
+    const toast = undoToast(1, { kind: 'clearZones', hidden: 0 });
     // Before the first render after the clear the scene is not known yet.
     expect(toastAlive(toast, now)).toBe(true);
     expect(toastAlive({ ...toast, scene }, now)).toBe(true);

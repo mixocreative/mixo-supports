@@ -283,6 +283,10 @@ export const zhHant: Dictionary = {
   'Zone erased.': '已擦除區域。',
   'No-support zones kept.': '已保留免支撐區。',
   'No-support zones cleared.': '已清除免支撐區。',
+  'No-support zones cleared; 1 hidden support comes back.': '已清除免支撐區；1 個被隱藏的支撐會回來。',
+  'No-support zones cleared; {n} hidden supports come back.': '已清除免支撐區；{n} 個被隱藏的支撐會回來。',
+  '1 support hidden by zones': '1 個支撐被免支撐區隱藏',
+  '{n} supports hidden by zones': '{n} 個支撐被免支撐區隱藏',
   'Finish painting zones first: press Esc or Done.': '請先完成塗刷免支撐區：按 Esc 或「完成」。',
   // Task 12: hover hints, errors with a next step, undo toasts
   'One STL file: the active object and its supports': '一個 STL 檔案：使用中的物件與它的支撐',

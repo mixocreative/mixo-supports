@@ -279,6 +279,10 @@ export const ja: Dictionary = {
   'Zone erased.': 'エリアを消しました。',
   'No-support zones kept.': 'サポート禁止エリアを保持しました。',
   'No-support zones cleared.': 'サポート禁止エリアを消去しました。',
+  'No-support zones cleared; 1 hidden support comes back.': 'サポート禁止エリアを消去しました。非表示だったサポート 1 本が戻ります。',
+  'No-support zones cleared; {n} hidden supports come back.': 'サポート禁止エリアを消去しました。非表示だったサポート {n} 本が戻ります。',
+  '1 support hidden by zones': '1 本のサポートがエリアにより非表示',
+  '{n} supports hidden by zones': '{n} 本のサポートがエリアにより非表示',
   'Finish painting zones first: press Esc or Done.': '先にエリアの塗装を終了してください：Esc か「完了」を押します。',
   // Task 12: hover hints, errors with a next step, undo toasts
   'One STL file: the active object and its supports': '1 つの STL ファイル：アクティブなオブジェクトとそのサポート',

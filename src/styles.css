@@ -448,9 +448,6 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 .edit-size input { width: 96px; height: 24px; margin: 0; accent-color: var(--ink); }
 .edit-size output { min-width: 3.5em; font-variant-numeric: tabular-nums; }
 .edit-count { color: var(--muted); font-variant-numeric: tabular-nums; }
-/* No-support zones mode: the same chrome in the zone colour, so it never reads as Support Edit Mode. */
-.viewport--zones .edit-frame { border-color: var(--blue); }
-.viewport--zones .edit-badge { border-color: var(--blue); background: var(--blue); }
 /* The wide edit bar takes the top right; the view buttons move to the bottom right meanwhile. */
 .viewport--editing .viewport-view { top: auto; bottom: 14px; }
 

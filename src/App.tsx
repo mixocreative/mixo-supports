@@ -561,8 +561,8 @@ export default function App() {
     if (!unitId || !sceneRef.current.units.find((unit) => unit.id === unitId)?.zones.length) return;
     dispatch({ type: 'zones/clear', unitId });
     setStatus('No-support zones cleared.');
-    offerUndo({ kind: 'clearZones' });
-  }, [dispatch, offerUndo, setStatus]);
+    offerUndo({ kind: 'clearZones', hidden: activeMesh?.dropped.length ?? 0 });
+  }, [activeMesh, dispatch, offerUndo, setStatus]);
 
   const fixProblem = useCallback((problem: UnitProblem) => {
     showProblem(problem);
@@ -930,7 +930,7 @@ export default function App() {
           <div className="viewport-object-status">{activeUnit ? activeUnit.name : t('Nothing selected')}</div>
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
-          ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} ui={ui} send={send} run={runCommand} onClear={clearActiveZones} />
+          ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} hidden={activeMesh?.dropped.length ?? 0} ui={ui} send={send} run={runCommand} onClear={clearActiveZones} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>
