@@ -43,8 +43,22 @@ export function exportStatus(files: string, { spots, inZone, incomplete }: Check
   return { key: 'Exported {files}.', vars: { files } };
 }
 
+const runTokens = new WeakMap<object, Map<object | undefined, object>>();
+
 /**
- * Runs `start` for `key` unless a job for the same `token` (the unit version) is running, which is
+ * One token per unit version and support build: a check of the same unit against another build
+ * (or none) is a different job, so it never joins one that counted other contacts.
+ */
+export function runToken(unit: object, build: object | undefined): object {
+  let byBuild = runTokens.get(unit);
+  if (!byBuild) runTokens.set(unit, (byBuild = new Map()));
+  let token = byBuild.get(build);
+  if (!token) byBuild.set(build, (token = {}));
+  return token;
+}
+
+/**
+ * Runs `start` for `key` unless a job for the same `token` (see `runToken`) is running, which is
  * joined instead: the user's check and an export's check of an unchanged unit share one run rather
  * than one replacing the other. A new token starts its own job.
  */

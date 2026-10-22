@@ -34,12 +34,12 @@ import { problemInZone, type ZoneStamp } from './core/supports/zones';
 import { deleteCommands } from './supports/selection';
 import { TIPS_START, tipsCamera, tipsShown, tipsToggle } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
-import { checkJobOf, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './supports/unitSupports';
+import { checkJobOf, currentBuild, currentBuilds, orientationOf, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { keyAction } from './editing/keys';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
 import { busyStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
-import { checkStatus, exportStatus, joinRun, tallyChecks, type CheckTally } from './editing/check';
+import { checkStatus, exportStatus, joinRun, runToken, tallyChecks, type CheckTally } from './editing/check';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
 import { BrushIcon, PointerIcon } from './components/ToolIcons';
@@ -202,14 +202,18 @@ export default function App() {
   // the new one arrives, and units that did not change are not rebuilt. Each mesh keeps the unit
   // version it was built from: its `dropped` contacts (zoned landings) decide the unit's contacts,
   // counts, checks and export plan, and a unit edited since shows its counts as still building.
-  const [built, setBuilt] = useState<ReadonlyMap<string, { unit: PrintUnit; mesh: GeneratedSupportMesh }>>(new Map());
+  const [built, setBuilt] = useState<ReadonlyMap<string, UnitBuild>>(new Map());
   const builtRef = useRef(built);
   builtRef.current = built;
+  /** Unit versions whose build failed (the error is in the status line): their counts stop waiting. */
+  const [failedBuilds, setFailedBuilds] = useState<ReadonlyMap<string, PrintUnit>>(new Map());
+  /** The unit's build finished, or failed, for the unit as it is now. */
+  const buildSettled = (unit: PrintUnit) => built.get(unit.id)?.unit === unit || failedBuilds.get(unit.id) === unit;
   const supportMeshes = useMemo(() => new Map([...built].map(([id, entry]) => [id, entry.mesh])), [built]);
   /** The unit's contacts as its latest build left them (see `built`). */
   const contactsOf = useCallback((unit: PrintUnit) => unitContacts(unit, builtRef.current.get(unit.id)?.mesh), []);
   /** Whether the unit changed since its shown supports were built (counts follow once the build returns). */
-  const building = (unit: PrintUnit) => unit.supports !== undefined && built.get(unit.id)?.unit !== unit;
+  const building = (unit: PrintUnit) => unit.supports !== undefined && !buildSettled(unit);
   const activeMesh = activeUnit ? built.get(activeUnit.id)?.mesh : undefined;
   const activeContacts = useMemo(() => (activeUnit ? unitContacts(activeUnit, activeMesh) : []), [activeUnit, activeMesh]);
   useEffect(() => send({ type: 'contactsChanged', contacts: activeContacts }), [activeContacts, send]);
@@ -278,6 +282,10 @@ export default function App() {
       const kept = new Map([...current].filter(([id]) => ids.has(id)));
       return kept.size === current.size ? current : kept;
     });
+    setFailedBuilds((current) => {
+      const kept = new Map([...current].filter(([id]) => ids.has(id)));
+      return kept.size === current.size ? current : kept;
+    });
     scene.units.forEach((unit, index) => {
       const previous = requested.current.get(unit.id);
       if (previous && previous.unit === unit && previous.index === index) return;
@@ -294,7 +302,10 @@ export default function App() {
         preview().build(unit.id, supportJobOf(unit, index, 'preview'), { key: 'Building supports for {name}', vars: { name: unitName(unit.id) } }).then((mesh) => {
           if (!mesh || requested.current.get(unit.id)?.unit !== unit) return;
           setBuilt((current) => new Map(current).set(unit.id, { unit, mesh }));
-        }, (error: unknown) => setStatusMessage(errorStatus('build', codedJobError(error), { name: unit.name })));
+        }, (error: unknown) => {
+          setStatusMessage(errorStatus('build', codedJobError(error), { name: unit.name }));
+          setFailedBuilds((current) => new Map(current).set(unit.id, unit));
+        });
       }, BUILD_DELAY_MS));
     });
   }, [scene.units, forgetUnit, preview, setStatus, unitName]);
@@ -359,8 +370,9 @@ export default function App() {
       const orientation = orientationOf(unit);
       const key = `check:${unit.id}`;
       {
-        const mesh = builtRef.current.get(unit.id)?.mesh;
-        const found = await joinRun(checksRunning.current, unit.id, unit, () => analysis().check(key, checkJobOf(unit, mesh), { key: 'Checking supports on {name}', vars: { name: unitName(unit.id) } }));
+        // Only a build of the unit as it is now says which contacts it dropped.
+        const mesh = currentBuild(unit, builtRef.current.get(unit.id));
+        const found = await joinRun(checksRunning.current, unit.id, runToken(unit, mesh), () => analysis().check(key, checkJobOf(unit, mesh), { key: 'Checking supports on {name}', vars: { name: unitName(unit.id) } }));
         if (!found) return undefined;
         // Spots face down on the plate: plate down in unit-local space keeps a zone on the far side of a thin floor out.
         const down = inverseTransformDirection(orientation, [0, -1, 0]);
@@ -379,15 +391,14 @@ export default function App() {
   /** Findings for units and builds unchanged since their check (an edited unit is re-checked once rebuilt). */
   const currentProblems = useMemo(() => scene.units.flatMap((unit) => {
     const entry = problems.get(unit.id);
-    return entry && entry.unit === unit && entry.mesh === built.get(unit.id)?.mesh ? entry.items : [];
+    return entry && entry.unit === unit && entry.mesh === currentBuild(unit, built.get(unit.id)) ? entry.items : [];
   }), [built, problems, scene.units]);
   const recheckTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     const stale = scene.units.filter((unit) => {
       const entry = problems.get(unit.id);
-      const latest = built.get(unit.id);
-      // Re-checked once the unit's build is current, so the check sees the contacts that build kept.
-      return unit.supports && entry && latest?.unit === unit && (entry.unit !== unit || entry.mesh !== latest.mesh);
+      // Re-checked once the unit's build settles, so the check sees the contacts that build kept.
+      return unit.supports && entry && buildSettled(unit) && (entry.unit !== unit || entry.mesh !== currentBuild(unit, built.get(unit.id)));
     });
     if (stale.length === 0) return;
     window.clearTimeout(recheckTimer.current);
@@ -396,7 +407,7 @@ export default function App() {
     recheckTimer.current = window.setTimeout(() => void runCheck(stale).catch((error: unknown) => (
       isAbort(error) ? setStatus('Support check cancelled.') : setStatusMessage(errorStatus('check', codedJobError(error)))
     )), 600);
-  }, [built, problems, runCheck, scene.units, setStatus]);
+  }, [built, failedBuilds, problems, runCheck, scene.units, setStatus]);
 
   const showProblem = useCallback((problem: UnitProblem) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === problem.unitId);
@@ -725,7 +736,8 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const runExport = async (kind: ExportKind) => {
     const current = sceneRef.current;
-    const files = planExport(current, kind, supportMeshes);
+    // A unit changed since its build keeps its supports part (the worker skips an empty one).
+    const files = planExport(current, kind, currentBuilds(current.units, builtRef.current));
     if (files.length === 0) {
       if (kind.startsWith('active') && !current.activeUnitId) return setStatus('Select an object to export.');
       // Supports only, and every unit in scope had its contacts deleted or zoned out.
@@ -978,7 +990,6 @@ export default function App() {
               <span className="edit-hint"><kbd>Ctrl</kbd>+<kbd>Z</kbd> {t('undo')}</span>
             </div>
             {!tips.below && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
-            {/* CIA-05: zones test the landing of each support, not the shared junction landing of a tree (see release-3 backlog). */}
             <div className="edit-row">
               <button className="danger" onClick={() => activeUnit && clearZones(activeUnit.id)} disabled={!activeUnit?.zones.length} {...hint('Clear every no-support zone of this object at once. Undo brings them back')}>{t('Clear all zones')}</button>
               <button className="primary edit-done" onClick={closeZones} {...hint('Finish painting zones (Esc or Enter)')}>{t('Done')} <kbd>Esc</kbd></button>

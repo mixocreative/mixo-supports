@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkStatus, exportStatus, joinRun, tallyChecks } from './check';
+import { checkStatus, exportStatus, joinRun, runToken, tallyChecks } from './check';
 
 const CLEAN = 'No unsupported spots found.';
 
@@ -57,5 +57,30 @@ describe('joinRun', () => {
     await expect(first).rejects.toThrow('crashed');
     await expect(second).resolves.toBe(2);
     expect(running.size).toBe(0);
+  });
+});
+
+describe('runToken', () => {
+  it('is one token per unit version and build', () => {
+    const unit = {};
+    const oldBuild = {};
+    expect(runToken(unit, oldBuild)).toBe(runToken(unit, oldBuild));
+    expect(runToken(unit, undefined)).toBe(runToken(unit, undefined));
+    expect(runToken(unit, {})).not.toBe(runToken(unit, oldBuild));
+    expect(runToken({}, oldBuild)).not.toBe(runToken(unit, oldBuild));
+  });
+
+  it('a recheck after the new build lands runs its own check instead of joining the one against the old build', async () => {
+    const running = new Map<string, { token: object; promise: Promise<string> }>();
+    const unit = {};
+    const oldBuild = {};
+    const newBuild = {};
+    let finishOld!: (value: string) => void;
+    // Checked while the unit's old build was current; still running when the new build lands.
+    const first = joinRun(running, 'u1', runToken(unit, oldBuild), () => new Promise<string>((resolve) => { finishOld = resolve; }));
+    const recheck = joinRun(running, 'u1', runToken(unit, newBuild), () => Promise.resolve('contacts of the new build'));
+    finishOld('contacts of the old build');
+    expect(await first).toBe('contacts of the old build');
+    expect(await recheck).toBe('contacts of the new build');
   });
 });

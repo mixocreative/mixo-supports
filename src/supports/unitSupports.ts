@@ -25,6 +25,30 @@ const builtCache = new WeakMap<PrintUnit, { dropped: readonly string[]; contacts
 /** What the unit's latest support build reported: the automatic contacts it left out for landing in a zone. */
 export type BuiltSupports = Pick<GeneratedSupportMesh, 'dropped'>;
 
+/** A unit's latest support build and the unit version it was built from. */
+export interface UnitBuild<T extends BuiltSupports = GeneratedSupportMesh> {
+  unit: PrintUnit;
+  mesh: T;
+}
+
+/**
+ * The build of `unit` as it is now, or undefined when the unit changed since (that build's
+ * `dropped` may name contacts the current unit keeps). Checks and export use only this.
+ */
+export function currentBuild<T extends BuiltSupports>(unit: PrintUnit, latest: UnitBuild<T> | undefined): T | undefined {
+  return latest?.unit === unit ? latest.mesh : undefined;
+}
+
+/** The current builds of `units` by unit id (see `currentBuild`), for the export plan. */
+export function currentBuilds<T extends BuiltSupports>(units: readonly PrintUnit[], latest: ReadonlyMap<string, UnitBuild<T>>): Map<string, T> {
+  const out = new Map<string, T>();
+  for (const unit of units) {
+    const mesh = currentBuild(unit, latest.get(unit.id));
+    if (mesh) out.set(unit.id, mesh);
+  }
+  return out;
+}
+
 /**
  * Final contacts in unit-local space: automatic minus suppressed, deleted and no-support zones, plus
  * manual, minus those whose support the unit's latest build (`built`) dropped for landing in a zone.

@@ -5,7 +5,7 @@ import { emptyScene, type PrintScene, type PrintUnit } from '../state/project';
 import { encodeStl, planExport, uniqueFileNames, type ExportPart } from './export';
 import { meshBounds } from '../core/supports/meshQuery';
 import { applyTransform } from '../state/transform';
-import { unitSupportMesh } from './unitSupports';
+import { currentBuilds, unitSupportMesh } from './unitSupports';
 import { defaultSupportSettings } from '../core/supports/settings';
 
 const cube: TriangleMesh = {
@@ -63,6 +63,15 @@ describe('support export', () => {
     expect(planExport(bare, 'active-printable', new Map())).toEqual([{ fileName: 'Part-printable.stl', parts: [{ unitId: 'unit-a', content: 'model' }] }]);
     expect(planExport(bare, 'separate-supports', new Map()).map((file) => file.parts)).toEqual([[{ unitId: 'unit-b', content: 'supports' }]]);
     expect(planExport({ ...bare, units: [emptied], activeUnitId: 'unit-a' }, 'separate-supports', new Map())).toEqual([]);
+  });
+
+  it('ignores a build of an older unit version: zoned out, erased, exported before the rebuild keeps the supports', () => {
+    const zoned: PrintUnit = { ...unit('unit-a', 'Part', 0), zones: [{ center: [0, -10, 0], radius: 1, normal: [0, 1, 0], kind: 'paint' }] };
+    // The zoned version's build dropped the only contact; the erase makes a new unit version.
+    const latest = new Map([['unit-a', { unit: zoned, mesh: { dropped: ['auto-0'] } }]]);
+    expect(planExport({ ...scene, units: [zoned] }, 'active-supports', currentBuilds([zoned], latest))).toEqual([]);
+    const erased: PrintUnit = { ...zoned, zones: [...zoned.zones, { ...zoned.zones[0]!, kind: 'erase' }] };
+    expect(planExport({ ...scene, units: [erased] }, 'active-supports', currentBuilds([erased], latest))).toEqual([{ fileName: 'Part-supports.stl', parts: [{ unitId: 'unit-a', content: 'supports' }] }]);
   });
 
   it('follows the latest build: a unit whose build dropped every contact (zoned landings) has no supports part', () => {
