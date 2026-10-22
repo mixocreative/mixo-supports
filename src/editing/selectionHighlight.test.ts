@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contactVertexRuns, selectionDelta } from './selectionPaint';
+import { contactVertexRuns, selectionDelta } from './selectionHighlight';
 
 describe('selectionDelta', () => {
   it('lists only what turned on and what turned off', () => {

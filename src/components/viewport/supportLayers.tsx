@@ -6,7 +6,7 @@ import type { TriangleMesh } from '../../core/analysis/types';
 import type { GeneratedSupportMesh, SupportContact } from '../../core/supports/mesh';
 import { zoneOverlay } from '../../core/supports/overlayMesh';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
-import { contactVertexRuns, selectionDelta } from '../../editing/selectionPaint';
+import { contactVertexRuns, selectionDelta } from '../../editing/selectionHighlight';
 import type { PrintUnit } from '../../state/project';
 import { resolveSettings } from '../../supports/unitSupports';
 import { PREVIEW } from './style';

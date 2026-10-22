@@ -60,8 +60,6 @@ export function createStroke(onEnd?: () => void): Stroke {
   return stroke;
 }
 
-
-
 /** Zone brush: a stamp once the brush moved half a radius from the last one, the gap filled. */
 export function zoneFill(radius: number): StrokeFill {
   return (last, point) => {
