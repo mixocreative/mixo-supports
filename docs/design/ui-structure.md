@@ -1,9 +1,10 @@
 # mixosupports UI structure
 
-Date: 2026-10-22. Status: design, owner decisions of 2026-10-22 encoded; revised after a four-model
+Date: 2026-10-22. Status: implemented at `05d42c4` (see the status section below). Written as a design,
+with the owner decisions of 2026-10-22 encoded; revised after a four-model
 review and a behaviour audit (sections 12 and 13). Code baseline for every
-"today" statement: commit `acd3f98` (branch `refactor/app-shell`, which contains
-`refactor/selection-pipeline`); file:line references are in the appendix. Behaviour details that
+"today" statement in sections 2 to 11: commit `acd3f98` (branch `refactor/app-shell`, which contains
+`refactor/selection-pipeline`); file:line references are in the appendix, refreshed for `05d42c4`. Behaviour details that
 this document does not change (key table, pick table, strokes, colours of 3D marks, camera numbers)
 stay in `docs/superpowers/specs/2026-10-21-support-editing-ui-spec.md` (the behaviour spec).
 Terms: `docs/migration/glossary.md`. House style: skill `mixo-app-style` (`tokens.css`, `base.css`).
@@ -23,11 +24,64 @@ Contents
 11. Prerequisite bugs, then the feature: context-sensitive right panel and per-support settings
 12. Owner-confirmable rules and open questions
 13. UI behaviour audit
+14. Project files (Save and Open)
 - Appendix A: verified against the code (file:line)
 
 Markers used below: **[today]** = shipped at `acd3f98`; **[change]** = this document changes it;
 **[new]** = new control or string; **[feature]** = section 11, built after the layout work;
 **[confirm]** = rule the owner should confirm (listed again in section 12).
+
+---
+
+## Status at 05d42c4: implemented
+
+Everything in sections 1 to 11 is built, with the deviations listed after the table. Sections 2 to 11
+keep their design wording, and their "today" statements describe `acd3f98`. Sections 12 and 13 and
+Appendix A carry the shipped state. Commit detail is in `git log --oneline 57f5eb0..HEAD`.
+
+| Section | Shipped in |
+|---|---|
+| 11.0 a and b: exact right-click removal, unit-local ids, old removals kept through migration | `23627b4`, `002fc0d`, `069b320`, `ab99ed5` |
+| Step 1 (2.x, 4, 5, 8): command registry (`src/editing/commands.ts`), Tab freed, Esc rules, one `mode.exit`, header Generate removed, file drop refused in modes, Modes group | `e01941f`, `a55d4ec`, `83b85e4`, `83ccbe1`, `434b239` |
+| Step 1 (4.5, 7.2): per-section inert locks that fold to headings, lock-note click catcher | `83ccbe1`, `f3ebfe9`, `54be8c9` |
+| Step 1 (2.6, 5.7): zones focus mode (red frame, "n supports hidden by zones"), Clear all zones with an Undo toast | `f7dc6d1`, `2b494b7`, `1ddc5de` |
+| Step 1 (Q2): Check live in Edit, Fix in place, re-check wording, stale Check label, Generate in the edit bar | `e51fc50`, `258520b`, `d4549f7`, `dae2674`, `fb6bf27` |
+| Step 1 (Q4): right panel split into Object and Support shape, placement waits for Generate in Edit, regeneration report | `fae0a4b`, `33dbd0a`, `ea0e4f9`, `fea3145`, `dae2674` |
+| Step 1 (Q6): Add / Remove switch, Click reach, Drag over starts on a model or support and orbits elsewhere | `b8c8f34`, `807c7f7`, `02e6aa8` |
+| Step 2: Select / Unselect switch, Shift read from the pointer event and latched at stroke start | `785c5a8`, `ae4570d`, `6ebcad7`, `d3cbc72`, `4c82c6f` |
+| Step 3 (section 11): per-support settings (`contactSettings`, `SHAPE_KEYS`), count band, Select them, Reset, ring mark, coalesced undo, regeneration keeps or resets | `8fc7742`, `7ca03e1`, `2305c39`, `ff3b726`, `66c74a4`, `7dbaaf1`, `2e0cbe5`, `f1de455`, `7d2b612`, `4297fc7`, `49114f9`, `8cb45b4`, `cb48f21`, `7f4fe9b`, `808c6a2`, `1b1b46e` |
+| Audit polish (section 13): toasts, export and cancel text, add flash, step-naming Undo and Redo hints, `disabledReason` on every disabled command, Delete always shown | `fd7e66c`, `1748ef5`, `e9ccce2`, `b44da0d`, `54be8c9`, `44315ae`, `f8d25fd`, `02630b7` |
+| CIA-06 "Supports are still building", CIA-07 idle zone overlay, Hide / Show models with Drag over, zh-Hant wording lint | `9b60d3e`, `6f7b554`, `9c4a670`, `a1e0f53`, `3cde47b` |
+| Project files: Save project and Open project (section 14) | `05d42c4` |
+| `npm run walk`: an AI-free browser walk, 24 checks with fixed baselines | `3c04a2a`, `4fd7537` |
+
+### Deviations from the spec
+
+Each item was checked against the code at `05d42c4`.
+
+- **Object region.** It is live while supports are selected (Q4, C9), as specified. The order changed.
+  With supports selected, Support shape comes before Object so it is on screen (`cb48f21`,
+  `SettingsPanel.tsx:219`). With none selected, Object comes first.
+- **Select them.** It selects the supports of the active object only, because the mode edits one
+  object. When other selected objects also have customised supports, the hint gives their count and
+  says to edit them one at a time (`commands.ts:261-275`). C10 had no such limit.
+- **Shift hint.** While Shift is held the hint reads "Release Shift to select" or "Release Shift to
+  unselect". At rest it reads "Hold Shift to unselect" or "Hold Shift to select" (`EditBar.tsx:66`).
+  The copy table in 6.2 lists only the resting wording.
+- **Fix.** It frames the spot and says "Click the framed spot to add a support." It draws no ghost
+  marker. After the add, the re-check says "Spot covered." or "Still unsupported here."
+  (`useFixSpot.ts:54,67,79`; `check.ts:89`).
+- **Placement in Edit.** A placement change made in Support Edit Mode is deferred, not regenerated.
+  The right panel says "Placement changed. Regenerate to apply." until Generate runs
+  (`SettingsPanel.tsx:264`). Outside a mode the change still schedules a regeneration, announced as
+  "Placement changed: regenerating {name}." (`regenerate.ts:46`).
+- **Undo floor hint.** At the mode floor the Undo reason reads "Nothing to undo here: leave the mode
+  to undo earlier steps." (`commands.ts:127`), not the audit's wording.
+- **Tips only and Drag over.** Q7 assumed no interaction. Tips only does change what Drag over can
+  pick (12.2, Q7).
+- **Open audit rows.** The Click reach ring and Add with models hidden are not done (section 13).
+- **Not in the design.** Save project and Open project were added after the document was written
+  (section 14).
 
 ---
 
@@ -1280,35 +1334,48 @@ ring mark. 5. The Regenerate report. Steps 1 and 2 ship without any UI change.
 
 ### 12.1 Rules to confirm
 
-| # | Rule | Default in this document |
-|---|---|---|
-| C1 | Remove the header Generate (duplicate, second red button) | removed |
-| C2 | Left Exit stays live inside the locked panel AND the viewport Done stays; both run `mode.exit` and never disagree (4.4). Two of four reviewers preferred one Exit in the viewport bar. | both, one command |
-| C3 | Header: the lock blocks scene-changing commands only. Language, Hide models, Wireframe stay live in every mode; Undo / Redo stay live down to the mode's floor | view toggles live |
-| C4 | File drop on the viewport is refused while a mode is on (today it ends the mode and imports) | refused |
-| C5 | Click reach (was Remove radius): drop the right-panel field once the Add bar has it | keep both for now (one registry control) |
-| C6 | Viewport primary keeps the word "Done" (left button says "Exit ...") | "Done": says the work is kept |
-| C7 | Supports follow defaults unless explicitly edited; Reset drops the override (replaces the earlier "freeze at add" and "re-snapshot" options) | decided by the coordinator, recorded |
-| C8 | A support with an override is kept out of tree merges | kept out (decided) |
-| C9 | Edit-mode right panel live (owner ruling of 2026-10-22) | live |
-| C10 | "Select them" outside Support Edit Mode enters the mode with the customised supports selected | enters |
-| C11 | Zones frame and badge follow mixo-app-style (red hairline for every tool mode); blue stays the zone layer on the model and the Regenerate button | red frame, zone mode named in the badge |
-| C12 | Clear manual edits also drops per-support overrides (all hand work in one action, with an Undo toast that gives the counts) | drops them |
-| C13 | Tab is no longer a mode key (it breaks focus navigation); modes are entered and left with the buttons, Done and Esc | no Tab |
-| C14 | A click on a support toggles it; Shift+click is no longer documented as a separate action | toggle only |
+| # | Rule | Default in this document | Status at `05d42c4` |
+|---|---|---|---|
+| C1 | Remove the header Generate (duplicate, second red button) | removed | Implemented. The header has no Generate (`a55d4ec`). |
+| C2 | Left Exit stays live inside the locked panel AND the viewport Done stays; both run `mode.exit` and never disagree (4.4). Two of four reviewers preferred one Exit in the viewport bar. | both, one command | Implemented. The left Exit and the viewport Done both run `mode.exit` (`e01941f`). |
+| C3 | Header: the lock blocks scene-changing commands only. Language, Hide models, Wireframe stay live in every mode; Undo / Redo stay live down to the mode's floor | view toggles live | Implemented. Language, Hide models and Wireframe stay live; Undo and Redo stop at the mode floor (`83ccbe1`). |
+| C4 | File drop on the viewport is refused while a mode is on (today it ends the mode and imports) | refused | Implemented. A file dropped in a mode is refused, the status line says why and the lock note pulses (`83b85e4`, `54be8c9`). A dropped `.mixosupports` file follows the same rule. |
+| C5 | Click reach (was Remove radius): drop the right-panel field once the Add bar has it | keep both for now (one registry control) | Implemented as the default. One registry command, `setting.clickReach`, renders in the Add bar and in the right panel Advanced group (`commands.ts:245`). |
+| C6 | Viewport primary keeps the word "Done" (left button says "Exit ...") | "Done": says the work is kept | Implemented. The viewport button says "Done" and the left button says "Exit ..." (`EditBar.tsx:20`). |
+| C7 | Supports follow defaults unless explicitly edited; Reset drops the override (replaces the earlier "freeze at add" and "re-snapshot" options) | decided by the coordinator, recorded | Implemented. `contactSettings` holds only edited values; Reset drops them (`8fc7742`). |
+| C8 | A support with an override is kept out of tree merges | kept out (decided) | Implemented. A support with its own shape never joins an Auto Tree branch (`autotree.ts:58,62`). |
+| C9 | Edit-mode right panel live (owner ruling of 2026-10-22) | live | Implemented, changed in order. The panel is live; Support shape sits first while supports are selected (`cb48f21`). |
+| C10 | "Select them" outside Support Edit Mode enters the mode with the customised supports selected | enters | Changed. "Select them" selects the active object's customised supports and gives the count on other selected objects (`commands.ts:261-275`). |
+| C11 | Zones frame and badge follow mixo-app-style (red hairline for every tool mode); blue stays the zone layer on the model and the Regenerate button | red frame, zone mode named in the badge | Implemented. Red hairline frame in both modes, the zone mode in the badge, blue kept for the zone layer (`f7dc6d1`). |
+| C12 | Clear manual edits also drops per-support overrides (all hand work in one action, with an Undo toast that gives the counts) | drops them | Implemented. The toast reads "Cleared {a} added, {r} removed, {c} customised." with Undo (`toast.ts:44`, `App.tsx:540-551`). |
+| C13 | Tab is no longer a mode key (it breaks focus navigation); modes are entered and left with the buttons, Done and Esc | no Tab | Implemented. The editor never takes Tab; it moves focus (`keys.ts:77-92` has no Tab rule; `a55d4ec`). |
+| C14 | A click on a support toggles it; Shift+click is no longer documented as a separate action | toggle only | Implemented. A click on a support toggles it whatever Ctrl or Shift says (`pick.ts:58-62`). |
 
 ### 12.2 Open questions for the owner
 
-| # | Question | Options | Default until answered |
-|---|---|---|---|
-| Q1 | Esc: always exit the mode, or first clear the selection and then exit? Reviewers split (one: Esc always exits; one: Esc cancels the gesture, then clears, and the button exits). | exit always / clear then exit | clear then exit (today) |
-| Q2 | Should Check findings stay live inside Support Edit Mode, so Fix adds a support without leaving the mode? Today Edit locks the left panel, which also blocks Check and object switching. Related: a Generate button reachable from the edit bar when the object has no supports. | keep locked / findings live in Edit / findings in the viewport | locked |
-| Q3 | Strict mode isolation (exit one mode before entering the other, four clicks and no shared undo floor) or a "Switch to zones" button in the mode bar that keeps one undo floor for the whole editing session? | strict / Switch button | strict |
-| Q4 | Right panel split: "Object: {scope}" always live, plus a context region "Support shape: defaults or n selected". And in Edit mode, label placement settings "applies on next Generate". | split / one list | one list with the 11.2 header |
-| Q5 | Registry form: a typed descriptor table with tests and a `disabledReason` per command, no generic renderer. | table + tests / generic renderer | table + tests |
-| Q6 | Touch: Add has no touch equivalent of right-click removal (Select, then Delete works). Add an Add / Remove switch to the Add tool? | switch / leave | leave |
-| Q7 | Does Tips only change what Drag over can pick? To verify in the browser before the Select work. | n/a | unchanged |
-| Q8 | Width of the new Drag over row in ja (7.6). | n/a | measure before merge |
+| # | Question | Options | Default until answered | Status at `05d42c4` |
+|---|---|---|---|---|
+| Q1 | Esc: always exit the mode, or first clear the selection and then exit? Reviewers split (one: Esc always exits; one: Esc cancels the gesture, then clears, and the button exits). | exit always / clear then exit | clear then exit (today) | Implemented, answer 12.5. Esc clears the selection, the next Esc exits. The status line says "Esc again to exit" (`keys.ts:83-84`, `status.ts:34`). |
+| Q2 | Should Check findings stay live inside Support Edit Mode, so Fix adds a support without leaving the mode? Today Edit locks the left panel, which also blocks Check and object switching. Related: a Generate button reachable from the edit bar when the object has no supports. | keep locked / findings live in Edit / findings in the viewport | locked | Implemented, answer 12.5. Check is live in Edit, Fix works in place, the edit bar shows Generate when the object is empty (`e51fc50`). |
+| Q3 | Strict mode isolation (exit one mode before entering the other, four clicks and no shared undo floor) or a "Switch to zones" button in the mode bar that keeps one undo floor for the whole editing session? | strict / Switch button | strict | Implemented, answer 12.5. Strict isolation, with no switch button (`e01941f`). |
+| Q4 | Right panel split: "Object: {scope}" always live, plus a context region "Support shape: defaults or n selected". And in Edit mode, label placement settings "applies on next Generate". | split / one list | one list with the 11.2 header | Implemented, changed in order. Object and Support shape regions; Support shape first while supports are selected. Placement in Edit says "Applies on next Generate." and "Placement changed. Regenerate to apply." (`SettingsPanel.tsx:214,264`). |
+| Q5 | Registry form: a typed descriptor table with tests and a `disabledReason` per command, no generic renderer. | table + tests / generic renderer | table + tests | Implemented. A typed table in `commands.ts`, tests in `commands.test.ts`, a `disabledReason` per command, no generic renderer. |
+| Q6 | Touch: Add has no touch equivalent of right-click removal (Select, then Delete works). Add an Add / Remove switch to the Add tool? | switch / leave | leave | Implemented, answer 12.5. The Add tool has an Add | Remove switch (`commands.ts:240-241`). |
+| Q7 | Does Tips only change what Drag over can pick? To verify in the browser before the Select work. | n/a | unchanged | Answered from the code: no. Tips only changes what Drag over can pick. Evidence below the table. |
+| Q8 | Width of the new Drag over row in ja (7.6). | n/a | measure before merge | Verified by the implementer (12.5). Not re-measured for this update. |
+
+**Q7 answer, from the code.** Tips only does change what Drag over can pick.
+
+- `UnitObject.tsx:50-51` swaps the built supports for `tipsOf(props.supports)` while the tips view is on.
+- `UnitObject.tsx:121-123` hands that same `supports` mesh to `useScreenBrush`.
+- `useScreenBrush.ts:161` builds the pickable bodies with `bodySegments(options.supports)`, so the circle tests the mesh on screen.
+- `screenBrush.ts:39-44` takes one segment per support from its components. In the tips view those are the tip and neck only.
+- `meshQuery.ts:22-40` keeps tip and neck components with their `contactId`, and keeps a stub at the landing end of a landing pillar (line 27).
+- `view.ts:117-123` sets when the view is on. Drag over takes no part in that decision.
+
+Every support stays pickable, because its contact id is kept. The hit area shrinks to the tip and neck,
+so a circle that only grazes a pillar selects nothing in the tips view. Tests are `mesh.test.ts:239`
+(tips still pick their contact) and `mesh.test.ts:138` (a support's own shape).
 
 ### 12.3 Gap list (14 gaps from the plan) and where each is answered
 
@@ -1327,7 +1394,7 @@ ring mark. 5. The Regenerate report. Steps 1 and 2 ship without any UI change.
 | 11 | Check and export use per-support settings | Export and the project file carry overrides; Check needs none (11.1, 11.2 rule 9). |
 | 12 | Header controls locked in modes except Undo / Redo | Header lock blocks scene-changing commands only (4.4, C3). |
 | 13 | Heavy model, disabled mode buttons with a reason | Help line under Modes (3.2 row 8) plus the button hint; `disabledReason` in the registry (Q5). |
-| 14 | Tips only and Drag over interplay | Open, Q7. |
+| 14 | Tips only and Drag over interplay | Answered, Q7: Tips only changes what Drag over picks (12.2). |
 
 ### 12.4 Review dissent kept on record
 
@@ -1363,100 +1430,131 @@ are left out (language, Select all, Transform, Fit view, Paint / Erase, Brush si
 and method choices, view toggles in zones). Severity: high = hand work or trust can be lost silently;
 medium = the user is unsure what happened; low = polish.
 
-| Control | Problem | Fix | Severity |
-|---|---|---|---|
-| check.run, check.showMe, check.fix | Findings go stale after any support edit and nothing says so; no recheck prompt (H1, step 5). A finding fixed in Edit mode stays listed. | Mark the list "Out of date, check again" after any support change; remove a finding when a support lands on its spot; Fix leaves a status naming the spot to click. | high |
-| setting.* (placement keys) | A placement setting silently schedules a regeneration (App.tsx:432-440); the user cannot tell that hand work is touched (H5, steps 1 and 4). | Status "Placement changed: regenerating {scope}" while it runs, then the "{n} customised kept, {m} reset" report with Undo. | high |
-| supports.generate (Regenerate) | The hint does not say what a regeneration keeps or replaces (H2, step 1). | Hint: "Replaces automatic supports. Your added supports and customised settings are kept where they still fit." | medium |
-| supports.clearManual | Scope unclear once overrides exist; Undo toast gives no counts (H5, H9). | Clear manual edits also drops overrides (C12); toast "Cleared {a} added, {r} removed, {c} customised. Undo". | medium |
-| supports.remove | Destructive, no Undo toast, hint silent about Undo (H3, H9). | Toast "Removed supports of {scope}. Undo". | medium |
-| check.fix | The loop does not finish: Fix enters Edit mode, the user must find the spot, and the Check list is locked away inside the mode (step 4, Q2). | Frame the spot, show a ghost marker, status "Click here to add a support"; on add, say "Spot covered". | medium |
-| edit.method (Drag over) | The hint says "starting anywhere in the view" but mixo-app-style says a drag on empty space orbits; the user cannot tell which one a drag will do (H4, step 1). | Follow the skill: a drag that starts on the object selects, on empty space orbits; show the ring only over the object. Or record the deviation as an owner decision. | medium |
-| edit.add (click) | Feedback for "Support added." is only the footer line, 11.5 px, far from the click (H1, step 2). | Flash a ring at the new tip for 400 ms; keep the status line. | medium |
-| edit.keys.add (right-click) | After 11.0 a right-click removes exactly one support, but the old hint still says "every support within this distance" (H2). | New copy for Click reach and for the Add hint (6.2). | medium |
-| Footer status line | Every success and failure of every action lands in one small live line at the bottom (H1, step 4). Long actions (Generate, export, Check) finish out of sight. | Long actions also end with an Undo toast or a job-list entry that stays until dismissed; the status line keeps the text. | medium |
-| export.kind[5] | Success says little: no file name, count or size; a failed build can look like a slow one (H1, step 4). | Status "Exported {file} ({n} supports)"; on failure the job list shows the error until dismissed. | medium |
-| zones.badge, zones.* | Painting a zone gives no number for its effect (step 4). | Badge shows "{n} supports hidden by zones" from the shown build's `dropped` contacts (App.tsx:206). | medium |
-| mode.edit, mode.zones | With several objects selected the button does not say which object the mode will edit (H2, step 1). | Hint "Edit supports of {object}"; the badge repeats the name. | low |
-| Locked panels (4.5) | A click on a locked section does nothing visible if the catcher is optional (H1). | Make the catcher required: any click on a locked section repeats "Finish ... first" in the status line and pulses the lock note. | medium |
-| history.undo, history.redo | At the mode floor the buttons go grey with no reason (H1, H9). | Hint at the floor: "Nothing more to undo inside this mode. Exit to go further back." Hints name the last action. | low |
-| view.models | With models hidden, an Add click has no surface to land on and does nothing (H5). To verify. | Disable Add with a note while models are hidden, or keep picking on the hidden mesh. | medium |
-| Keyboard: Tab | Tab toggles the mode and calls preventDefault (keys.ts:53), so keyboard users cannot move focus (H7, accessibility). | Drop Tab as a mode key (C13). | high |
-| Keyboard: Esc in a field | Esc and Delete typed in a number field are ignored by the app (keys.ts:47), but a range or checkbox keeps focus after pointerup, so Esc and Delete then do nothing in the mode (H7). | Fields keep their own Esc (revert, blur). Range and checkbox inputs are exempt from the form-field rule, so Delete and Esc reach the mode after pointerup (8.6). | medium |
-| objects.delete | Destructive with no toast; hint only mentions Undo (H3). | Toast "Deleted {n} objects. Undo". | low |
-| import.files | A drop refused in a mode is announced only in the status line (H1). | Pulse the lock note as well (C4). | low |
-| jobs.cancel | After Cancel nothing says the old supports are untouched (H9, step 4). | Status "Cancelled. Supports unchanged." | low |
-| setting.preset | A preset overwrites many fields at once without listing them (H2). | Hint lists the fields it sets; one undo step. | low |
-| Footer counts | "removed" means nothing to a layperson (H2). | Hint on the count: "Automatic supports you removed. Clear manual edits brings them back." | low |
-| edit.removeRadius (Click reach) | The field changes how a right-click lands but shows nothing (H1). | Show a hover ring of the reach in Add. | low |
-| zones.clearAll, edit.deleteSelection | Disabled or inert without saying why (H6). | `disabledReason` hint (Q5): "No zones painted", "Nothing selected". | low |
+| Control | Problem | Fix | Severity | Status at `05d42c4` |
+|---|---|---|---|---|
+| check.run, check.showMe, check.fix | Findings go stale after any support edit and nothing says so; no recheck prompt (H1, step 5). A finding fixed in Edit mode stays listed. | Mark the list "Out of date, check again" after any support change; remove a finding when a support lands on its spot; Fix leaves a status naming the spot to click. | high | Done. The list is marked "Out of date, check again."; a finding goes when a support covers it (`dae2674`, `258520b`). |
+| setting.* (placement keys) | A placement setting silently schedules a regeneration (App.tsx:432-440); the user cannot tell that hand work is touched (H5, steps 1 and 4). | Status "Placement changed: regenerating {scope}" while it runs, then the "{n} customised kept, {m} reset" report with Undo. | high | Done, changed. Outside a mode a regeneration is announced and reported; in Edit the change waits and the panel says "Placement changed. Regenerate to apply." (`33dbd0a`, `7d2b612`). |
+| supports.generate (Regenerate) | The hint does not say what a regeneration keeps or replaces (H2, step 1). | Hint: "Replaces automatic supports. Your added supports and customised settings are kept where they still fit." | medium | Done. The hint names what is kept (`b44da0d`). |
+| supports.clearManual | Scope unclear once overrides exist; Undo toast gives no counts (H5, H9). | Clear manual edits also drops overrides (C12); toast "Cleared {a} added, {r} removed, {c} customised. Undo". | medium | Done. It drops overrides; the toast gives the three counts (`toast.ts:44`). |
+| supports.remove | Destructive, no Undo toast, hint silent about Undo (H3, H9). | Toast "Removed supports of {scope}. Undo". | medium | Done. Undo toast (`fd7e66c`). |
+| check.fix | The loop does not finish: Fix enters Edit mode, the user must find the spot, and the Check list is locked away inside the mode (step 4, Q2). | Frame the spot, show a ghost marker, status "Click here to add a support"; on add, say "Spot covered". | medium | Done, changed. It frames the spot and says "Click the framed spot to add a support."; no ghost marker. The re-check says "Spot covered." (`e51fc50`). |
+| edit.method (Drag over) | The hint says "starting anywhere in the view" but mixo-app-style says a drag on empty space orbits; the user cannot tell which one a drag will do (H4, step 1). | Follow the skill: a drag that starts on the object selects, on empty space orbits; show the ring only over the object. Or record the deviation as an owner decision. | medium | Done. A drag starts on the model or a support, else it orbits (`807c7f7`). |
+| edit.add (click) | Feedback for "Support added." is only the footer line, 11.5 px, far from the click (H1, step 2). | Flash a ring at the new tip for 400 ms; keep the status line. | medium | Done. A ring flashes at the new tip for 400 ms (`44315ae`, `f8d25fd`). |
+| edit.keys.add (right-click) | After 11.0 a right-click removes exactly one support, but the old hint still says "every support within this distance" (H2). | New copy for Click reach and for the Add hint (6.2). | medium | Done. New Click reach and Add / Remove copy (`b8c8f34`). |
+| Footer status line | Every success and failure of every action lands in one small live line at the bottom (H1, step 4). Long actions (Generate, export, Check) finish out of sight. | Long actions also end with an Undo toast or a job-list entry that stays until dismissed; the status line keeps the text. | medium | Done. Undo toasts, and a job list entry that stays until dismissed (`fd7e66c`, `1748ef5`). |
+| export.kind[5] | Success says little: no file name, count or size; a failed build can look like a slow one (H1, step 4). | Status "Exported {file} ({n} supports)"; on failure the job list shows the error until dismissed. | medium | Done. Names the file and support count; a failed job stays listed (`1748ef5`). |
+| zones.badge, zones.* | Painting a zone gives no number for its effect (step 4). | Badge shows "{n} supports hidden by zones" from the shown build's `dropped` contacts (App.tsx:206). | medium | Done. "{n} supports hidden by zones" (`f7dc6d1`, `2b494b7`). |
+| mode.edit, mode.zones | With several objects selected the button does not say which object the mode will edit (H2, step 1). | Hint "Edit supports of {object}"; the badge repeats the name. | low | Done. The hint names the active object (`b44da0d`). |
+| Locked panels (4.5) | A click on a locked section does nothing visible if the catcher is optional (H1). | Make the catcher required: any click on a locked section repeats "Finish ... first" in the status line and pulses the lock note. | medium | Done. The click catcher repeats the lock note and pulses it (`83ccbe1`, `54be8c9`). |
+| history.undo, history.redo | At the mode floor the buttons go grey with no reason (H1, H9). | Hint at the floor: "Nothing more to undo inside this mode. Exit to go further back." Hints name the last action. | low | Done, changed wording. Hints name the step (`e9ccce2`); the floor reason reads "Nothing to undo here: leave the mode to undo earlier steps." |
+| view.models | With models hidden, an Add click has no surface to land on and does nothing (H5). To verify. | Disable Add with a note while models are hidden, or keep picking on the hidden mesh. | medium | Open. Not verified in the browser. The app does not disable Add while models are hidden, and no check covers an Add click then. |
+| Keyboard: Tab | Tab toggles the mode and calls preventDefault (keys.ts:53), so keyboard users cannot move focus (H7, accessibility). | Drop Tab as a mode key (C13). | high | Done. The editor never takes Tab (`a55d4ec`). |
+| Keyboard: Esc in a field | Esc and Delete typed in a number field are ignored by the app (keys.ts:47), but a range or checkbox keeps focus after pointerup, so Esc and Delete then do nothing in the mode (H7). | Fields keep their own Esc (revert, blur). Range and checkbox inputs are exempt from the form-field rule, so Delete and Esc reach the mode after pointerup (8.6). | medium | Done. Only text-taking fields are exempt, so range and checkbox focus no longer blocks Esc and Delete (`a55d4ec`, `1b1b46e`). |
+| objects.delete | Destructive with no toast; hint only mentions Undo (H3). | Toast "Deleted {n} objects. Undo". | low | Done. Undo toast (`fd7e66c`). |
+| import.files | A drop refused in a mode is announced only in the status line (H1). | Pulse the lock note as well (C4). | low | Done. The refusal pulses the lock note (`54be8c9`). |
+| jobs.cancel | After Cancel nothing says the old supports are untouched (H9, step 4). | Status "Cancelled. Supports unchanged." | low | Done. "{label}: cancelled. Supports unchanged." (`1748ef5`). |
+| setting.preset | A preset overwrites many fields at once without listing them (H2). | Hint lists the fields it sets; one undo step. | low | Done in part. The hint lists the groups a preset sets and says Undo takes them back, not each field (`54be8c9`). |
+| Footer counts | "removed" means nothing to a layperson (H2). | Hint on the count: "Automatic supports you removed. Clear manual edits brings them back." | low | Done. The hint explains "removed" (`54be8c9`). |
+| edit.removeRadius (Click reach) | The field changes how a right-click lands but shows nothing (H1). | Show a hover ring of the reach in Add. | low | Open. No hover ring of the reach is drawn in Add. |
+| zones.clearAll, edit.deleteSelection | Disabled or inert without saying why (H6). | `disabledReason` hint (Q5): "No zones painted", "Nothing selected". | low | Done. `disabledReason` on every disabled command; Delete is always shown (`b44da0d`). |
 
 Top gaps to fix first: stale Check findings, silent regeneration of hand work, Tab focus trap,
-the half-finished Fix loop, Drag over on empty space versus orbit.
+the half-finished Fix loop, Drag over on empty space versus orbit. All five are done.
+
+Open at `05d42c4`: `view.models` (Add with models hidden) and `edit.removeRadius` (the Click reach ring).
+No row is marked won't do.
+
+## 14. Project files (Save and Open)
+
+Not in the original design. Shipped in `05d42c4`.
+
+Save project writes the plate as one `.mixosupports` file. Open project reads it back.
+
+- **Where.** An Open / Save row sits under Import models in the left panel (`App.tsx:867-870`). Both are registry commands, `project.open` and `project.save` (`commands.ts:168-175`).
+- **Enabled.** Open needs no mode on, and in a mode its reason is the busy line. Save needs at least one object, and its reason is the no-model line. The row is inert with the Import section when a mode locks it.
+- **Format.** Version 1. JSON with a header `{ app: "mixo-supports", version: 1, scene }`, gzip-compressed where the browser has `CompressionStream`, else plain JSON. Open reads both by the gzip magic bytes (`state/projectFile.ts:5-7,36-62`).
+- **Contents.** The scene's units. Each holds its model mesh, transform, settings, manual supports, removals, per-support settings and zones. Selection and the active object are not saved.
+- **File name.** The first object's name without its extension, plus `.mixosupports`. Characters a file name cannot hold become `_`.
+- **Saving.** A native save dialog opens where the browser offers one, else the file downloads. A cancelled dialog says "Save cancelled; no file was written." A failure says nothing was written.
+- **Opening.** Open replaces the plate as one history step. When objects were on the plate, an Undo toast brings them back. Dropping a `.mixosupports` file on the viewport opens it the same way (`App.tsx:785-791`).
+- **Refusals.** Open waits while a mode is on, as an import does. It refuses a file with no header, a newer version, a damaged file, and a project over this device's triangle limit. Each message names the file, says what to do, and leaves the plate unchanged.
+- **Progress.** A job entry shows "Opening {name}" or "Saving {name}".
+- **Leave guard.** After a change since the last save or open, the page asks before it closes (`beforeunload`, `useProjectFile.ts:36-46`). A selection change alone does not arm it.
+- **Port.** The format and the messages in `src/editing/project.ts` hold no React. `useProjectFile.ts` is the only React part.
 
 ---
 
-## Appendix A. Verified against the code (`acd3f98`)
+## Appendix A. Verified against the code
 
-Paths under `src/` unless noted.
+Paths under `src/` unless noted. Re-checked at `05d42c4`. `App.tsx` is 987 lines and most of its
+logic moved into hooks (`useExport`, `useFixSpot`, `useRegenerate`, `useProjectFile`). A row marked
+"moved" kept its meaning and now points at the new place.
 
-| Item | Location |
+| Item | Location at `05d42c4` |
 |---|---|
-| Header: brand, subtitle | App.tsx:800 |
-| Language switch | App.tsx:802; i18n.ts:14–18 |
-| Undo / Redo buttons and hints | App.tsx:804–805 |
-| Hide / Show models, Wireframe / Solid | App.tsx:808–809 |
-| Header Generate (shared button) | App.tsx:796, 811 |
-| Left panel container | App.tsx:815–850 |
-| Import drop zone, picker, help | App.tsx:816–820 |
-| Objects list, rows, Select all, Delete | ObjectList.tsx:22–41 (row 28–33, Select all 38, Delete 39); App.tsx:821–828 |
-| Transform Select / Move / Rotate, disabled in a mode | App.tsx:829–836 |
-| Mode sections (order before Supports) | App.tsx:837; ModeEntry.tsx:13–36 |
-| Edit supports section, button, help | ModeEntry.tsx:23–27 |
-| No-support zones section, Painted / None, button, Clear, help | ModeEntry.tsx:28–34; ZonesBar.tsx:12–14 |
-| Mode button labels, hints, enabled rules | editing/modeButtons.ts:17–28 |
-| Supports group: Generate / Regenerate, Clear manual edits, Remove supports | App.tsx:838–843 |
-| Remove supports ends the mode | App.tsx:531–536 (leave at 532) |
-| Check supports, findings, help | App.tsx:844–849; ProblemList.tsx:9–28 (Fix primary at 24) |
-| Fix ends / enters the mode; refused in zones | App.tsx:562–575 (565, 567) |
-| Import ends the mode | App.tsx:497 |
-| Viewport classes per gesture | App.tsx:82–88 |
-| View group Tips only / Fit view / Bottom view | App.tsx:881–886; editing/view.ts:117–136 |
-| Circle size preview | App.tsx:887; viewport/CirclePreview.tsx:11–28 |
-| Drop overlay, job activity, toast region | App.tsx:888–892; JobActivity.tsx:46–101; UndoToast.tsx:10–36 |
-| Setup overlays: object name, viewport Edit supports button, unit note | App.tsx:893–896; ModeEntry.tsx:39–45 |
-| Zones bar | App.tsx:898; ZonesBar.tsx:20–49 |
-| Edit bar: badge texts, tools, Click / Drag over, Circle size, Select / Unselect, key hints, Edit no-support zones →, selection actions, Done | App.tsx:899; EditBar.tsx:13–17, 33–37, 40–43, 44–56, 57–60, 64–65, 66, 67–71, 72 |
-| Right panel title, help, settings, export | App.tsx:901–917; SettingsPanel.tsx:171–209, 40–150 |
-| Click reach setting (limits 0.1–50, default 1.5) | SettingsPanel.tsx:147; core/supports/settings.ts:208, 272 |
-| Export kinds | App.tsx:73–79, 912–916 |
-| Footer counts and status line | App.tsx:919–925 |
-| Session state, events, reducer (zonesReturn, openZones from edit) | editing/session.ts:10–47, 54–72, 89–125 |
-| Keyboard rules | editing/keys.ts:46–63 (form-field exemption 47, Tab 53); App.tsx:752–777 |
-| Range input keeps focus after pointerup | components/RangeField.tsx:24–30 |
-| Gesture kinds | editing/gesture.ts:10–28 |
-| Status lines per gesture, busy, heavy | editing/status.ts:9–15, 21–27, 40–64 |
-| Pick: click toggles regardless of Ctrl / Shift | editing/pick.ts:49–70 (57) |
-| Undo toasts | editing/toast.ts:11–41 |
-| Selection clear / delete handlers | App.tsx:666–671, 695–704 |
-| Busy refusal on object click in a mode | App.tsx:577–583 |
-| Right-click removal: eraseNear, removeContact, suppression/add | App.tsx:617–632 |
-| "Support added." status | App.tsx:613 |
-| compose: suppressed markers, radius erase, manual filter, fuzzy deleted match | core/analysis/placement.ts:130–179 (manual filter 179); positionFromId 183 |
-| Radius erase hides manual contacts (test) | core/analysis/placement.test.ts:159 |
-| Placement runs in the turned frame; ids keep the turned frame | supports/jobRunner.ts:87; supports/unitSupports.ts:169–193 |
-| Check job reads positions, angle, spacing only | supports/unitSupports.ts:127–136 |
-| Shown build's dropped (zoned) contacts | App.tsx:206 |
-| Clear all zones with Undo toast | App.tsx:557–559 |
-| Settings change applies to target objects, regeneration | App.tsx:65–67, 432–440, 515–529 |
-| One settings object per unit; manual contacts | state/project.ts:23–37; core/analysis/types.ts:13–19 |
-| Support job: one settings object, all contacts | supports/unitSupports.ts:74–76, 109–119; core/jobs.ts:35–44 |
-| Bracing across all columns | core/supports/mesh.ts:225, 456–480 |
-| Glossary, zone-only words, zone texts | glossary.ts:103–140; docs/migration/glossary.md |
-| Styles: primary, danger, regen, disabled | styles.css:46, 51–57 |
-| Styles: header 56 px, workspace 268 / 1fr / 300, footer 32 px | styles.css:60–79, 80–86, 406–419 |
-| Styles: edit frame, badge, bar, zones colours, view group move | styles.css:215–228, 232–279, 461–464 |
+| Header: brand, subtitle | App.tsx:845-846 |
+| Language switch | App.tsx:848; i18n.ts |
+| Undo / Redo buttons and hints | App.tsx:849-852; commands.ts:123-135 |
+| Hide / Show models, Wireframe / Solid | App.tsx:853-856 |
+| Header Generate | removed (`a55d4ec`) |
+| Left panel container | App.tsx:860 |
+| Import drop zone, picker, help | App.tsx:862-866 |
+| Open / Save project row | App.tsx:867-870; styles.css:117 |
+| Objects list, rows, Select all, Delete | ObjectList.tsx:13; App.tsx:871 |
+| Transform Select / Move / Rotate, disabled in a mode | App.tsx:881-887 |
+| Supports group: Generate / Regenerate, Clear manual edits, Remove supports | App.tsx:888-893; commands.ts:176-190 |
+| Modes group (Support Edit Mode, No-support zones), now after Supports | App.tsx:894; ModeEntry.tsx:11-24; commands.ts:197-216 |
+| Mode button labels, hints, enabled rules | commands.ts:197-216 (`editing/modeButtons.ts` is gone) |
+| Zones state label, Clear all zones | ModeEntry.tsx:23-24; ZonesBar.tsx:15; App.tsx:566 (`clearActiveZones`) |
+| Remove supports and Clear manual edits, with Undo toasts | App.tsx:533-551 |
+| Check supports, findings, help | App.tsx:895-899; ProblemList.tsx:9 |
+| Stale Check label | ProblemList.tsx:20 |
+| Fix: frames the spot, enters or stays in the mode; refused in zones | useFixSpot.ts:34-68 |
+| Import in a mode | moved: refused instead of ending the mode (App.tsx:430-434; status.ts:82) |
+| Viewport classes per gesture | App.tsx:90 (`VIEWPORT_CLASS`), 903 |
+| View group Tips only / Fit view / Bottom view | App.tsx:935-940; editing/view.ts:81-136 |
+| Circle size preview | App.tsx:941; viewport/CirclePreview.tsx |
+| Drop overlay, job activity, toast region | App.tsx:942-946; JobActivity.tsx:46; UndoToast.tsx:10 |
+| Setup overlays: object name, unit note | App.tsx:948-949 (the viewport Edit supports button is gone) |
+| Zones bar | App.tsx:951; ZonesBar.tsx:15 |
+| Edit bar | App.tsx:952; EditBar.tsx:38 (bar), 26 (badge texts), 20 (Done), 59-76 (tools, Shift hint), 86-89 (key hints), 101 (Select / Unselect switch), 108 (Click reach field) |
+| Right panel: Object and Support shape regions, defer note, pending note | App.tsx:954-971; SettingsPanel.tsx:173 (region type), 214 (defer note), 219-275 (264 pending note) |
+| Export section | App.tsx:972-978; App.tsx:86 (`EXPORT_IDS`); useExport.ts |
+| Click reach setting (limits 0.1 to 50, default 1.5) | SettingsPanel.tsx:153; core/supports/settings.ts:251, 315 |
+| Footer counts and status line | App.tsx:979-984 |
+| Session state, events, reducer | editing/session.ts:10, 62, 99 |
+| Command registry: ids, `resolve`, rows | editing/commands.ts:1-30 (ids), 123-275 (rows) |
+| Keyboard rules | editing/keys.ts:69-92 (`keyAction` 69, Esc 77-84), `takesText` 20; App.tsx:823 (listener) |
+| Range input keeps focus after pointerup | components/RangeField.tsx:27 |
+| Gesture kinds | editing/gesture.ts:11-33 |
+| Status lines per gesture, building, busy | editing/status.ts:9-31, 77-82 |
+| "Esc again to exit" | editing/status.ts:33-44 |
+| Pick: click toggles regardless of Ctrl / Shift | editing/pick.ts:49-62 |
+| Undo toasts | editing/toast.ts:11-61 |
+| Selection clear / delete handlers | App.tsx:667, 696 |
+| Busy refusal on object click in a mode | App.tsx:578 |
+| Right-click removal: eraseNear, removeContact | App.tsx:614-647 |
+| "Support added." status | App.tsx:611 |
+| Placement compose: exact-id removals, marker hide, remap, re-key | core/analysis/placement.ts:96 (`composeContacts`), 102 (`hidingRemovals`), 112 (`contactsHiddenByMarkers`), 126 (`remapDeleted`), 149 (`rekeyHandWork`), 212 (`positionFromId`) |
+| Exact-removal tests | core/analysis/placement.test.ts:159 (exact), 170 (remap), 178 (no match), 217 (marker) |
+| Placement runs in the turned frame | supports/unitSupports.ts:143-166 (`orientationOf`, `placementJobOf`); supports/jobRunner.ts:88-93 |
+| Check job reads positions, angle, spacing only | supports/unitSupports.ts:167 (`checkJobOf`) |
+| Zoned contacts of the shown build | supports/unitSupports.ts:100-114 (`hiddenByZones`); App.tsx:215 |
+| Placement pending, regenerate hook | supports/unitSupports.ts:37; components/useRegenerate.ts:21; App.tsx:278, 804 |
+| Regeneration report | editing/regenerate.ts:23-69 |
+| Per-support settings: data, commands, keys | state/project.ts:43, 74-80; core/supports/settings.ts:112 (`SHAPE_KEYS`); editing/shapeEdit.ts:18-58 |
+| Own-shape and manual supports kept out of tree merges | core/supports/autotree.ts:58, 62 |
+| One settings object per unit; manual contacts | state/project.ts:25-43 |
+| Support job: one settings object, all contacts | supports/unitSupports.ts:75-125; core/jobs.ts:75 |
+| Bracing across all columns | core/supports/mesh.ts:227 (`addBraces`) |
+| Tips view of a support mesh | core/supports/meshQuery.ts:22-40; components/viewport/UnitObject.tsx:50-51 |
+| Drag over: bodies, circle, strokes | components/viewport/useScreenBrush.ts:161; editing/screenBrush.ts:39; editing/dragOver.ts:40 |
+| Project file format, Save, Open | state/projectFile.ts:5-62; components/useProjectFile.ts:36-46; editing/project.ts |
+| Browser walk | scripts/walk.mjs (`npm run walk`) |
+| Glossary, zone-only words, zone texts | glossary.ts:19-55; docs/migration/glossary.md |
+| Styles: primary, danger, regen | styles.css:54-57 |
+| Styles: header, workspace 268 / 1fr / 300, footer | styles.css:60, 83, 406-419 |
+| Styles: edit frame, badge, bar, view group move | styles.css:232-261, 461 |
 | Styles: Tips only forced look | styles.css:454 |
-| Styles: Drag over circle | styles.css:285, 538–544 |
 | House tokens | `~/.claude/skills/mixo-app-style/tokens.css`, `base.css`, `SKILL.md` |
 | Stitch DESIGN.md location and sections | `~/.claude/skills/stitch/references/design-md.md`, `flows/design.md` |
