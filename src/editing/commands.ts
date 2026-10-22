@@ -14,7 +14,7 @@ export const COMMAND_IDS = [
   'transform.select', 'transform.move', 'transform.rotate',
   'supports.generate',
   'mode.edit', 'mode.zones', 'mode.exit',
-  'edit.clearSelection', 'edit.deleteSelection', 'edit.done',
+  'edit.generate', 'edit.clearSelection', 'edit.deleteSelection', 'edit.done',
   'zones.done',
 ] as const;
 export type CommandId = (typeof COMMAND_IDS)[number];
@@ -36,6 +36,8 @@ export interface UiState {
   selectedObjects: number;
   /** Supports selected in Support Edit Mode. */
   selection: number;
+  /** The active object has supports (generated or hand-added). */
+  activeSupported: boolean;
   /** Undo and Redo as the host can run them now (Undo stops at the mode's floor). */
   canUndo: boolean;
   canRedo: boolean;
@@ -141,6 +143,11 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     region: 'keyboard', role: 'info', shortcut: 'Esc',
     label: () => undefined, hint: () => undefined,
     visible: (s) => s.mode !== 'off', enabled: always, disabledReason: never,
+  },
+  'edit.generate': {
+    region: 'editBar', role: 'secondary',
+    label: () => 'Generate supports', hint: () => 'Place automatic supports on this object without leaving the mode',
+    visible: (s) => s.mode === 'edit' && !s.activeSupported, enabled: always, disabledReason: never,
   },
   'edit.clearSelection': {
     region: 'editBar', role: 'secondary', shortcut: 'Esc',

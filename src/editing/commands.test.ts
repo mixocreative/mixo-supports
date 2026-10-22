@@ -5,7 +5,7 @@ import type { EditMode } from './types';
 
 const base: UiState = {
   mode: 'off', active: true, heavy: undefined, units: 1, selectedObjects: 1, selection: 0,
-  canUndo: true, canRedo: true, modelsVisible: true, wireframe: false, generated: false,
+  activeSupported: true, canUndo: true, canRedo: true, modelsVisible: true, wireframe: false, generated: false,
 };
 const at = (change: Partial<UiState>): UiState => ({ ...base, ...change });
 
@@ -74,6 +74,13 @@ describe('the registry shows each control once', () => {
         expect(command.disabledReason !== undefined, `${id} in ${state.mode}`).toBe(!command.enabled);
       }
     }
+  });
+});
+
+describe('an object with no supports in Support Edit Mode', () => {
+  it('offers Generate in the edit bar until it has supports', () => {
+    expect(visibleIn('editBar', at({ mode: 'edit', activeSupported: false })).map((command) => command.id)).toEqual(['edit.generate', 'edit.done']);
+    expect(visibleIn('editBar', at({ mode: 'edit' })).map((command) => command.id)).toEqual(['edit.done']);
   });
 });
 

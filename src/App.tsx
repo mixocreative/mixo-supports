@@ -57,6 +57,9 @@ import UndoToast from './components/UndoToast';
 import type { BrushMode } from './editing/types';
 import { detectLanguage, LANGS, plural, setLanguage, t, translateMessage, type Lang, type Message } from './i18n';
 
+/** A check finding being fixed: its place in the object's frame and how near a new support must land to cover it. */
+interface FixSpot { unitId: string; position: Vector; radius: number }
+
 type HistoryAction = { type: 'command'; command: SceneCommand } | { type: 'undo' } | { type: 'redo' };
 
 function historyReducer(history: SceneHistory, action: HistoryAction): SceneHistory {
@@ -186,7 +189,9 @@ export default function App() {
   const [tips, setTips] = useState(TIPS_START);
   const onBelowPlate = useCallback((below: boolean) => setTips((state) => tipsCamera(state, below)), []);
   /** Unit to open in Support Edit Mode once it is the active unit ("Fix" on a check finding). */
-  const [editTarget, setEditTarget] = useState<string>();
+  const [editTarget, setEditTarget] = useState<{ unitId: string; spot: FixSpot }>();
+  /** The spot a check finding's Fix framed: the next support added near it covers it. */
+  const fixSpot = useRef<FixSpot | undefined>(undefined);
   const [modelVisible, setModelVisible] = useState(true);
   const [wireframe, setWireframe] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -568,16 +573,29 @@ export default function App() {
     showProblem(problem);
     const { mode } = sessionRef.current;
     if (mode === 'zones') return setStatusMessage(busyStatus(mode));
-    if (mode !== 'off' && sceneRef.current.activeUnitId === problem.unitId) return;
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === problem.unitId);
+    if (!unit) return;
+    const spot: FixSpot = { unitId: unit.id, position: problem.position, radius: Math.max(resolveSettings(unit.settings).scatterSpacing, Math.sqrt(problem.area)) };
+    // Inside Support Edit Mode on the same object the spot is framed and the Add tool waits for the click.
+    if (mode === 'edit' && sceneRef.current.activeUnitId === unit.id) {
+      fixSpot.current = spot;
+      send({ type: 'setTool', tool: 'add' });
+      return setStatus('Click the framed spot to add a support.');
+    }
     send({ type: 'leave' });
-    dispatch({ type: 'selection/set', unitIds: [problem.unitId], activeUnitId: problem.unitId });
-    setEditTarget(problem.unitId);
-  }, [dispatch, send, showProblem]);
+    dispatch({ type: 'selection/set', unitIds: [unit.id], activeUnitId: unit.id });
+    setEditTarget({ unitId: unit.id, spot });
+  }, [dispatch, send, setStatus, showProblem]);
   useEffect(() => {
-    if (!editTarget || scene.activeUnitId !== editTarget) return;
+    if (!editTarget || scene.activeUnitId !== editTarget.unitId) return;
     setEditTarget(undefined);
     send({ type: 'enterEdit' });
-  }, [editTarget, scene.activeUnitId, send]);
+    send({ type: 'setTool', tool: 'add' });
+    fixSpot.current = editTarget.spot;
+    setStatus('Click the framed spot to add a support.');
+  }, [editTarget, scene.activeUnitId, send, setStatus]);
+  // A framed spot belongs to one visit of the mode.
+  useEffect(() => { if (editMode !== 'edit') fixSpot.current = undefined; }, [editMode]);
 
   const onSelect = useCallback((unitId: string | null, additive: boolean) => {
     const current = sceneRef.current;
@@ -615,8 +633,12 @@ export default function App() {
       type: 'supports/set', unitId, supports: { kind: 'live', data: { transform: { position: [...unit.transform.position], rotation: [...unit.transform.rotation] } } },
     }];
     dispatch({ type: 'batch', commands: [...commands, { type: 'manual/add', unitId, point: contact }] });
-    setStatus(normal[1] > 0 ? 'Support added on a top face: it grows from below.' : 'Support added.');
-  }, [dispatch]);
+    const spot = fixSpot.current;
+    if (spot && spot.unitId === unitId && Math.hypot(...contact.position.map((value, axis) => value - spot.position[axis]!)) <= spot.radius) {
+      fixSpot.current = undefined;
+      setStatus('Spot covered.');
+    } else setStatus(normal[1] > 0 ? 'Support added on a top face: it grows from below.' : 'Support added.');
+  }, [dispatch, setStatus]);
 
   // A removal is exact: the manual support itself, or the automatic contact's id. Click reach only decides which support a click on the model hits.
   const removeOne = useCallback((unit: PrintUnit, contactId: string) => {
@@ -763,7 +785,13 @@ export default function App() {
       case 'transform.move': return setGizmoMode('translate');
       case 'transform.rotate': return setGizmoMode('rotate');
       case 'supports.generate': return generate();
-      case 'mode.edit': return send({ type: 'enterEdit' });
+      case 'mode.edit': {
+        send({ type: 'enterEdit' });
+        const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+        if (sessionRef.current.mode === 'edit' && unit && !unit.supports) setStatus('No supports on {name} yet. Click the model to add one, or press Generate in the bar.', { name: unit.name });
+        return;
+      }
+      case 'edit.generate': return generate(sceneRef.current.activeUnitId ? [sceneRef.current.activeUnitId] : undefined);
       case 'mode.zones': return send({ type: 'enterZones' });
       case 'mode.exit':
       case 'edit.done':
@@ -771,7 +799,7 @@ export default function App() {
       case 'edit.clearSelection': return clearSelection();
       case 'edit.deleteSelection': return deleteSelected();
     }
-  }, [clearSelection, deleteSelected, deleteUnits, generate, send, undo]);
+  }, [clearSelection, deleteSelected, deleteUnits, generate, send, setStatus, undo]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -809,7 +837,7 @@ export default function App() {
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
     mode: editMode, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount,
-    selection: selection.size, canUndo, canRedo: history.future.length > 0, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
+    selection: selection.size, activeSupported: Boolean(activeUnit?.supports), canUndo, canRedo: history.future.length > 0, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
   };
   const command = (id: CommandId) => resolve(id, ui);
   const locked = (section: Parameters<typeof sectionLocked>[0]) => sectionLocked(section, editMode);
