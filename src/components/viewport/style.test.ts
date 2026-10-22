@@ -1,0 +1,16 @@
+import { describe, expect, it } from 'vitest';
+import { canvasCursor } from './style';
+
+describe('canvasCursor', () => {
+  const brush = { radius: 3, mode: 'select' } as const;
+  it('shows the mode default, and the brush icon only while a brush is over the object', () => {
+    expect(canvasCursor({ kind: 'none' }, false)).toBe('');
+    expect(canvasCursor({ kind: 'pick' }, true)).toBe('default');
+    expect(canvasCursor({ kind: 'add' }, true)).toBe('crosshair');
+    expect(canvasCursor({ kind: 'drag', brush, sizing: false }, false)).toBe('crosshair');
+    expect(canvasCursor({ kind: 'drag', brush, sizing: false }, true)).toContain('data:image/svg+xml');
+    const zones = { kind: 'zones', brush: { radius: 3, kind: 'paint' } } as const;
+    expect(canvasCursor(zones, false)).toBe('crosshair');
+    expect(canvasCursor(zones, true)).not.toEqual(canvasCursor({ kind: 'drag', brush, sizing: false }, true));
+  });
+});

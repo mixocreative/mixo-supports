@@ -9,7 +9,6 @@ import { createDragOver } from '../../editing/dragOver';
 import { bodySegments, brushHitsFrom, cachedVisibility, hiddenByModel, projectBodies, type BodySegments } from '../../editing/screenBrush';
 import type { Stroke } from '../../editing/stroke';
 import type { BrushMode } from '../../editing/types';
-import { BRUSH_CURSOR } from './style';
 
 /** Models hide supports from Drag over; supports never hide each other. */
 export const OCCLUDER = { occluder: true };
@@ -104,11 +103,13 @@ export function useScreenBrush(options: {
   stroke: Stroke;
   beginStroke: () => void;
   onPaint: (ids: readonly string[], mode: BrushMode) => void;
-}): readonly string[] {
+}): { brushed: readonly string[]; over: boolean } {
   const gl = useThree((state) => state.gl);
   const camera = useThree((state) => state.camera);
   const scene = useThree((state) => state.scene);
   const [brushed, setBrushed] = useState<readonly string[]>([]);
+  /** The circle is showing: the pointer is over the canvas with the brush live. */
+  const [over, setOver] = useState(false);
   const wanted = Boolean(options.brush);
   const bodies = useMemo<BodySegments | undefined>(() => (wanted && options.supports ? bodySegments(options.supports) : undefined), [wanted, options.supports]);
   const view = useMemo(() => bodies && screenBrushView(bodies, camera, scene, options.group, gl.domElement), [bodies, camera, scene, options.group, gl]);
@@ -147,14 +148,14 @@ export function useScreenBrush(options: {
       return [event.clientX - rect.left, event.clientY - rect.top] as const;
     };
     const show = ([x, y]: readonly [number, number], brush: Brush) => {
-      canvas.style.cursor = BRUSH_CURSOR.select;
+      setOver(true);
       circle.hidden = false;
       circle.dataset.mode = brush.mode;
       circle.style.width = circle.style.height = `${brush.radius * 2}px`;
       circle.style.transform = `translate(${x - brush.radius}px, ${y - brush.radius}px)`;
     };
     const hide = () => {
-      canvas.style.cursor = '';
+      setOver(false);
       circle.hidden = true;
     };
     const move = (event: PointerEvent) => {
@@ -182,8 +183,8 @@ export function useScreenBrush(options: {
       canvas.removeEventListener('pointerleave', leave);
       window.removeEventListener('pointermove', move);
       circle.remove();
-      canvas.style.cursor = '';
+      setOver(false);
     };
   }, [view, gl, dragOver]);
-  return bodies ? brushed : [];
+  return { brushed: bodies ? brushed : [], over };
 }

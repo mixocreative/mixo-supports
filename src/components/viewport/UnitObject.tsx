@@ -14,7 +14,7 @@ import { createStroke, zoneFill } from '../../editing/stroke';
 import { displayMesh } from '../../state/meshExtras';
 import type { PrintUnit } from '../../state/project';
 import { unitContacts } from '../../supports/unitSupports';
-import { PREVIEW, ZONE_OPACITY, SEE_THROUGH, BRUSH_CURSOR } from './style';
+import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
 import { type Hover, EditPreview, SupportBodies, ZoneLayer, useDoomed, ProblemMarkers, useSelectionColors } from './supportLayers';
 import type { ObjectViewportProps } from './types';
@@ -34,6 +34,8 @@ interface UnitObjectProps extends Pick<ObjectViewportProps,
   selected: boolean;
   active: boolean;
   onGroup?: (group: THREE.Group | null) => void;
+  /** A brush (Drag over circle, or the zone brush on the model) is over this object, reported for the canvas cursor. */
+  onBrushOver?: (over: boolean) => void;
 }
 
 export function UnitObject(props: UnitObjectProps) {
@@ -72,16 +74,6 @@ export function UnitObject(props: UnitObjectProps) {
   useEffect(leave, [editing, zoning, selecting, clickSelecting]);
   const doomed = useDoomed(unit, contacts, editing && hover?.remove ? hover.point : undefined);
 
-  // Drag over and the zone brush: the canvas shows the brush cursor while the pointer is over this object.
-  const gl = useThree((state) => state.gl);
-  const cursor = hover && zoneBrush ? BRUSH_CURSOR[zoneBrush.kind] : undefined;
-  useEffect(() => {
-    if (!cursor) return;
-    const canvas = gl.domElement;
-    canvas.style.cursor = cursor;
-    return () => { canvas.style.cursor = ''; };
-  }, [cursor, gl]);
-
   // A brush stroke (Drag over, or the zone brush): the rules are editing/stroke; this wires the
   // pointer and window events to it. A zone stroke is handed on once, when it ends.
   // The orbit is off for the stroke (the r3f canvas listener runs before the OrbitControls one,
@@ -111,13 +103,13 @@ export function UnitObject(props: UnitObjectProps) {
     window.addEventListener('blur', release);
   };
   const groupRef = useRef<THREE.Group | null>(null);
-  const { onGroup } = props;
+  const { onGroup, onBrushOver } = props;
   const supportColor = props.selected ? '#b59f78' : '#c8b896';
   const setGroup = useCallback((group: THREE.Group | null) => {
     groupRef.current = group;
     onGroup?.(group);
   }, [onGroup]);
-  const brushed = useScreenBrush({
+  const { brushed, over: circleOver } = useScreenBrush({
     brush,
     supports,
     group: groupRef,
@@ -126,6 +118,11 @@ export function UnitObject(props: UnitObjectProps) {
     beginStroke,
     onPaint: (ids, mode) => props.onPaint(unit.id, ids, mode),
   });
+  const brushOver = circleOver || Boolean(hover && zoneBrush);
+  useEffect(() => {
+    onBrushOver?.(brushOver);
+    return () => onBrushOver?.(false);
+  }, [brushOver, onBrushOver]);
   const preview = useMemo(() => brushPreview(props.selection, brushed, brush?.mode), [props.selection, brushed, brush?.mode]);
   const selectionColored = useSelectionColors(supportGeometry, supports, editing && !zoning, preview.solid, supportColor);
   // The brush going away mid-stroke (tool or mode changed, another object made active) ends the

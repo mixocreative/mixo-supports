@@ -8,6 +8,7 @@ import { missAction } from '../editing/pick';
 import type { ModelTransform } from '../state/transform';
 import { ViewCamera, PlateSide, FocusCamera } from './viewport/cameras';
 import type { GizmoMode, ObjectViewportProps } from './viewport/types';
+import { canvasCursor } from './viewport/style';
 import { UnitObject } from './viewport/UnitObject';
 
 export function acceptModelFile(file: File): boolean {
@@ -50,12 +51,14 @@ function UnitTransformControls({ mode, object, onDraggingChanged, onCommit }: {
 
 export default function ObjectViewport(props: ObjectViewportProps) {
   const [dragging, setDragging] = useState(false);
+  const [overBrush, setOverBrush] = useState(false);
   const [activeGroup, setActiveGroup] = useState<THREE.Group | null>(null);
   const { scene } = props;
   const selected = new Set(scene.selectedUnitIds);
   const activeId = scene.activeUnitId;
 
   return <Canvas
+    style={{ cursor: canvasCursor(props.gesture, overBrush) }}
     camera={{ position: [70, 60, 90], fov: 40, near: 0.5, far: 4000 }}
     onCreated={({ raycaster }) => {
       // The nearest hit per mesh is all picking needs (and much faster with a BVH).
@@ -98,7 +101,7 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       onPaint={props.onPaint}
       onZoneStroke={props.onZoneStroke}
       problems={props.problems.filter((problem) => problem.unitId === unit.id)}
-      {...(unit.id === activeId ? { onGroup: setActiveGroup } : {})}
+      {...(unit.id === activeId ? { onGroup: setActiveGroup, onBrushOver: setOverBrush } : {})}
     />)}
     {activeId && activeGroup && props.gesture.kind === 'none' && isTransformMode(props.gizmoMode) && <UnitTransformControls
       mode={props.gizmoMode}

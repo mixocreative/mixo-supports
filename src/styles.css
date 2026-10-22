@@ -226,9 +226,6 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
   display: flex;
   gap: 6px;
 }
-.viewport--editing canvas { cursor: crosshair; }
-/* Select supports → Click: the arrow, as the Click tool button shows (Drag over sets its brush cursor itself). */
-.viewport--pick canvas { cursor: default; }
 .edit-frame {
   position: absolute;
   inset: 0;

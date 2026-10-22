@@ -78,12 +78,12 @@ const EXPORTS: { kind: ExportKind; label: string; hint: string }[] = [
   { kind: 'whole-printable', label: 'Whole plate in one file', hint: 'One STL file: every object and its supports, as placed on the plate' },
 ];
 
-/** The viewport's classes per gesture: the mode chrome, and the arrow cursor of Select supports → Click. */
+/** The viewport's mode chrome classes per gesture. */
 const VIEWPORT_CLASS: Record<GestureKind, string> = {
   none: '',
   zones: ' viewport--editing viewport--zones',
   add: ' viewport--editing',
-  pick: ' viewport--editing viewport--pick',
+  pick: ' viewport--editing',
   drag: ' viewport--editing',
 };
 /** A support check finding, its position in the unit's local frame. */
