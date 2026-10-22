@@ -8,6 +8,7 @@ import type { PrintScene } from '../state/project';
 import { packProject, projectFileName, PROJECT_EXTENSION, sameUnits, unpackProject } from '../state/projectFile';
 import { t } from '../i18n';
 import { jobActivity } from '../workers/jobActivity';
+import { refusalLimit } from '../core/budget';
 import { isAbort, RUNTIME } from './appShared';
 
 /** The browser's save dialog, where it has one; automation cannot answer a native dialog, so it downloads instead. */
@@ -52,7 +53,7 @@ export function useProjectFile(host: {
     busy.current = true;
     try {
       await openProjectFile(file, {
-        jobs: jobActivity, runtime: RUNTIME, read: unpackProject, mode: () => modeRef.current.mode,
+        jobs: jobActivity, runtime: RUNTIME, read: (blob) => unpackProject(blob, refusalLimit(RUNTIME)), mode: () => modeRef.current.mode,
         hadObjects: () => sceneRef.current.units.length > 0, replace, markSaved: (opened) => { saved.current = opened; },
         setStatusMessage, offerUndo, refused,
       });

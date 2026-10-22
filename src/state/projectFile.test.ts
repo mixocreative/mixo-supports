@@ -69,6 +69,35 @@ describe('project file', () => {
     await expect(unpackProject(new Blob([new Uint8Array([0x1f, 0x8b, 1, 2, 3])]))).rejects.toMatchObject({ code: 'damaged' });
   });
 
+  it('rejects damaged mesh data as damaged, never as a scene', () => {
+    const scene = sceneOf(worked('u1', 'knot'));
+    const withSource = (source: unknown) => {
+      const file = JSON.parse(encodeProject(scene));
+      file.scene.units[0].source = source;
+      return JSON.stringify(file);
+    };
+    const f32 = (values: number[]) => ({ $printSceneType: 'Float32Array', values });
+    const u32 = (values: number[]) => ({ $printSceneType: 'Uint32Array', values });
+    const verts = f32([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    expect(decodeProject(withSource({ positions: verts, indices: u32([0, 1, 2]) })).units).toHaveLength(1);
+    for (const bad of [
+      { positions: f32([0, 0, 0, 1, 0]), indices: u32([0, 1, 2]) },
+      { positions: verts, indices: u32([0, 1]) },
+      { positions: verts, indices: u32([0, 1, 3]) },
+      { positions: f32([0, 0, 0, 1, 0, 0, 0, 1, 1e39]), indices: u32([0, 1, 2]) },
+      { positions: verts, indices: [0, 1, 2] },
+      null,
+    ]) expect(() => decodeProject(withSource(bad))).toThrowError(expect.objectContaining({ code: 'damaged' }));
+  });
+
+  it('refuses a file over the size cap before parsing it, plain or compressed', async () => {
+    const scene = sceneOf(worked('u1', 'knot'));
+    const limit = 5;
+    await expect(unpackProject(new Blob([encodeProject(scene)]), limit)).rejects.toMatchObject({ code: 'project-too-large', vars: { limit } });
+    await expect(unpackProject(await packProject(scene), limit)).rejects.toMatchObject({ code: 'project-too-large', vars: { limit } });
+    expect(await unpackProject(await packProject(scene), 1000)).toEqual(scene);
+  });
+
   it('names the file after the first object, or "project"', () => {
     expect(projectFileName(sceneOf(worked('u1', 'knot')))).toBe('knot.mixosupports');
     expect(projectFileName(sceneOf(worked('u1', 'a/b:c')))).toBe('a_b_c.mixosupports');

@@ -17,8 +17,12 @@ export const openedStatus = (name: string): StatusMessage => ({ key: 'Opened {na
 
 /** A project too big for this device's plate, found before it replaces anything. */
 export class ProjectTooLarge extends Error {
+  /** Carried across a worker boundary (serveTask sends `code` and `vars`), so the client can rebuild this error. */
+  readonly code = 'project-too-large';
+  readonly vars: { n: number; limit: number };
   constructor(readonly triangles: number, readonly limit: number) {
     super(`${triangles} triangles over the limit ${limit}`);
+    this.vars = { n: triangles, limit };
   }
 }
 
