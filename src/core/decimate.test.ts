@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TriangleMesh } from './analysis/types';
 import { decimate } from './decimate';
-import { meshBounds } from './supports/mesh';
+import { meshBounds } from './supports/meshQuery';
 
 /** A UV sphere of radius 10 with `rings` x `segments` quads (two triangles each). */
 function sphere(rings: number, segments: number): TriangleMesh {

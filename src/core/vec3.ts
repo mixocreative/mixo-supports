@@ -23,3 +23,6 @@ export function normalize(v: Vector, fallback: Vector = [0, 0, 0]): Vector {
   const size = length(v);
   return size === 0 ? fallback : [v[0] / size, v[1] / size, v[2] / size];
 }
+
+/** Unit vector, or straight down (plate frame, Y up) for a zero-length one. */
+export const normalizeOrDown = (v: Vector): Vector => normalize(v, [0, -1, 0]);

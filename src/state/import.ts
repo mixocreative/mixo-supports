@@ -3,7 +3,7 @@ import type { TriangleMesh } from '../core/analysis/types';
 import { parseStl } from '../core/import/stl';
 import { NonFiniteError, weldPositions } from '../core/import/weld';
 import { CodedError } from '../editing/errors';
-import { meshBounds } from '../core/supports/mesh';
+import { meshBounds } from '../core/supports/meshQuery';
 import { defaultSupportSettings } from '../core/supports/settings';
 import type { PrintUnit, SupportSettings } from './project';
 import { applyTransform } from './transform';

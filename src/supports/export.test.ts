@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import { emptyScene, type PrintScene, type PrintUnit } from '../state/project';
 import { encodeStl, planExport, uniqueFileNames, type ExportPart } from './export';
-import { meshBounds } from '../core/supports/mesh';
+import { meshBounds } from '../core/supports/meshQuery';
 import { applyTransform } from '../state/transform';
 import { unitSupportMesh } from './unitSupports';
 import { defaultSupportSettings } from '../core/supports/settings';

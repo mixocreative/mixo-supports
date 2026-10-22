@@ -8,7 +8,8 @@
 import type { CheckSettings } from './analysis/supportCheck';
 import { composeContacts } from './analysis/placement';
 import type { PlacementSettings, SupportPoint, TriangleMesh } from './analysis/types';
-import { exactLanding, type SupportContact } from './supports/mesh';
+import type { SupportContact } from './supports/mesh';
+import { exactLanding } from './supports/landing';
 import type { LiveSupportSettings } from './supports/settings';
 import { zonedAt, type ZoneStamp } from './supports/zones';
 import type { Vector } from './vec3';

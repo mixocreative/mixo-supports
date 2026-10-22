@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import { identityTransform, type PrintUnit } from '../state/project';
 import { applyTransform } from '../state/transform';
-import { meshBounds } from '../core/supports/mesh';
+import { meshBounds } from '../core/supports/meshQuery';
 import { defaultSupportSettings } from '../core/supports/settings';
 import { resolveSettings, unitContacts, unitRemovedCount, unitSupportMesh } from './unitSupports';
 
@@ -86,7 +86,7 @@ describe('unit supports', () => {
 
 describe('unitLowestY', () => {
   it('equals the lowest point of the transformed copy, bit for bit', async () => {
-    const { meshBounds } = await import('../core/supports/mesh');
+    const { meshBounds } = await import('../core/supports/meshQuery');
     const { applyTransform } = await import('../state/transform');
     const { unitLowestY } = await import('./unitSupports');
     const positions = new Float32Array(300).map((_, k) => Math.sin(k * 12.9898) * 20.123);

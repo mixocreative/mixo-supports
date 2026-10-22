@@ -40,7 +40,11 @@ conventions converts at its boundary: a left-handed host (Babylon.js by default)
 | `analysis/random.ts` | lookup3 pair hash and drand48 generator for the per-triangle scatter |
 | `analysis/parity.testkit.ts` | Tie-aware comparisons with Resin UV's stage dumps (tests only) |
 | `supports/settings.ts` | Live support settings, presets, limits |
-| `supports/mesh.ts` | Support mesh builder (contacts, columns, trees, braces, raft, label) and picking helpers |
+| `supports/mesh.ts` | Support mesh builder (contacts, columns, trees, braces) |
+| `supports/landing.ts` | Where a column lands: the SLASG_Line target (exact model or remesh), the down ray, neck directions |
+| `supports/meshBuilder.ts` | Closed-solid primitives (tubes, frustums, spheres, prisms) with per-contact components |
+| `supports/raftGeometry.ts` | Raft, roof cage and raft label solids |
+| `supports/meshQuery.ts` | Bounds, picking (`contactAtTriangle`) and the tips view (`tipsOf`) |
 | `supports/remesh.ts`, `supports/openvdbTables.ts` | Voxel remesh used as the placement and tree surface |
 | `supports/autotree.ts`, `supports/roof.ts`, `supports/raft.ts` | Tree layout, roof cage, raft outline |
 | `supports/labelFont.ts`, `supports/labelFont.json` | Label letters (Inter Regular, OFL-1.1) |
@@ -59,8 +63,8 @@ Long calls take an optional `onProgress(fraction, stage)` (`ProgressCallback`, f
 | Place | `generatePlacement(mesh, placementSettings, onProgress?)` (`analysis/placement.ts`) | `TriangleMesh` in the placement frame → `PlacementResult` (`points` with ids `auto-<x>_<y>_<z>` on a 0.01 mm grid, `regions`, flat contact arrays) |
 | Compose | `composeContacts(auto, manual, suppressed, eraseRadius?, deleted?, matchRadius?)`, `hidingRemovals(...)` (`analysis/placement.ts`); `zonedAt` (`supports/zones.ts`) drops automatic contacts inside no-support zones | the contacts that remain after manual adds, removals and zones |
 | Build | `buildSupportMesh(contacts, settings, options?)` (`supports/mesh.ts`) | `SupportContact[]` in plate space (Y up, plate y = 0) → `GeneratedSupportMesh` (positions, indices, `parts`, `components`) |
-| Pick | `contactAtTriangle(mesh, triangle)` (`supports/mesh.ts`) | triangle index of a hit → owning contact id, or `undefined` (braces, raft, roof, label) |
-| Tips view | `tipsOf(mesh)` (`supports/mesh.ts`) | tips and necks only, sharing the vertices; `contactAtTriangle` works on the result |
+| Pick | `contactAtTriangle(mesh, triangle)` (`supports/meshQuery.ts`) | triangle index of a hit → owning contact id, or `undefined` (braces, raft, roof, label) |
+| Tips view | `tipsOf(mesh)` (`supports/meshQuery.ts`) | tips and necks only, sharing the vertices; `contactAtTriangle` works on the result |
 | Check | `checkSupports(mesh, contacts, checkSettings, onProgress?)` (`analysis/supportCheck.ts`) | `SupportProblem[]` (islands, uncovered overhangs; at most 50, largest first) |
 | Zone layer | `zoneOverlay(mesh, maxEdge, maxTriangles, cellSize)` (`supports/overlayMesh.ts`), `zonedVertices`, `stampVertices`, `stampsAlong`, `nextStamp`, `sameStamp` (`supports/zones.ts`) | per-vertex zoned flags for drawing the layer, brush stamps along a stroke |
 | Placement math | `placementMatrix`, `invertMatrix`, `applyToPoint`, `applyToDirection`, `transformPositions` (`transform.ts`) | object-local ↔ plate space |
