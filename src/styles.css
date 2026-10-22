@@ -140,6 +140,12 @@ h3 { display: flex; align-items: center; min-height: 26px; margin: 0 0 10px; pad
   background: var(--surface); color: var(--ink);
   font-size: 13px; font-weight: 500; white-space: nowrap;
 }
+/* Drag over's Select | Unselect switch, its Shift hint and Circle size under the button: the switch keeps the plain segment look. */
+.drag-under { display: flex; flex-direction: column; gap: 4px; }
+.tool-choice .drag-under .segmented button { height: auto; padding: 6px 10px; border: 0; border-radius: 0; font-weight: 400; background: transparent; }
+.tool-choice .drag-under .segmented button + button { border-left: 1px solid var(--line); }
+.tool-choice .drag-under .segmented button[aria-pressed='true'] { background: var(--ink); color: var(--paper); }
+.drag-shift-hint { font-size: 11px; color: var(--muted); white-space: nowrap; }
 .tool-choice button svg { width: 19px; height: 19px; flex: none; }
 .tool-choice button:hover:not([aria-pressed='true']) { background: var(--sunken); }
 /* Pressed, the one style of every toggle and button group (after the groups, so it wins over their resting fill). */
@@ -512,7 +518,7 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 }
 /* Touch screens: no keyboard hints, roomier tap targets. */
 @media (pointer: coarse) {
-  .edit-hint { display: none; }
+  .edit-hint, .drag-shift-hint { display: none; }
   button, .segmented button, .panel .segmented button, .undo-toast button { min-height: 40px; }
   .problems button { min-height: 36px; }
 }
@@ -529,7 +535,12 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
   background: color-mix(in srgb, var(--red) 8%, transparent);
   pointer-events: none; box-sizing: border-box;
 }
-.brush-circle[data-mode='unselect'] { border-color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+/* Unselect: a grey outline and a minus at the centre, so the mode is not told by colour alone. */
+.brush-circle[data-mode='unselect'] { border-color: var(--muted); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.brush-circle[data-mode='unselect']::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 10px; height: 2px; margin: -1px 0 0 -5px;
+  background: var(--ink); border-radius: 1px;
+}
 
 /* ---- Locked panels (a mode is on): sections are inert and dimmed, one note says why ---- */
 .panel [inert] { opacity: .45; transition: opacity var(--dur); }

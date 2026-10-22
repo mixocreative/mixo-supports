@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SupportContact } from '../core/supports/mesh';
-import { brushPreview, paintSelection, pruneSelection, toggleSelection } from './selection';
+import { brushPreview, effectiveBrushMode, paintSelection, pruneSelection, toggleSelection } from './selection';
 
 const contact = (id: string, position: [number, number, number], normal: [number, number, number] = [0, 1, 0]) =>
   ({ id, position, normal }) as SupportContact;
@@ -64,5 +64,14 @@ describe('pruneSelection', () => {
   it('keeps identity when none are missing', () => {
     const selected = new Set(['a', 'b']);
     expect(pruneSelection(selected, contacts)).toBe(selected);
+  });
+});
+
+describe('effectiveBrushMode', () => {
+  it('is the switch while Shift is up and the other one while it is down', () => {
+    expect(effectiveBrushMode('select', false)).toBe('select');
+    expect(effectiveBrushMode('select', true)).toBe('unselect');
+    expect(effectiveBrushMode('unselect', false)).toBe('unselect');
+    expect(effectiveBrushMode('unselect', true)).toBe('select');
   });
 });

@@ -42,7 +42,7 @@ describe('sessionStatus', () => {
   });
 
   it('a change that keeps the tool message says nothing', () => {
-    expect(after(at({ mode: 'edit', tool: 'select', selectStyle: 'brush' }), { type: 'setBrushMode', mode: 'unselect' })).toBeUndefined();
+    expect(after(at({ mode: 'edit', tool: 'select', selectStyle: 'brush' }), { type: 'setBrushMode', mode: 'select' })).toBeUndefined();
     expect(after(editing, { type: 'setTool', tool: 'add' })).toBeUndefined();
     expect(after(editing, { type: 'setSelectStyle', style: 'brush' })).toBeUndefined();
   });
@@ -165,5 +165,16 @@ describe('importRefusal', () => {
     expect(importRefusal('edit')).toEqual(busyStatus('edit'));
     expect(importRefusal('zones')).toEqual({ key: 'Finish painting zones first: press Esc or Done.' });
     expect(importRefusal('off')).toBeUndefined();
+  });
+});
+
+describe('Drag over status with Unselect', () => {
+  const UNSELECT = 'Support Edit Mode: drag the circle over supports to unselect them. Supports hidden behind the model are skipped.';
+  const dragging = at({ mode: 'edit', tool: 'select', selectStyle: 'brush' });
+  it('says unselect while the switch or Shift makes a drag unselect, and select again on release', () => {
+    expect(editStatus({ ...dragging, brushMode: 'unselect' })?.key).toBe(UNSELECT);
+    expect(after(dragging, { type: 'shift', held: true })?.key).toBe(UNSELECT);
+    const held = reduceSession(dragging, { type: 'shift', held: true });
+    expect(after(held, { type: 'shift', held: false })?.key).toBe(BRUSH);
   });
 });

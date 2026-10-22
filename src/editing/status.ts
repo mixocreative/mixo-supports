@@ -12,8 +12,9 @@ const GESTURE_STATUS = {
   remove: 'Support Edit Mode: click a support, or the model next to one, to remove it.',
   pick: 'Support Edit Mode: click supports to select them, right-click a support to remove.',
   drag: 'Support Edit Mode: drag the circle over supports to select them. Supports hidden behind the model are skipped.',
+  dragUnselect: 'Support Edit Mode: drag the circle over supports to unselect them. Supports hidden behind the model are skipped.',
 } as const;
-const gestureStatus = (press: Gesture): string | undefined => (press.kind === 'none' ? undefined : press.kind === 'add' && press.remove ? GESTURE_STATUS.remove : GESTURE_STATUS[press.kind]);
+const gestureStatus = (press: Gesture): string | undefined => (press.kind === 'none' ? undefined : press.kind === 'add' && press.remove ? GESTURE_STATUS.remove : press.kind === 'drag' && press.brush.mode === 'unselect' ? GESTURE_STATUS.dragUnselect : GESTURE_STATUS[press.kind]);
 
 /**
  * A Support Edit Mode click that hit neither the model nor a support: what to click instead.

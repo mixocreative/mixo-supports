@@ -17,7 +17,10 @@ export interface EditSession {
   /** Under the Add tool: a click adds or removes. */
   addAction: AddAction;
   selectStyle: SelectStyle;
+  /** The Select | Unselect switch's own choice; it outlasts the modes. Shift flips it only while held (`shiftHeld`). */
   brushMode: BrushMode;
+  /** Shift is down: Drag over does the other of Select and Unselect (editing/selection effectiveBrushMode). */
+  shiftHeld: boolean;
   /** Drag over circle radius in screen px (slider 8–80, step 4): a view setting, so the object's Remove radius stays untouched. */
   brushRadius: number;
   /** The Circle size slider is held or was just moved: the view previews the circle (viewport/CirclePreview). */
@@ -39,6 +42,7 @@ export const initialSession: EditSession = {
   addAction: 'add',
   selectStyle: 'click',
   brushMode: 'select',
+  shiftHeld: false,
   brushRadius: 24,
   brushSizing: false,
   zoneKind: 'paint',
@@ -65,7 +69,9 @@ export type SessionEvent =
   | { type: 'setTool'; tool: EditTool }
   | { type: 'setAddAction'; action: AddAction }
   | { type: 'setSelectStyle'; style: SelectStyle }
+  /** A press on the switch: the person's own choice wins over a Shift held at that moment. */
   | { type: 'setBrushMode'; mode: BrushMode }
+  | { type: 'shift'; held: boolean }
   | { type: 'setBrushRadius'; radius: number }
   | { type: 'setBrushSizing'; sizing: boolean }
   | { type: 'setZoneKind'; kind: ZoneKind }
@@ -79,7 +85,7 @@ export type SessionEvent =
 /** The selection empties on every mode change. */
 function withMode(state: EditSession, mode: EditMode): EditSession {
   if (mode === state.mode) return state;
-  return { ...state, mode, selection: NO_SELECTION };
+  return { ...state, mode, shiftHeld: false, selection: NO_SELECTION };
 }
 
 function withSelection(state: EditSession, selection: ReadonlySet<string>): EditSession {
@@ -110,7 +116,9 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
     case 'setTool': return set(state, 'tool', event.tool);
     case 'setAddAction': return set(state, 'addAction', event.action);
     case 'setSelectStyle': return set(state, 'selectStyle', event.style);
-    case 'setBrushMode': return set(state, 'brushMode', event.mode);
+    case 'setBrushMode':
+      return state.brushMode === event.mode && !state.shiftHeld ? state : { ...state, brushMode: event.mode, shiftHeld: false };
+    case 'shift': return state.mode === 'edit' ? set(state, 'shiftHeld', event.held) : state;
     case 'setBrushRadius': return set(state, 'brushRadius', event.radius);
     case 'setBrushSizing': return set(state, 'brushSizing', event.sizing);
     case 'setZoneKind': return set(state, 'zoneKind', event.kind);

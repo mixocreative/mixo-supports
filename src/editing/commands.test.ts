@@ -218,3 +218,18 @@ describe('the Add | Remove switch and Click reach', () => {
     expect(resolve('setting.clickReach', at({ active: false }))).toMatchObject({ enabled: false, disabledReason: { key: 'Select an object first.' } });
   });
 });
+
+describe('the Select | Unselect switch', () => {
+  const drag = { mode: 'edit', tool: 'select', method: 'brush' } as const;
+  it('shows only under Drag over', () => {
+    expect(resolve('edit.dragSelect', at({ ...drag })).visible).toBe(true);
+    for (const off of [{ method: 'click' }, { tool: 'add' }, { mode: 'off' }, { mode: 'zones' }] as const) {
+      expect(resolve('edit.dragUnselect', at({ ...drag, ...off })).visible, JSON.stringify(off)).toBe(false);
+    }
+  });
+  it('presses the action a drag does now, so Shift moves the press', () => {
+    expect(resolve('edit.dragSelect', at({ ...drag, dragAction: 'select' })).pressed).toBe(true);
+    expect(resolve('edit.dragUnselect', at({ ...drag, dragAction: 'select' })).pressed).toBe(false);
+    expect(resolve('edit.dragUnselect', at({ ...drag, dragAction: 'unselect' }))).toMatchObject({ pressed: true, label: 'Unselect', hint: 'Dragging takes supports out of the selection' });
+  });
+});

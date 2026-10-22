@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SupportContact } from '../core/supports/mesh';
+import { gesture } from './gesture';
 import { FIX_TOOL_EVENTS, initialSession, reduceSession, startsEditing, type EditSession, type SessionEvent } from './session';
 
 const contact = (id: string) => ({ id, position: [0, 0, 0], normal: [0, -1, 0] }) as unknown as SupportContact;
@@ -150,5 +151,43 @@ describe('Fix on a check finding', () => {
     const removing = run(editing, { type: 'setAddAction', action: 'remove' });
     expect(run(removing, ...FIX_TOOL_EVENTS)).toMatchObject({ tool: 'add', addAction: 'add' });
     expect(run(selected, ...FIX_TOOL_EVENTS)).toMatchObject({ tool: 'add', addAction: 'add' });
+  });
+});
+
+describe('Drag over: Select | Unselect and Shift', () => {
+  const dragging = run(editing, { type: 'setTool', tool: 'select' }, { type: 'setSelectStyle', style: 'brush' }, { type: 'toggleContact', id: 'a' });
+  const effective = (state: EditSession) => gesture(state).kind === 'drag' ? (gesture(state) as { brush: { mode: string } }).brush.mode : undefined;
+
+  it('Unselect stays chosen for the session, also across leaving and entering the mode', () => {
+    const unselecting = run(dragging, { type: 'setBrushMode', mode: 'unselect' });
+    expect(effective(unselecting)).toBe('unselect');
+    expect(run(unselecting, { type: 'exit' }, { type: 'enterEdit' }, { type: 'setTool', tool: 'select' }, { type: 'setSelectStyle', style: 'brush' }).brushMode).toBe('unselect');
+  });
+
+  it('holding Shift flips the effective action either way and releasing restores it, without touching the switch', () => {
+    const held = run(dragging, { type: 'shift', held: true });
+    expect(effective(held)).toBe('unselect');
+    expect(held.brushMode).toBe('select');
+    expect(effective(run(held, { type: 'shift', held: false }))).toBe('select');
+    const unselecting = run(dragging, { type: 'setBrushMode', mode: 'unselect' }, { type: 'shift', held: true });
+    expect(effective(unselecting)).toBe('select');
+    expect(effective(run(unselecting, { type: 'shift', held: false }))).toBe('unselect');
+  });
+
+  it('a press on the switch while Shift is down is the choice, and a key repeat is not a flip back', () => {
+    const clicked = run(dragging, { type: 'shift', held: true }, { type: 'setBrushMode', mode: 'unselect' });
+    expect(effective(clicked)).toBe('unselect');
+    expect(run(clicked, { type: 'shift', held: false })).toMatchObject({ brushMode: 'unselect', shiftHeld: false });
+  });
+
+  it('leaving the mode lets go of Shift, and Shift outside Support Edit Mode is ignored', () => {
+    expect(run(dragging, { type: 'shift', held: true }, { type: 'exit' }).shiftHeld).toBe(false);
+    expect(reduceSession(withActive, { type: 'shift', held: true })).toBe(withActive);
+  });
+
+  it('a stroke painted while Shift is held takes the supports out of the selection', () => {
+    const held = run(dragging, { type: 'shift', held: true });
+    expect(run(held, { type: 'paint', ids: ['a', 'x'], mode: effective(held) as 'unselect' }).selection.has('a')).toBe(false);
+    expect(run(dragging, { type: 'paint', ids: ['x'], mode: 'select' }).selection.has('x')).toBe(true);
   });
 });

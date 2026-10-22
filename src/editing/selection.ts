@@ -26,6 +26,15 @@ export function brushPreview(selection: ReadonlySet<string>, brushed: readonly s
   return { solid, ghost, ghostTone: 'ring' };
 }
 
+/**
+ * What a Drag over stroke does now: the switch's choice (`brushMode`), flipped while Shift is
+ * held. The switch keeps its own choice, so releasing Shift brings it back.
+ */
+export function effectiveBrushMode(brushMode: BrushMode, shiftHeld: boolean): BrushMode {
+  if (!shiftHeld) return brushMode;
+  return brushMode === 'select' ? 'unselect' : 'select';
+}
+
 export function paintSelection(
   selected: ReadonlySet<string>,
   ids: readonly string[],

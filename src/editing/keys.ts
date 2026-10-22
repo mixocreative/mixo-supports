@@ -87,3 +87,6 @@ function bound({ key, ctrl, shift, target, ui }: KeyInput): KeyAction {
   if (mode === 'off' && lower === 'r') return run('transform.rotate', false);
   return NONE;
 }
+
+/** The key whose hold flips Drag over's Select | Unselect (event.key). */
+export const SHIFT_KEY = 'Shift';

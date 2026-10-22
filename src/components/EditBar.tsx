@@ -28,6 +28,7 @@ const BADGE = {
   remove: 'Click a support to remove it',
   pick: 'Click supports to select',
   drag: 'Drag over supports to select',
+  dragUnselect: 'Drag over supports to unselect',
 } as const;
 
 /**
@@ -47,7 +48,7 @@ export function EditBar({ gesture, unitName, ui, clickReach, send, run }: {
     <div className="edit-frame" aria-hidden="true" />
     <div className="edit-badge" role="status">
       {t('Support Edit Mode')}<span>{unitName}</span>
-      <b>{t(BADGE[gesture.kind === 'add' && gesture.remove ? 'remove' : gesture.kind])}</b>
+      <b>{t(BADGE[gesture.kind === 'add' && gesture.remove ? 'remove' : gesture.kind === 'drag' && gesture.brush.mode === 'unselect' ? 'dragUnselect' : gesture.kind])}</b>
     </div>
     <div className="edit-bar">
       <div className="edit-row">
@@ -60,17 +61,17 @@ export function EditBar({ gesture, unitName, ui, clickReach, send, run }: {
           {
             value: 'brush', icon: <BrushIcon />, label: t('Drag over'), hint: 'Drag over the model or its supports to select many at once. A drag that starts on empty space turns the view',
             // The tool's own size, under it: shown only while Drag over is the way to select.
-            under: gesture.kind === 'drag' && <RangeField
-              layout="stack" label="Circle size" unit="{n} px" hint="Radius of the circle around the pointer, in screen pixels: supports it passes over are selected"
-              min={8} max={80} step={4} value={gesture.brush.radius}
-              onChange={(radius) => send({ type: 'setBrushRadius', radius })}
-              onAdjust={(sizing) => send({ type: 'setBrushSizing', sizing })}
-            />,
+            under: gesture.kind === 'drag' && <div className="drag-under">
+              <DragActionSwitch ui={ui} run={run} />
+              <span className="drag-shift-hint">{t(ui.dragAction === 'select' ? 'Hold Shift to unselect' : 'Hold Shift to select')}</span>
+              <RangeField
+                layout="stack" label="Circle size" unit="{n} px" hint="Radius of the circle around the pointer, in screen pixels: supports it passes over are selected"
+                min={8} max={80} step={4} value={gesture.brush.radius}
+                onChange={(radius) => send({ type: 'setBrushRadius', radius })}
+                onAdjust={(sizing) => send({ type: 'setBrushSizing', sizing })}
+              />
+            </div>,
           },
-        ]} />}
-        {gesture.kind === 'drag' && <Segmented label={t('Dragging over supports')} value={gesture.brush.mode} onChange={(mode) => send({ type: 'setBrushMode', mode })} options={[
-          { value: 'select', label: t('Select'), hint: 'Dragging adds supports to the selection' },
-          { value: 'unselect', label: t('Unselect'), hint: 'Dragging takes supports out of the selection' },
         ]} />}
       </div>
       {gesture.kind === 'add' && <div className="edit-row">
@@ -90,6 +91,16 @@ export function EditBar({ gesture, unitName, ui, clickReach, send, run }: {
       </div>
     </div>
   </>;
+}
+
+/**
+ * Select | Unselect (registry edit.dragSelect, edit.dragUnselect): the pressed one is what a drag
+ * does now, so holding Shift moves the press to the other one and releasing it moves it back.
+ */
+function DragActionSwitch({ ui, run }: { ui: UiState; run: (id: CommandId) => void }) {
+  return <div className="segmented" role="group" aria-label={t('Dragging over supports')}>
+    {(['edit.dragSelect', 'edit.dragUnselect'] as const).map((id) => <CommandButton key={id} command={resolve(id, ui)} run={run} />)}
+  </div>;
 }
 
 /** Click reach from the registry as a number field: the same control as the Advanced row of the right panel. */

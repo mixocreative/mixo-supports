@@ -14,3 +14,12 @@ describe('canvasCursor', () => {
     expect(canvasCursor(zones, true)).not.toEqual(canvasCursor({ kind: 'drag', brush, sizing: false }, true));
   });
 });
+
+describe('canvasCursor in Drag over', () => {
+  it('draws Unselect with a cursor of its own, not only another colour', () => {
+    const at = (mode: 'select' | 'unselect') => canvasCursor({ kind: 'drag', brush: { radius: 3, mode }, sizing: false }, true);
+    expect(at('unselect')).not.toEqual(at('select'));
+    expect(decodeURIComponent(at('unselect'))).toContain('M23 19h7');
+    expect(canvasCursor({ kind: 'drag', brush: { radius: 3, mode: 'unselect' }, sizing: false }, false)).toBe('grab');
+  });
+});

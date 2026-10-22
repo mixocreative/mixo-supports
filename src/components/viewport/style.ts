@@ -8,8 +8,10 @@ export const ZONE_OPACITY = { full: 0.7, faint: 0.3 } as const;
 export const SEE_THROUGH = 0.45;
 /** Brush cursor over the active object: a brush icon (tip at the hot spot), crosshair where unsupported. */
 const brushCursor = (tip: string) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1f1b17" stroke-width="1.6" stroke-linejoin="round"><path d="M20.5 3.5 11 13l-1.9-1.9 9.5-9.5z" fill="#fbfaf7"/><path d="M9.1 11.1 11 13c0 3-2.4 5.6-7.5 7.5 0-4.6 1.8-8.6 5.6-9.4z" fill="${tip}"/></svg>`)}") 3 21, crosshair`;
-/** Drag over (red tip, with its circle: `useScreenBrush`), Paint zones (blue) and Erase zones (grey). */
-const BRUSH_CURSOR = { select: brushCursor(PREVIEW.remove), paint: brushCursor(PREVIEW.zone), erase: brushCursor(PREVIEW.ring) };
+/** The brush icon with a grey tip and a "−" beside it: Unselect, told apart from Select by shape as well as colour. */
+const unselectCursor = () => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="24" viewBox="0 0 32 24" fill="none" stroke="#1f1b17" stroke-width="1.6" stroke-linejoin="round"><path d="M20.5 3.5 11 13l-1.9-1.9 9.5-9.5z" fill="#fbfaf7"/><path d="M9.1 11.1 11 13c0 3-2.4 5.6-7.5 7.5 0-4.6 1.8-8.6 5.6-9.4z" fill="${PREVIEW.ring}"/><path d="M23 19h7" stroke-width="2.4" stroke-linecap="round"/></svg>`)}") 3 21, crosshair`;
+/** Drag over (red tip, with its circle: `useScreenBrush`; grey tip and minus for Unselect), Paint zones (blue) and Erase zones (grey). */
+const BRUSH_CURSOR = { select: brushCursor(PREVIEW.remove), unselect: unselectCursor(), paint: brushCursor(PREVIEW.zone), erase: brushCursor(PREVIEW.ring) };
 
 /** The canvas cursor: the brush icon while a brush is over the object, the arrow of Click, else crosshair in the edit modes (a hand over empty space in Drag over, where a drag orbits). */
 export function canvasCursor(gesture: Gesture, overBrush: boolean): string {
@@ -18,6 +20,6 @@ export function canvasCursor(gesture: Gesture, overBrush: boolean): string {
     case 'pick': return 'default';
     case 'add': return 'crosshair';
     case 'zones': return overBrush ? BRUSH_CURSOR[gesture.brush.kind] : 'crosshair';
-    case 'drag': return overBrush ? BRUSH_CURSOR.select : 'grab';
+    case 'drag': return overBrush ? BRUSH_CURSOR[gesture.brush.mode] : 'grab';
   }
 }

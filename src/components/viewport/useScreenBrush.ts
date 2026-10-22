@@ -150,6 +150,8 @@ export function useScreenBrush(options: {
   const wanted = Boolean(options.brush);
   const bodies = useMemo<BodySegments | undefined>(() => (wanted && options.supports ? bodySegments(options.supports) : undefined), [wanted, options.supports]);
   const view = useMemo(() => bodies && screenBrushView(bodies, camera, scene, options.group, gl.domElement), [bodies, camera, scene, options.group, gl]);
+  /** Shows the hover again with the brush as it is now (set while the pointer listeners are attached). */
+  const refreshHover = useRef<() => void>(() => undefined);
   const live = useRef({ options, view });
   live.current = { options, view };
   // Outlives the support mesh: a rebuild mid-stroke keeps the queued samples.
@@ -166,6 +168,9 @@ export function useScreenBrush(options: {
     });
     return { scheduler, dragOver: createDragOver(options.stroke, scheduler, () => live.current.options.beginStroke()) };
   });
+  // Select ↔ Unselect (the switch, or Shift) with the pointer at rest: the circle and the preview redo at once.
+  const mode = options.brush?.mode;
+  useEffect(() => refreshHover.current(), [mode]);
   useEffect(() => {
     scheduler.setSupports(bodies?.ids.length);
   }, [scheduler, bodies]);
@@ -215,6 +220,12 @@ export function useScreenBrush(options: {
         else hide();
       },
     });
+    refreshHover.current = () => {
+      const { brush } = live.current.options;
+      if (!hover || !brush || options.stroke.active) return;
+      if (dragOver.move(hover, { held: false, onCanvas: true, onObject: probe.answer }, brush)) show(hover, brush);
+      else hide();
+    };
     const move = (event: PointerEvent) => {
       const { brush } = live.current.options;
       if (!brush) return;
@@ -253,6 +264,7 @@ export function useScreenBrush(options: {
       canvas.removeEventListener('pointerleave', leave);
       window.removeEventListener('pointermove', move);
       probe.reset();
+      refreshHover.current = () => undefined;
       circle.remove();
       setOver(false);
     };

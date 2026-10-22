@@ -48,7 +48,8 @@ import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
 import { checkJobOf, currentBuild, currentBuilds, hiddenByZones, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { resolve, type CommandId, type UiState } from './editing/commands';
-import { keyAction } from './editing/keys';
+import { effectiveBrushMode } from './editing/selection';
+import { keyAction, SHIFT_KEY } from './editing/keys';
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
 import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
@@ -717,6 +718,8 @@ export default function App() {
       case 'mode.exit': return send({ type: 'exit' });
       case 'edit.add': return send({ type: 'setAddAction', action: 'add' });
       case 'edit.remove': return send({ type: 'setAddAction', action: 'remove' });
+      case 'edit.dragSelect': return send({ type: 'setBrushMode', mode: 'select' });
+      case 'edit.dragUnselect': return send({ type: 'setBrushMode', mode: 'unselect' });
       case 'setting.clickReach': return; // a field: set through its input
       case 'edit.clearSelection': return clearSelection();
       case 'edit.deleteSelection': return deleteSelected();
@@ -743,7 +746,7 @@ export default function App() {
   const scopePending = !generating && !regenQueued && scopeUnits.some(placementPending);
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
-    mode: editMode, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction,
+    mode: editMode, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction, method: session.selectStyle, dragAction: effectiveBrushMode(session.brushMode, session.shiftHeld),
     selection: selection.size, activeSupported: Boolean(activeUnit?.supports), generating, canUndo, canRedo: history.future.length > 0, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
   };
   const command = (id: CommandId) => resolve(id, ui);
@@ -762,6 +765,23 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [runCommand, ui]);
+  // Shift held flips Drag over's Select | Unselect while it is down. A window losing focus never
+  // sends the key-up, so it counts as a release; a key repeat is not a new press (a click on the
+  // switch while Shift is down then stays the person's choice).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === SHIFT_KEY && !event.repeat) send({ type: 'shift', held: event.type === 'keydown' });
+    };
+    const release = () => send({ type: 'shift', held: false });
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    window.addEventListener('blur', release);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKey);
+      window.removeEventListener('blur', release);
+    };
+  }, [send]);
   const locked = (section: Parameters<typeof sectionLocked>[0]) => sectionLocked(section, editMode);
   /** Locked sections are inert, so a click on one falls through to its panel: say why and pulse the note. */
   const blockedClick = (panel: Panel) => (event: React.MouseEvent<HTMLElement>) => {
