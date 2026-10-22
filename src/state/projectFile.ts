@@ -57,6 +57,9 @@ export async function unpackProject(file: Blob): Promise<PrintScene> {
   return decodeProject(text);
 }
 
+/** Triangles in every object of the scene. */
+export const triangleCountOf = (scene: PrintScene): number => scene.units.reduce((sum, unit) => sum + unit.source.indices.length / 3, 0);
+
 /** Whether two scenes hold the same work: every unit is the same object (selection and the active object do not count). */
 export function sameUnits(a: PrintScene, b: PrintScene): boolean {
   return a.units.length === b.units.length && a.units.every((unit: PrintUnit, index) => unit === b.units[index]);

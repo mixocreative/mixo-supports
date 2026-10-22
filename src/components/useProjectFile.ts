@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
-import { refusalLimit } from '../core/budget';
 import { importRefusal } from '../editing/status';
-import { openedStatus, openFailure, ProjectTooLarge, saveFailure, savedStatus, SAVE_CANCELLED } from '../editing/project';
+import { openProjectFile } from './openProject';
+import { saveFailure, savedStatus, SAVE_CANCELLED } from '../editing/project';
 import type { EditMode, StatusMessage } from '../editing/types';
 import type { UndoAction } from '../editing/toast';
 import type { PrintScene } from '../state/project';
 import { packProject, projectFileName, PROJECT_EXTENSION, sameUnits, unpackProject } from '../state/projectFile';
 import { t } from '../i18n';
 import { jobActivity } from '../workers/jobActivity';
-import { isAbort, RUNTIME, triangleCount } from './appShared';
+import { isAbort, RUNTIME } from './appShared';
 
 /** The browser's save dialog, where it has one; automation cannot answer a native dialog, so it downloads instead. */
 type SavePicker = (options: object) => Promise<{ name: string; createWritable(): Promise<{ write(data: Blob): Promise<void>; close(): Promise<void> }> }>;
@@ -50,24 +50,12 @@ export function useProjectFile(host: {
     if (refusal) return refused(refusal);
     if (busy.current) return;
     busy.current = true;
-    const job = jobActivity.begin({ label: { key: 'Opening {name}', vars: { name: file.name } }, blocking: true, context: 'project' });
     try {
-      const opened = await unpackProject(file);
-      job.progress({ fraction: 0.9 });
-      const triangles = opened.units.reduce((sum, unit) => sum + triangleCount(unit), 0);
-      if (triangles > refusalLimit(RUNTIME)) throw new ProjectTooLarge(triangles, refusalLimit(RUNTIME));
-      // A mode that began while the file was read keeps the plate: nothing is replaced under it.
-      const late = importRefusal(modeRef.current.mode);
-      if (late) return refused(late);
-      const hadObjects = sceneRef.current.units.length > 0;
-      replace(opened);
-      saved.current = opened;
-      setStatusMessage(openedStatus(file.name));
-      if (hadObjects) offerUndo({ kind: 'openProject', name: file.name });
-      job.end();
-    } catch (error) {
-      job.end();
-      setStatusMessage(openFailure(error, file.name));
+      await openProjectFile(file, {
+        jobs: jobActivity, runtime: RUNTIME, read: unpackProject, mode: () => modeRef.current.mode,
+        hadObjects: () => sceneRef.current.units.length > 0, replace, markSaved: (opened) => { saved.current = opened; },
+        setStatusMessage, offerUndo, refused,
+      });
     } finally {
       busy.current = false;
     }
