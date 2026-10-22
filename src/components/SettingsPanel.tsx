@@ -210,7 +210,7 @@ function DeferNote() {
 }
 
 /**
- * The right panel in two regions. Object holds what belongs to the object as a whole (preset,
+ * The right panel in two regions, Object first (Support shape first while supports are selected). Object holds what belongs to the object as a whole (preset,
  * placement, structure, raft, bracing, label). Support shape holds the tip, contact, neck and foot
  * keys one support may own, which read defaults until per-support selection lands.
  */
@@ -252,8 +252,8 @@ export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, d
   </details>);
   const inert = locked ? { inert: '' } : {};
   const heading = shapeHeading(shape.selected);
-  return <>
-    <section {...inert}>
+  const objectRegion = (
+    <section key="object" {...inert}>
       <h3>{t('Object: {scope}', { scope })}</h3>
       {placementPending && <p className="help pending-note" role="note">{t('Placement changed. Regenerate to apply.')}</p>}
       <fieldset className="settings" disabled={disabled}>
@@ -275,7 +275,9 @@ export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, d
         {groups(undefined)}
       </fieldset>
     </section>
-    <section {...inert}>
+  );
+  const shapeRegion = (
+    <section key="shape" {...inert}>
       <div className="shape-head">
         <h3>{t(heading.key, heading.vars)}</h3>
         {mixed && <CommandButton command={resolve('shape.reset', ui)} run={shape.run} />}
@@ -284,5 +286,7 @@ export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, d
       {mixed && <p className="help">{t('Changes apply to the selected supports only.')}</p>}
       <fieldset className="settings" disabled={disabled}>{groups('shape')}</fieldset>
     </section>
-  </>;
+  );
+  // With supports selected the region that edits them comes first, so it is on screen; Object stays live below.
+  return <>{mixed ? [shapeRegion, objectRegion] : [objectRegion, shapeRegion]}</>;
 }

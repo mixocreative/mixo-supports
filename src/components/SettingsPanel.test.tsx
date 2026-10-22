@@ -20,4 +20,11 @@ describe('the right panel', () => {
     expect(html.indexOf('Support shape')).toBeLessThan(html.indexOf('BAND'));
     expect(html.indexOf('BAND')).toBeLessThan(html.indexOf('Contact tip'));
   });
+
+  it('puts Support shape first while supports are selected, with Object still live and naming its scope', () => {
+    const html = render(['a', 'b']);
+    expect(html.indexOf('Support shape')).toBeLessThan(html.indexOf('Object: Part'));
+    expect(html).toContain('Object: Part</h3><fieldset class="settings">');
+    expect(html.indexOf('Object: Part')).toBeGreaterThan(html.indexOf('Contact tip'));
+  });
 });
