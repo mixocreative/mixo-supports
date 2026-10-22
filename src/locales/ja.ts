@@ -239,6 +239,7 @@ export const ja: Dictionary = {
   'Add supports': 'サポート追加',
   'Select supports': 'サポート選択',
   'How to select': '選択方法',
+  'Supports are still building.': 'サポートをまだ生成中です。',
   'Drag over': 'なぞって選択',
   'Dragging over supports': 'サポートをなぞったとき',
   'Unselect': '選択解除',

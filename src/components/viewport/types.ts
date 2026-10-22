@@ -39,6 +39,8 @@ export interface ObjectViewportProps {
   onShift: (held: boolean) => void;
   /** One finished zone stroke on a unit, stamps in unit-local space. */
   onZoneStroke: (unitId: string, stamps: ZoneStamp[]) => void;
+  /** Drag over was pressed before the first supports were drawn. */
+  onBuilding: () => void;
   /** Support check findings to mark, positions in their unit's local frame. */
   problems: readonly (SupportProblem & { unitId: string })[];
   /** Check finding to frame (Show me): point in plate space, its area in mm²; a new `seq` repeats the move. */

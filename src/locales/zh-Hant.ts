@@ -243,6 +243,7 @@ export const zhHant: Dictionary = {
   'Add supports': '新增支撐',
   'Select supports': '選取支撐',
   'How to select': '選取方式',
+  'Supports are still building.': '支撐仍在建立中。',
   'Drag over': '拖曳選取',
   'Dragging over supports': '拖曳經過支撐時',
   'Unselect': '取消選取',

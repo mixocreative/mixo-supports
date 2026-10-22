@@ -27,6 +27,9 @@ const MISS_STATUS = {
 } as const;
 const missKey = (press: Gesture): string | undefined => (press.kind === 'add' ? MISS_STATUS[press.remove ? 'remove' : 'add'] : press.kind === 'pick' ? MISS_STATUS.pick : undefined);
 
+/** A Drag over press while the object's first supports are still being built (nothing to select yet). */
+export const BUILDING_STATUS: StatusMessage = { key: 'Supports are still building.' };
+
 /** What Esc does while supports are selected: the first press clears them, the next one leaves the mode. */
 const ESC_AGAIN = 'Esc again to exit';
 

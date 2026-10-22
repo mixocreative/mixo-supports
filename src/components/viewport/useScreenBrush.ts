@@ -145,6 +145,8 @@ export function useScreenBrush(options: {
   /** Whether Shift is down, as the latest pointer event or Shift key press saw it (the switch shows it). */
   onShift: (held: boolean) => void;
   onPaint: (ids: readonly string[], mode: BrushMode) => void;
+  /** A press with the brush live while the supports have no bodies yet (the first build is running). */
+  onBuilding: () => void;
 }): { brushed: readonly string[]; over: boolean } {
   const gl = useThree((state) => state.gl);
   const camera = useThree((state) => state.camera);
@@ -194,6 +196,15 @@ export function useScreenBrush(options: {
     scheduler.setSupports(bodies?.ids.length);
   }, [scheduler, bodies]);
   useEffect(() => () => scheduler.setSupports(undefined), [scheduler]);
+  // No supports drawn yet: the brush has nothing to hit, so a press says why instead of staying silent.
+  const waiting = wanted && !options.supports;
+  useEffect(() => {
+    if (!waiting) return;
+    const canvas = gl.domElement;
+    const press = () => live.current.options.onBuilding();
+    canvas.addEventListener('pointerdown', press, { capture: true });
+    return () => canvas.removeEventListener('pointerdown', press, { capture: true });
+  }, [waiting, gl]);
   useEffect(() => {
     if (!view) return;
     const canvas = gl.domElement;

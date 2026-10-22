@@ -56,7 +56,7 @@ import { customisedAmong, liveSelection, scopeCounts, shapePatch, shapeView } fr
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
 import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
-import { busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
+import { BUILDING_STATUS, busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
 import { checkStatus, joinRun, runToken, tallyChecks, uncovered, type CheckTally } from './editing/check';
 import { stepKind } from './state/stepKind';
@@ -625,6 +625,8 @@ export default function App() {
     if (message) setStatusMessage(message);
   }, []);
 
+  const onBuilding = useCallback(() => setStatusMessage(BUILDING_STATUS), []);
+
   const onErase = useCallback((unitId: string, point: [number, number, number]) => {
     if (sessionRef.current.mode === 'zones') return;
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
@@ -901,6 +903,7 @@ export default function App() {
           onPaint={onPaint}
           onShift={onShift}
           onZoneStroke={onZoneStroke}
+          onBuilding={onBuilding}
           problems={listedProblems}
           {...(added ? { added } : {})}
           {...(focus ? { focus } : {})}

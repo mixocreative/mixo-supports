@@ -28,7 +28,7 @@ function toVector(vector: THREE.Vector3): Vector {
 /** The viewport settings and callbacks one object takes, plus its own unit, supports and state. */
 interface UnitObjectProps extends Pick<ObjectViewportProps,
   | 'gesture' | 'liveTool' | 'selection' | 'tipsView' | 'modelVisible' | 'wireframe'
-  | 'onSelect' | 'onAddContact' | 'onRemoveContact' | 'onErase' | 'onEditMiss' | 'onToggleContact' | 'onPaint' | 'onShift' | 'onZoneStroke'> {
+  | 'onSelect' | 'onAddContact' | 'onRemoveContact' | 'onErase' | 'onEditMiss' | 'onToggleContact' | 'onPaint' | 'onShift' | 'onZoneStroke' | 'onBuilding'> {
   problems: readonly SupportProblem[];
   /** A support just added to this object: a ring flashes at its tip. */
   added?: AddedAt;
@@ -126,6 +126,7 @@ export function UnitObject(props: UnitObjectProps) {
     beginStroke,
     onShift: props.onShift,
     onPaint: (ids, mode) => props.onPaint(unit.id, ids, mode),
+    onBuilding: props.onBuilding,
   });
   const brushOver = circleOver || Boolean(hover && zoneBrush);
   useEffect(() => {
