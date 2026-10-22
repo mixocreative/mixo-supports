@@ -1447,7 +1447,7 @@ medium = the user is unsure what happened; low = polish.
 | mode.edit, mode.zones | With several objects selected the button does not say which object the mode will edit (H2, step 1). | Hint "Edit supports of {object}"; the badge repeats the name. | low | Done. The hint names the active object (`b44da0d`). |
 | Locked panels (4.5) | A click on a locked section does nothing visible if the catcher is optional (H1). | Make the catcher required: any click on a locked section repeats "Finish ... first" in the status line and pulses the lock note. | medium | Done. The click catcher repeats the lock note and pulses it (`83ccbe1`, `54be8c9`). |
 | history.undo, history.redo | At the mode floor the buttons go grey with no reason (H1, H9). | Hint at the floor: "Nothing more to undo inside this mode. Exit to go further back." Hints name the last action. | low | Done, changed wording. Hints name the step (`e9ccce2`); the floor reason reads "Nothing to undo here: leave the mode to undo earlier steps." |
-| view.models | With models hidden, an Add click has no surface to land on and does nothing (H5). To verify. | Disable Add with a note while models are hidden, or keep picking on the hidden mesh. | medium | Open. Not verified in the browser. The app does not disable Add while models are hidden, and no check covers an Add click then. |
+| view.models | With models hidden, an Add click has no surface to land on and does nothing (H5). To verify. | Disable Add with a note while models are hidden, or keep picking on the hidden mesh. | medium | Done, no change needed. A browser walk on f8d25fd showed an Add click with models hidden still lands on the hidden mesh, so Add keeps working. |
 | Keyboard: Tab | Tab toggles the mode and calls preventDefault (keys.ts:53), so keyboard users cannot move focus (H7, accessibility). | Drop Tab as a mode key (C13). | high | Done. The editor never takes Tab (`a55d4ec`). |
 | Keyboard: Esc in a field | Esc and Delete typed in a number field are ignored by the app (keys.ts:47), but a range or checkbox keeps focus after pointerup, so Esc and Delete then do nothing in the mode (H7). | Fields keep their own Esc (revert, blur). Range and checkbox inputs are exempt from the form-field rule, so Delete and Esc reach the mode after pointerup (8.6). | medium | Done. Only text-taking fields are exempt, so range and checkbox focus no longer blocks Esc and Delete (`a55d4ec`, `1b1b46e`). |
 | objects.delete | Destructive with no toast; hint only mentions Undo (H3). | Toast "Deleted {n} objects. Undo". | low | Done. Undo toast (`fd7e66c`). |
@@ -1455,13 +1455,13 @@ medium = the user is unsure what happened; low = polish.
 | jobs.cancel | After Cancel nothing says the old supports are untouched (H9, step 4). | Status "Cancelled. Supports unchanged." | low | Done. "{label}: cancelled. Supports unchanged." (`1748ef5`). |
 | setting.preset | A preset overwrites many fields at once without listing them (H2). | Hint lists the fields it sets; one undo step. | low | Done in part. The hint lists the groups a preset sets and says Undo takes them back, not each field (`54be8c9`). |
 | Footer counts | "removed" means nothing to a layperson (H2). | Hint on the count: "Automatic supports you removed. Clear manual edits brings them back." | low | Done. The hint explains "removed" (`54be8c9`). |
-| edit.removeRadius (Click reach) | The field changes how a right-click lands but shows nothing (H1). | Show a hover ring of the reach in Add. | low | Open. No hover ring of the reach is drawn in Add. |
+| edit.removeRadius (Click reach) | The field changes how a right-click lands but shows nothing (H1). | Show a hover ring of the reach in Add. | low | Done. `EditPreview` draws a ring of Click reach at the pointer in Add (`src/components/viewport/supportLayers.tsx:35-43`), and highlights the support a remove click would take. |
 | zones.clearAll, edit.deleteSelection | Disabled or inert without saying why (H6). | `disabledReason` hint (Q5): "No zones painted", "Nothing selected". | low | Done. `disabledReason` on every disabled command; Delete is always shown (`b44da0d`). |
 
 Top gaps to fix first: stale Check findings, silent regeneration of hand work, Tab focus trap,
 the half-finished Fix loop, Drag over on empty space versus orbit. All five are done.
 
-Open at `05d42c4`: `view.models` (Add with models hidden) and `edit.removeRadius` (the Click reach ring).
+No audit rows are open at `05d42c4`.
 No row is marked won't do.
 
 ## 14. Project files (Save and Open)
