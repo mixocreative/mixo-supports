@@ -15,6 +15,24 @@ export function createSceneHistory(scene: PrintScene): SceneHistory {
 /** Undo depth retained; older snapshots are dropped. */
 export const HISTORY_LIMIT = 100;
 
+/** Structural equality of scene data, short-cutting on shared references (unchanged units and meshes). */
+function sameData(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false;
+  if (ArrayBuffer.isView(a) && ArrayBuffer.isView(b)) {
+    const x = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+    const y = new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
+    return x.length === y.length && x.every((byte, index) => byte === y[index]);
+  }
+  if (a instanceof Map && b instanceof Map) return a.size === b.size && [...a].every(([key, value]) => b.has(key) && sameData(value, b.get(key)));
+  if (a instanceof Set && b instanceof Set) return a.size === b.size && [...a].every((value) => b.has(value));
+  const x = a as Record<string, unknown>;
+  const y = b as Record<string, unknown>;
+  const keys = Object.keys(x);
+  return keys.length === Object.keys(y).length && keys.every((key) => Object.hasOwn(y, key) && sameData(x[key], y[key]));
+}
+
 /**
  * Applies a command as one undoable step. The reducer already validates and copies the
  * data each command introduces, so unchanged units (and their meshes) are shared
@@ -25,7 +43,11 @@ export function withSceneCommand(history: SceneHistory, command: SceneCommand, c
   const present = reduceScene(history.present, command);
   if (present === history.present) return history;
   // A burst of commands of one edit (typing a value) is one step: it replaces the scene its first command left.
-  if (coalesce !== undefined && history.open === coalesce && history.past.length > 0) return { ...history, present, future: [] };
+  if (coalesce !== undefined && history.open === coalesce && history.past.length > 0) {
+    // An edit that ends where it began (Esc, or typing the original back) leaves no step.
+    if (sameData(present, history.past.at(-1))) return { past: history.past.slice(0, -1), present, future: [] };
+    return { ...history, present, future: [] };
+  }
   if (coalesce !== undefined) return { past: [...history.past, history.present].slice(-HISTORY_LIMIT), present, future: [], open: coalesce };
   return { past: [...history.past, history.present].slice(-HISTORY_LIMIT), present, future: [] };
 }

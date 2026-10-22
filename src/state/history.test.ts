@@ -148,4 +148,14 @@ describe('coalesced edits', () => {
     const typed = set(set(start, 1, 'a'), 2, 'a');
     expect(typed.future).toEqual([]);
   });
+
+  it('leaves no step when the edit ends where it began', () => {
+    const before = set(start, 3);
+    const escaped = set(set(set(before, 1, 'a'), 12, 'a'), 3, 'a');
+    expect(escaped.past).toHaveLength(before.past.length);
+    expect(escaped.open).toBeUndefined();
+    expect(canUndo(escaped)).toBe(canUndo(before));
+    expect(undoScene(escaped).present).toBe(start.present);
+    expect(set(escaped, 7, 'a').past).toHaveLength(before.past.length + 1);
+  });
 });
