@@ -121,7 +121,7 @@ export function contactsHiddenByMarkers(auto: readonly SupportPoint[], markers: 
  * Re-keys removed IDs for a fresh placement: an ID that names a new contact stays; one that does
  * not becomes the ID of the nearest still-unclaimed new contact within `matchRadius` of its
  * encoded spot (the spots moved a little); one with no such neighbour is kept, in case a later
- * placement samples that spot again. Both sides are unit-local, so the match is exact afterwards.
+ * placement samples that spot again (`rekeyHandWork`, used by Regenerate, drops it instead). Both sides are unit-local, so the match is exact afterwards.
  */
 export function remapDeleted(deleted: readonly string[], points: readonly SupportPoint[], matchRadius: number): string[] {
   const match = matchIds(deleted, points, matchRadius);
@@ -130,7 +130,7 @@ export function remapDeleted(deleted: readonly string[], points: readonly Suppor
 
 /** What a fresh placement made of a unit's hand work, with the counts the Regenerate report gives. */
 export interface RekeyedHandWork<T> {
-  /** The removals re-keyed as `remapDeleted` does. */
+  /** The removals re-keyed as `remapDeleted` does, except that one no new contact matches is dropped (and counted in `removals.reset`). */
   deleted: string[];
   /** Per-support settings under the id of the support they now belong to; manual supports keep theirs. */
   overrides: Record<string, T>;
@@ -143,8 +143,8 @@ export interface RekeyedHandWork<T> {
 /**
  * Follows a fresh placement with the unit's removals and per-support settings in one match, so a
  * new contact is claimed by one of them at most. Settings of a manual support stay as they are; an
- * automatic one's follow the match like a removal, and when nothing matches they are dropped (and
- * counted) rather than kept for an id that names no support.
+ * automatic one's follow the match like a removal. A removal or a setting no new contact matches is
+ * dropped and counted, so nothing stays stored for an id that names no support.
  */
 export function rekeyHandWork<T>(deleted: readonly string[], overrides: Readonly<Record<string, T>>, manualIds: ReadonlySet<string>, points: readonly SupportPoint[], matchRadius: number): RekeyedHandWork<T> {
   const automatic = Object.keys(overrides).filter((id) => !manualIds.has(id));
@@ -158,7 +158,7 @@ export function rekeyHandWork<T>(deleted: readonly string[], overrides: Readonly
   const removalsKept = new Set([...removals].flatMap((id) => match.get(id) ?? [])).size;
   const customisedKept = Object.keys(out).length;
   return {
-    deleted: [...new Set(deleted.map((id) => match.get(id) ?? id))],
+    deleted: [...new Set(deleted.flatMap((id) => match.get(id) ?? []))],
     overrides: out,
     removals: { kept: removalsKept, reset: removals.size - removalsKept },
     customised: { kept: customisedKept, reset: Object.keys(overrides).length - customisedKept },

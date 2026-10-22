@@ -202,6 +202,15 @@ describe('exact deletions', () => {
   });
 });
 
+describe('rekeyHandWork removals', () => {
+  const point = (x: number) => ({ id: `auto-${Math.round(x * 100)}_100_0`, regionId: 0, position: [x, 1, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], source: 'interior' as const });
+  it('drops a removal no new contact matches and counts it as reset, so nothing is stored for a spot with no support', () => {
+    const rekeyed = rekeyHandWork(['auto-0_100_0', 'auto-900_100_0'], {}, new Set(), [point(0.3), point(3)], 1);
+    expect(rekeyed.deleted).toEqual(['auto-30_100_0']);
+    expect(rekeyed.removals).toEqual({ kept: 1, reset: 1 });
+  });
+});
+
 describe('contactsHiddenByMarkers (migration of the retired radius removals)', () => {
   const point = (x: number) => ({ id: `auto-${Math.round(x * 100)}_100_0`, regionId: 0, position: [x, 1, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], source: 'interior' as const });
 
