@@ -253,8 +253,12 @@ async function exportSupports(d, dir) {
   return stlTriangles(readFileSync(file));
 }
 
+/** The browser and Vite the run owns, so a signal or a throw anywhere still stops both. */
+let browser;
+let vite;
+
 async function walk(url, scratch) {
-  const browser = await launch();
+  browser = await launch();
   const context = await browser.newContext({ viewport: VIEWPORT, acceptDownloads: true });
   await context.addInitScript(() => { try { localStorage.setItem('mixo-supports.lang', 'en'); } catch { /* storage off */ } });
   await context.addInitScript(slowMeshWorker);
@@ -473,11 +477,16 @@ async function walk(url, scratch) {
 
     await page.goto(url);
     await d.idle(1500);
+    await page.evaluate(() => {
+      window.__longTasks = [];
+      new PerformanceObserver((list) => { for (const entry of list.getEntries()) window.__longTasks.push(Math.round(entry.duration)); }).observe({ type: 'longtask', buffered: false });
+    });
     const chooser = page.waitForEvent('filechooser');
     await d.button('Open project').click();
     await (await chooser).setFiles(projectFile);
     await page.waitForFunction(() => /[1-9][\d,]* automatic/.test(document.querySelector('footer')?.innerText ?? ''), null, { timeout: 120000 });
     await d.settled();
+    note(`Open project main-thread long tasks (ms): ${JSON.stringify(await page.evaluate(() => window.__longTasks))}`);
     const after = await projectStats();
     check('i3 Open after a reload: automatic, manual, removed, customised and zones are identical', JSON.stringify(after) === JSON.stringify(before), `before ${JSON.stringify(before)}, after ${JSON.stringify(after)}`);
     check('i4 a freshly opened project has nothing unsaved', (await leavePrompt()) === false && (await d.status()) === 'Opened knot.mixosupports.', `status "${await d.status()}"`);
@@ -512,11 +521,16 @@ async function walk(url, scratch) {
     note(`screenshot ${path.join(scratch, 'walk-error.png')}`);
   }
   check('h no console errors or warnings', errors.length === 0, errors.length ? errors.slice(0, 3).join(' || ') : '0 messages');
-  await browser.close();
 }
 
 const scratch = mkdtempSync(path.join(tmpdir(), 'mixo-walk-'));
-let vite;
+async function stopAll() {
+  await browser?.close().catch(() => {});
+  stopVite(vite);
+}
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => { stopAll().finally(() => process.exit(130)); });
+}
 try {
   const port = await freePort(FIRST_PORT);
   vite = startVite(port);
@@ -527,7 +541,7 @@ try {
 } catch (error) {
   check('walk setup', false, error.message);
 } finally {
-  stopVite(vite);
+  await stopAll();
 }
 const failed = results.filter((r) => !r.ok).length;
 if (failed === 0) rmSync(scratch, { recursive: true, force: true });
