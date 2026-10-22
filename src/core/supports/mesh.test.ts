@@ -114,6 +114,37 @@ describe('contact tip shapes', () => {
   });
 });
 
+describe('per-support settings', () => {
+  const tall = (point: SupportContact): SupportContact => ({ ...point, position: [point.position[0], 20, 0] });
+  const shape = { pointDiameter: 0.6, neckLength: 4, baseDiameter: 4.5 };
+  /** Triangles of one contact's components, as vertex coordinates (independent of index offsets). */
+  const geometryOf = (mesh: GeneratedSupportMesh, id: string) => mesh.components.filter((component) => component.contactId === id)
+    .map((component) => [component.part, Array.from(mesh.indices.slice(component.start, component.start + component.count), (index) => Array.from(mesh.positions.slice(index * 3, index * 3 + 3)))]);
+
+  it('builds a support with its own values exactly as the object settings with those values', () => {
+    const own = buildSupportMesh([{ ...tall(contact), shape }], settings);
+    const object = buildSupportMesh([tall(contact)], { ...settings, ...shape });
+    expect(Array.from(own.positions)).toEqual(Array.from(object.positions));
+    expect(Array.from(own.indices)).toEqual(Array.from(object.indices));
+  });
+
+  it('leaves the supports without their own values as the object builds them', () => {
+    const mixed = buildSupportMesh([{ ...tall(contact), shape }, tall(neighbour)], settings);
+    const plain = buildSupportMesh([tall(contact), tall(neighbour)], settings);
+    expect(geometryOf(mixed, 'auto-1')).toEqual(geometryOf(plain, 'auto-1'));
+    expect(geometryOf(mixed, 'auto-0')).not.toEqual(geometryOf(plain, 'auto-0'));
+  });
+
+  it('keeps a support with its own values out of tree merges', () => {
+    const pair: SupportContact[] = [contact, { ...neighbour, id: 'auto-2', position: [1.5, 10, 0] }];
+    const treeSettings = { ...settings, scatterAutoTree: true };
+    expect(buildSupportMesh(pair, treeSettings).parts).toContain('tree-branch');
+    const apart = buildSupportMesh([{ ...pair[0]!, shape: { touchDiameter: 1 } }, pair[1]!], treeSettings);
+    expect(apart.parts).not.toContain('tree-branch');
+    expect(apart.components.filter((component) => component.part === 'foot').map((component) => component.contactId)).toEqual(['auto-0', 'auto-2']);
+  });
+});
+
 describe('buildSupportMesh', () => {
   it('builds a single support from the plate up through the contact tip', () => {
     const mesh = buildSupportMesh([contact], settings);

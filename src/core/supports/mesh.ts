@@ -1,5 +1,5 @@
 import type { ProgressCallback, TriangleMesh } from '../analysis/types';
-import { tipDepth, tipRadius, type LiveSupportSettings, type TipSection } from './settings';
+import { tipDepth, tipRadius, withShape, type LiveSupportSettings, type ShapeOverride, type TipSection } from './settings';
 import { autoTreeLayout, type AutoTree } from './autotree';
 import type { RemeshTarget } from './remesh';
 import { columnLanding, lineTarget, neckDirection, sinkInto, treeLanding, upDirection, type Landing, type LineTarget } from './landing';
@@ -24,6 +24,8 @@ export interface SupportContact {
    * without a class the given normal is used as is.
    */
   kind?: 'face' | 'edge' | 'vertical';
+  /** The support's own tip, contact, neck and foot values over the object's settings; such a support never joins a tree. */
+  shape?: ShapeOverride;
 }
 
 export type SupportPart =
@@ -134,13 +136,10 @@ export function buildSupportMesh(
   // most Connection Angle from straight down) ending at the contact, plus a
   // Contact Ø sphere centred on the contact (sunk by Contact Depth along the normal).
   // With Contact shape None there is no sphere and the neck ends at Point Ø instead.
-  const footTop = settings.baseHeight;
   const pillarRadius = settings.pillarDiameter / 2;
-  const spheres = settings.contactShape === 'SPHERE';
-  const shaped = shapedTip(settings);
   const columns: Column[] = [];
   const footprints: Point2[] = [];
-  const anchors: { id: string; position: Vector }[] = [];
+  const anchors: { id: string; position: Vector; own: Readonly<LiveSupportSettings> }[] = [];
   const ray = options.model ? lineTarget(options.model, settings, options.remesh, exporting) : undefined;
   const progress = options.onProgress;
   const total = Math.max(contacts.length, 1);
@@ -169,52 +168,55 @@ export function buildSupportMesh(
   contacts.forEach((contact, index) => {
     if (index % 8 === 0) progress?.(0.6 + 0.25 * index / total, 'Building columns');
     if (treeOf.has(index) || layout?.removed.has(index) || dropped.has(index)) return;
-    const column = contactColumn(contact, settings, ray, tipOnly);
+    const own = withShape(settings, contact.shape);
+    const column = contactColumn(contact, own, ray, tipOnly);
     if (!column) return;
     // A tips-only preview casts no landing for its geometry, so it casts one for the zone test alone.
     // Tree members are tested at their junction above, also when a tips-only preview draws them as columns.
-    if (zones && contact.origin !== 'manual' && !inTree.has(index) && zoned(tipOnly ? columnLanding(contact, settings, ray).hit : column.landing)) {
+    if (zones && contact.origin !== 'manual' && !inTree.has(index) && zoned(tipOnly ? columnLanding(contact, own, ray).hit : column.landing)) {
       dropped.add(index);
       return;
     }
-    if (spheres) {
+    if (own.contactShape === 'SPHERE') {
       builder.begin('tip', contact.id);
-      builder.sphere(column.tip, settings.touchDiameter / 2, segments);
+      builder.sphere(column.tip, own.touchDiameter / 2, segments);
       builder.end();
       if (column.landing) {
         builder.begin('tip', contact.id);
-        builder.sphere(column.landing.point, settings.touchDiameter / 2, segments);
+        builder.sphere(column.landing.point, own.touchDiameter / 2, segments);
         builder.end();
       }
     }
     const neckEnd = column.curve.findIndex((node, i) => i > 0 && node.radius === pillarRadius);
     builder.begin('neck', contact.id);
-    addTip(builder, column.curve.slice(0, neckEnd + 1), settings, segments);
+    addTip(builder, column.curve.slice(0, neckEnd + 1), own, segments);
     builder.end();
     if (tipOnly) return;
     let pillar = column.curve.slice(neckEnd);
+    const shaped = shapedTip(own);
     if (column.landing && shaped) {
       // The tip landing on the model below gets the same shape as the top one.
       const last = lastThick(pillar, pillarRadius);
       builder.begin('neck', contact.id);
-      addTip(builder, pillar.slice(last), settings, segments);
+      addTip(builder, pillar.slice(last), own, segments);
       builder.end();
       pillar = pillar.slice(0, last + 1);
     }
-    builder.begin('pillar', contact.id, column.landing && !shaped ? settings.neckLength : undefined);
+    builder.begin('pillar', contact.id, column.landing && !shaped ? own.neckLength : undefined);
     builder.tube(pillar, segments);
     builder.end();
-    if (!column.landing) anchors.push({ id: contact.id, position: column.curve[column.curve.length - 1]!.point });
+    if (!column.landing) anchors.push({ id: contact.id, position: column.curve[column.curve.length - 1]!.point, own });
   });
 
   if (!tipOnly) {
     for (const anchor of anchors) {
       const [x, y, z] = anchor.position;
+      const footTop = anchor.own.baseHeight;
       builder.begin('pillar', anchor.id);
       if (Math.abs(y - footTop) > MIN_LENGTH) builder.frustum(anchor.position, [x, footTop, z], pillarRadius, pillarRadius, segments);
       builder.end();
       builder.begin('foot', anchor.id);
-      builder.frustum([x, 0, z], [x, footTop, z], settings.baseDiameter / 2, pillarRadius, segments);
+      builder.frustum([x, 0, z], [x, footTop, z], anchor.own.baseDiameter / 2, pillarRadius, segments);
       builder.end();
       columns.push({ x, z, bottom: footTop, top: y });
       footprints.push([x, z]);

@@ -7,6 +7,8 @@ export interface TreeContact {
   position: Vector;
   /** Manual contacts join after the scatter's Auto Tree branch and never merge. */
   origin?: 'auto' | 'manual';
+  /** A contact with its own settings never merges either: a tree would build it from the object's. */
+  shape?: object;
 }
 
 export interface AutoTree {
@@ -53,11 +55,11 @@ export function autoTreeLayout(
   const eligible = contacts.map((contact, index) => {
     if (index % 8 === 0) onProgress?.(index / Math.max(contacts.length, 1));
     const from: Vector = [contact.position[0], contact.position[1] - spacing / 32, contact.position[2]];
-    if (!remesh) return contact.origin !== 'manual' && !hitsBelow(blockers, from, contact.position[1]);
+    if (!remesh) return contact.origin !== 'manual' && contact.shape === undefined && !hitsBelow(blockers, from, contact.position[1]);
     const [outward, inward] = remeshBlockers(remesh, from, contact.position[1], safe, limit, normals);
     const blocked = hitsBelow(outward, from, contact.position[1]);
     if (blocked && !hitsBelow(inward, from, contact.position[1])) removed.add(index);
-    return contact.origin !== 'manual' && !blocked;
+    return contact.origin !== 'manual' && contact.shape === undefined && !blocked;
   });
 
   const assigned = contacts.map((_, index) => !eligible[index] || removed.has(index));

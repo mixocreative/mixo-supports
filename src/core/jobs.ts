@@ -9,7 +9,7 @@ import type { CheckSettings } from './analysis/supportCheck';
 import { composeContacts } from './analysis/placement';
 import type { PlacementSettings, SupportPoint, TriangleMesh } from './analysis/types';
 import type { SupportContact } from './supports/mesh';
-import type { LiveSupportSettings } from './supports/settings';
+import type { LiveSupportSettings, ShapeOverride } from './supports/settings';
 import { zonedAt, type ZoneStamp } from './supports/zones';
 import type { Vector } from './vec3';
 
@@ -27,6 +27,8 @@ export interface ContactInputs {
   /** Exact removals by contact ID. */
   deleted: readonly string[];
   zones: readonly ZoneStamp[];
+  /** Per-support settings by contact id; a contact without an entry is built from the job's settings. */
+  contactSettings: Readonly<Record<string, ShapeOverride>>;
 }
 
 /** One unit's support mesh, built in unit-local space. */
@@ -72,6 +74,9 @@ const CONTACT_KIND: Record<SupportPoint['source'], NonNullable<SupportContact['k
  */
 export function jobContacts(inputs: ContactInputs): SupportContact[] {
   return composeContacts(inputs.points, inputs.manual, inputs.deleted)
-    .map(({ id, position, normal, source }) => ({ id, position, normal, kind: CONTACT_KIND[source], origin: id.startsWith('manual-') ? 'manual' as const : 'auto' as const }))
+    .map(({ id, position, normal, source }): SupportContact => {
+      const shape = inputs.contactSettings[id];
+      return { id, position, normal, kind: CONTACT_KIND[source], origin: id.startsWith('manual-') ? 'manual' : 'auto', ...(shape ? { shape } : {}) };
+    })
     .filter((contact) => contact.origin === 'manual' || !zonedAt(inputs.zones, contact.position, contact.normal));
 }

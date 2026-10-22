@@ -4,7 +4,8 @@ import { identityTransform, type PrintUnit } from '../state/project';
 import { applyTransform } from '../state/transform';
 import { meshBounds } from '../core/supports/meshQuery';
 import { defaultSupportSettings } from '../core/supports/settings';
-import { hiddenByZones, resolveSettings, unitContacts, unitRemovedCount, unitSupportMesh } from './unitSupports';
+import { jobContacts } from '../core/jobs';
+import { hiddenByZones, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './unitSupports';
 
 // A closed 10 mm cube: its underside (y = -5) is where the contacts sit.
 const source: TriangleMesh = {
@@ -108,6 +109,25 @@ describe('unit supports', () => {
       manual: [{ ...point('manual-a', 0), position: [0, 10, 0] as [number, number, number] }],
     };
     expect(meshBounds(unitSupportMesh(manualOnly, 0)).min[1]).toBeCloseTo(0);
+  });
+});
+
+describe('per-support settings in preview and export', () => {
+  const customised: PrintUnit = { ...unit, contactSettings: { 'auto-0': { pointDiameter: 0.6, neckLength: 4 }, 'manual-a': { contactShape: 'SPHERE', touchDiameter: 1.2 } } };
+
+  it('builds preview and export from the same contacts and the same per-support values', () => {
+    const preview = supportJobOf(customised, 0, 'preview');
+    const exported = supportJobOf(customised, 0, 'export');
+    expect(exported.contacts).toEqual(preview.contacts);
+    expect(jobContacts(exported.contacts).map((contact) => [contact.id, contact.shape])).toEqual([['auto-0', { pointDiameter: 0.6, neckLength: 4 }], ['manual-a', { contactShape: 'SPHERE', touchDiameter: 1.2 }]]);
+  });
+
+  it('gives identical support geometry in preview and export, different from the defaults', () => {
+    const preview = unitSupportMesh(customised, 0, 'preview');
+    const exported = unitSupportMesh(customised, 0, 'export');
+    expect(Array.from(exported.positions)).toEqual(Array.from(preview.positions));
+    expect(Array.from(exported.indices)).toEqual(Array.from(preview.indices));
+    expect(Array.from(preview.positions)).not.toEqual(Array.from(unitSupportMesh(unit, 0, 'preview').positions));
   });
 });
 

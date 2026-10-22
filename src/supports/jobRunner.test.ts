@@ -34,7 +34,7 @@ describe('runSupportJob: zones are unit-local, landings are cast in the generati
     // auto-shelf lands on the slab top under it; auto-slab (slab underside) goes down to the plate.
     points: [point('auto-shelf', [0, 20, 0], [0, -1, 0]), point('auto-slab', [15, 5, 0], [0, -1, 0])],
     manual: [point('manual-shelf', [2, 20, 2], [0, -1, 0])],
-    deleted: [], zones,
+    deleted: [], zones, contactSettings: {},
   });
 
   it('reports the automatic contact whose column lands in the zone; manual ones stay', () => {
@@ -51,7 +51,7 @@ describe('runSupportJob: zones are unit-local, landings are cast in the generati
     const standing = boxes([[-20, -20, -9], [20, 20, -5]], [[-5, -5, -24], [5, 5, -20]]);
     const upright: JobTransform = { position: [0, 0, 0], rotation: [Math.PI / 2, 0, 0] };
     const contacts: ContactInputs = {
-      points: [point('auto-shelf', [0, 0, -20], [0, 0, 1])], manual: [], deleted: [],
+      points: [point('auto-shelf', [0, 0, -20], [0, 0, 1])], manual: [], deleted: [], contactSettings: {},
       zones: [{ center: [0, 0, -9], radius: 3, normal: [0, 0, -1], kind: 'paint' }],
     };
     expect(runSupportJob(job(standing, upright, contacts)).dropped).toEqual(['auto-shelf']);

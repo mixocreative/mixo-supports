@@ -113,7 +113,7 @@ export function hiddenByZones(unit: PrintUnit, built: BuiltSupports | undefined)
 
 /** The unit's edits that decide its contacts. */
 function contactInputs(unit: PrintUnit): ContactInputs {
-  return { points: unit.placement?.points ?? [], manual: unit.manual, deleted: unit.deleted, zones: unit.zones };
+  return { points: unit.placement?.points ?? [], manual: unit.manual, deleted: unit.deleted, zones: unit.zones, contactSettings: unit.contactSettings };
 }
 
 const removedCache = new WeakMap<PrintUnit, number>();
