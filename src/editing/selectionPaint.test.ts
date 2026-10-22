@@ -1,19 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contactVertexRuns, createHitBatch, frameBudget, selectionDelta } from './selectionPaint';
-
-describe('createHitBatch', () => {
-  it('collects the hits of many steps and hands them on once, each id once, in first-hit order', () => {
-    const batch = createHitBatch();
-    expect(batch.take()).toEqual([]);
-    batch.add(['a', 'b']);
-    batch.add(['b', 'c']);
-    batch.add([]);
-    expect(batch.size).toBe(3);
-    expect(batch.take()).toEqual(['a', 'b', 'c']);
-    expect(batch.take()).toEqual([]);
-    expect(batch.size).toBe(0);
-  });
-});
+import { contactVertexRuns, frameBudget, selectionDelta } from './selectionPaint';
 
 describe('selectionDelta', () => {
   it('lists only what turned on and what turned off', () => {

@@ -1,26 +1,9 @@
 import type { SupportComponent } from '../core/supports/mesh';
 
 /**
- * Drag over's frame batching and the cheap selection highlight (framework-free; the viewport
- * wires it): hits of every pointer step in a frame go to the selection in one commit, and the
- * selected supports are recoloured in place (their vertex ranges) instead of rebuilding a mesh.
+ * Drag over's cheap selection highlight (framework-free; the viewport wires it): the selected
+ * supports are recoloured in place (their vertex ranges) instead of rebuilding a mesh.
  */
-
-/** Hits collected over a frame's steps, handed on once (each id once, in first-hit order). */
-export function createHitBatch(): { add(ids: Iterable<string>): void; take(): string[]; readonly size: number } {
-  let pending = new Set<string>();
-  return {
-    add(ids) {
-      for (const id of ids) pending.add(id);
-    },
-    take() {
-      const ids = [...pending];
-      pending = new Set();
-      return ids;
-    },
-    get size() { return pending.size; },
-  };
-}
 
 /** What changed between the selection drawn and the one to draw. */
 export function selectionDelta(applied: ReadonlySet<string>, next: ReadonlySet<string>): { on: string[]; off: string[] } {

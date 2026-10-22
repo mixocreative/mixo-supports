@@ -1,29 +1,31 @@
-import { createHitBatch } from './selectionPaint';
 import type { BrushMode } from './types';
 
-type Point = readonly [number, number];
+export type Point = readonly [number, number];
 
-/** One Drag over pointer step waiting for its hit tests: the circle swept from → to, from support index `next`. */
-export interface QueuedStep {
+/** One Drag over hit test to run: the circle swept from → to, from support index `next`. */
+export interface BrushJob {
   from: Point | undefined;
   to: Point;
   next: number;
-  /** The brush as it was when the step was made, not when it is tested. */
+  /** The brush as it was when the job was made, not when it is tested. */
   mode: BrushMode;
   radius: number;
-  /** Ids the step's own stroke already painted (one set per stroke, shared by its steps). */
+}
+
+/** One press-to-release stroke: its pointer steps waiting for hit tests and the ids it painted. */
+interface QueuedStroke {
+  steps: BrushJob[];
   painted: Set<string>;
+  /** The stroke's previous pointer point, where its next step starts. */
+  last: Point | undefined;
 }
 
 /**
- * Drag over's work queue (framework-free; the viewport owns one per object and keeps it across
+ * Drag over's work queue (framework-free; the brush scheduler owns one and keeps it across
  * support-mesh rebuilds). Pointer moves only `push`; each frame `drain`s as much as the hit test
  * allows and carries the rest over, also after the release, so a stroke always completes.
  */
 export interface StrokeQueue {
-  readonly steps: readonly QueuedStep[];
-  /** Ids the current stroke already painted. */
-  readonly painted: ReadonlySet<string>;
   readonly pending: boolean;
   /** A new stroke: no previous point, a fresh painted set. Queued steps of the last stroke still drain, with their own set. */
   begin(): void;
@@ -34,67 +36,73 @@ export interface StrokeQueue {
   rebase(): void;
   /**
    * Tests queued steps in order until one stops before `total` (out of time: it goes on next
-   * frame). Hits are committed once per run of steps with the same mode, each id once. `want` is
-   * what a step may change: not yet painted by its stroke, and selected (by `isSelected`, the
-   * host's selection, overlaid by what earlier steps of this drain hit) when it unselects,
-   * unselected when it selects.
+   * frame). Hits are committed once per run of steps with the same mode. `want` is what a step
+   * may change: not yet painted by its stroke, and selected (by `isSelected`, the host's
+   * selection, overlaid by what earlier steps of this drain hit) when it unselects, unselected
+   * when it selects.
    */
   drain(
     total: number,
-    test: (step: QueuedStep, want: (id: string) => boolean) => { hits: readonly string[]; next: number },
+    test: (step: BrushJob, want: (id: string) => boolean) => { hits: readonly string[]; next: number },
     commit: (ids: readonly string[], mode: BrushMode) => void,
     isSelected: (id: string) => boolean,
   ): void;
 }
 
+const newStroke = (): QueuedStroke => ({ steps: [], painted: new Set(), last: undefined });
+
 export function createStrokeQueue(): StrokeQueue {
-  const steps: QueuedStep[] = [];
-  let painted = new Set<string>();
-  let last: Point | undefined;
+  /** Strokes with steps left, oldest first. */
+  const queue: QueuedStroke[] = [];
+  /** The stroke pointer moves add to; queued again whenever it gets a step after draining. */
+  let current = newStroke();
   return {
-    steps,
-    get painted() { return painted; },
-    get pending() { return steps.length > 0; },
+    get pending() { return queue.length > 0; },
     begin() {
-      last = undefined;
-      painted = new Set();
+      current = newStroke();
     },
     push(to, mode, radius) {
-      steps.push({ from: last, to, next: 0, mode, radius, painted });
-      last = to;
+      current.steps.push({ from: current.last, to, next: 0, mode, radius });
+      current.last = to;
+      if (queue[queue.length - 1] !== current) queue.push(current);
     },
     clear() {
-      steps.length = 0;
-      last = undefined;
-      painted = new Set();
+      queue.length = 0;
+      current = newStroke();
     },
     rebase() {
-      for (const step of steps) step.next = 0;
+      for (const stroke of queue) for (const step of stroke.steps) step.next = 0;
     },
     drain(total, test, commit, isSelected) {
-      const batch = createHitBatch();
+      /** Hits not yet committed, all made in `mode`. */
+      let batch: string[] = [];
+      let mode: BrushMode | undefined;
       /** What this drain's hits did to the selection (the host's selection lags until it renders). */
       const hit = new Map<string, BrushMode>();
       const selectedNow = (id: string) => (hit.has(id) ? hit.get(id) === 'select' : isSelected(id));
-      let mode: BrushMode | undefined;
-      while (steps.length > 0) {
-        const step = steps[0]!;
-        if (batch.size > 0 && mode !== step.mode) commit(batch.take(), mode!);
+      while (queue.length > 0) {
+        const stroke = queue[0]!;
+        const step = stroke.steps[0]!;
+        if (batch.length > 0 && mode !== step.mode) {
+          commit(batch, mode!);
+          batch = [];
+        }
         mode = step.mode;
         const adding = step.mode === 'select';
-        const part = test(step, (id) => !step.painted.has(id) && selectedNow(id) !== adding);
-        batch.add(part.hits);
+        const part = test(step, (id) => !stroke.painted.has(id) && selectedNow(id) !== adding);
         for (const id of part.hits) {
-          step.painted.add(id);
+          batch.push(id);
+          stroke.painted.add(id);
           hit.set(id, step.mode);
         }
         if (part.next < total) {
           step.next = part.next;
           break;
         }
-        steps.shift();
+        stroke.steps.shift();
+        if (stroke.steps.length === 0) queue.shift();
       }
-      if (batch.size > 0) commit(batch.take(), mode!);
+      if (batch.length > 0) commit(batch, mode!);
     },
   };
 }
