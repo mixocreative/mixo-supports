@@ -20,6 +20,8 @@ export interface EditSession {
   brushMode: BrushMode;
   /** Drag over circle radius in screen px (slider 8–80, step 4): a view setting, so the object's Remove radius stays untouched. */
   brushRadius: number;
+  /** The Circle size slider is held or was just moved: the view previews the circle (viewport/CirclePreview). */
+  brushSizing: boolean;
   zoneKind: ZoneKind;
   /** Zone brush radius in mm. */
   zoneRadius: number;
@@ -38,6 +40,7 @@ export const initialSession: EditSession = {
   selectStyle: 'click',
   brushMode: 'select',
   brushRadius: 24,
+  brushSizing: false,
   zoneKind: 'paint',
   zoneRadius: 2,
   selection: NO_SELECTION,
@@ -59,6 +62,7 @@ export type SessionEvent =
   | { type: 'setSelectStyle'; style: SelectStyle }
   | { type: 'setBrushMode'; mode: BrushMode }
   | { type: 'setBrushRadius'; radius: number }
+  | { type: 'setBrushSizing'; sizing: boolean }
   | { type: 'setZoneKind'; kind: ZoneKind }
   | { type: 'setZoneRadius'; radius: number }
   | { type: 'toggleContact'; id: string }
@@ -106,6 +110,7 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
     case 'setSelectStyle': return set(state, 'selectStyle', event.style);
     case 'setBrushMode': return set(state, 'brushMode', event.mode);
     case 'setBrushRadius': return set(state, 'brushRadius', event.radius);
+    case 'setBrushSizing': return set(state, 'brushSizing', event.sizing);
     case 'setZoneKind': return set(state, 'zoneKind', event.kind);
     case 'setZoneRadius': return set(state, 'zoneRadius', event.radius);
     case 'toggleContact':

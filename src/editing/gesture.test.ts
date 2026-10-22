@@ -12,7 +12,7 @@ describe('gesture: what a press or drag does now, over every mode and tool (tabl
     // Add ignores the select style.
     ['edit', 'add', 'brush', { kind: 'add' }],
     ['edit', 'select', 'click', { kind: 'pick' }],
-    ['edit', 'select', 'brush', { kind: 'drag', brush: { radius: 32, mode: 'unselect' } }],
+    ['edit', 'select', 'brush', { kind: 'drag', brush: { radius: 32, mode: 'unselect' }, sizing: false }],
     // Zones mode paints whatever the Support Edit Mode tool was.
     ['zones', 'add', 'click', { kind: 'zones', brush: { radius: 3, kind: 'erase' } }],
     ['zones', 'select', 'brush', { kind: 'zones', brush: { radius: 3, kind: 'erase' } }],

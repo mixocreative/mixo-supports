@@ -12,6 +12,7 @@ import { SupportMeshClient } from './workers/meshClient';
 import type { PreparedMesh } from './workers/importProtocol';
 import { codedJobError } from './workers/jobErrors';
 import ObjectViewport, { acceptModelFile } from './components/ObjectViewport';
+import { CirclePreview } from './components/viewport/CirclePreview';
 import type { GizmoMode, ViewRequest } from './components/viewport/types';
 import SettingsPanel from './components/SettingsPanel';
 import { BrandLogo } from './components/BrandLogo';
@@ -180,15 +181,6 @@ export default function App() {
   const [viewRequest, setViewRequest] = useState<ViewRequest>();
   const requestView = useCallback((kind: ViewRequest['kind']) => setViewRequest((current) => ({ kind, seq: (current?.seq ?? 0) + 1 })), []);
   // Contact tips view (Blender: Only Tip + Ctrl+Numpad 7): view only, settings and export untouched.
-  /** Drag over → Circle size: the circle shows in the view while its slider moves, and 800 ms after. */
-  const [circlePreview, setCirclePreview] = useState(false);
-  const circleTimer = useRef<ReturnType<typeof setTimeout>>();
-  const previewCircle = useCallback((moving: boolean) => {
-    clearTimeout(circleTimer.current);
-    if (moving) setCirclePreview(true);
-    else circleTimer.current = setTimeout(() => setCirclePreview(false), 800);
-  }, []);
-  useEffect(() => () => clearTimeout(circleTimer.current), []);
   /** Tips only: the user's choice, else on by itself below the plate (editing/view). */
   const [tips, setTips] = useState(TIPS_START);
   const onBelowPlate = useCallback((below: boolean) => setTips((state) => tipsCamera(state, below)), []);
@@ -941,8 +933,7 @@ export default function App() {
           <button onClick={() => requestView('fit')} disabled={scene.units.length === 0} {...hint('Frame the selection from the current angle')}>{t('Fit view')}</button>
           <button onClick={() => requestView('bottom')} disabled={scene.units.length === 0} {...hint('Look straight up at the selection to check contact points')}>{t('Bottom view')}</button>
         </div>
-        {/* Circle size preview while its slider moves (centre of the view), gone 800 ms after release. */}
-        {circlePreview && press.kind === 'drag' && <div className="brush-circle brush-circle--preview" data-mode={brushMode} style={{ width: brushRadius * 2, height: brushRadius * 2 }} aria-hidden="true" />}
+        <CirclePreview gesture={press} />
         {isDraggingOver && <div className="viewport-drop-overlay">{t('Drop to import')}</div>}
         <JobActivityPanel />
         <div className="undo-toast-region" role="status" aria-live="polite">
@@ -999,11 +990,11 @@ export default function App() {
                     <span className="tool-option-head">{t('Circle size')}<output>{t('{n} px', { n: brushRadius })}</output></span>
                     <input
                       type="range" min={8} max={80} step={4} value={brushRadius}
-                      onChange={(event) => { send({ type: 'setBrushRadius', radius: Number(event.target.value) }); previewCircle(true); }}
-                      onPointerDown={() => previewCircle(true)}
-                      onPointerUp={() => previewCircle(false)}
-                      onKeyUp={() => previewCircle(false)}
-                      onBlur={() => previewCircle(false)}
+                      onChange={(event) => { send({ type: 'setBrushRadius', radius: Number(event.target.value) }); send({ type: 'setBrushSizing', sizing: true }); }}
+                      onPointerDown={() => send({ type: 'setBrushSizing', sizing: true })}
+                      onPointerUp={() => send({ type: 'setBrushSizing', sizing: false })}
+                      onKeyUp={() => send({ type: 'setBrushSizing', sizing: false })}
+                      onBlur={() => send({ type: 'setBrushSizing', sizing: false })}
                       {...hint('Radius of the circle around the pointer, in screen pixels: supports it passes over are selected')}
                     />
                   </label>}

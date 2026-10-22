@@ -12,7 +12,8 @@ export type Gesture =
   | { kind: 'zones'; brush: { radius: number; kind: ZoneKind } }
   | { kind: 'add' }
   | { kind: 'pick' }
-  | { kind: 'drag'; brush: Brush };
+  /** `sizing`: the circle's size slider is held or was just moved. */
+  | { kind: 'drag'; brush: Brush; sizing: boolean };
 
 export type GestureKind = Gesture['kind'];
 
@@ -22,7 +23,7 @@ export function gesture(session: EditSession): Gesture {
     case 'zones': return { kind: 'zones', brush: { radius: session.zoneRadius, kind: session.zoneKind } };
     case 'edit':
       if (session.tool === 'add') return { kind: 'add' };
-      return session.selectStyle === 'click' ? { kind: 'pick' } : { kind: 'drag', brush: { radius: session.brushRadius, mode: session.brushMode } };
+      return session.selectStyle === 'click' ? { kind: 'pick' } : { kind: 'drag', brush: { radius: session.brushRadius, mode: session.brushMode }, sizing: session.brushSizing };
   }
 }
 

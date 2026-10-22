@@ -85,9 +85,10 @@ describe('reduceSession: tools', () => {
       { type: 'setSelectStyle', style: 'brush' },
       { type: 'setBrushMode', mode: 'unselect' },
       { type: 'setBrushRadius', radius: 40 },
+      { type: 'setBrushSizing', sizing: true },
       { type: 'setZoneKind', kind: 'erase' },
       { type: 'setZoneRadius', radius: 7 });
-    expect(changed).toMatchObject({ tool: 'select', selectStyle: 'brush', brushMode: 'unselect', brushRadius: 40, zoneKind: 'erase', zoneRadius: 7 });
+    expect(changed).toMatchObject({ tool: 'select', selectStyle: 'brush', brushMode: 'unselect', brushRadius: 40, brushSizing: true, zoneKind: 'erase', zoneRadius: 7 });
     expect(reduceSession(changed, { type: 'setTool', tool: 'select' })).toBe(changed);
   });
 
