@@ -135,6 +135,19 @@ describe('reduceScene', () => {
     expect(deserializeScene(serializeScene(scene)).units[0]).toEqual(scene.units[0]);
   });
 
+  it('keeps hiding a removal saved before the spots moved, matched once on load', () => {
+    const at = (id: string, x: number): SupportPoint => ({ ...contact, id, position: [x, -5, 0] });
+    const moved: PrintUnit = {
+      ...unitA,
+      settings: { scatterSpacing: 2 },
+      placement: { ...unitA.placement!, points: [at('auto-310_-500_0', 3.1), at('auto-600_-500_0', 6)] },
+      deleted: ['auto-300_-500_0'],
+    };
+    const scene = deserializeScene(serializeScene(reduceScene(emptyScene, { type: 'unit/add', unit: moved })));
+    expect(scene.units[0]!.deleted).toEqual(['auto-310_-500_0']);
+    expect(deserializeScene(serializeScene(scene)).units[0]).toEqual(scene.units[0]);
+  });
+
   it('migrates retired suppression markers into exact deleted ids on load, once', () => {
     const at = (id: string, x: number): SupportPoint => ({ ...contact, id, position: [x, -5, 0] });
     const old = {

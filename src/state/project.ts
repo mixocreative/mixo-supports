@@ -1,5 +1,5 @@
 import type { PlacementResult, Region, SupportPoint, TriangleMesh } from '../core/analysis/types';
-import { contactsHiddenByMarkers, rekeyPoints } from '../core/analysis/placement';
+import { contactsHiddenByMarkers, rekeyPoints, remapDeleted } from '../core/analysis/placement';
 import { defaultSupportSettings } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { ModelTransform } from './transform';
@@ -190,8 +190,11 @@ function migrateRemovals(unit: PrintUnit & { suppressed?: string[] }): PrintUnit
   const follow = (list: readonly string[]) => list.map((id) => ids.get(id) ?? id);
   const radius = (unit.settings as { eraseRadius?: number }).eraseRadius ?? defaultSupportSettings.eraseRadius;
   const hidden = follow(contactsHiddenByMarkers(unit.placement.points, suppressed, radius));
-  const deleted = [...new Set([...follow(unit.deleted), ...hidden])];
-  if (ids.size === 0 && deleted.length === unit.deleted.length) return rest;
+  // A removal saved before the spots last moved matched its nearest contact on every compose;
+  // match it once here so it keeps hiding that support.
+  const spacing = (unit.settings as { scatterSpacing?: number }).scatterSpacing ?? defaultSupportSettings.scatterSpacing;
+  const deleted = remapDeleted([...new Set([...follow(unit.deleted), ...hidden])], points, spacing / 2);
+  if (ids.size === 0 && deleted.length === unit.deleted.length && deleted.every((id, i) => id === unit.deleted[i])) return rest;
   return { ...rest, placement: { ...unit.placement, points }, deleted };
 }
 
