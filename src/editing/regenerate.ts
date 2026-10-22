@@ -39,3 +39,44 @@ export function regeneratedStatus(name: string, placed: number, report: RegenRep
   if (!hasHandWork(report)) return { key: '{name}: {n} automatic contacts generated.', vars: { name, n: placed } };
   return { key: 'Regenerated {name}: {n} supports placed. Hand edits kept: {added} added, {removed} removed. Removals reset: {reset}.', vars: { name, n: placed, ...report } };
 }
+
+/** Settings edits come in bursts (typing a value): a placement change regenerates once it has been quiet this long. */
+export const REGENERATE_DELAY_MS = 350;
+
+/**
+ * Units whose placement setting changed, waiting out the burst before they regenerate together.
+ * `cancel` drops them (a mode took the supports over): the unit's placement then shows as pending
+ * (`placementPending`) until the user regenerates.
+ */
+export class RegenerateQueue {
+  private readonly ids = new Set<string>();
+  private timer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor(
+    private readonly run: (ids: string[]) => void,
+    private readonly onQueued: (queued: boolean) => void = () => {},
+    private readonly delay = REGENERATE_DELAY_MS,
+  ) {}
+
+  schedule(ids: readonly string[]): void {
+    if (ids.length === 0) return;
+    ids.forEach((id) => this.ids.add(id));
+    clearTimeout(this.timer);
+    this.onQueued(true);
+    this.timer = setTimeout(() => {
+      const due = [...this.ids];
+      this.ids.clear();
+      this.timer = undefined;
+      this.onQueued(false);
+      if (due.length > 0) this.run(due);
+    }, this.delay);
+  }
+
+  cancel(): void {
+    if (this.timer === undefined) return;
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    this.ids.clear();
+    this.onQueued(false);
+  }
+}

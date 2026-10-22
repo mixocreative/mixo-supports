@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupportPoint } from '../core/analysis/types';
 import { positionId } from '../core/analysis/placement';
 import type { Vector } from '../core/vec3';
-import { regenReport, regeneratedStatus, regeneratingStatus } from './regenerate';
+import { REGENERATE_DELAY_MS, RegenerateQueue, regenReport, regeneratedStatus, regeneratingStatus } from './regenerate';
 
 const at = (position: Vector): SupportPoint => ({ id: positionId(position), regionId: 0, position, normal: [0, -1, 0], source: 'interior' });
 
@@ -29,5 +29,37 @@ describe('regeneration statuses', () => {
   it('reports hand work only when there was some', () => {
     expect(regeneratedStatus('bust', 40, { added: 0, removed: 0, reset: 0 }).key).toBe('{name}: {n} automatic contacts generated.');
     expect(regeneratedStatus('bust', 40, { added: 2, removed: 3, reset: 1 })).toMatchObject({ vars: { name: 'bust', n: 40, added: 2, removed: 3, reset: 1 } });
+  });
+});
+
+describe('RegenerateQueue', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('regenerates the units of a burst once, after it goes quiet', () => {
+    const run = vi.fn();
+    const queue = new RegenerateQueue(run);
+    queue.schedule(['a']);
+    vi.advanceTimersByTime(REGENERATE_DELAY_MS - 1);
+    queue.schedule(['b', 'a']);
+    vi.advanceTimersByTime(REGENERATE_DELAY_MS - 1);
+    expect(run).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith(['a', 'b']);
+  });
+
+  it('runs nothing once cancelled, and says it is no longer queued', () => {
+    const run = vi.fn();
+    const queued: boolean[] = [];
+    const queue = new RegenerateQueue(run, (value) => queued.push(value));
+    queue.schedule(['a']);
+    queue.cancel();
+    vi.advanceTimersByTime(REGENERATE_DELAY_MS * 3);
+    expect(run).not.toHaveBeenCalled();
+    expect(queued).toEqual([true, false]);
+    queue.schedule(['b']);
+    vi.advanceTimersByTime(REGENERATE_DELAY_MS);
+    expect(run).toHaveBeenCalledWith(['b']);
   });
 });

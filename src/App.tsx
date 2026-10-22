@@ -51,7 +51,7 @@ import { FIX_TOOL_EVENTS, initialSession, reduceSession, startsEditing, type Ses
 import { busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
 import { atSpot, checkStatus, coverRadius, exportStatus, joinRun, recheckStatus, runToken, tallyChecks, uncovered, type CheckTally, type FixSpot } from './editing/check';
-import { regenReport, regeneratedStatus, regeneratingStatus } from './editing/regenerate';
+import { RegenerateQueue, regenReport, regeneratedStatus, regeneratingStatus } from './editing/regenerate';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
 import type { BrushMode } from './editing/types';
@@ -65,7 +65,6 @@ function historyReducer(history: SceneHistory, action: HistoryAction): SceneHist
   return withSceneCommand(history, action.command);
 }
 
-const REGENERATE_DELAY_MS = 350;
 /** Settings edits come in bursts (typing a value); a unit's preview rebuild waits this long. */
 const BUILD_DELAY_MS = 120;
 
@@ -470,17 +469,21 @@ export default function App() {
     );
   }, [runCheck, setStatus, targets]);
 
-  const regenerateTimer = useRef<number | undefined>(undefined);
-  const regenerateQueue = useRef(new Set<string>());
-  const scheduleRegenerate = useCallback((unitIds: string[]) => {
-    unitIds.forEach((id) => regenerateQueue.current.add(id));
-    window.clearTimeout(regenerateTimer.current);
-    regenerateTimer.current = window.setTimeout(() => {
-      const ids = [...regenerateQueue.current].filter((id) => sceneRef.current.units.find((unit) => unit.id === id)?.supports);
-      regenerateQueue.current.clear();
-      if (ids.length > 0) generate(ids, 'placement');
-    }, REGENERATE_DELAY_MS);
-  }, [generate]);
+  const generateRef = useRef(generate);
+  generateRef.current = generate;
+  /** A placement change is waiting out its burst: the pending note holds back, the regeneration is on its way. */
+  const [regenQueued, setRegenQueued] = useState(false);
+  const regenerateQueue = useRef<RegenerateQueue>();
+  regenerateQueue.current ??= new RegenerateQueue((ids) => {
+    const live = ids.filter((id) => sceneRef.current.units.find((unit) => unit.id === id)?.supports);
+    if (live.length > 0) generateRef.current(live, 'placement');
+  }, setRegenQueued);
+  const scheduleRegenerate = useCallback((unitIds: string[]) => regenerateQueue.current!.schedule(unitIds), []);
+  // A mode takes the supports over: a regeneration still queued for a change made before it does not run behind it.
+  useEffect(() => {
+    if (editMode !== 'off') regenerateQueue.current!.cancel();
+  }, [editMode]);
+  useEffect(() => () => regenerateQueue.current!.cancel(), []);
 
   // ---- Import --------------------------------------------------------------------------
   const importFiles = useCallback(async (files: readonly File[]) => {
@@ -857,7 +860,7 @@ export default function App() {
   const scopeUnits = targets(scene);
   const scopeGenerated = scopeUnits.length > 0 && scopeUnits.every((unit) => unit.supports);
   // A placement setting changed in Support Edit Mode waits for Regenerate; leaving the mode does not run it.
-  const scopePending = !generating && scopeUnits.some(placementPending);
+  const scopePending = !generating && !regenQueued && scopeUnits.some(placementPending);
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
     mode: editMode, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction,
@@ -1008,7 +1011,7 @@ export default function App() {
           ui={ui}
           scope={activeUnit ? `${activeUnit.name}${selectedCount > 1 ? ` ${t('and {n} more', { n: selectedCount - 1 })}` : ''}` : t('Nothing selected')}
           deferPlacement={editMode === 'edit'}
-          placementPending={!generating && Boolean(activeUnit && placementPending(activeUnit))}
+          placementPending={!generating && !regenQueued && Boolean(activeUnit && placementPending(activeUnit))}
           autoLabel={activeIndex >= 0 ? labelForIndex(activeIndex) : 'A'}
           disabled={!activeUnit}
           locked={locked('settings')}
