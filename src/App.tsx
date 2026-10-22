@@ -881,7 +881,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} hidden={zonesHidden} ui={ui} send={send} run={runCommand} onClear={clearActiveZones} />
-          : <EditBar attention={scopePending} gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value) => onSettingChange('eraseRadius', value) }} send={send} run={runCommand} />}
+          : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value) => onSettingChange('eraseRadius', value) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>
         {lockNoteOf('right')}
