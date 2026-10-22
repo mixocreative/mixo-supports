@@ -533,6 +533,12 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 
 /* ---- Locked panels (a mode is on): sections are inert and dimmed, one note says why ---- */
 .panel [inert] { opacity: .45; transition: opacity var(--dur); }
+/* A locked section of the left panel folds to its heading band, so the mode's own controls (Modes with its Exit, Check) rise into view at 768 px. */
+.panel.left section[inert] { padding: 8px 0; }
+.panel.left section[inert] > :not(h3) { display: none; }
+.panel.left section[inert] > h3 { margin-bottom: 0; }
+.panel.left .drop[inert] { padding: 6px 12px; }
+.panel.left .drop[inert] small { display: none; }
 .lock-note {
   position: sticky; top: -20px; z-index: 1;
   margin: -20px -20px 14px; padding: 10px 20px;
