@@ -37,7 +37,17 @@ describe('unit supports', () => {
     const zoned: PrintUnit = { ...unit, deleted: [], manual: [], zones: [{ center: [0, -5, 0], radius: 1, normal: [0, -1, 0], kind: 'paint' }] };
     expect(hiddenByZones(unit, undefined)).toBe(0);
     expect(hiddenByZones(zoned, undefined)).toBe(1);
-    expect(hiddenByZones(zoned, { dropped: ['auto-1'] })).toBe(2);
+    // The same unit and build answer from one working out; a different build is counted afresh.
+    const build = { dropped: ['auto-1'] };
+    expect(hiddenByZones(zoned, build)).toBe(2);
+    expect(hiddenByZones(zoned, build)).toBe(2);
+    expect(hiddenByZones(zoned, undefined)).toBe(1);
+  });
+
+  it('never counts a manual support as hidden by zones, even one lying inside a zone', () => {
+    const zoned: PrintUnit = { ...unit, deleted: [], manual: [point('manual-a', 0), point('manual-b', 0.5)], zones: [{ center: [0, -5, 0], radius: 1, normal: [0, -1, 0], kind: 'paint' }] };
+    expect(unitContacts(zoned, undefined).filter((contact) => contact.id.startsWith('manual-'))).toHaveLength(2);
+    expect(hiddenByZones(zoned, undefined)).toBe(1);
   });
 
   it('computes the contacts once per unit object and hands out a read-only list', () => {

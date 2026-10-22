@@ -92,14 +92,23 @@ export function unitContacts(unit: PrintUnit, built: BuiltSupports | undefined):
   return kept;
 }
 
+const hiddenCache = new WeakMap<PrintUnit, { dropped: readonly string[] | undefined; count: number }>();
+
 /**
  * How many automatic supports the unit's no-support zones hide: the contacts a zone takes out of
- * the list, plus those the shown build dropped because their column lands in a zone.
+ * the list, plus those the shown build dropped because their column lands in a zone. Manual
+ * supports are never hidden by zones (neither the contact list nor the build drops them), so they
+ * are not counted. Worked out once per unit object and build.
  */
 export function hiddenByZones(unit: PrintUnit, built: BuiltSupports | undefined): number {
   if (unit.zones.length === 0) return 0;
-  const inputs = contactInputs(unit);
-  return jobContacts({ ...inputs, zones: [] }).length - unitContacts(unit, built).length;
+  const dropped = built?.dropped;
+  const cached = hiddenCache.get(unit);
+  if (cached && cached.dropped === dropped) return cached.count;
+  const automatic = (contacts: readonly SupportContact[]) => contacts.filter((contact) => contact.origin !== 'manual').length;
+  const count = automatic(jobContacts({ ...contactInputs(unit), zones: [] })) - automatic(unitContacts(unit, built));
+  hiddenCache.set(unit, { dropped, count });
+  return count;
 }
 
 /** The unit's edits that decide its contacts. */
