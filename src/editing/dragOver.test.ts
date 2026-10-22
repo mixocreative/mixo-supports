@@ -1,0 +1,350 @@
+import { describe, expect, it } from 'vitest';
+import type { Vector } from '../core/vec3';
+import { brushHitsFrom, cachedVisibility, projectBodies, type BodySegments } from './screenBrush';
+import { frameBudget } from './selectionPaint';
+import { createStroke } from './stroke';
+import { createStrokeQueue } from './strokeQueue';
+import type { BrushMode } from './types';
+
+/**
+ * Drag over end to end on the pure pipeline: pointer events in, the frame loop with its time
+ * budget, hit tests on real projected bodies, selection commits out. The clock is fake: each ray
+ * the visibility test casts costs `RAY_MS`, each render between frames `RENDER_MS`, so the frame
+ * slicing is deterministic. The host's selection follows the commits one render (frame) later.
+ */
+
+/** Front view, orthographic: 100 × 100 px, screen x = x + 50, screen y = 50 − y. */
+const FRONT = [1 / 50, 0, 0, 0, 0, 1 / 50, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+const SIZE = 100;
+const RAY_MS = 3;
+const RENDER_MS = 10;
+
+type Point = [number, number];
+
+/** A row of vertical supports (tip at plate y = 40, foot at 0), one per entry: id → plate x. */
+function row(entries: Record<string, number>): BodySegments {
+  const ids = Object.keys(entries);
+  const first = new Uint32Array(ids.length + 1);
+  const points = new Float32Array(ids.length * 12);
+  ids.forEach((id, index) => {
+    const x = entries[id]!;
+    first[index] = index * 2;
+    points.set([x, 40, 0, x, 36, 0, x, 36, 0, x, 0, 0], index * 12);
+  });
+  first[ids.length] = ids.length * 2;
+  return { ids, first, points };
+}
+
+const PILLARS = Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`s${index}`, -27.5 + index * 5]));
+
+/**
+ * The viewport's side of Drag over, scripted: what the canvas and React would do around the
+ * pure modules. `log` records every selection commit and every hover preview change, per frame.
+ */
+function rig(options: { bodies?: BodySegments; hidden?: (x: number) => boolean } = {}) {
+  let clock = 0;
+  let brush: { radius: number; mode: BrushMode } | undefined = { radius: 6, mode: 'select' };
+  let bodies: BodySegments | undefined = options.bodies ?? row(PILLARS);
+  const live = { get bodies() { return bodies; } };
+  let selection: ReadonlySet<string> = new Set();
+  let committed = new Set<string>();
+  let preview: readonly string[] = [];
+  let frameNo = 0;
+  const log: string[] = [];
+  const hidden = options.hidden ?? (() => false);
+  const stroke = createStroke();
+
+  // The old useScreenBrush, line for line where it matters: the queue outlives the effect.
+  const queue = createStrokeQueue();
+  let effect: ReturnType<typeof startEffect> | undefined;
+  function startEffect(mesh: BodySegments) {
+    const bodies = mesh;
+    const visibility = cachedVisibility((point: Vector) => {
+      clock += RAY_MS;
+      return !hidden(point[0]);
+    });
+    let projected: Float32Array | undefined;
+    let shown: readonly string[] = [];
+    const show = (ids: readonly string[]) => {
+      if (ids.length === shown.length && ids.every((id, index) => id === shown[index])) return;
+      shown = ids;
+      preview = ids;
+      log.push(`f${frameNo} preview [${ids.join(' ')}]`);
+    };
+    if (bodies.ids.length === 0) queue.clear();
+    else queue.rebase();
+    let hover: { at: Point; next: number; found: string[] } | undefined;
+    let frame = false;
+    let lastEnd = 0;
+    let renderMs = 8;
+    const flush = () => {
+      frame = false;
+      if (!brush || (!queue.pending && !hover)) return;
+      const started = clock;
+      if (lastEnd > 0 && started - lastEnd < 1000) renderMs = renderMs * 0.7 + (started - lastEnd) * 0.3;
+      const budget = frameBudget(renderMs);
+      const stop = () => clock - started > budget;
+      projected ??= projectBodies(bodies, FRONT, SIZE, SIZE);
+      if (queue.pending) {
+        queue.drain(
+          bodies.ids.length,
+          (step, want) => brushHitsFrom(step.next, bodies, projected!, step.from, step.to, step.radius, visibility.isVisible, want, stop),
+          (ids, mode) => {
+            log.push(`f${frameNo} ${mode} [${ids.join(' ')}]`);
+            for (const id of ids) {
+              if (mode === 'select') committed.add(id);
+              else committed.delete(id);
+            }
+          },
+          (id) => selection.has(id),
+        );
+      } else if (hover) {
+        const adding = brush.mode === 'select';
+        const part = brushHitsFrom(hover.next, bodies, projected, undefined, hover.at, brush.radius, visibility.isVisible, (id) => selection.has(id) !== adding, stop);
+        hover.found.push(...part.hits);
+        hover.next = part.next;
+        show([...hover.found]);
+        if (part.next >= bodies.ids.length) hover = undefined;
+      }
+      lastEnd = clock;
+      if (queue.pending || hover) schedule();
+    };
+    const schedule = () => {
+      frame = true;
+    };
+    const hide = () => {
+      hover = undefined;
+      show([]);
+    };
+    const handle = (at: Point, buttons: number, onCanvas: boolean, pressed = false) => {
+      if (!brush) return;
+      if (!onCanvas && !stroke.active) return hide();
+      const state = pressed ? 'sample' : stroke.move((buttons & 1) !== 0);
+      if (state === 'sample') queue.push(at, brush.mode, brush.radius);
+      else if (state === 'idle') hover = { at, next: 0, found: [] };
+      schedule();
+    };
+    if (queue.pending) schedule();
+    return {
+      move: (at: Point, buttons: number, onCanvas: boolean) => handle(at, buttons, onCanvas),
+      down: (at: Point) => {
+        if (!brush || !stroke.begin(0)) return;
+        queue.begin();
+        hover = undefined;
+        show([]);
+        handle(at, 1, true, true);
+      },
+      leave: () => {
+        if (!stroke.active) hide();
+      },
+      frame: () => {
+        if (frame) flush();
+      },
+      pending: () => frame,
+      stop: () => {
+        if (!brush || !live.bodies) queue.clear();
+        preview = [];
+      },
+    };
+  }
+  /** The effect's dependencies changed (brush on/off, a new support mesh). */
+  const restart = () => {
+    effect?.stop();
+    effect = brush && bodies ? startEffect(bodies) : undefined;
+  };
+  restart();
+
+  const frame = () => {
+    frameNo++;
+    clock += RENDER_MS;
+    effect?.frame();
+    // React renders the committed selection before the next frame.
+    selection = new Set(committed);
+  };
+  return {
+    log,
+    get selection() { return [...selection].sort(); },
+    get preview() { return preview; },
+    hover(at: Point) { effect?.move(at, 0, true); },
+    offCanvas(at: Point) { effect?.move(at, 0, false); },
+    leave() { effect?.leave(); },
+    press(at: Point) { effect?.down(at); },
+    drag(at: Point) { effect?.move(at, 1, true); },
+    release() { stroke.end(); },
+    /** A straight drag in `moves` pointer steps, one frame after each. */
+    stroke(from: Point, to: Point, moves: number) {
+      this.press(from);
+      frame();
+      for (let index = 1; index <= moves; index++) {
+        this.drag([from[0] + ((to[0] - from[0]) * index) / moves, from[1] + ((to[1] - from[1]) * index) / moves]);
+        frame();
+      }
+      this.release();
+    },
+    setMode(mode: BrushMode) { if (brush) brush = { ...brush, mode }; },
+    setRadius(radius: number) { if (brush) brush = { ...brush, radius }; },
+    brushOff() { brush = undefined; restart(); },
+    brushOn() { brush = { radius: 6, mode: 'select' }; restart(); },
+    supports(next: BodySegments | undefined) { bodies = next; restart(); },
+    frame,
+    /** Frames until no work is left (a carried-over queue or hover drains). */
+    settle() {
+      for (let guard = 0; guard < 1000 && effect?.pending(); guard++) frame();
+      frame();
+    },
+  };
+}
+
+describe('Drag over pipeline (characterization)', () => {
+  it('a hover previews the supports under the circle, sliced over frames', () => {
+    const view = rig();
+    view.setRadius(20);
+    view.hover([50, 30]);
+    view.settle();
+    expect(view.preview).toEqual(['s2', 's3', 's4', 's5', 's6', 's7', 's8', 's9']);
+    expect(view.log).toMatchInlineSnapshot(`
+      [
+        "f1 preview [s2 s3 s4]",
+        "f2 preview [s2 s3 s4 s5 s6 s7]",
+        "f3 preview [s2 s3 s4 s5 s6 s7 s8 s9]",
+      ]
+    `);
+  });
+
+  it('a stroke paints every visible support it sweeps, committed per frame, finished after the release', () => {
+    const view = rig({ hidden: (x) => x > 10 && x < 20 });
+    view.hover([10, 30]);
+    view.frame();
+    view.stroke([10, 30], [90, 30], 4);
+    expect(view.preview).toEqual([]);
+    view.settle();
+    expect(view.selection).toEqual(['s0', 's1', 's10', 's11', 's2', 's3', 's4', 's5', 's6', 's7']);
+    expect(view.log).toMatchInlineSnapshot(`
+      [
+        "f3 select [s0 s1 s2]",
+        "f4 select [s3 s4 s5]",
+        "f5 select [s6 s7]",
+        "f7 select [s10 s11]",
+      ]
+    `);
+  });
+
+  it('an Unselect stroke over a Select stroke still draining ends with those supports unselected', () => {
+    const view = rig();
+    view.stroke([5, 30], [95, 30], 2);
+    view.setMode('unselect');
+    view.setRadius(3);
+    view.stroke([30, 30], [70, 30], 2);
+    view.settle();
+    expect(view.log).toMatchInlineSnapshot(`
+      [
+        "f2 select [s0 s1 s2]",
+        "f3 select [s3 s4 s5]",
+        "f4 select [s6 s7 s8]",
+        "f5 select [s9 s10 s11]",
+        "f6 unselect [s1 s2 s3 s4 s5 s6 s7 s8 s9 s10]",
+      ]
+    `);
+    expect(view.selection).toMatchInlineSnapshot(`
+      [
+        "s0",
+        "s11",
+      ]
+    `);
+  });
+
+  it('a support-mesh rebuild mid-stroke restarts the queued steps on the new supports', () => {
+    const view = rig();
+    view.stroke([5, 30], [95, 30], 3);
+    const rebuilt = { ...PILLARS };
+    delete rebuilt.s3;
+    view.supports(row(Object.fromEntries(Object.entries(rebuilt).map(([id, x]) => [id === 's8' ? 'n8' : id, x]))));
+    view.settle();
+    expect(view.log).toMatchInlineSnapshot(`
+      [
+        "f2 select [s0 s1 s2]",
+        "f3 select [s3 s4 s5]",
+        "f4 select [s6 s7 s8]",
+        "f5 select [n8 s9 s10]",
+        "f6 select [s11]",
+      ]
+    `);
+    expect(view.selection).toMatchInlineSnapshot(`
+      [
+        "n8",
+        "s0",
+        "s1",
+        "s10",
+        "s11",
+        "s2",
+        "s3",
+        "s4",
+        "s5",
+        "s6",
+        "s7",
+        "s8",
+        "s9",
+      ]
+    `);
+  });
+
+  it('Remove supports (an empty mesh) drops the queue: nothing runs on the next generated supports', () => {
+    const view = rig();
+    view.stroke([5, 30], [95, 30], 3);
+    const before = view.log.length;
+    view.supports(row({}));
+    view.settle();
+    view.supports(row(PILLARS));
+    view.settle();
+    expect(view.log.slice(before)).toEqual([]);
+    expect(view.log).toMatchInlineSnapshot(`
+      [
+        "f2 select [s0 s1 s2]",
+        "f3 select [s3 s4 s5]",
+        "f4 select [s6 s7 s8]",
+      ]
+    `);
+  });
+
+  it('the brush going away drops the queue and the preview', () => {
+    const view = rig();
+    view.stroke([5, 30], [95, 30], 3);
+    const before = view.log.length;
+    view.brushOff();
+    expect(view.preview).toEqual([]);
+    view.brushOn();
+    view.settle();
+    expect(view.log.slice(before)).toEqual([]);
+    view.setMode('unselect');
+    view.hover([50, 30]);
+    view.settle();
+    expect(view.preview).toEqual(['s5', 's6']);
+  });
+
+  it('the support mesh going away mid-stroke drops the queue', () => {
+    const view = rig();
+    view.stroke([5, 30], [95, 30], 3);
+    const before = view.log.length;
+    view.supports(undefined);
+    view.supports(row(PILLARS));
+    view.settle();
+    expect(view.log.slice(before)).toEqual([]);
+  });
+
+  it('leaving the canvas or moving off it clears the hover preview; a stroke keeps going off the canvas', () => {
+    const view = rig();
+    view.hover([50, 30]);
+    view.settle();
+    view.leave();
+    expect(view.preview).toEqual([]);
+    view.hover([50, 30]);
+    view.settle();
+    view.offCanvas([150, 30]);
+    expect(view.preview).toEqual([]);
+    view.press([5, 30]);
+    view.drag([150, 30]);
+    view.release();
+    view.settle();
+    expect(view.selection).toEqual(PILLARS && Object.keys(PILLARS).sort());
+  });
+});
