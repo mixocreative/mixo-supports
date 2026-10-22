@@ -153,7 +153,10 @@ quoted here are the ones the code uses.
   the selection, `commit`, `preview`, a clock and animation frames, forwards pointer presses,
   samples and hovers with the brush as it is at that moment (`sample(at, brush)`,
   `hover(at, brush)`), and calls `setSupports(count)` whenever the support mesh changes
-  (`undefined` when it is gone or the brush is off), its only lifetime input.
+  (`undefined` when it is gone or the brush is off), its only lifetime input. What a pointer
+  event means is `createDragOver(stroke, scheduler, onStrokeStart)` (`editing/dragOver`): the
+  host calls `down(button, at, brush)`, `move(at, { held, onCanvas }, brush)` and `leave()` with
+  canvas points, and shows or hides the circle as they answer.
 
 ### 5.4 Tips only: `tipsOf`
 

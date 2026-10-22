@@ -90,7 +90,7 @@ function screenBrushView(bodies: BodySegments, camera: THREE.Camera, scene: THRE
 const measureBrushFrame = import.meta.env?.DEV ? (start: number) => void performance.measure('mixo-brush-frame', { start }) : undefined;
 
 /**
- * Drag over in screen space (hit rules: editing/screenBrush; frame loop: editing/brushScheduler):
+ * Drag over in screen space (hit rules: editing/screenBrush; pointer rules: editing/dragOver; frame loop: editing/brushScheduler):
  * a circle of `brush.radius` px follows the pointer over the canvas; supports of the active object
  * whose body it passes over, and that are not hidden behind a model there, are previewed and,
  * while the left button is held, painted. A stroke may start anywhere on the canvas (model,
