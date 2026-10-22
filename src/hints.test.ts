@@ -25,7 +25,7 @@ const hinted = (tag: string) => /\btitle=|\{\.\.\.hint\(/.test(tag);
 
 describe('hover hints', () => {
   it('finds the tool buttons and sliders', () => {
-    expect(Object.values(SOURCES).flatMap((code) => openingTags(code, 'button')).length).toBeGreaterThan(15);
+    expect(Object.values(SOURCES).flatMap((code) => openingTags(code, 'button')).length).toBeGreaterThan(8);
     expect(openingTags('<a onClick={() => x > 1}>', 'a')).toEqual(['<a onClick={() => x > 1}>']);
   });
 
@@ -36,6 +36,12 @@ describe('hover hints', () => {
       ...openingTags(code, 'input').filter((tag) => tag.includes('type="range"')),
     ].filter((tag) => !hinted(tag) && !/key=\{option\.value\}|onChange\('previewMode'/.test(tag)).map((tag) => `${file}: ${tag.slice(0, 80)}`));
     expect(missing).toEqual([]);
+  });
+
+  it('every button that can be disabled comes from the registry, which says why it is off', () => {
+    const own = Object.entries(SOURCES).filter(([file]) => !/CommandButton|Segmented/.test(file))
+      .flatMap(([file, code]) => openingTags(code, 'button').filter((tag) => /disabled/.test(tag)).map((tag) => `${file}: ${tag.slice(0, 80)}`));
+    expect(own).toEqual([]);
   });
 
   it('every setting has a hint', () => {

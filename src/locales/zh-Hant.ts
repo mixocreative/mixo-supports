@@ -529,4 +529,10 @@ export const zhHant: Dictionary = {
   'Redo moving the object': '重做移動物件',
   'Undo the settings change': '復原設定變更',
   'Redo the settings change': '重做設定變更',
+  'An export is running: wait for it to finish.': '正在執行匯出：請等待完成。',
+  'Import a model first.': '請先匯入模型。',
+  'Select a support first.': '請先選取支撐。',
+  'Edit the supports of {name}: add or remove them by clicking': '編輯 {name} 的支撐：點擊即可新增或移除',
+  'Paint no-support zones on {name}, where automatic supports must not grow': '在 {name} 上塗刷免支撐區，自動支撐將不會在此區域生成',
+  'No zones are painted yet.': '尚未塗刷任何免支撐區。',
 };

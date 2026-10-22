@@ -525,4 +525,10 @@ export const ja: Dictionary = {
   'Redo moving the object': 'オブジェクトの移動をやり直す',
   'Undo the settings change': '設定の変更を元に戻す',
   'Redo the settings change': '設定の変更をやり直す',
+  'An export is running: wait for it to finish.': '書き出し中です：完了までお待ちください。',
+  'Import a model first.': '先にモデルを読み込んでください。',
+  'Select a support first.': '先にサポートを選択してください。',
+  'Edit the supports of {name}: add or remove them by clicking': '{name} のサポートを編集：クリックで追加・削除します',
+  'Paint no-support zones on {name}, where automatic supports must not grow': '{name} 上のサポート禁止エリアを塗る：自動サポートはそこに立ちません',
+  'No zones are painted yet.': '塗り済みのサポート禁止エリアはまだありません。',
 };

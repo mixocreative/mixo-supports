@@ -120,7 +120,9 @@ describe('one exit', () => {
   it('the selection actions come with a selection', () => {
     expect(resolve('edit.clearSelection', at({ mode: 'edit', selection: 2 })).visible).toBe(true);
     expect(resolve('edit.deleteSelection', at({ mode: 'edit', selection: 2 })).visible).toBe(true);
-    expect(resolve('edit.deleteSelection', at({ mode: 'edit' })).visible).toBe(false);
+    expect(resolve('edit.deleteSelection', at({ mode: 'edit' }))).toMatchObject({ visible: true, enabled: false, disabledReason: { key: 'Select a support first.' } });
+    expect(resolve('zones.clearAll', at({ mode: 'zones', zones: 0 }))).toMatchObject({ enabled: false, disabledReason: { key: 'No zones are painted yet.' } });
+    expect(resolve('zones.clearAll', at({ mode: 'zones', zones: 2 })).enabled).toBe(true);
   });
 });
 

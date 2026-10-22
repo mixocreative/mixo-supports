@@ -10,15 +10,15 @@ import { hint } from './hint';
  * The left panel's objects: one compact row each (raft label, name, support count), selection by
  * click, Shift+click or Ctrl+click, and Select all and Delete under the list.
  */
-export function ObjectList({ scene, supportCount, building, onSelect, onSelectAll, deleteCommand, locked, run }: {
+export function ObjectList({ scene, supportCount, building, onSelect, selectAllCommand, deleteCommand, locked, run }: {
   scene: PrintScene;
   /** The unit's supports as its latest build left them. */
   supportCount: (unit: PrintUnit) => number;
   /** The unit changed since its shown supports were built. */
   building: (unit: PrintUnit) => boolean;
   onSelect: (unitId: string, additive: boolean) => void;
-  onSelectAll: () => void;
-  /** The registry's objects.delete row. */
+  /** The registry's objects.selectAll and objects.delete rows. */
+  selectAllCommand: ResolvedCommand;
   deleteCommand: ResolvedCommand;
   /** A mode locks the list: inert and dimmed. */
   locked: boolean;
@@ -41,7 +41,7 @@ export function ObjectList({ scene, supportCount, building, onSelect, onSelectAl
       })}
     </ul>}
     <div className="row">
-      <button onClick={onSelectAll} disabled={units.length === 0} {...hint('Select every object')}>{t('Select all')}</button>
+      <CommandButton command={selectAllCommand} run={run} />
       <CommandButton command={deleteCommand} run={run} />
     </div>
   </section>;

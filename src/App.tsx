@@ -49,7 +49,7 @@ import { gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, withShape, type LiveSupportSettings, type SettingKey, type ShapeKey } from './core/supports/settings';
 import { checkJobOf, currentBuild, hiddenByZones, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
-import { resolve, type CommandId, type UiState } from './editing/commands';
+import { COMMAND_IDS, resolve, type CommandId, type UiState } from './editing/commands';
 import { effectiveBrushMode } from './editing/selection';
 import { keyAction } from './editing/keys';
 import { customisedAmong, liveSelection, scopeCounts, shapePatch, shapeView } from './editing/shapeEdit';
@@ -79,14 +79,9 @@ const NO_OVERRIDES: ContactSettings = {};
 /** Settings edits come in bursts (typing a value); a unit's preview rebuild waits this long. */
 const BUILD_DELAY_MS = 120;
 
-// Labels are i18n keys, translated where shown.
-const EXPORTS: { kind: ExportKind; label: string; hint: string }[] = [
-  { kind: 'active-printable', label: 'Active object with model', hint: 'One STL file: the active object and its supports' },
-  { kind: 'active-supports', label: 'Active object, supports only', hint: 'One STL file: only the supports of the active object' },
-  { kind: 'separate-printable', label: 'Each object with model', hint: 'One STL file per object, each with its supports' },
-  { kind: 'separate-supports', label: 'Each object, supports only', hint: 'One STL file per object, supports only' },
-  { kind: 'whole-printable', label: 'Whole plate in one file', hint: 'One STL file: every object and its supports, as placed on the plate' },
-];
+/** The Export STL commands (editing/commands): `export.` and the kind. */
+const EXPORT_IDS = COMMAND_IDS.filter((id): id is Extract<CommandId, `export.${string}`> => id.startsWith('export.'));
+const exportKindOf = (id: CommandId) => id.slice('export.'.length) as ExportKind;
 
 /** The viewport's mode chrome classes per gesture. */
 const VIEWPORT_CLASS: Record<GestureKind, string> = {
@@ -752,8 +747,16 @@ export default function App() {
       case 'edit.deleteSelection': return deleteSelected();
       case 'shape.reset': return resetSelected();
       case 'shape.selectCustomised': return selectCustomised();
+      case 'objects.selectAll': return dispatch({ type: 'selection/set', unitIds: sceneRef.current.units.map((unit) => unit.id), ...(sceneRef.current.units[0] ? { activeUnitId: sceneRef.current.activeUnitId ?? sceneRef.current.units[0].id } : {}) });
+      case 'supports.clearManual': return clearManual();
+      case 'supports.remove': return removeSupports();
+      case 'check.run': return checkSupports();
+      case 'view.fit': return requestView('fit');
+      case 'view.bottom': return requestView('bottom');
+      case 'zones.clearAll': return clearActiveZones();
+      case 'export.active-printable': case 'export.active-supports': case 'export.separate-printable': case 'export.separate-supports': case 'export.whole-printable': return void runExport(exportKindOf(id));
     }
-  }, [clearSelection, deleteSelected, deleteUnits, generate, resetSelected, selectCustomised, send, setStatus, undo]);
+  }, [checkSupports, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dispatch, generate, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -775,7 +778,7 @@ export default function App() {
   const scopePending = !generating && !regenQueued && scopeUnits.some(placementPending);
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
-    mode: editMode, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction, method: session.selectStyle, dragAction: effectiveBrushMode(session.brushMode, session.shiftHeld),
+    mode: editMode, activeName: activeUnit?.name, supported: scene.units.some((unit) => unit.supports), zones: activeUnit?.zones.length ?? 0, exporting, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction, method: session.selectStyle, dragAction: effectiveBrushMode(session.brushMode, session.shiftHeld),
     selection: selection.size, customisedActive, customisedSelected, customisedTargeted: bandCounts.customised, customisedOthers: Math.max(0, bandCounts.customised - customisedActive), activeSupported: Boolean(activeUnit?.supports), generating, canUndo, canRedo: history.future.length > 0, undoStep, redoStep, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
   };
   const command = (id: CommandId) => resolve(id, ui);
@@ -840,7 +843,7 @@ export default function App() {
           supportCount={(unit) => unitContacts(unit, built.get(unit.id)?.mesh).length}
           building={building}
           onSelect={onSelect}
-          onSelectAll={() => dispatch({ type: 'selection/set', unitIds: scene.units.map((unit) => unit.id), ...(scene.units[0] ? { activeUnitId: scene.activeUnitId ?? scene.units[0].id } : {}) })}
+          selectAllCommand={command('objects.selectAll')}
           deleteCommand={command('objects.delete')}
           locked={locked('objects')}
           run={runCommand}
@@ -855,13 +858,13 @@ export default function App() {
         <section {...(locked('supports') ? { inert: '' } : {})}>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
           <CommandButton command={command('supports.generate')} run={runCommand} {...(scopeGenerated ? { className: scopePending ? 'regen attention' : 'regen' } : {})} />
-          <button className="danger" onClick={clearManual} disabled={scene.units.length === 0} {...hint('Remove manual supports and bring back removed automatic ones, at once. Undo brings the edits back')}>{t('Clear manual edits')}</button>
-          <button className="danger" onClick={removeSupports} disabled={scene.units.length === 0} {...hint('Remove the supports of the selected objects. Models and manual edits are kept. Undo brings them back')}>{t('Remove supports')}</button>
+          <CommandButton command={command('supports.clearManual')} run={runCommand} />
+          <CommandButton command={command('supports.remove')} run={runCommand} />
         </section>
         <ModeSections ui={ui} run={runCommand} zones={activeUnit?.zones.length} />
         <section className="support-check" {...(locked('check') ? { inert: '' } : {})}>
           <h3>{t('Check supports')}</h3>
-          <button onClick={checkSupports} disabled={!scene.units.some((unit) => unit.supports)} {...hint('Finds islands and overhangs no contact reaches, before you print.')}>{t('Check for unsupported spots')}</button>
+          <CommandButton command={command('check.run')} run={runCommand} />
           <ProblemList problems={listedProblems} outOfDate={outOfDate} rechecking={isRechecking} unitName={unitName} onShow={showProblem} onFix={fixProblem} />
           <p className="help">{t('Finds islands and overhangs no contact reaches, before you print.')}</p>
         </section>
@@ -900,8 +903,8 @@ export default function App() {
         <div className="viewport-view" role="group" aria-label={t('View')}>
           {/* Forced by zones, the button stays focusable (its hint says why) but does nothing. */}
           <button aria-pressed={tipsOnly.shown} aria-disabled={tipsOnly.forced} onClick={() => setTips((state) => tipsPress(state, tipsContext))} {...hint(tipsOnly.hint)}>{t('Tips only')}</button>
-          <button onClick={() => requestView('fit')} disabled={scene.units.length === 0} {...hint('Frame the selection from the current angle')}>{t('Fit view')}</button>
-          <button onClick={() => requestView('bottom')} disabled={scene.units.length === 0} {...hint('Look straight up at the selection to check contact points')}>{t('Bottom view')}</button>
+          <CommandButton command={command('view.fit')} run={runCommand} />
+          <CommandButton command={command('view.bottom')} run={runCommand} />
         </div>
         <CirclePreview gesture={press} />
         {isDraggingOver && <div className="viewport-drop-overlay">{t('Drop to import')}</div>}
@@ -913,7 +916,7 @@ export default function App() {
           <div className="viewport-object-status">{activeUnit ? activeUnit.name : t('Nothing selected')}</div>
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
-          ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} hidden={zonesHidden} ui={ui} send={send} run={runCommand} onClear={clearActiveZones} />
+          ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hidden={zonesHidden} ui={ui} send={send} run={runCommand} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>
@@ -936,7 +939,7 @@ export default function App() {
         />
         <section className="export" {...(locked('export') ? { inert: '' } : {})}>
           <h3>{t('Export STL')}</h3>
-          {EXPORTS.map((entry) => <button key={entry.kind} onClick={() => void runExport(entry.kind)} disabled={scene.units.length === 0 || exporting} {...hint(entry.hint)}>{t(entry.label)}</button>)}
+          {EXPORT_IDS.map((id) => <CommandButton key={id} command={command(id)} run={runCommand} />)}
           <p className="help">{t('Exports match the viewport at full resolution. Source models are never changed.')}</p>
         </section>
       </aside>

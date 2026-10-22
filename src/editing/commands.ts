@@ -9,14 +9,16 @@ import { busyStatus } from './status';
  */
 export const COMMAND_IDS = [
   'history.undo', 'history.redo',
-  'view.models', 'view.wireframe',
-  'objects.delete',
+  'view.models', 'view.wireframe', 'view.fit', 'view.bottom',
+  'objects.selectAll', 'objects.delete',
   'transform.select', 'transform.move', 'transform.rotate',
-  'supports.generate',
+  'supports.generate', 'supports.clearManual', 'supports.remove', 'check.run',
   'mode.edit', 'mode.zones', 'mode.exit',
+  'zones.clearAll',
   'edit.generate', 'edit.add', 'edit.remove', 'edit.dragSelect', 'edit.dragUnselect', 'edit.clearSelection', 'edit.deleteSelection',
   'setting.clickReach',
   'shape.reset', 'shape.selectCustomised',
+  'export.active-printable', 'export.active-supports', 'export.separate-printable', 'export.separate-supports', 'export.whole-printable',
 ] as const;
 export type CommandId = (typeof COMMAND_IDS)[number];
 
@@ -32,6 +34,14 @@ export interface UiState {
   heavy: number | undefined;
   /** Objects on the plate. */
   units: number;
+  /** Name of the active object. */
+  activeName: string | undefined;
+  /** Some object on the plate has supports. */
+  supported: boolean;
+  /** No-support zones painted on the active object. */
+  zones: number;
+  /** An export is running. */
+  exporting: boolean;
   /** Objects selected in the left panel. */
   selectedObjects: number;
   /** Support Edit Mode's tool, and under Add whether a click adds or removes. */
@@ -76,7 +86,7 @@ interface Command {
   label(s: UiState): string;
   hint(s: UiState): string;
   /** Values for `{n}` placeholders in the hint. */
-  hintVars?(s: UiState): Record<string, number> | undefined;
+  hintVars?(s: UiState): Record<string, string | number> | undefined;
   visible(s: UiState): boolean;
   enabled(s: UiState): boolean;
   /** Why the control is off; defined exactly when a visible command is not enabled. */
@@ -105,6 +115,7 @@ const entryReason = (s: UiState): StatusMessage | undefined => {
   return s.heavy === undefined ? undefined : heavyReason(s);
 };
 const inMode = (mode: EditMode) => (s: UiState) => s.mode === mode;
+const noModelReason: StatusMessage = { key: 'Import a model first.' };
 const generatingReason: StatusMessage = { key: 'Supports are being generated: wait for it to finish.' };
 
 export const COMMANDS: Readonly<Record<CommandId, Command>> = {
@@ -132,6 +143,18 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     hint: (s) => (s.wireframe ? 'Draw the models solid' : 'Draw the models as wireframes to see supports behind them'),
     visible: always, enabled: always, disabledReason: never,
   },
+  'view.fit': {
+    role: 'secondary', label: () => 'Fit view', hint: () => 'Frame the selection from the current angle',
+    visible: always, enabled: (s) => s.units > 0, disabledReason: (s) => (s.units > 0 ? undefined : noModelReason),
+  },
+  'view.bottom': {
+    role: 'secondary', label: () => 'Bottom view', hint: () => 'Look straight up at the selection to check contact points',
+    visible: always, enabled: (s) => s.units > 0, disabledReason: (s) => (s.units > 0 ? undefined : noModelReason),
+  },
+  'objects.selectAll': {
+    role: 'secondary', label: () => 'Select all', hint: () => 'Select every object',
+    visible: always, enabled: (s) => s.units > 0, disabledReason: (s) => (s.units > 0 ? undefined : noModelReason),
+  },
   'objects.delete': {
     role: 'destructive', shortcut: 'Delete',
     label: () => 'Delete', hint: () => 'Delete the selected objects. Undo brings them back',
@@ -150,11 +173,24 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     visible: always, enabled: (s) => s.units > 0 && !s.generating,
     disabledReason: (s) => (s.units === 0 ? { key: 'Import a model before generating supports.' } : s.generating ? generatingReason : undefined),
   },
+  'supports.clearManual': {
+    role: 'destructive', label: () => 'Clear manual edits', hint: () => 'Remove manual supports and bring back removed automatic ones, at once. Undo brings the edits back',
+    visible: always, enabled: (s) => s.units > 0, disabledReason: (s) => (s.units > 0 ? undefined : noModelReason),
+  },
+  'supports.remove': {
+    role: 'destructive', label: () => 'Remove supports', hint: () => 'Remove the supports of the selected objects. Models and manual edits are kept. Undo brings them back',
+    visible: always, enabled: (s) => s.supported, disabledReason: (s) => (s.supported ? undefined : { key: 'No supports to remove.' }),
+  },
+  'check.run': {
+    role: 'secondary', label: () => 'Check for unsupported spots', hint: () => 'Finds islands and overhangs no contact reaches, before you print.',
+    visible: always, enabled: (s) => s.supported, disabledReason: (s) => (s.supported ? undefined : { key: 'Generate supports before checking them.' }),
+  },
   'mode.edit': {
     role: 'secondary',
     shortcut: (s) => (s.mode === 'edit' ? 'Esc' : undefined),
     label: (s) => (s.mode === 'edit' ? 'Exit Support Edit Mode' : 'Edit supports'),
-    hint: (s) => (s.mode === 'edit' ? 'Finish editing supports' : 'Add or remove supports by clicking'),
+    hint: (s) => (s.mode === 'edit' ? 'Finish editing supports' : s.activeName === undefined ? 'Add or remove supports by clicking' : 'Edit the supports of {name}: add or remove them by clicking'),
+    hintVars: (s) => (s.mode === 'edit' || s.activeName === undefined ? undefined : { name: s.activeName }),
     visible: always,
     // Inside Support Edit Mode the button is its exit, in the same place.
     enabled: (s) => (s.mode === 'edit' ? true : s.mode === 'off' && editable(s)),
@@ -166,7 +202,8 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     role: 'secondary',
     shortcut: (s) => (s.mode === 'zones' ? 'Esc' : undefined),
     label: (s) => (s.mode === 'zones' ? 'Exit no-support zones' : 'No-support zones'),
-    hint: (s) => (s.mode === 'zones' ? 'Finish painting zones' : 'Paint areas of the model where automatic supports must not grow'),
+    hint: (s) => (s.mode === 'zones' ? 'Finish painting zones' : s.activeName === undefined ? 'Paint areas of the model where automatic supports must not grow' : 'Paint no-support zones on {name}, where automatic supports must not grow'),
+    hintVars: (s) => (s.mode === 'zones' || s.activeName === undefined ? undefined : { name: s.activeName }),
     visible: always,
     enabled: (s) => (s.mode === 'zones' ? true : s.mode === 'off' && editable(s)),
     disabledReason: (s) => (s.mode === 'zones' || (s.mode === 'off' && editable(s)) ? undefined : entryReason(s)),
@@ -179,6 +216,10 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     label: () => 'Done',
     hint: (s) => (s.mode === 'zones' ? 'Finish painting zones' : 'Finish editing supports'),
     visible: (s) => s.mode !== 'off', enabled: always, disabledReason: never,
+  },
+  'zones.clearAll': {
+    role: 'destructive', label: () => 'Clear all zones', hint: () => 'Clear every no-support zone of this object at once. Undo brings them back',
+    visible: (s) => s.mode === 'zones', enabled: (s) => s.zones > 0, disabledReason: (s) => (s.zones > 0 ? undefined : { key: 'No zones are painted yet.' }),
   },
   'edit.generate': {
     role: 'secondary',
@@ -228,9 +269,23 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
   'edit.deleteSelection': {
     role: 'destructive', shortcut: 'Delete',
     label: () => 'Delete', hint: () => 'Delete the selected supports. Undo brings them back',
-    visible: (s) => s.mode === 'edit' && s.selection > 0, enabled: always, disabledReason: never,
+    visible: (s) => s.mode === 'edit', enabled: (s) => s.selection > 0, disabledReason: (s) => (s.selection > 0 ? undefined : { key: 'Select a support first.' }),
   },
+  'export.active-printable': exportRow('Active object with model', 'One STL file: the active object and its supports'),
+  'export.active-supports': exportRow('Active object, supports only', 'One STL file: only the supports of the active object'),
+  'export.separate-printable': exportRow('Each object with model', 'One STL file per object, each with its supports'),
+  'export.separate-supports': exportRow('Each object, supports only', 'One STL file per object, supports only'),
+  'export.whole-printable': exportRow('Whole plate in one file', 'One STL file: every object and its supports, as placed on the plate'),
 };
+
+/** One of the Export STL buttons: off with no model on the plate, and while an export runs. */
+function exportRow(label: string, hint: string): Command {
+  return {
+    role: 'secondary', label: () => label, hint: () => hint,
+    visible: always, enabled: (s) => s.units > 0 && !s.exporting,
+    disabledReason: (s) => (s.units === 0 ? noModelReason : s.exporting ? { key: 'An export is running: wait for it to finish.' } : undefined),
+  };
+}
 
 /** The Add | Remove switch under the Add tool. */
 function addChoice(action: AddAction, label: string, hint: string): Command {
@@ -267,7 +322,7 @@ export interface ResolvedCommand {
   shortcut: string | undefined;
   label: string;
   hint: string;
-  hintVars: Record<string, number> | undefined;
+  hintVars: Record<string, string | number> | undefined;
   visible: boolean;
   enabled: boolean;
   disabledReason: StatusMessage | undefined;
