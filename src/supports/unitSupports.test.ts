@@ -175,3 +175,33 @@ describe('deleted contacts after Regenerate on a rotated unit', () => {
     expect(unitContacts(scene.units[0]!, undefined).map((contact) => Math.round(contact.position[0]))).toEqual([0, 6]);
   });
 });
+
+describe('placementPending (a placement setting changed since the contacts were placed)', () => {
+  const requested = { position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] };
+  const result = { points: [point('auto-0', 0)], regions: [] };
+
+  it('is set by a placement setting change and cleared by placing again', async () => {
+    const { placementCommands, placementPending, placementSignature, resolveSettings } = await import('./unitSupports');
+    const { reduceScene, emptyScene } = await import('../state/project');
+    const place = (scene: ReturnType<typeof reduceScene>) => {
+      const now = scene.units[0]!;
+      const settings = resolveSettings(now.settings);
+      return reduceScene(scene, { type: 'batch', commands: placementCommands(now, requested, result, settings.liftHeight, 1.5, placementSignature(settings))! });
+    };
+    let scene = place(reduceScene(emptyScene, { type: 'unit/add', unit: { ...unit, placement: undefined, supports: undefined, manual: [], deleted: [] } }));
+    expect(placementPending(scene.units[0]!)).toBe(false);
+    const change = (key: string, value: number) => reduceScene(scene, { type: 'settings/set', unitId: 'unit-a', settings: { ...resolveSettings(scene.units[0]!.settings), [key]: value } as never });
+    // A setting that does not move contacts leaves it as it was.
+    expect(placementPending(change('neckDiameter', 9).units[0]!)).toBe(false);
+    scene = change('scatterSpacing', resolveSettings(scene.units[0]!.settings).scatterSpacing + 1);
+    expect(placementPending(scene.units[0]!)).toBe(true);
+    scene = place(scene);
+    expect(placementPending(scene.units[0]!)).toBe(false);
+  });
+
+  it('is not set for a unit with no recorded placement', async () => {
+    const { placementPending } = await import('./unitSupports');
+    expect(placementPending({ ...unit, supports: { kind: 'live', data: {} } })).toBe(false);
+    expect(placementPending({ ...unit, supports: undefined })).toBe(false);
+  });
+});

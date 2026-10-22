@@ -174,6 +174,8 @@ export interface SettingsPanelProps {
   locked?: boolean;
   /** Placement settings wait for the next Generate (Support Edit Mode keeps the supports it shows). */
   deferPlacement?: boolean;
+  /** The object's placement settings changed since its contacts were placed: Regenerate applies them. */
+  placementPending?: boolean;
   onChange: <K extends SettingKey>(key: K, value: LiveSupportSettings[K]) => void;
   onPreset: (preset: PresetName) => void;
   onRoofMode: (mode: RoofMode) => void;
@@ -189,7 +191,7 @@ function DeferNote() {
  * placement, structure, raft, bracing, label). Support shape holds the tip, contact, neck and foot
  * keys one support may own, which read defaults until per-support selection lands.
  */
-export default function SettingsPanel({ settings, ui, autoLabel, scope, disabled, locked = false, deferPlacement = false, onChange, onPreset, onRoofMode }: SettingsPanelProps) {
+export default function SettingsPanel({ settings, ui, autoLabel, scope, disabled, locked = false, deferPlacement = false, placementPending = false, onChange, onPreset, onRoofMode }: SettingsPanelProps) {
   const groups = (region: 'shape' | undefined) => SETTING_GROUPS.filter((group) => group.region === region && (!group.when || group.when(settings))).map((group) => <details key={group.title} open={group.open}>
     <summary>{t(group.title)}</summary>
     {deferPlacement && group.title === 'Auto placement' && <DeferNote />}
@@ -218,6 +220,7 @@ export default function SettingsPanel({ settings, ui, autoLabel, scope, disabled
   return <>
     <section {...inert}>
       <h3>{t('Object: {scope}', { scope })}</h3>
+      {placementPending && <p className="help pending-note" role="note">{t('Placement changed. Regenerate to apply.')}</p>}
       <fieldset className="settings" disabled={disabled}>
         <div className="field-row" title={t('Chitubox support preset. Editing any value switches to Custom')}>
           <span>{t('Preset')}</span>

@@ -55,6 +55,7 @@ export const zhHant: Dictionary = {
   'and {n} more': '及另外 {n} 個',
   'Object: {scope}': '物件：{scope}',
   'Support shape · defaults': '支撐形狀 · 預設',
+  'Placement changed. Regenerate to apply.': '放置設定已變更，重新產生後才會套用。',
   'Applies on next Generate.': '下次產生支撐時才會套用。',
   'Select an object to edit its settings. Changes apply to every selected object.': '選取物件以編輯設定。變更會套用到所有選取的物件。',
   'Export STL': '匯出 STL',

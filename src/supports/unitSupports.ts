@@ -3,8 +3,8 @@ import type { PlacementResult, ProgressCallback, SupportPoint } from '../core/an
 import { hidingRemovals, positionId, remapDeleted } from '../core/analysis/placement';
 import { jobContacts, type CheckJob, type ContactInputs, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
 import type { GeneratedSupportMesh, SupportContact } from '../core/supports/mesh';
-import { defaultSupportSettings, toPlacementSettings, type LiveSupportSettings } from '../core/supports/settings';
-import type { PrintUnit, SceneCommand, SupportSettings } from '../state/project';
+import { defaultSupportSettings, toPlacementSettings, type LiveSupportSettings, type SettingKey } from '../core/supports/settings';
+import type { JSONObject, PrintUnit, SceneCommand, SupportSettings } from '../state/project';
 import { inverseTransformDirection, inverseTransformPoint, type ModelTransform } from '../state/transform';
 import { placementMatrix } from '../core/transform';
 import { runSupportJob } from './jobRunner';
@@ -17,6 +17,28 @@ import { runSupportJob } from './jobRunner';
 /** Unit settings stored in the scene, completed with defaults for any missing key. */
 export function resolveSettings(settings: SupportSettings | undefined): LiveSupportSettings {
   return { ...defaultSupportSettings, roofSeededModes: [], ...(settings as Partial<LiveSupportSettings> | undefined) };
+}
+
+/** Settings whose change moves contacts: the unit's placement is out of date until it is generated again. */
+export const PLACEMENT_KEYS: readonly SettingKey[] = [
+  'scatterSpacing', 'scatterAngle', 'scatterFacingDown', 'scatterIslands', 'scatterRidgeAngle', 'reinforceOverhangEdges', 'liftHeight',
+];
+
+/** The placement settings a generation ran with; stored with the unit's supports so a later change shows. */
+export function placementSignature(settings: LiveSupportSettings): JSONObject {
+  return Object.fromEntries(PLACEMENT_KEYS.map((key) => [key, settings[key]]));
+}
+
+/**
+ * The unit's placement settings changed since its contacts were placed (Support Edit Mode holds a
+ * regeneration back, and leaving it does not run one). Derived, so Undo and Regenerate clear it by
+ * themselves. A unit placed before settings were recorded, or with hand-added supports only, is not pending.
+ */
+export function placementPending(unit: PrintUnit): boolean {
+  const placed = unit.supports?.data.placed as JSONObject | undefined;
+  if (!placed) return false;
+  const now = resolveSettings(unit.settings);
+  return PLACEMENT_KEYS.some((key) => placed[key] !== now[key]);
 }
 
 const contactCache = new WeakMap<PrintUnit, readonly SupportContact[]>();
@@ -184,10 +206,11 @@ export function placedPoints(orientation: JobTransform, result: Pick<PlacementRe
  * The commands that apply a finished placement to the unit as it is now (placement can take
  * tens of seconds on a big model, and the gizmo stays live meanwhile). A move made in the
  * meantime is kept: only the height changes, so the lowest point sits `liftHeight` above the
- * plate. Undefined when the unit was rotated since `orientation` was analysed: its contacts face
- * the old way, so the caller places again rather than undo the rotation.
+ * plate. `placed`: the placement settings it ran with (see `placementPending`). Undefined when
+ * the unit was rotated since `orientation` was analysed: its contacts face the old way, so the
+ * caller places again rather than undo the rotation.
  */
-export function placementCommands(unit: PrintUnit, orientation: JobTransform, result: Pick<PlacementResult, 'points' | 'regions'>, liftHeight: number, matchRadius: number): SceneCommand[] | undefined {
+export function placementCommands(unit: PrintUnit, orientation: JobTransform, result: Pick<PlacementResult, 'points' | 'regions'>, liftHeight: number, matchRadius: number, placed?: JSONObject): SceneCommand[] | undefined {
   if (unit.transform.rotation.some((angle, axis) => angle !== orientation.rotation[axis])) return undefined;
   const [x, y, z] = unit.transform.position;
   const transform: ModelTransform = { position: [x, y + liftHeight - unitLowestY(unit), z], rotation: [...unit.transform.rotation] };
@@ -204,7 +227,7 @@ export function placementCommands(unit: PrintUnit, orientation: JobTransform, re
         contactPositions: new Float32Array(points.flatMap((point) => point.position)),
         contactNormals: new Float32Array(points.flatMap((point) => point.normal)),
       },
-      supports: { kind: 'live', data: { transform: { position: [...transform.position], rotation: [...transform.rotation] } } },
+      supports: { kind: 'live', data: { transform: { position: [...transform.position], rotation: [...transform.rotation] }, ...(placed ? { placed } : {}) } },
     },
     { type: 'deletion/set', unitId: unit.id, pointIds: deleted },
   ];

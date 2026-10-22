@@ -34,12 +34,14 @@ const BADGE = {
  * Support Edit Mode's chrome over the viewport (Blender mixo.support_place): the red frame, the
  * badge saying what a click does, and the bar with the tools, the selection's actions and Done.
  */
-export function EditBar({ gesture, unitName, ui, clickReach, send, run }: {
+export function EditBar({ gesture, unitName, ui, clickReach, attention = false, send, run }: {
   gesture: EditGesture;
   unitName: string | undefined;
   ui: UiState;
   /** The active object's Click reach (the registry's setting.clickReach): its value and how to set it. */
   clickReach: { value: number; onChange: (value: number) => void };
+  /** A placement setting changed: Generate is what applies it. */
+  attention?: boolean;
   send: (event: SessionEvent) => void;
   run: (id: CommandId) => void;
 }) {
@@ -85,7 +87,7 @@ export function EditBar({ gesture, unitName, ui, clickReach, send, run }: {
         <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{gesture.kind === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
         <span className="edit-hint"><KeyCaps shortcut={resolve('history.undo', ui).shortcut!} /> {t('undo')}</span>
         {ui.selection > 0 && <span className="edit-count">{t('{n} selected', { n: ui.selection })}</span>}
-        {EDIT_BAR_COMMANDS.map((id) => resolve(id, ui)).filter((command) => command.visible).map((command) => <CommandButton key={command.id} command={command} run={run} />)}
+        {EDIT_BAR_COMMANDS.map((id) => resolve(id, ui)).filter((command) => command.visible).map((command) => <CommandButton key={command.id} command={command} run={run} {...(attention && command.id === 'edit.generate' ? { className: 'attention' } : {})} />)}
         <DoneButton ui={ui} run={run} />
       </div>
     </div>

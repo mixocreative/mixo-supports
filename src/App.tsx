@@ -43,7 +43,7 @@ import { deleteCommands } from './supports/selection';
 import { gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
-import { checkJobOf, currentBuild, currentBuilds, hiddenByZones, orientationOf, placedPoints, placementCommands, placementJobOf, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
+import { checkJobOf, currentBuild, currentBuilds, hiddenByZones, orientationOf, placedPoints, placementCommands, placementJobOf, placementPending, placementSignature, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { resolve, type CommandId, type UiState } from './editing/commands';
 import { keyAction } from './editing/keys';
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
@@ -69,10 +69,6 @@ function historyReducer(history: SceneHistory, action: HistoryAction): SceneHist
   return withSceneCommand(history, action.command);
 }
 
-/** Settings whose change moves contacts; units with supports regenerate automatically (Blender keeps them live). */
-const PLACEMENT_KEYS: ReadonlySet<SettingKey> = new Set<SettingKey>([
-  'scatterSpacing', 'scatterAngle', 'scatterFacingDown', 'scatterIslands', 'scatterRidgeAngle', 'reinforceOverhangEdges', 'liftHeight',
-]);
 const REGENERATE_DELAY_MS = 350;
 /** Settings edits come in bursts (typing a value); a unit's preview rebuild waits this long. */
 const BUILD_DELAY_MS = 120;
@@ -361,7 +357,7 @@ export default function App() {
         // sits Lift Height above the plate (y = 0) where the supports stand. A rotation made
         // meanwhile turned the contacts away: place again for the new orientation.
         const matchRadius = settings.scatterSpacing / 2;
-        const commands = placementCommands(now, orientation, result, settings.liftHeight, matchRadius);
+        const commands = placementCommands(now, orientation, result, settings.liftHeight, matchRadius, placementSignature(settings));
         if (!commands) {
           generate([unit.id], cause);
           setStatus('{name} was rotated while its contacts were placed: placing them again.', { name: unit.name });
@@ -565,7 +561,7 @@ export default function App() {
   }, [forTargets, scheduleRegenerate, targets]);
 
   const onSettingChange = useCallback(<K extends SettingKey>(key: K, value: LiveSupportSettings[K]) => {
-    changeSettings((settings) => updateSetting(settings, key, value), PLACEMENT_KEYS.has(key));
+    changeSettings((settings) => updateSetting(settings, key, value), PLACEMENT_KEYS.includes(key));
   }, [changeSettings]);
 
   const removeSupports = () => {
@@ -848,6 +844,8 @@ export default function App() {
   // Once every unit in scope has supports, the one generate action becomes Regenerate.
   const scopeUnits = targets(scene);
   const scopeGenerated = scopeUnits.length > 0 && scopeUnits.every((unit) => unit.supports);
+  // A placement setting changed in Support Edit Mode waits for Regenerate; leaving the mode does not run it.
+  const scopePending = !generating && scopeUnits.some(placementPending);
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
     mode: editMode, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction,
@@ -929,7 +927,7 @@ export default function App() {
         </section>
         <section {...(locked('supports') ? { inert: '' } : {})}>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
-          <CommandButton command={command('supports.generate')} run={runCommand} {...(scopeGenerated ? { className: 'regen' } : {})} />
+          <CommandButton command={command('supports.generate')} run={runCommand} {...(scopeGenerated ? { className: scopePending ? 'regen attention' : 'regen' } : {})} />
           <button className="danger" onClick={clearManual} disabled={scene.units.length === 0} {...hint('Remove manual supports and bring back removed automatic ones, at once. Undo brings the edits back')}>{t('Clear manual edits')}</button>
           <button className="danger" onClick={removeSupports} disabled={scene.units.length === 0} {...hint('Remove the supports of the selected objects. Models and manual edits are kept')}>{t('Remove supports')}</button>
         </section>
@@ -988,7 +986,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hasZones={Boolean(activeUnit?.zones.length)} hidden={zonesHidden} ui={ui} send={send} run={runCommand} onClear={clearActiveZones} />
-          : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value) => onSettingChange('eraseRadius', value) }} send={send} run={runCommand} />}
+          : <EditBar attention={scopePending} gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value) => onSettingChange('eraseRadius', value) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>
         {lockNoteOf('right')}
@@ -998,6 +996,7 @@ export default function App() {
           ui={ui}
           scope={activeUnit ? `${activeUnit.name}${selectedCount > 1 ? ` ${t('and {n} more', { n: selectedCount - 1 })}` : ''}` : t('Nothing selected')}
           deferPlacement={editMode === 'edit'}
+          placementPending={!generating && Boolean(activeUnit && placementPending(activeUnit))}
           autoLabel={activeIndex >= 0 ? labelForIndex(activeIndex) : 'A'}
           disabled={!activeUnit}
           locked={locked('settings')}

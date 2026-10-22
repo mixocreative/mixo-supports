@@ -54,6 +54,7 @@ export const ja: Dictionary = {
   'and {n} more': 'ほか {n} 個',
   'Object: {scope}': 'オブジェクト：{scope}',
   'Support shape · defaults': 'サポート形状 · 既定',
+  'Placement changed. Regenerate to apply.': '配置設定が変更されました。再生成すると適用されます。',
   'Applies on next Generate.': '次回の生成時に適用されます。',
   'Select an object to edit its settings. Changes apply to every selected object.': 'オブジェクトを選択すると設定を編集できます。変更は選択中のすべてのオブジェクトに適用されます。',
   'Export STL': 'STL を書き出す',

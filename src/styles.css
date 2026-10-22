@@ -554,3 +554,11 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 .mode-button .state { color: var(--muted); font-size: 11px; }
 /* Findings of a check the supports have changed since: said above the list until the re-check replaces them. */
 .support-check .stale { color: var(--ink); font-weight: 500; margin: 8px 0 0; }
+
+/* A placement setting changed and waits for Regenerate: the note names it, the button asks for the press. */
+.pending-note { color: var(--ink); font-weight: 500; margin: 0 0 10px; }
+button.attention { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--blue); }
+@media (prefers-reduced-motion: no-preference) {
+  button.attention { animation: attention-pulse 1.6s ease-in-out infinite; }
+}
+@keyframes attention-pulse { 50% { box-shadow: 0 0 0 2px var(--paper), 0 0 0 6px var(--blue); } }
