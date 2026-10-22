@@ -17,7 +17,7 @@ import { resolveSettings, unitContacts } from '../../supports/unitSupports';
 import { AddFlash, type AddedAt } from './AddFlash';
 import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
-import { type Hover, EditPreview, SupportBodies, ZoneLayer, useDoomed, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
+import { type Hover, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
 import type { ObjectViewportProps } from './types';
 import { MODEL_MESH, SUPPORT_MESH, useScreenBrush } from './useScreenBrush';
 
@@ -51,6 +51,7 @@ export function UnitObject(props: UnitObjectProps) {
   // A heavy model draws its simplified copy (it takes no hand edits); supports and export use the full one.
   const shown = displayMesh(unit.source);
   const model = useGeometry(shown, true);
+  useWarmZoneOverlay(shown === unit.source ? shown : undefined, props.supports !== undefined);
   // Painting zones: supports are drawn but take no pointer events (presses reach the model).
   const zoning = editing && gesture.kind === 'zones';
   const supportGeometry = useGeometry(supports, editing && !zoning);

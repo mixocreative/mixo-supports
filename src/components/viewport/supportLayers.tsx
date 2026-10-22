@@ -102,6 +102,23 @@ const OVERLAY_MAX_TRIANGLES = 1_500_000;
 /** Vertex grid cell size (mm), about a brush size. */
 const ZONE_GRID_CELL = 2;
 
+/** The zone layer's refined mesh and vertex grid for a model (cached per mesh, see `zoneOverlay`). */
+const overlayOf = (mesh: TriangleMesh) => zoneOverlay(mesh, mesh.indices.length / 3 >= FULL_TIER_MAX ? Infinity : OVERLAY_MAX_EDGE, OVERLAY_MAX_TRIANGLES, ZONE_GRID_CELL);
+
+/** Works the zone layer's overlay out in an idle moment once `ready` (the supports are built), so the first zone stroke finds it cached. */
+export function useWarmZoneOverlay(mesh: TriangleMesh | undefined, ready: boolean): void {
+  useEffect(() => {
+    if (!mesh || !ready) return;
+    const warm = () => void overlayOf(mesh);
+    if (typeof requestIdleCallback === 'function') {
+      const handle = requestIdleCallback(warm, { timeout: 2000 });
+      return () => cancelIdleCallback(handle);
+    }
+    const handle = setTimeout(warm, 200);
+    return () => clearTimeout(handle);
+  }, [mesh, ready]);
+}
+
 /**
  * The no-support zones on the model surface, see-through blue over the model it covers. Drawn on
  * a finer copy of the model when its faces are too coarse for a brush dab (else it shares the
@@ -116,8 +133,7 @@ export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMe
   useEffect(() => {
     // The refinement and grid are cached per model mesh; only the GPU copy is made per mount.
     // A large model (heavy-mesh tier "large") is not refined: its faces are fine enough, and the copy would cost too much.
-    const large = mesh.indices.length / 3 >= FULL_TIER_MAX;
-    const { mesh: refined, grid } = zoneOverlay(mesh, large ? Infinity : OVERLAY_MAX_EDGE, OVERLAY_MAX_TRIANGLES, ZONE_GRID_CELL);
+    const { mesh: refined, grid } = overlayOf(mesh);
     const shared = refined === mesh;
     const sub = shared ? new THREE.BufferGeometry() : toGeometry(refined);
     if (shared) {
