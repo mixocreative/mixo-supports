@@ -51,7 +51,9 @@ import { FIX_TOOL_EVENTS, initialSession, reduceSession, startsEditing, type Ses
 import { busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
 import { atSpot, checkStatus, coverRadius, exportStatus, joinRun, recheckStatus, runToken, tallyChecks, uncovered, type CheckTally, type FixSpot } from './editing/check';
-import { RegenerateQueue, regenReport, regeneratedStatus, regeneratingStatus } from './editing/regenerate';
+import { landedStatus, RegenerateQueue, regeneratingStatus } from './editing/regenerate';
+import type { StatusMessage } from './editing/types';
+import { landPlacements, type FinishedPlacement } from './supports/landing';
 import { toastAlive, undoToast, type UndoAction, type UndoToast as UndoToastState } from './editing/toast';
 import UndoToast from './components/UndoToast';
 import type { BrushMode } from './editing/types';
@@ -336,43 +338,44 @@ export default function App() {
     } catch (error) {
       return setStatusMessage(errorStatus('place', codedJobError(error)));
     }
-    for (const unit of units) {
-      const settings = resolveSettings(unit.settings);
+    let failure: StatusMessage | undefined;
+    const finished = units.map((unit) => {
       // Placement runs on the rotated but untranslated model (placementJobOf) so moving a unit
       // never shifts the sampling lattice; automatic IDs (and removals) stay stable.
+      const settings = resolveSettings(unit.settings);
       const orientation = orientationOf(unit);
-      const key = `place:${unit.id}`;
       placing.current.add(unit.id);
       setGenerating(true);
-      analysis().place(key, placementJobOf(unit), { key: 'Placing contacts on {name}', vars: { name: unitName(unit.id) } }).then((result) => {
-        if (!result) return; // replaced by a newer request for this unit
+      const settle = () => {
         placing.current.delete(unit.id);
         setGenerating(placing.current.size > 0);
-        const now = sceneRef.current.units.find((candidate) => candidate.id === unit.id);
-        if (!now) return;
-        // Applied to the unit as it is now: a move made meanwhile stays, and the lowest model point
-        // sits Lift Height above the plate (y = 0) where the supports stand. A rotation made
-        // meanwhile turned the contacts away: place again for the new orientation.
-        const matchRadius = settings.scatterSpacing / 2;
-        const commands = placementCommands(now, orientation, result, settings.liftHeight, matchRadius, placementSignature(settings));
-        if (!commands) {
-          generate([unit.id], cause);
-          setStatus('{name} was rotated while its contacts were placed: placing them again.', { name: unit.name });
-          return;
-        }
-        dispatch({ type: 'batch', commands });
-        if (!now.supports) return setStatus('{name}: {n} automatic contacts generated.', { name: unit.name, n: result.points.length });
-        // A regeneration says what it did to hand work, and Undo brings the old supports back.
-        const message = regeneratedStatus(unit.name, result.points.length, regenReport(now.manual.length, now.deleted, placedPoints(orientation, result), matchRadius));
-        setStatusMessage(message);
-        offerUndo({ kind: 'regenerate', message });
+      };
+      return analysis().place(`place:${unit.id}`, placementJobOf(unit), { key: 'Placing contacts on {name}', vars: { name: unitName(unit.id) } }).then((result): FinishedPlacement | undefined => {
+        settle();
+        return result ? { unitId: unit.id, orientation, settings, result } : undefined; // no result: replaced by a newer request for this unit
       }, (error: unknown) => {
-        placing.current.delete(unit.id);
-        setGenerating(placing.current.size > 0);
-        if (isAbort(error)) setStatus('Support placement cancelled; existing supports kept.');
-        else setStatusMessage(errorStatus('place', codedJobError(error), { name: unit.name }));
+        settle();
+        failure = isAbort(error) ? { key: 'Support placement cancelled; existing supports kept.' } : errorStatus('place', codedJobError(error), { name: unit.name });
+        return undefined;
       });
-    }
+    });
+    // Objects placed together land together: one history step, so one Undo covers them all.
+    void Promise.all(finished).then((results) => {
+      const { commands, landed, again } = landPlacements(sceneRef.current.units, results.filter((entry) => entry !== undefined));
+      // A rotation made meanwhile turned the contacts away: place again for the new orientation.
+      if (again.length > 0) {
+        generate(again.map((unit) => unit.id), cause);
+        setStatus('{name} was rotated while its contacts were placed: placing them again.', { name: again[0]!.name });
+      }
+      if (landed.length > 0) {
+        dispatch({ type: 'batch', commands });
+        // A regeneration says what it did to hand work, and Undo brings the old supports back.
+        const message = landedStatus(landed);
+        setStatusMessage(message);
+        if (landed.every((entry) => entry.report)) offerUndo({ kind: 'regenerate', message });
+      }
+      if (failure) setStatusMessage(failure);
+    });
     if (units.every((unit) => unit.supports)) setStatusMessage(regeneratingStatus({ n: units.length, name: units[0]!.name }, cause));
     else setStatus('Analysing overhangs for 1 object.', { n: units.length }, 'Analysing overhangs for {n} objects.');
   }, [analysis, dispatch, offerUndo, setStatus, targets, unitName]);

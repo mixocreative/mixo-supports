@@ -34,6 +34,17 @@ export function regeneratingStatus(scope: { n: number; name: string }, cause: 'b
     : { key: 'Regenerating {name}.', other: 'Regenerating {n} objects.', vars: scope };
 }
 
+/** The status line after placements landed together: one object reads as `regeneratedStatus` (or its first Generate), several as one summary. */
+export function landedStatus(landed: readonly { name: string; placed: number; report?: RegenReport }[]): StatusMessage {
+  const [only] = landed;
+  if (landed.length === 1 && only) return only.report ? regeneratedStatus(only.name, only.placed, only.report) : { key: '{name}: {n} automatic contacts generated.', vars: { name: only.name, n: only.placed } };
+  const reports = landed.flatMap((entry) => (entry.report ? [entry.report] : []));
+  if (reports.length < landed.length) return { key: 'Generated supports for {n} objects.', vars: { n: landed.length } };
+  const total = reports.reduce((sum, report) => ({ added: sum.added + report.added, removed: sum.removed + report.removed, reset: sum.reset + report.reset }), { added: 0, removed: 0, reset: 0 });
+  if (!hasHandWork(total)) return { key: 'Regenerated {n} objects.', vars: { n: landed.length } };
+  return { key: 'Regenerated {n} objects. Hand edits kept: {added} added, {removed} removed. Removals reset: {reset}.', vars: { n: landed.length, ...total } };
+}
+
 /** The status line (and the Undo toast) after a regeneration landed on an object. */
 export function regeneratedStatus(name: string, placed: number, report: RegenReport): StatusMessage {
   if (!hasHandWork(report)) return { key: '{name}: {n} automatic contacts generated.', vars: { name, n: placed } };
