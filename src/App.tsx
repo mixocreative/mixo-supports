@@ -625,7 +625,10 @@ export default function App() {
     if (message) setStatusMessage(message);
   }, []);
 
-  const onBuilding = useCallback(() => setStatusMessage(BUILDING_STATUS), []);
+  /** A Drag over press with no support bodies to hit: while the object's supports are being built, say so. */
+  const onNoBodies = () => {
+    if (activeUnit && building(activeUnit)) setStatusMessage(BUILDING_STATUS);
+  };
 
   const onErase = useCallback((unitId: string, point: [number, number, number]) => {
     if (sessionRef.current.mode === 'zones') return;
@@ -903,7 +906,7 @@ export default function App() {
           onPaint={onPaint}
           onShift={onShift}
           onZoneStroke={onZoneStroke}
-          onBuilding={onBuilding}
+          onNoBodies={onNoBodies}
           problems={listedProblems}
           {...(added ? { added } : {})}
           {...(focus ? { focus } : {})}
