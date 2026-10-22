@@ -16,6 +16,7 @@ export const COMMAND_IDS = [
   'mode.edit', 'mode.zones', 'mode.exit',
   'edit.generate', 'edit.add', 'edit.remove', 'edit.dragSelect', 'edit.dragUnselect', 'edit.clearSelection', 'edit.deleteSelection',
   'setting.clickReach',
+  'shape.reset', 'shape.selectCustomised',
 ] as const;
 export type CommandId = (typeof COMMAND_IDS)[number];
 
@@ -42,6 +43,9 @@ export interface UiState {
   dragAction: BrushMode;
   /** Supports selected in Support Edit Mode. */
   selection: number;
+  /** Supports of the active object with settings of their own, and how many of the selected ones. */
+  customisedActive: number;
+  customisedSelected: number;
   /** The active object has supports (generated or hand-added). */
   activeSupported: boolean;
   /** Undo and Redo as the host can run them now (Undo stops at the mode's floor). */
@@ -178,6 +182,22 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     hint: () => 'How far from a support a click may land and still pick it. Only that one support is removed',
     visible: always, enabled: (s) => s.active,
     disabledReason: (s) => (s.active ? undefined : { key: 'Select an object first.' }),
+  },
+  /** Support shape region: the selection follows the defaults again. */
+  'shape.reset': {
+    role: 'secondary',
+    label: () => 'Reset to defaults',
+    hint: () => 'Give the selected supports the default settings again. Undo brings their own values back',
+    visible: (s) => s.mode === 'edit' && s.selection > 0, enabled: (s) => s.customisedSelected > 0,
+    disabledReason: (s) => (s.customisedSelected > 0 ? undefined : { key: 'None of the selected supports has settings of its own.' }),
+  },
+  /** The header count's action: outside Support Edit Mode it enters the mode with those supports selected. */
+  'shape.selectCustomised': {
+    role: 'secondary',
+    label: () => 'Select them',
+    hint: (s) => (s.mode === 'edit' ? 'Select the supports of this object that have settings of their own' : 'Enter Support Edit Mode with the supports that have settings of their own selected'),
+    visible: (s) => s.customisedActive > 0, enabled: (s) => s.active && (s.mode === 'edit' || (s.mode === 'off' && s.heavy === undefined)),
+    disabledReason: (s) => (s.mode === 'zones' ? busyStatus(s.mode) : !s.active ? { key: 'Select an object first.' } : s.mode === 'off' && s.heavy !== undefined ? heavyReason(s) : undefined),
   },
   'edit.clearSelection': {
     role: 'secondary', shortcut: 'Esc',

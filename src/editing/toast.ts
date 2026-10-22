@@ -11,7 +11,10 @@ export const UNDO_TOAST_MS = 6000;
 export type UndoAction =
   /** `hidden`: supports the zones were hiding, which come back. */
   | { kind: 'clearZones'; hidden: number }
-  | { kind: 'clearManual' }
+  /** Counts of what it took away: supports added, removals, supports with their own settings. */
+  | { kind: 'clearManual'; added: number; removed: number; customised: number }
+  /** Selected supports follow the defaults again (one history step). */
+  | { kind: 'resetCustomised'; count: number }
   | { kind: 'clearSelection'; ids: readonly string[]; unitId: string }
   /** A regeneration landed on an object (one history step): `message` is its report. */
   | { kind: 'regenerate'; message: StatusMessage };
@@ -30,7 +33,9 @@ export function undoToast(id: number, action: UndoAction): UndoToast {
     : action.kind === 'clearZones'
     ? (action.hidden === 0 ? { key: 'No-support zones cleared.' } : { key: 'No-support zones cleared; 1 hidden support comes back.', other: 'No-support zones cleared; {n} hidden supports come back.', vars: { n: action.hidden } })
     : action.kind === 'clearManual'
-      ? { key: 'Manual edits cleared; automatic contacts restored.' }
+      ? { key: 'Cleared {a} added, {r} removed, {c} customised.', vars: { a: action.added, r: action.removed, c: action.customised } }
+      : action.kind === 'resetCustomised'
+      ? { key: 'Reset 1 support to the defaults.', other: 'Reset {n} supports to the defaults.', vars: { n: action.count } }
       : { key: 'Selection of 1 support cleared.', other: 'Selection of {n} supports cleared.', vars: { n: action.ids.length } };
   return { id, action, message };
 }

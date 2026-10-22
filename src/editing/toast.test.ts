@@ -9,7 +9,8 @@ describe('undoToast', () => {
   it('says what was cleared', () => {
     expect(undoToast(1, { kind: 'clearZones', hidden: 0 }).message).toEqual({ key: 'No-support zones cleared.' });
     expect(undoToast(1, { kind: 'clearZones', hidden: 3 }).message).toMatchObject({ vars: { n: 3 }, other: 'No-support zones cleared; {n} hidden supports come back.' });
-    expect(undoToast(2, { kind: 'clearManual' }).message).toEqual({ key: 'Manual edits cleared; automatic contacts restored.' });
+    expect(undoToast(2, { kind: 'clearManual', added: 2, removed: 1, customised: 3 }).message).toEqual({ key: 'Cleared {a} added, {r} removed, {c} customised.', vars: { a: 2, r: 1, c: 3 } });
+    expect(undoToast(3, { kind: 'resetCustomised', count: 4 }).message).toMatchObject({ other: 'Reset {n} supports to the defaults.', vars: { n: 4 } });
     expect(undoToast(3, { kind: 'clearSelection', ids: ['a', 'b'], unitId: 'u1' }).message).toEqual({
       key: 'Selection of 1 support cleared.', other: 'Selection of {n} supports cleared.', vars: { n: 2 },
     });

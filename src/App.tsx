@@ -16,6 +16,7 @@ import ObjectViewport, { acceptModelFile } from './components/ObjectViewport';
 import { CirclePreview } from './components/viewport/CirclePreview';
 import type { GizmoMode, ViewRequest } from './components/viewport/types';
 import SettingsPanel from './components/SettingsPanel';
+import { ShapeBand } from './components/ShapeBand';
 import { BrandLogo } from './components/BrandLogo';
 import { EditBar } from './components/EditBar';
 import { CommandButton } from './components/CommandButton';
@@ -36,7 +37,7 @@ import { assertMemoryCapacity, assertPlateCapacity, assertTriangleCapacity, memo
 import { TriangleGate } from './core/jobGate';
 import { PlateLedger, type PlateScene } from './core/plateLedger';
 import { estimateTriangles, ESTIMATE_HEAD_BYTES } from './core/import/estimate';
-import { emptyScene, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
+import { emptyScene, type ContactSettings, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
 import { exportUnits, planExport, type ExportKind } from './supports/export';
 import type { GeneratedSupportMesh } from './core/supports/mesh';
@@ -45,11 +46,12 @@ import { problemInZone, type ZoneStamp } from './core/supports/zones';
 import { deleteCommands } from './supports/selection';
 import { gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
-import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings, type SettingKey } from './core/supports/settings';
+import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, withShape, type LiveSupportSettings, type SettingKey, type ShapeKey } from './core/supports/settings';
 import { checkJobOf, currentBuild, currentBuilds, hiddenByZones, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { resolve, type CommandId, type UiState } from './editing/commands';
 import { effectiveBrushMode } from './editing/selection';
 import { keyAction } from './editing/keys';
+import { customisedAmong, scopeCounts, shapePatch, shapeView } from './editing/shapeEdit';
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
 import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
@@ -68,6 +70,8 @@ function historyReducer(history: SceneHistory, action: HistoryAction): SceneHist
   if (action.type === 'redo') return redoScene(history);
   return withSceneCommand(history, action.command, action.edit);
 }
+
+const NO_OVERRIDES: ContactSettings = {};
 
 /** Settings edits come in bursts (typing a value); a unit's preview rebuild waits this long. */
 const BUILD_DELAY_MS = 120;
@@ -221,6 +225,21 @@ export default function App() {
   /** Supports the active object's zones hide, in the build the viewport shows. */
   const zonesHidden = useMemo(() => (activeUnit ? hiddenByZones(activeUnit, activeMesh) : 0), [activeUnit, activeMesh]);
   const activeSettings = useMemo(() => resolveSettings(activeUnit?.settings), [activeUnit?.settings]);
+  // The Support shape region and the header count (editing/shapeEdit): the supports selected in Support Edit Mode, else the defaults.
+  const activeIds = useMemo(() => activeContacts.map((contact) => contact.id), [activeContacts]);
+  const selectedIds = useMemo(() => (editMode === 'edit' ? activeIds.filter((id) => selection.has(id)) : []), [activeIds, editMode, selection]);
+  const activeOverrides = activeUnit?.contactSettings ?? NO_OVERRIDES;
+  const customisedActive = customisedAmong(activeOverrides, activeIds).length;
+  const customisedSelected = customisedAmong(activeOverrides, selectedIds).length;
+  const shapeRegion = useMemo(() => ({
+    view: shapeView(activeSettings, activeOverrides, selectedIds),
+    rep: selectedIds[0] === undefined ? activeSettings : withShape(activeSettings, activeOverrides[selectedIds[0]]) as LiveSupportSettings,
+  }), [activeOverrides, activeSettings, selectedIds]);
+  /** The objects the header count speaks of: the selected objects, else the active one; in Support Edit Mode the active one. */
+  const bandCounts = useMemo(() => {
+    const scoped = editMode !== 'edit' && scene.selectedUnitIds.length > 0 ? scene.units.filter((unit) => scene.selectedUnitIds.includes(unit.id)) : activeUnit ? [activeUnit] : [];
+    return scopeCounts(scoped.map((unit) => ({ ids: unitContacts(unit, built.get(unit.id)?.mesh).map((contact) => contact.id), overrides: unit.contactSettings })));
+  }, [activeUnit, built, editMode, scene.selectedUnitIds, scene.units]);
   const targets = useCallback((current: PrintScene) => {
     const selected = current.units.filter((unit) => current.selectedUnitIds.includes(unit.id));
     return selected.length > 0 ? selected : current.units;
@@ -500,9 +519,17 @@ export default function App() {
     else setStatus('No supports to remove.');
   };
   const clearManual = () => {
-    const count = forTargets((unit) => (unit.manual.length || unit.deleted.length || Object.keys(unit.contactSettings).length ? { type: 'supports/clear-manual', unitId: unit.id } : undefined));
-    setStatus(count ? 'Manual edits cleared; automatic contacts restored.' : 'No manual edits to clear.');
-    if (count) offerUndo({ kind: 'clearManual' });
+    const cleared = { added: 0, removed: 0, customised: 0 };
+    const count = forTargets((unit) => {
+      if (!unit.manual.length && !unit.deleted.length && !Object.keys(unit.contactSettings).length) return undefined;
+      cleared.added += unit.manual.length;
+      cleared.removed += unitRemovedCount(unit);
+      cleared.customised += Object.keys(unit.contactSettings).length;
+      return { type: 'supports/clear-manual', unitId: unit.id };
+    });
+    if (!count) return setStatus('No manual edits to clear.');
+    setStatusMessage(undoToast(0, { kind: 'clearManual', ...cleared }).message);
+    offerUndo({ kind: 'clearManual', ...cleared });
   };
   const deleteUnits = useCallback(() => {
     const ids = sceneRef.current.selectedUnitIds;
@@ -651,6 +678,37 @@ export default function App() {
     setStatus('Deleted 1 support.', { n: ids.length }, 'Deleted {n} supports.');
   }, [contactsOf, dispatch, selection, send, setStatus]);
 
+  /** A committed Support shape value: the selected supports' own, or, with none selected, the object's defaults. */
+  const onShapeChange = useCallback(<K extends SettingKey>(key: K, value: LiveSupportSettings[K], edit?: string) => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+    const ids = unit && sessionRef.current.mode === 'edit' ? [...sessionRef.current.selection] : [];
+    if (!unit || ids.length === 0) return onSettingChange(key, value, edit);
+    const patch = shapePatch(shapeView(resolveSettings(unit.settings), unit.contactSettings, ids), key as ShapeKey, value as never);
+    if (patch) dispatch({ type: 'contactSettings/set', unitId: unit.id, contactIds: ids, patch }, edit);
+  }, [dispatch, onSettingChange]);
+
+  const resetSelected = useCallback(() => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+    if (!unit || sessionRef.current.mode !== 'edit') return;
+    const ids = customisedAmong(unit.contactSettings, [...sessionRef.current.selection]);
+    if (ids.length === 0) return;
+    dispatch({ type: 'contactSettings/reset', unitId: unit.id, contactIds: ids });
+    const message = { key: 'Reset 1 support to the defaults.', other: 'Reset {n} supports to the defaults.', vars: { n: ids.length } };
+    setStatusMessage(message);
+    offerUndo({ kind: 'resetCustomised', count: ids.length });
+  }, [dispatch, offerUndo]);
+
+  /** The active object's customised supports, selected: outside Support Edit Mode it enters the mode first. */
+  const selectCustomised = useCallback(() => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+    if (!unit) return;
+    if (sessionRef.current.mode === 'off') send({ type: 'enterEdit' });
+    if (sessionRef.current.mode !== 'edit') return;
+    const ids = customisedAmong(unit.contactSettings, contactsOf(unit).map((contact) => contact.id));
+    send({ type: 'restoreSelection', ids });
+    setStatus('Selected 1 customised support.', { n: ids.length }, 'Selected {n} customised supports.');
+  }, [contactsOf, send, setStatus]);
+
   const [exporting, setExporting] = useState(false);
   const runExport = async (kind: ExportKind) => {
     const current = sceneRef.current;
@@ -725,8 +783,10 @@ export default function App() {
       case 'setting.clickReach': return; // a field: set through its input
       case 'edit.clearSelection': return clearSelection();
       case 'edit.deleteSelection': return deleteSelected();
+      case 'shape.reset': return resetSelected();
+      case 'shape.selectCustomised': return selectCustomised();
     }
-  }, [clearSelection, deleteSelected, deleteUnits, generate, send, setStatus, undo]);
+  }, [clearSelection, deleteSelected, deleteUnits, generate, resetSelected, selectCustomised, send, setStatus, undo]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -749,7 +809,7 @@ export default function App() {
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
     mode: editMode, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction, method: session.selectStyle, dragAction: effectiveBrushMode(session.brushMode, session.shiftHeld),
-    selection: selection.size, activeSupported: Boolean(activeUnit?.supports), generating, canUndo, canRedo: history.future.length > 0, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
+    selection: selection.size, customisedActive, customisedSelected, activeSupported: Boolean(activeUnit?.supports), generating, canUndo, canRedo: history.future.length > 0, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
   };
   const command = (id: CommandId) => resolve(id, ui);
   useEffect(() => {
@@ -891,9 +951,11 @@ export default function App() {
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>
         {lockNoteOf('right')}
+        {activeUnit && <ShapeBand supports={bandCounts.supports} customised={bandCounts.customised} ui={ui} run={runCommand} />}
         {!activeUnit && <p className="help">{t('Select an object to edit its settings. Changes apply to every selected object.')}</p>}
         <SettingsPanel
           settings={activeSettings}
+          shape={{ selected: selectedIds.length, ...shapeRegion, onChange: onShapeChange, run: runCommand }}
           ui={ui}
           scope={activeUnit ? `${activeUnit.name}${selectedCount > 1 ? ` ${t('and {n} more', { n: selectedCount - 1 })}` : ''}` : t('Nothing selected')}
           deferPlacement={editMode === 'edit'}

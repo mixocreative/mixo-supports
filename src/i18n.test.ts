@@ -9,7 +9,7 @@ import { DICTIONARY, STAGE_KEYS, detectLanguage, plural, setLanguage, t, transla
 
 /** Source text of every non-test module, keyed './path'. */
 const SOURCES = import.meta.glob<string>(['./**/*.ts', './**/*.tsx', '!./**/*.test.ts', '!./**/*.test.tsx'], { query: '?raw', import: 'default', eager: true });
-const UI_FILES = ['./App.tsx', './components/RangeField.tsx', './components/Segmented.tsx', './components/EditBar.tsx', './components/ZonesBar.tsx', './components/ModeEntry.tsx', './components/ProblemList.tsx', './components/ObjectList.tsx', './components/SettingsPanel.tsx', './components/JobActivity.tsx', './components/ObjectViewport.tsx', './components/UndoToast.tsx', './components/useFixSpot.ts', './components/useRegenerate.ts', './editing/status.ts', './editing/errors.ts', './editing/toast.ts', './editing/check.ts', './editing/view.ts', './editing/regenerate.ts'];
+const UI_FILES = ['./App.tsx', './components/RangeField.tsx', './components/Segmented.tsx', './components/EditBar.tsx', './components/ZonesBar.tsx', './components/ModeEntry.tsx', './components/ProblemList.tsx', './components/ObjectList.tsx', './components/SettingsPanel.tsx', './components/JobActivity.tsx', './components/ObjectViewport.tsx', './components/UndoToast.tsx', './components/useFixSpot.ts', './components/useRegenerate.ts', './editing/status.ts', './editing/errors.ts', './editing/toast.ts', './editing/check.ts', './editing/view.ts', './editing/regenerate.ts', './editing/shapeEdit.ts', './components/ShapeBand.tsx'];
 /** Quoted literals in UI files that are not shown to the user. */
 const NOT_UI = new Set(['Tab', 'Escape', 'Enter', 'Delete', 'Backspace', 'Unit', 'Mixo supports', 'ArrowUp', 'ArrowDown', 'CodedError', 'TimeoutError', '{error}', 'AbortError']);
 
@@ -35,7 +35,7 @@ describe('i18n', () => {
     }
     [...Object.values(PRESET_HINTS), ...Object.values(ROOF_HINTS)].forEach((text) => keys.add(text));
     for (const context of ERROR_CONTEXTS) for (const code of ERROR_CODES) keys.add(errorStatus(context, new CodedError(code, 'x')).key);
-    for (const action of [{ kind: 'clearZones', hidden: 0 }, { kind: 'clearZones', hidden: 2 }, { kind: 'clearManual' }, { kind: 'clearSelection', ids: ['a'], unitId: 'u' }, { kind: 'regenerate', message: regeneratedStatus('x', 1, { added: 1, removed: 1, reset: 1, customisedKept: 0, customisedReset: 0 }) }] as const) {
+    for (const action of [{ kind: 'clearZones', hidden: 0 }, { kind: 'clearZones', hidden: 2 }, { kind: 'clearManual', added: 1, removed: 1, customised: 1 }, { kind: 'resetCustomised', count: 2 }, { kind: 'clearSelection', ids: ['a'], unitId: 'u' }, { kind: 'regenerate', message: regeneratedStatus('x', 1, { added: 1, removed: 1, reset: 1, customisedKept: 0, customisedReset: 0 }) }] as const) {
       const { message } = undoToast(1, action);
       keys.add(message.key);
       if (message.other) keys.add(message.other);

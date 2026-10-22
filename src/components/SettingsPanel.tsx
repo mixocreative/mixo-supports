@@ -1,7 +1,9 @@
 
-import type { LiveSupportSettings, PresetName, RoofMode, SettingKey } from '../core/supports/settings';
+import type { LiveSupportSettings, PresetName, RoofMode, SettingKey, ShapeKey } from '../core/supports/settings';
 import { settingLimits } from '../core/supports/settings';
 import { resolve, type CommandId, type UiState } from '../editing/commands';
+import { shapeHeading, type ShapeView } from '../editing/shapeEdit';
+import { CommandButton } from './CommandButton';
 import { NumberField } from './NumberField';
 import { t } from '../i18n';
 import { hint } from './hint';
@@ -162,8 +164,22 @@ export const ROOF_HINTS = {
   CAGE: 'Protective cage around the model: columns on the raft edge, rings and cross bars, open top',
 } as const;
 
+/** What the Support shape region shows and does: the object's defaults, or the supports selected in Support Edit Mode. */
+export interface ShapeRegion {
+  /** Supports selected (0: the region is the defaults). */
+  selected: number;
+  /** The value each key shows; undefined where the selected supports differ. */
+  view: ShapeView;
+  /** Settings the `when` rules read: the defaults, or those of the first selected support. */
+  rep: LiveSupportSettings;
+  /** A committed field value (the host writes it to the selection, or to the defaults). */
+  onChange: <K extends SettingKey>(key: K, value: LiveSupportSettings[K], edit?: string) => void;
+  run: (id: CommandId) => void;
+}
+
 export interface SettingsPanelProps {
   settings: LiveSupportSettings;
+  shape: ShapeRegion;
   /** What the registry's rules read: fields that are registry rows take their label and hint from it. */
   ui: UiState;
   autoLabel: string;
@@ -181,6 +197,10 @@ export interface SettingsPanelProps {
   onRoofMode: (mode: RoofMode) => void;
 }
 
+/** The values a mixed choice key could take, for the rules that read it. */
+const MIXED_CHOICES = { contactShape: ['NONE', 'SPHERE'], tipSection: ['ROUND', 'SQUARE', 'CROSS'] } as const;
+const MIXED_HINT = 'Selected supports have different values. Enter a value to set them all.';
+
 /** The note under a placement setting while a mode holds the supports still. */
 function DeferNote() {
   return <p className="help defer-note">{t('Applies on next Generate.')}</p>;
@@ -191,23 +211,34 @@ function DeferNote() {
  * placement, structure, raft, bracing, label). Support shape holds the tip, contact, neck and foot
  * keys one support may own, which read defaults until per-support selection lands.
  */
-export default function SettingsPanel({ settings, ui, autoLabel, scope, disabled, locked = false, deferPlacement = false, placementPending = false, onChange, onPreset, onRoofMode }: SettingsPanelProps) {
-  const groups = (region: 'shape' | undefined) => SETTING_GROUPS.filter((group) => group.region === region && (!group.when || group.when(settings))).map((group) => <details key={group.title} open={group.open}>
+export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, disabled, locked = false, deferPlacement = false, placementPending = false, onChange, onPreset, onRoofMode }: SettingsPanelProps) {
+  /** A field of the shape region is shown when its rule holds for the support or for any value a differing key could take. */
+  const shown = (field: Field, region: 'shape' | undefined) => {
+    if (!field.when) return true;
+    if (region !== 'shape') return field.when(settings);
+    const variants = (['contactShape', 'tipSection'] as const).reduce<LiveSupportSettings[]>((all, key) => (shape.view[key] === undefined ? all.flatMap((rep) => MIXED_CHOICES[key].map((value) => ({ ...rep, [key]: value }))) : all), [shape.rep]);
+    return variants.some((rep) => field.when!(rep));
+  };
+  const mixed = shape.selected > 0;
+  const groups = (region: 'shape' | undefined) => SETTING_GROUPS.filter((group) => group.region === region && (!group.when || group.when(region === 'shape' ? shape.rep : settings))).map((group) => <details key={group.title} open={group.open}>
     <summary>{t(group.title)}</summary>
     {deferPlacement && group.title === 'Auto placement' && <DeferNote />}
-    {group.fields.filter((field) => !field.when || field.when(settings)).map((field) => {
+    {group.fields.filter((field) => shown(field, region)).map((field) => {
+      const value = <K extends SettingKey>(key: K): LiveSupportSettings[K] | undefined => (region === 'shape' ? shape.view[key as ShapeKey] as LiveSupportSettings[K] | undefined : settings[key]);
+      const change = region === 'shape' ? shape.onChange : onChange;
       switch (field.kind) {
         case 'number': {
           const { label, hint: text } = 'command' in field ? resolve(field.command, ui) : field;
-          return <NumberField key={field.key} label={t(label)} unit={field.unit} step={field.step ?? 0.1} limits={settingLimits[field.key]} value={settings[field.key]} hint={t(text)} onChange={(value, edit) => onChange(field.key, value, edit)} />;
+          const differs = region === 'shape' && value(field.key) === undefined;
+          return <NumberField key={field.key} label={t(label)} unit={field.unit} step={field.step ?? 0.1} limits={settingLimits[field.key]} value={value(field.key)} hint={t(differs ? MIXED_HINT : text)} onChange={(next, edit) => change(field.key, next, edit)} />;
         }
         case 'boolean':
           return <label key={field.key} className="check" title={t(field.hint)}><input type="checkbox" checked={settings[field.key]} aria-description={t(field.hint)} onChange={(event) => onChange(field.key, event.target.checked)} /> {t(field.label)}</label>;
         case 'text':
           return <label key={field.key} className="field-row" title={t(field.hint)}><span>{t(field.label)}</span><input className="text" maxLength={4} value={settings.labelText} placeholder={`${t(field.placeholder)} (${autoLabel})`} aria-description={t(field.hint)} onChange={(event) => onChange('labelText', event.target.value.toUpperCase())} /></label>;
         case 'choice':
-          return <div key={field.key} className="field-row" title={t(field.hint)}><span>{t(field.label)}</span><div className="segmented" role="group" aria-label={t(field.label)} aria-description={t(field.hint)}>
-            {field.options.map((option) => <button key={option.value} type="button" aria-pressed={settings[field.key] === option.value} onClick={() => onChange(field.key, option.value as LiveSupportSettings[ChoiceKey])}>{t(option.label)}</button>)}
+          return <div key={field.key} className="field-row" title={t(region === 'shape' && value(field.key) === undefined ? MIXED_HINT : field.hint)}><span>{t(field.label)}</span><div className="segmented" role="group" aria-label={t(field.label)} aria-description={t(field.hint)}>
+            {field.options.map((option) => <button key={option.value} type="button" aria-pressed={value(field.key) === option.value} onClick={() => change(field.key, option.value as LiveSupportSettings[ChoiceKey])}>{t(option.label)}</button>)}
           </div></div>;
         case 'preview':
           return <div key={field.key} className="field-row" title={t(field.hint)}><span>{t(field.label)}</span><div className="segmented" role="group" aria-label={t(field.label)} aria-description={t(field.hint)}>
@@ -217,6 +248,7 @@ export default function SettingsPanel({ settings, ui, autoLabel, scope, disabled
     })}
   </details>);
   const inert = locked ? { inert: '' } : {};
+  const heading = shapeHeading(shape.selected);
   return <>
     <section {...inert}>
       <h3>{t('Object: {scope}', { scope })}</h3>
@@ -241,7 +273,11 @@ export default function SettingsPanel({ settings, ui, autoLabel, scope, disabled
       </fieldset>
     </section>
     <section {...inert}>
-      <h3>{t('Support shape · defaults')}</h3>
+      <div className="shape-head">
+        <h3>{t(heading.key, heading.vars)}</h3>
+        {mixed && <CommandButton command={resolve('shape.reset', ui)} run={shape.run} />}
+      </div>
+      {mixed && <p className="help">{t('Changes apply to the selected supports only.')}</p>}
       <fieldset className="settings" disabled={disabled}>{groups('shape')}</fieldset>
     </section>
   </>;
