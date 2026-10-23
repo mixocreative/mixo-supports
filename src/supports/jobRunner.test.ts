@@ -109,4 +109,15 @@ describe('filterDentalPlacement', () => {
     expect(result.points).toHaveLength(1);
     expect(result.points[0]).toMatchObject({ source: 'interior', normal: [0, -1, 0] });
   });
+
+  it('keeps the approval test unit-local when the dental model was rotated for placement', () => {
+    const downwardTriangle: TriangleMesh = { positions: new Float32Array([0, 0, 0, 0.8, 0, 0, 0, 0, 0.8]), indices: new Uint32Array([0, 1, 2]) };
+    const result = filterDentalPlacement({
+      mesh: downwardTriangle, orientation: { position: [0, 0, 0], rotation: [0, Math.PI / 2, 0] },
+      settings: { overhangAngleDegrees: 45, spacing: 2, edgeInset: 0, sharpEdgeAngleDegrees: 45, includeIslands: false }, dental: policy,
+    }, { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() });
+    expect(result.points).toHaveLength(1);
+    expect(result.points[0]!.position).toEqual([expect.closeTo(0.2666666667), 0, expect.closeTo(-0.2666666667)]);
+    expect(result.points[0]!.normal).toEqual([0, -1, 0]);
+  });
 });
