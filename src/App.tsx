@@ -91,6 +91,8 @@ const exportKindOf = (id: CommandId) => id.slice('export.'.length) as ExportKind
 const VIEWPORT_CLASS: Record<GestureKind, string> = {
   none: '',
   zones: ' viewport--editing viewport--zones',
+  'dental-orientation': ' viewport--editing viewport--dental',
+  'dental-area': ' viewport--editing viewport--dental',
   add: ' viewport--editing',
   pick: ' viewport--editing',
   drag: ' viewport--editing',
@@ -974,6 +976,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hidden={zonesHidden} ui={ui} send={send} run={runCommand} />
+          : press.kind === 'dental-orientation' || press.kind === 'dental-area' ? null
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>

@@ -1,6 +1,7 @@
 import type { SupportContact } from '../core/supports/mesh';
+import type { DentalProposal } from '../core/analysis/dental';
 import { paintSelection, pruneSelection, toggleSelection } from './selection';
-import type { AddAction, BrushMode, EditMode, EditTool, SelectStyle, ZoneKind } from './types';
+import type { AddAction, BrushMode, DentalKind, EditMode, EditTool, SelectStyle, ZoneKind } from './types';
 
 /**
  * The editing session of the active object: which mode is on, its tools and the selected
@@ -28,6 +29,11 @@ export interface EditSession {
   zoneKind: ZoneKind;
   /** Zone brush radius in mm. */
   zoneRadius: number;
+  /** Dental stays on its orientation preview until the user accepts it. */
+  dentalStage: 'orientation' | 'area';
+  dentalProposal: Extract<DentalProposal, { kind: 'proposal' }> | undefined;
+  dentalKind: DentalKind;
+  dentalRadius: number;
   /** Selected contact ids of the active object. */
   selection: ReadonlySet<string>;
 }
@@ -47,6 +53,10 @@ export const initialSession: EditSession = {
   brushSizing: false,
   zoneKind: 'paint',
   zoneRadius: 2,
+  dentalStage: 'orientation',
+  dentalProposal: undefined,
+  dentalKind: 'allow',
+  dentalRadius: 2,
   selection: NO_SELECTION,
 };
 
@@ -62,6 +72,8 @@ export const FIX_TOOL_EVENTS: readonly SessionEvent[] = [{ type: 'setTool', tool
 export type SessionEvent =
   | { type: 'enterEdit' }
   | { type: 'enterZones' }
+  | { type: 'enterDental'; proposal: Extract<DentalProposal, { kind: 'proposal' }> }
+  | { type: 'acceptDentalOrientation' }
   | { type: 'exit' }
   | { type: 'leave' }
   | { type: 'activeUnitChanged'; id: string | undefined; heavy?: number | undefined }
@@ -75,6 +87,8 @@ export type SessionEvent =
   | { type: 'setBrushSizing'; sizing: boolean }
   | { type: 'setZoneKind'; kind: ZoneKind }
   | { type: 'setZoneRadius'; radius: number }
+  | { type: 'setDentalKind'; kind: DentalKind }
+  | { type: 'setDentalRadius'; radius: number }
   | { type: 'toggleContact'; id: string }
   | { type: 'paint'; ids: readonly string[]; mode: BrushMode }
   | { type: 'clearSelection' }
@@ -102,6 +116,14 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
       return state.mode === 'off' && editable(state) ? withMode(state, 'edit') : state;
     case 'enterZones':
       return state.mode === 'off' && editable(state) ? withMode(state, 'zones') : state;
+    case 'enterDental':
+      return state.mode === 'off' && editable(state)
+        ? { ...withMode(state, 'dental'), dentalStage: 'orientation', dentalProposal: event.proposal }
+        : state;
+    case 'acceptDentalOrientation':
+      return state.mode === 'dental' && state.dentalStage === 'orientation' && state.dentalProposal
+        ? { ...state, dentalStage: 'area' }
+        : state;
     case 'exit':
     case 'leave':
       return withMode(state, 'off');
@@ -122,6 +144,8 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
     case 'setBrushSizing': return set(state, 'brushSizing', event.sizing);
     case 'setZoneKind': return set(state, 'zoneKind', event.kind);
     case 'setZoneRadius': return set(state, 'zoneRadius', event.radius);
+    case 'setDentalKind': return set(state, 'dentalKind', event.kind);
+    case 'setDentalRadius': return set(state, 'dentalRadius', event.radius);
     case 'toggleContact':
       return state.mode === 'edit' ? withSelection(state, toggleSelection(state.selection, event.id)) : state;
     case 'paint':

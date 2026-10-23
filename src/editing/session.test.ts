@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SupportContact } from '../core/supports/mesh';
+import type { DentalProposal } from '../core/analysis/dental';
 import { gesture } from './gesture';
 import { FIX_TOOL_EVENTS, initialSession, reduceSession, startsEditing, type EditSession, type SessionEvent } from './session';
 
@@ -9,6 +10,7 @@ const run = (state: EditSession, ...events: SessionEvent[]) => events.reduce(red
 const withActive = run(initialSession, { type: 'activeUnitChanged', id: 'u1' });
 const editing = run(withActive, { type: 'enterEdit' });
 const selected = run(editing, { type: 'setTool', tool: 'select' }, { type: 'toggleContact', id: 'a' }, { type: 'toggleContact', id: 'b' });
+const proposal: Extract<DentalProposal, { kind: 'proposal' }> = { kind: 'proposal', rim: {} as Extract<DentalProposal, { kind: 'proposal' }>['rim'], diagnostics: { confidence: 0.9, terminalAreaRatio: 0.9, axialVarianceRatio: 0.1 } };
 
 describe('reduceSession: modes', () => {
   it('starts outside the modes with the default tools', () => {
@@ -47,6 +49,16 @@ describe('reduceSession: modes', () => {
     const zones = reduceSession(withActive, { type: 'enterZones' });
     expect(zones.mode).toBe('zones');
     expect(reduceSession(zones, { type: 'exit' }).mode).toBe('off');
+  });
+
+  it('keeps Dental in orientation until the proposed orientation is explicitly accepted', () => {
+    const dental = reduceSession(withActive, { type: 'enterDental', proposal });
+    expect(dental).toMatchObject({ mode: 'dental', dentalStage: 'orientation', dentalKind: 'allow', dentalRadius: 2 });
+    expect(gesture(dental)).toMatchObject({ kind: 'dental-orientation', proposal });
+    const area = reduceSession(dental, { type: 'acceptDentalOrientation' });
+    expect(area).toMatchObject({ mode: 'dental', dentalStage: 'area' });
+    expect(gesture(area)).toMatchObject({ kind: 'dental-area', brush: { kind: 'allow', radius: 2 } });
+    expect(reduceSession(area, { type: 'exit' }).mode).toBe('off');
   });
 
   it('exit outside the modes changes nothing', () => {
