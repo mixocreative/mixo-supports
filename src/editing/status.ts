@@ -9,7 +9,7 @@ import type { EditMode, StatusMessage } from './types';
 const GESTURE_STATUS = {
   zones: 'Paint where supports must not grow; drag on the model.',
   'dental-orientation': 'Review the detected aligner orientation, then accept it or adjust it manually.',
-  'dental-area': 'Paint where dental supports may grow; erase removes permission. Drag on the model.',
+  'dental-area': 'Mark where dental supports may grow; Remove clears permission. Drag on the model.',
   add: 'Support Edit Mode: click the model to add, right-click a support to remove.',
   remove: 'Support Edit Mode: click a support, or the model next to one, to remove it.',
   pick: 'Support Edit Mode: click supports to select them, right-click a support to remove.',
