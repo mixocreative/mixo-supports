@@ -46,6 +46,7 @@ import type { ExportKind } from './supports/export';
 import type { GeneratedSupportMesh } from './core/supports/mesh';
 import { meshBounds } from './core/supports/meshQuery';
 import { problemInZone, type ZoneStamp } from './core/supports/zones';
+import type { DentalAllowStamp } from './core/analysis/dentalPolicy';
 import { deleteCommands } from './supports/selection';
 import { gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
@@ -565,6 +566,12 @@ export default function App() {
     dispatch({ type: 'zones/add', unitId, stamps });
     setStatus(stamps[stamps.length - 1]!.kind === 'paint' ? 'Zone painted: automatic supports inside are hidden.' : 'Zone erased.');
   }, [dispatch, setStatus]);
+  /** One Dental surface stroke is one undo step and never shares no-support-zone commands. */
+  const onDentalStroke = useCallback((unitId: string, stamps: DentalAllowStamp[]) => {
+    if (sessionRef.current.mode !== 'dental' || sessionRef.current.dentalStage !== 'area' || unitId !== sceneRef.current.activeUnitId || stamps.length === 0) return;
+    dispatch({ type: 'dental/stamps/add', unitId, stamps });
+    setStatus(stamps[stamps.length - 1]!.kind === 'allow' ? 'Dental support area painted.' : 'Dental support area erased.');
+  }, [dispatch, setStatus]);
   const clearActiveZones = useCallback(() => {
     const unitId = sceneRef.current.activeUnitId;
     if (!unitId || !sceneRef.current.units.find((unit) => unit.id === unitId)?.zones.length) return;
@@ -951,6 +958,7 @@ export default function App() {
           onPaint={onPaint}
           onShift={onShift}
           onZoneStroke={onZoneStroke}
+          onDentalStroke={onDentalStroke}
           onNoBodies={onNoBodies}
           problems={listedProblems}
           {...(added ? { added } : {})}

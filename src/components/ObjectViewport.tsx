@@ -102,6 +102,7 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       onPaint={props.onPaint}
       onShift={props.onShift}
       onZoneStroke={props.onZoneStroke}
+      onDentalStroke={props.onDentalStroke}
       onNoBodies={props.onNoBodies}
       problems={props.problems.filter((problem) => problem.unitId === unit.id)}
       {...(unit.id === activeId ? { onGroup: setActiveGroup, onBrushOver: setOverBrush } : {})}
