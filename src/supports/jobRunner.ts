@@ -1,12 +1,14 @@
 import { checkSupports, type SupportProblem } from '../core/analysis/supportCheck';
 import { generatePlacement } from '../core/analysis/placement';
 import type { PlacementResult, ProgressCallback } from '../core/analysis/types';
+import { DentalOpeningRaycaster } from '../core/analysis/dental';
+import { dentalSupportAllowedAt, type DentalPolicy } from '../core/analysis/dentalPolicy';
 import { jobContacts, type CheckJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
 import { buildSupportMesh, type GeneratedSupportMesh } from '../core/supports/mesh';
 import { raftOutline } from '../core/supports/raft';
 import { RemeshTarget } from '../core/supports/remesh';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
-import { applyTransform, inverseTransformMesh, transformDirection, transformPoint } from '../state/transform';
+import { applyTransform, inverseTransformDirection, inverseTransformMesh, inverseTransformPoint, transformDirection, transformPoint } from '../state/transform';
 
 /*
  * Runs support core jobs (src/core/jobs.ts) on whatever thread calls it: the workers, and the main
@@ -88,6 +90,26 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
 /** Automatic contacts, in the frame of the turned model (the caller maps them back to the unit). */
 export function runPlacementJob(job: PlacementJob, onProgress?: ProgressCallback): PlacementResult {
   return generatePlacement(applyTransform(job.mesh, orientationOnly(job.orientation)), job.settings, onProgress);
+}
+
+/**
+ * Keeps only generic-placement contacts that are allowed by an accepted dental boundary in
+ * unit-local coordinates. The caller may use the returned placement with the normal landing path.
+ */
+export function filterDentalPlacement(mesh: PlacementJob['mesh'], orientation: JobTransform, policy: DentalPolicy, placement: PlacementResult): PlacementResult {
+  const opening = new DentalOpeningRaycaster(mesh, policy.rim);
+  const points = placement.points.filter((point) => dentalSupportAllowedAt(
+    policy,
+    opening,
+    inverseTransformPoint(orientation, point.position),
+    inverseTransformDirection(orientation, point.normal),
+  ));
+  return {
+    points,
+    regions: placement.regions,
+    contactPositions: new Float32Array(points.flatMap((point) => point.position)),
+    contactNormals: new Float32Array(points.flatMap((point) => point.normal)),
+  };
 }
 
 /** Unsupported spots, in the frame of the turned model. */

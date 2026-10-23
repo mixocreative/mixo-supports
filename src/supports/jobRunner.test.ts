@@ -3,7 +3,8 @@ import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import type { ContactInputs, JobTransform, SupportJob } from '../core/jobs';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
-import { runSupportJob } from './jobRunner';
+import type { DentalPolicy } from '../core/analysis/dentalPolicy';
+import { filterDentalPlacement, runSupportJob } from './jobRunner';
 
 type V = [number, number, number];
 
@@ -75,5 +76,26 @@ describe('runSupportJob: per-support settings travel with the job', () => {
     expect(Array.from(received.positions)).toEqual(Array.from(built.positions));
     expect(built.components.filter((component) => component.part === 'tip').map((component) => component.contactId)).toEqual(['auto-a']);
     expect(Array.from(runSupportJob(job(model, still, { ...contacts, contactSettings: {} })).positions)).not.toEqual(Array.from(built.positions));
+  });
+});
+
+describe('filterDentalPlacement', () => {
+  const triangle: TriangleMesh = { positions: new Float32Array([-2, 0, -2, 2, 0, -2, 0, 0, 2]), indices: new Uint32Array([0, 1, 2]) };
+  const policy: DentalPolicy = {
+    rim: {
+      boundaryKind: 'lower-edge-loop', points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]),
+      openingDirection: [0, 1, 0], centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1],
+      visibilityMask: new Uint8Array([1, 1, 1, 1]), visibilityResolution: 2, visibilityMin: [-2, -2], visibilityMax: [2, 2],
+    }, stamps: [],
+  };
+
+  it('keeps only unit-local contacts inside the approved, opening-visible dental region', () => {
+    const placed = {
+      points: [point('inside', [0, 0, 0], [0, 1, 0]), point('outside', [3, 0, 0], [0, 1, 0])], regions: [],
+      contactPositions: new Float32Array(), contactNormals: new Float32Array(),
+    };
+    const result = filterDentalPlacement(triangle, still, policy, placed);
+    expect(result.points.map((candidate) => candidate.id)).toEqual(['inside']);
+    expect(Array.from(result.contactPositions)).toEqual([0, 0, 0]);
   });
 });
