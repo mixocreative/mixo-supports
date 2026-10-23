@@ -96,6 +96,20 @@ export function rotationToPlateDown(openingDirection: Vector): Vector {
   ];
 }
 
+/** Whether a unit-local point projects into the detected cavity visibility footprint. */
+export function rimContainsPoint(rim: DentalRim, point: Vector): boolean {
+  const delta = subtract(point, rim.centroid);
+  const u = dot(delta, rim.tangent);
+  const v = dot(delta, rim.bitangent);
+  const width = rim.visibilityMax[0] - rim.visibilityMin[0];
+  const height = rim.visibilityMax[1] - rim.visibilityMin[1];
+  if (!(width > 0) || !(height > 0)) return false;
+  const x = Math.floor(((u - rim.visibilityMin[0]) / width) * rim.visibilityResolution);
+  const y = Math.floor(((v - rim.visibilityMin[1]) / height) * rim.visibilityResolution);
+  if (x < 0 || x >= rim.visibilityResolution || y < 0 || y >= rim.visibilityResolution) return false;
+  return rim.visibilityMask[y * rim.visibilityResolution + x] === 1;
+}
+
 function points(mesh: TriangleMesh): Vector[] {
   const out: Vector[] = [];
   for (let offset = 0; offset < mesh.positions.length; offset += 3) out.push([mesh.positions[offset]!, mesh.positions[offset + 1]!, mesh.positions[offset + 2]!]);

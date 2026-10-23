@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { applyToDirection, placementMatrix } from '../transform';
+import { applyToDirection, applyToPoint, placementMatrix } from '../transform';
 import { dot, type Vector } from '../vec3';
-import { proposeDentalOrientation, rotationToPlateDown } from './dental';
+import { proposeDentalOrientation, rimContainsPoint, rotationToPlateDown } from './dental';
 import type { TriangleMesh } from './types';
 
 describe('proposeDentalOrientation', () => {
@@ -20,6 +20,9 @@ describe('proposeDentalOrientation', () => {
     expect(result.rim.points.length % 3).toBe(0);
     expect(result.rim.visibilityMask.some(Boolean)).toBe(true);
     expect(result.rim.visibilityMask.length).toBe(result.rim.visibilityResolution ** 2);
+    const rotation = placementMatrix({ position: [0, 0, 0], rotation: scramble });
+    expect(rimContainsPoint(result.rim, applyToPoint(rotation, 0, -4, 0))).toBe(true);
+    expect(rimContainsPoint(result.rim, applyToPoint(rotation, 12, -4, 0))).toBe(false);
 
     const plateDown = rotationToPlateDown(result.rim.openingDirection);
     const mapped = applyToDirection(placementMatrix({ position: [0, 0, 0], rotation: plateDown }), ...result.rim.openingDirection);
