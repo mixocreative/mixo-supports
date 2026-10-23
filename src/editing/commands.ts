@@ -16,7 +16,7 @@ export const COMMAND_IDS = [
   'supports.generate', 'supports.dentalAuto', 'supports.clearManual', 'supports.remove', 'check.run',
   'mode.edit', 'mode.zones', 'mode.exit',
   'zones.clearAll',
-  'dental.useDetected', 'dental.manualArea',
+  'dental.useDetected', 'dental.manualArea', 'dental.generate',
   'edit.generate', 'edit.add', 'edit.remove', 'edit.dragSelect', 'edit.dragUnselect', 'edit.clearSelection', 'edit.deleteSelection',
   'setting.clickReach',
   'shape.reset', 'shape.selectCustomised',
@@ -243,6 +243,12 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
   'dental.manualArea': {
     role: 'secondary', label: () => 'Keep manual orientation', hint: () => 'Keep the current rotation and continue to the allowed support area',
     visible: (s) => s.mode === 'dental', enabled: always, disabledReason: never,
+  },
+  'dental.generate': {
+    role: 'primary', label: (s) => (s.generating ? 'Generating dental supports…' : 'Generate dental supports'),
+    hint: () => 'Generate supports only on the approved dental area',
+    visible: (s) => s.mode === 'dental', enabled: (s) => !s.generating,
+    disabledReason: (s) => (s.generating ? generatingReason : undefined),
   },
   'edit.generate': {
     role: 'secondary',

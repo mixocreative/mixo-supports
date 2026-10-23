@@ -583,4 +583,11 @@ export const ja: Dictionary = {
   'Paint where dental supports may grow; erase removes permission. Drag on the model.': 'デンタルサポートを生成できる場所を塗ります。消去すると許可を外します。モデル上でドラッグしてください。',
   'Dental support area kept.': 'デンタルサポート領域を保持しました。',
   'Finish Dental Auto Generate first: press Esc or Done.': '先にアライナー自動生成を完了してください。Esc または「完了」を押します。',
+  'Generate dental supports': 'デンタルサポートを生成',
+  'Generating dental supports…': 'デンタルサポートを生成中…',
+  'Generate supports only on the approved dental area': '承認済みのデンタル領域だけにサポートを生成します',
+  'Approve a dental support area before generating dental supports.': 'デンタルサポートを生成する前に、デンタル領域を承認してください。',
+  'Placing dental contacts on {name}': '{name} にデンタル接触点を配置中',
+  'Dental support placement cancelled; existing supports kept.': 'デンタルサポートの配置を中止しました。既存のサポートは保持されます。',
+  'Analysing approved dental surface for {name}.': '{name} の承認済みデンタル表面を解析中です。',
 };

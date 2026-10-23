@@ -46,7 +46,10 @@ export function DentalBar({ gesture, unitName, ui, send, run }: {
       radius={gesture.brush.radius}
       onRadiusChange={(radius) => send({ type: 'setDentalRadius', radius })}
       note={<p className="edit-note" role="note">{t('Only the detected lower opening and your painted area can receive dental supports.')}</p>}
-      actions={<DoneButton ui={ui} run={run} />}
+      actions={<>
+        <CommandButton command={resolve('dental.generate', ui)} run={run} />
+        <DoneButton ui={ui} run={run} secondary />
+      </>}
     />
   </>;
 }

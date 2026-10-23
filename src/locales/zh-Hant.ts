@@ -587,4 +587,11 @@ export const zhHant: Dictionary = {
   'Paint where dental supports may grow; erase removes permission. Drag on the model.': '塗刷牙套支撐可生成的位置；擦除會移除許可。請在模型上拖曳。',
   'Dental support area kept.': '已保留牙套支撐區域。',
   'Finish Dental Auto Generate first: press Esc or Done.': '請先完成牙套自動生成：按 Esc 或「完成」。',
+  'Generate dental supports': '生成牙套支撐',
+  'Generating dental supports…': '正在生成牙套支撐…',
+  'Generate supports only on the approved dental area': '只在核准的牙套區域生成支撐',
+  'Approve a dental support area before generating dental supports.': '請先核准牙套支撐區域，再生成牙套支撐。',
+  'Placing dental contacts on {name}': '正在為 {name} 配置牙套接觸點',
+  'Dental support placement cancelled; existing supports kept.': '已取消牙套支撐配置；現有支撐會保留。',
+  'Analysing approved dental surface for {name}.': '正在分析 {name} 的核准牙套表面。',
 };

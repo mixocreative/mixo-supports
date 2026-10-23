@@ -17,9 +17,9 @@ export type EditGesture = Extract<Gesture, { kind: 'add' | 'pick' | 'drag' }>;
 const EDIT_BAR_COMMANDS = ['edit.generate', 'edit.clearSelection', 'edit.deleteSelection'] as const;
 
 /** Done: the registry's one exit, with its key as a cap. Both bars show it. */
-export function DoneButton({ ui, run }: { ui: UiState; run: (id: CommandId) => void }) {
+export function DoneButton({ ui, run, secondary = false }: { ui: UiState; run: (id: CommandId) => void; secondary?: boolean }) {
   const done = resolve('mode.exit', ui);
-  return <CommandButton command={done} run={run} className="edit-done">{done.shortcut && <> <kbd>{done.shortcut}</kbd></>}</CommandButton>;
+  return <CommandButton command={secondary ? { ...done, role: 'secondary' } : done} run={run} className="edit-done">{done.shortcut && <> <kbd>{done.shortcut}</kbd></>}</CommandButton>;
 }
 
 /** What a click or drag does, on the badge. */

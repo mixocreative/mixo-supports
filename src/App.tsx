@@ -280,7 +280,7 @@ export default function App() {
     p?.dispose(); e?.dispose(); a?.dispose();
   }, []);
 
-  const { generate, generating, regenQueued, scheduleRegenerate, forgetPlacing } = useRegenerate({
+  const { generate, generateDental, generating, regenQueued, scheduleRegenerate, forgetPlacing } = useRegenerate({
     sceneRef, mode: editMode, targets, analysis, unitName, dispatch, offerUndo, setStatus, setStatusMessage,
   });
 
@@ -304,6 +304,7 @@ export default function App() {
     workers.current.preview?.forget(unitId);
     workers.current.export?.forget(unitId);
     workers.current.analysis?.cancel(`place:${unitId}`);
+    workers.current.analysis?.cancel(`dental-place:${unitId}`);
     workers.current.analysis?.cancel(`check:${unitId}`);
     forgetPlacing(unitId);
     setProblems((current) => {
@@ -808,6 +809,12 @@ export default function App() {
         requestView('bottom');
         return;
       }
+      case 'dental.generate': {
+        const unitId = sceneRef.current.activeUnitId;
+        if (!unitId || sessionRef.current.mode !== 'dental' || sessionRef.current.dentalStage !== 'area') return;
+        generateDental(unitId);
+        return send({ type: 'exit' });
+      }
       case 'mode.edit': {
         send({ type: 'enterEdit' });
         const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
@@ -837,7 +844,7 @@ export default function App() {
       case 'zones.clearAll': return clearActiveZones();
       case 'export.active-printable': case 'export.active-supports': case 'export.separate-printable': case 'export.separate-supports': case 'export.whole-printable': return void runExport(exportKindOf(id));
     }
-  }, [checkSupports, chooseProject, saveProject, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dispatch, generate, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo]);
+  }, [checkSupports, chooseProject, saveProject, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dispatch, generate, generateDental, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
