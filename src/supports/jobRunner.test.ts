@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
-import type { ContactInputs, JobTransform, SupportJob } from '../core/jobs';
+import type { ContactInputs, DentalPlacementJob, JobTransform, SupportJob } from '../core/jobs';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { DentalPolicy } from '../core/analysis/dentalPolicy';
@@ -94,8 +94,19 @@ describe('filterDentalPlacement', () => {
       points: [point('inside', [0, 0, 0], [0, 1, 0]), point('outside', [3, 0, 0], [0, 1, 0])], regions: [],
       contactPositions: new Float32Array(), contactNormals: new Float32Array(),
     };
-    const result = filterDentalPlacement(triangle, still, policy, placed);
-    expect(result.points.map((candidate) => candidate.id)).toEqual(['inside']);
-    expect(Array.from(result.contactPositions)).toEqual([0, 0, 0]);
+    const result = filterDentalPlacement({ mesh: triangle, orientation: still, settings: { overhangAngleDegrees: 45, spacing: 2, edgeInset: 0, sharpEdgeAngleDegrees: 45, includeIslands: false }, dental: policy }, placed);
+    expect(result.points.map((candidate) => candidate.id)).toContain('inside');
+    expect(result.points.map((candidate) => candidate.id)).not.toContain('outside');
+  });
+
+  it('adds a spaced contact on an approved downward face even with no generic candidate', () => {
+    const downwardTriangle: TriangleMesh = { positions: new Float32Array([0, 0, 0, 0.8, 0, 0, 0, 0, 0.8]), indices: new Uint32Array([0, 1, 2]) };
+    const dentalJob: DentalPlacementJob = {
+      mesh: downwardTriangle, orientation: still,
+      settings: { overhangAngleDegrees: 45, spacing: 2, edgeInset: 0, sharpEdgeAngleDegrees: 45, includeIslands: false }, dental: policy,
+    };
+    const result = filterDentalPlacement(dentalJob, { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() });
+    expect(result.points).toHaveLength(1);
+    expect(result.points[0]).toMatchObject({ source: 'interior', normal: [0, -1, 0] });
   });
 });

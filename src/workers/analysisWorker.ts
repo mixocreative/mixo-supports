@@ -16,7 +16,7 @@ serveTask<AnalysisTask, AnalysisResult>((task, { progress: post }) => {
   if (task.kind === 'check') return { kind: 'checked', problems: runCheckJob(task.job, progress) };
   const result = runPlacementJob(task.job, progress);
   if (task.kind === 'dental-place') {
-    const filtered = filterDentalPlacement(task.job.mesh, task.job.orientation, task.job.dental, result);
+    const filtered = filterDentalPlacement(task.job, result);
     return transferable({ kind: 'dental-placed', result: filtered }, [filtered.contactPositions.buffer, filtered.contactNormals.buffer]);
   }
   return transferable({ kind: 'placed', result }, [result.contactPositions.buffer, result.contactNormals.buffer]);

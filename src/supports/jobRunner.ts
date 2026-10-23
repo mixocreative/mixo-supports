@@ -1,9 +1,11 @@
 import { checkSupports, type SupportProblem } from '../core/analysis/supportCheck';
-import { generatePlacement } from '../core/analysis/placement';
-import type { PlacementResult, ProgressCallback } from '../core/analysis/types';
+import { generatePlacement, positionId } from '../core/analysis/placement';
+import { classifyDownwardFaces, faceOverhangLimit } from '../core/analysis/mesh';
+import type { PlacementResult, ProgressCallback, SupportPoint } from '../core/analysis/types';
 import { DentalOpeningRaycaster } from '../core/analysis/dental';
 import { dentalSupportAllowedAt, type DentalPolicy } from '../core/analysis/dentalPolicy';
-import { jobContacts, type CheckJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
+import { jobContacts, type CheckJob, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
+import { cross, normalize, subtract } from '../core/vec3';
 import { buildSupportMesh, type GeneratedSupportMesh } from '../core/supports/mesh';
 import { raftOutline } from '../core/supports/raft';
 import { RemeshTarget } from '../core/supports/remesh';
@@ -96,20 +98,76 @@ export function runPlacementJob(job: PlacementJob, onProgress?: ProgressCallback
  * Keeps only generic-placement contacts that are allowed by an accepted dental boundary in
  * unit-local coordinates. The caller may use the returned placement with the normal landing path.
  */
-export function filterDentalPlacement(mesh: PlacementJob['mesh'], orientation: JobTransform, policy: DentalPolicy, placement: PlacementResult): PlacementResult {
+export function filterDentalPlacement(job: DentalPlacementJob, placement: PlacementResult): PlacementResult {
+  const { mesh, orientation, dental: policy, settings } = job;
   const opening = new DentalOpeningRaycaster(mesh, policy.rim);
-  const points = placement.points.filter((point) => dentalSupportAllowedAt(
+  const permitted = (point: SupportPoint) => dentalSupportAllowedAt(
     policy,
     opening,
     inverseTransformPoint(orientation, point.position),
     inverseTransformDirection(orientation, point.normal),
-  ));
+  );
+  const points = spacedDentalPoints(mesh, orientation, policy, opening, settings.spacing, settings.overhangAngleDegrees, placement.points.filter(permitted));
   return {
     points,
     regions: placement.regions,
     contactPositions: new Float32Array(points.flatMap((point) => point.position)),
     contactNormals: new Float32Array(points.flatMap((point) => point.normal)),
   };
+}
+
+/**
+ * Fill every approved downward-facing surface at the placement spacing. This deliberately does
+ * not rely on generic overhang candidates: an approved patch that generic ray/remesh sampling
+ * misses still gets a contact. All policy and visibility checks remain unit-local.
+ */
+function spacedDentalPoints(
+  mesh: PlacementJob['mesh'], orientation: JobTransform, policy: DentalPolicy, opening: DentalOpeningRaycaster,
+  spacing: number, overhangAngleDegrees: number, initial: readonly SupportPoint[],
+): SupportPoint[] {
+  const points: SupportPoint[] = [];
+  const cells = new Map<string, SupportPoint[]>();
+  const radius2 = spacing * spacing;
+  const add = (point: SupportPoint) => {
+    const cell = point.position.map((value) => Math.floor(value / spacing)) as [number, number, number];
+    for (let x = cell[0] - 1; x <= cell[0] + 1; x += 1) for (let y = cell[1] - 1; y <= cell[1] + 1; y += 1) for (let z = cell[2] - 1; z <= cell[2] + 1; z += 1) {
+      for (const prior of cells.get(`${x},${y},${z}`) ?? []) {
+        const dx = point.position[0] - prior.position[0];
+        const dy = point.position[1] - prior.position[1];
+        const dz = point.position[2] - prior.position[2];
+        if (dx * dx + dy * dy + dz * dz < radius2) return;
+      }
+    }
+    points.push(point);
+    const key = cell.join(',');
+    const bucket = cells.get(key);
+    if (bucket) bucket.push(point); else cells.set(key, [point]);
+  };
+  for (const point of initial) add(point);
+
+  const turned = applyTransform(mesh, orientationOnly(orientation));
+  const downward = classifyDownwardFaces(turned, faceOverhangLimit(overhangAngleDegrees));
+  for (let face = 0; face < mesh.indices.length / 3; face += 1) {
+    if (!downward[face]) continue;
+    const offset = face * 3;
+    const indices = [mesh.indices[offset]!, mesh.indices[offset + 1]!, mesh.indices[offset + 2]!];
+    const local = indices.map((index) => [mesh.positions[index * 3]!, mesh.positions[index * 3 + 1]!, mesh.positions[index * 3 + 2]!] as [number, number, number]);
+    const normal = normalize(cross(subtract(local[1]!, local[0]!), subtract(local[2]!, local[0]!)));
+    if (!Number.isFinite(normal[0])) continue;
+    const longest = Math.max(Math.hypot(...subtract(local[1]!, local[0]!)), Math.hypot(...subtract(local[2]!, local[1]!)), Math.hypot(...subtract(local[0]!, local[2]!)));
+    const divisions = Math.max(1, Math.ceil(longest / spacing));
+    for (let row = 0; row < divisions; row += 1) for (let column = 0; column < divisions - row; column += 1) {
+      const b = (row + 1 / 3) / divisions;
+      const c = (column + 1 / 3) / divisions;
+      const a = 1 - b - c;
+      const unit = [a * local[0]![0] + b * local[1]![0] + c * local[2]![0], a * local[0]![1] + b * local[1]![1] + c * local[2]![1], a * local[0]![2] + b * local[1]![2] + c * local[2]![2]] as [number, number, number];
+      if (!dentalSupportAllowedAt(policy, opening, unit, normal)) continue;
+      const position = transformPoint(orientationOnly(orientation), unit);
+      const turnedNormal = transformDirection(orientationOnly(orientation), normal);
+      add({ id: positionId(position), regionId: -1, position, normal: turnedNormal, source: 'interior' });
+    }
+  }
+  return points;
 }
 
 /** Unsupported spots, in the frame of the turned model. */
