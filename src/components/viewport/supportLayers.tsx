@@ -4,7 +4,7 @@ import { FULL_TIER_MAX } from '../../core/budget';
 import type { SupportProblem } from '../../core/analysis/supportCheck';
 import type { TriangleMesh } from '../../core/analysis/types';
 import type { GeneratedSupportMesh, SupportContact } from '../../core/supports/mesh';
-import { zoneOverlay } from '../../core/supports/overlayMesh';
+import { warmZoneOverlay, zoneOverlay } from '../../core/supports/overlayMesh';
 import { contactRadius, withShape } from '../../core/supports/settings';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
 import { contactToRemove } from '../../editing/removal';
@@ -105,17 +105,26 @@ const ZONE_GRID_CELL = 2;
 /** The zone layer's refined mesh and vertex grid for a model (cached per mesh, see `zoneOverlay`). */
 const overlayOf = (mesh: TriangleMesh) => zoneOverlay(mesh, mesh.indices.length / 3 >= FULL_TIER_MAX ? Infinity : OVERLAY_MAX_EDGE, OVERLAY_MAX_TRIANGLES, ZONE_GRID_CELL);
 
-/** Works the zone layer's overlay out in an idle moment once `ready` (the supports are built), so the first zone stroke finds it cached. */
+/** Main-thread work per idle slice while warming the overlay (ms), well under a long task. */
+const WARM_SLICE_MS = 12;
+
+/** Works the zone layer's overlay out in idle slices once `ready` (the supports are built), so the first zone stroke finds it cached and no long task blocks the page. */
 export function useWarmZoneOverlay(mesh: TriangleMesh | undefined, ready: boolean): void {
   useEffect(() => {
     if (!mesh || !ready) return;
-    const warm = () => void overlayOf(mesh);
-    if (typeof requestIdleCallback === 'function') {
-      const handle = requestIdleCallback(warm, { timeout: 2000 });
-      return () => cancelIdleCallback(handle);
-    }
-    const handle = setTimeout(warm, 200);
-    return () => clearTimeout(handle);
+    const infinite = mesh.indices.length / 3 >= FULL_TIER_MAX;
+    const step = warmZoneOverlay(mesh, infinite ? Infinity : OVERLAY_MAX_EDGE, OVERLAY_MAX_TRIANGLES, ZONE_GRID_CELL, WARM_SLICE_MS);
+    let cancel = () => {};
+    const next = () => {
+      const idle = typeof requestIdleCallback === 'function';
+      const handle = idle ? requestIdleCallback(slice, { timeout: 2000 }) : setTimeout(slice, 20);
+      cancel = () => (idle ? cancelIdleCallback(handle as number) : clearTimeout(handle as ReturnType<typeof setTimeout>));
+    };
+    const slice = () => {
+      if (step()) next();
+    };
+    next();
+    return () => cancel();
   }, [mesh, ready]);
 }
 

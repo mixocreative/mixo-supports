@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { parseStl } from '../import/stl';
 import type { TriangleMesh } from '../analysis/types';
-import { refineForOverlay, zoneOverlay } from './overlayMesh';
+import { refineForOverlay, warmZoneOverlay, zoneOverlay } from './overlayMesh';
 
 /** A 100 mm square of two triangles in the xy plane. */
 const square: TriangleMesh = {
@@ -125,5 +127,45 @@ describe('zoneOverlay', () => {
 
   it('shares a mesh that already fits', () => {
     expect(zoneOverlay(tetrahedron, 50, 1_000_000, 2).mesh).toBe(tetrahedron);
+  });
+});
+
+const fnv = (data: Uint8Array) => {
+  let h = 0x811c9dc5;
+  for (const byte of data) h = Math.imul(h ^ byte, 0x01000193) >>> 0;
+  return h.toString(16);
+};
+const digest = (mesh: TriangleMesh) => [mesh.indices.length / 3, mesh.positions.length / 3, fnv(new Uint8Array(mesh.positions.buffer)), fnv(new Uint8Array(mesh.indices.buffer))];
+
+describe('overlay refinement on the knot fixture', () => {
+  const file = readFileSync('scripts/fixtures/knot.stl');
+  const knot = parseStl(file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer);
+
+  // Digests of the output of the first implementation (one pass-by-pass call, no slicing).
+  it.each([
+    [1, 1_500_000, [416092, 206809, 'e25d3f49', '1552dfbb']],
+    [1, 150_000, [150000, 73827, '8e07e966', '464d5b48']],
+    [4, 1_500_000, [112226, 54972, 'd597f20', '5fac76a']],
+  ] as const)('edge %d, budget %d gives the recorded output', (edge, budget, expected) => {
+    expect(digest(refineForOverlay(knot, edge, budget))).toEqual(expected);
+  });
+
+  it('worked out in slices gives the same overlay, and a slice stays short', () => {
+    const copy: TriangleMesh = { positions: knot.positions.slice(), indices: knot.indices.slice() };
+    const step = warmZoneOverlay(copy, 1, 1_500_000, 2, 0);
+    let slices = 0;
+    while (step()) slices++;
+    expect(slices).toBeGreaterThan(20);
+    const sliced = zoneOverlay(copy, 1, 1_500_000, 2);
+    expect(digest(sliced.mesh)).toEqual([416092, 206809, 'e25d3f49', '1552dfbb']);
+    expect(zoneOverlay(copy, 1, 1_500_000, 2)).toBe(sliced);
+  });
+
+  it('a call part-way through the slices finishes the same work', () => {
+    const copy: TriangleMesh = { positions: knot.positions.slice(), indices: knot.indices.slice() };
+    const step = warmZoneOverlay(copy, 1, 1_500_000, 2, 0);
+    step();
+    step();
+    expect(digest(zoneOverlay(copy, 1, 1_500_000, 2).mesh)).toEqual([416092, 206809, 'e25d3f49', '1552dfbb']);
   });
 });

@@ -10,13 +10,29 @@ import { buildVertexGrid, type VertexGrid } from './zones';
  * A mesh that already fits is returned as is. Picking, the BVH and support logic keep the original.
  */
 export function refineForOverlay(mesh: TriangleMesh, maxEdge: number, maxTriangles: number): TriangleMesh {
+  return drain(refineSteps(mesh, maxEdge, maxTriangles));
+}
+
+/** Steps a generator to its end. */
+function drain<T>(steps: Generator<void, T>): T {
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+  }
+}
+
+/** Corners (or triangles) worked between yields, a few milliseconds of work. */
+const STEP_SIZE = 32768;
+
+/** `refineForOverlay` as a generator that yields every few milliseconds, so a caller can spread it over idle time. */
+function* refineSteps(mesh: TriangleMesh, maxEdge: number, maxTriangles: number): Generator<void, TriangleMesh> {
   let positions = mesh.positions;
   let vertexCount = positions.length / 3;
   let indices = mesh.indices;
   const max2 = maxEdge * maxEdge;
   for (let pass = 0; pass < 40; pass++) {
     const triangles = indices.length / 3;
-    const edges = edgeTable(indices, vertexCount);
+    const edges = yield* edgeTable(indices, vertexCount);
     const { a, b, faces, triEdges, count } = edges;
     // Edges too long, with their squared lengths.
     const long: number[] = [];
@@ -57,6 +73,7 @@ export function refineForOverlay(mesh: TriangleMesh, maxEdge: number, maxTriangl
     }
     positions = grown;
     indices = splitTriangles(indices, triEdges, mid, positions, triangles + added);
+    yield;
   }
   return positions === mesh.positions ? mesh : { positions, indices };
 }
@@ -68,24 +85,56 @@ interface ZoneOverlay {
   grid: VertexGrid | undefined;
 }
 
-const overlayCache = new WeakMap<TriangleMesh, { key: string; overlay: ZoneOverlay }>();
+interface OverlayJob {
+  key: string;
+  steps: Generator<void, ZoneOverlay>;
+  done?: ZoneOverlay;
+}
+
+const overlayJobs = new WeakMap<TriangleMesh, OverlayJob>();
+
+function* overlaySteps(mesh: TriangleMesh, maxEdge: number, maxTriangles: number, cellSize: number): Generator<void, ZoneOverlay> {
+  const refined = yield* refineSteps(mesh, maxEdge, maxTriangles);
+  yield;
+  return { mesh: refined, grid: buildVertexGrid(refined.positions, cellSize) };
+}
+
+function overlayJob(mesh: TriangleMesh, maxEdge: number, maxTriangles: number, cellSize: number): OverlayJob {
+  const key = `${maxEdge}:${maxTriangles}:${cellSize}`;
+  let job = overlayJobs.get(mesh);
+  if (job?.key !== key) overlayJobs.set(mesh, (job = { key, steps: overlaySteps(mesh, maxEdge, maxTriangles, cellSize) }));
+  return job;
+}
 
 /**
  * The no-support zone layer's mesh and vertex grid for a model, worked out once per mesh object
  * (meshes are never changed in place), so reopening the layer on the same model costs nothing.
+ * Finishes whatever `warmZoneOverlay` has already done.
  */
 export function zoneOverlay(mesh: TriangleMesh, maxEdge: number, maxTriangles: number, cellSize: number): ZoneOverlay {
-  const key = `${maxEdge}:${maxTriangles}:${cellSize}`;
-  const cached = overlayCache.get(mesh);
-  if (cached?.key === key) return cached.overlay;
-  const refined = refineForOverlay(mesh, maxEdge, maxTriangles);
-  const overlay = { mesh: refined, grid: buildVertexGrid(refined.positions, cellSize) };
-  overlayCache.set(mesh, { key, overlay });
-  return overlay;
+  const job = overlayJob(mesh, maxEdge, maxTriangles, cellSize);
+  return (job.done ??= drain(job.steps));
+}
+
+/**
+ * Works `zoneOverlay` out a slice at a time: `step` runs about `sliceMs` of work and says whether
+ * more remains, so the caller can leave the main thread between slices (idle callbacks).
+ */
+export function warmZoneOverlay(mesh: TriangleMesh, maxEdge: number, maxTriangles: number, cellSize: number, sliceMs: number): () => boolean {
+  const job = overlayJob(mesh, maxEdge, maxTriangles, cellSize);
+  return () => {
+    const end = performance.now() + sliceMs;
+    while (!job.done) {
+      const step = job.steps.next();
+      if (step.done) job.done = step.value;
+      else if (performance.now() >= end) break;
+    }
+    return !job.done;
+  };
 }
 
 /** Undirected edges of an index list: endpoints, faces per edge, and each triangle's three edges. */
-function edgeTable(indices: Uint32Array, vertexCount: number) {
+function* edgeTable(indices: Uint32Array, vertexCount: number): Generator<void, { a: Uint32Array; b: Uint32Array; faces: Uint32Array; triEdges: Uint32Array; count: number }> {
   const triangles = indices.length / 3;
   // Open-addressing hash on (low, high) vertex pairs.
   let capacity = 1;
@@ -98,6 +147,7 @@ function edgeTable(indices: Uint32Array, vertexCount: number) {
   const triEdges = new Uint32Array(triangles * 3);
   let count = 0;
   for (let c = 0; c < triangles * 3; c++) {
+    if (c % STEP_SIZE === STEP_SIZE - 1) yield;
     const t = c - (c % 3);
     const u = indices[c]!;
     const v = indices[t + ((c - t + 1) % 3)]!;
