@@ -7,7 +7,7 @@ import type { GeneratedSupportMesh, SupportContact } from '../../core/supports/m
 import { warmZoneOverlay, zoneOverlay } from '../../core/supports/overlayMesh';
 import { contactRadius, withShape } from '../../core/supports/settings';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
-import { DentalOpeningRaycaster } from '../../core/analysis/dental';
+import { DentalOpeningRaycaster, type DentalRim } from '../../core/analysis/dental';
 import { dentalAllowedVertices, type DentalAllowStamp, type DentalPolicy } from '../../core/analysis/dentalPolicy';
 import { contactToRemove } from '../../editing/removal';
 import { contactVertexRuns, selectionDelta } from '../../editing/selectionHighlight';
@@ -218,6 +218,26 @@ export function DentalStampLayer({ mesh, geometry, policy, opacity }: { mesh: Tr
     return (positions, normals, out) => void dentalAllowedVertices(baseline, opening, positions, normals, out);
   }, [mesh, policy.rim]);
   return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={policy.stamps} filledKind="allow" color={PREVIEW.dental} opacity={opacity} initializeMask={initializeMask} />;
+}
+
+/** The proven lower-edge loop, held just above the model so the permitted area has a clear boundary. */
+export function DentalRimLine({ rim }: { rim: DentalRim }) {
+  const geometry = useMemo(() => {
+    const line = new THREE.BufferGeometry();
+    line.setAttribute('position', new THREE.BufferAttribute(rim.points.slice(), 3));
+    return line;
+  }, [rim.points]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  const offset = useMemo(() => new THREE.Vector3(...rim.openingDirection).multiplyScalar(0.035), [rim.openingDirection]);
+  if (rim.boundaryKind !== 'lower-edge-loop') return null;
+  return <group position={offset} raycast={() => undefined} renderOrder={17}>
+    <lineLoop geometry={geometry} raycast={() => undefined}>
+      <lineBasicMaterial color={PREVIEW.dental} transparent opacity={0.9} depthTest={false} depthWrite={false} />
+    </lineLoop>
+    <lineLoop geometry={geometry} scale={1.001} raycast={() => undefined}>
+      <lineBasicMaterial color={PREVIEW.dental} transparent opacity={0.22} depthTest={false} depthWrite={false} />
+    </lineLoop>
+  </group>;
 }
 
 /** Contact ids a remove click at a unit-local point takes: the one nearest within Click reach. */

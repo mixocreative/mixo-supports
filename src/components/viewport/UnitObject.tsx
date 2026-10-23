@@ -19,7 +19,7 @@ import { resolveSettings, unitContacts } from '../../supports/unitSupports';
 import { AddFlash, type AddedAt } from './AddFlash';
 import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
-import { type Hover, DentalStampLayer, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
+import { type Hover, DentalRimLine, DentalStampLayer, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
 import type { ObjectViewportProps } from './types';
 import { MODEL_MESH, SUPPORT_MESH, useScreenBrush } from './useScreenBrush';
 
@@ -284,6 +284,7 @@ export function UnitObject(props: UnitObjectProps) {
     </group>}
     {model && dentalPainting && shown === unit.source && unit.dental && <group visible={props.modelVisible}>
       <DentalStampLayer mesh={unit.source} geometry={model} policy={{ ...unit.dental, stamps: dentalStamps ?? unit.dental.stamps }} opacity={0.7} />
+      <DentalRimLine rim={unit.dental.rim} />
     </group>}
     {supportGeometry && <mesh
       geometry={supportGeometry}
