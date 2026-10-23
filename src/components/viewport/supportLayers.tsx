@@ -7,6 +7,7 @@ import type { GeneratedSupportMesh, SupportContact } from '../../core/supports/m
 import { warmZoneOverlay, zoneOverlay } from '../../core/supports/overlayMesh';
 import { contactRadius, withShape } from '../../core/supports/settings';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
+import type { DentalAllowStamp } from '../../core/analysis/dentalPolicy';
 import { contactToRemove } from '../../editing/removal';
 import { contactVertexRuns, selectionDelta } from '../../editing/selectionHighlight';
 import type { PrintUnit } from '../../state/project';
@@ -136,7 +137,16 @@ export function useWarmZoneOverlay(mesh: TriangleMesh | undefined, ready: boolea
  * just committed as saved copies) lays just the new stamps; any other change (undo, erase all, a
  * new model) recomputes every vertex. A vertex grid kept per model keeps both cheap.
  */
-export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; zones: readonly ZoneStamp[]; opacity: number }) {
+export function SurfaceStampLayer({ mesh, geometry, stamps, filledKind, color, opacity }: {
+  mesh: TriangleMesh;
+  geometry: THREE.BufferGeometry;
+  stamps: readonly (ZoneStamp | DentalAllowStamp)[];
+  filledKind: ZoneStamp['kind'] | DentalAllowStamp['kind'];
+  color: string;
+  opacity: number;
+}) {
+  // The overlay engine needs only last-stamp-wins booleans; domain policy stays with its caller.
+  const zones = useMemo(() => stamps.map((stamp): ZoneStamp => ({ ...stamp, kind: stamp.kind === filledKind ? 'paint' : 'erase' })), [stamps, filledKind]);
   // Built in the effect for the same reason as `SupportBodies`: the cleanup strips shared attributes.
   const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute; zoned: Uint8Array; grid: VertexGrid | undefined; applied: readonly ZoneStamp[] }>();
   useEffect(() => {
@@ -183,8 +193,16 @@ export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMe
   if (!layer) return null;
   // Drawn over the model (polygon offset), never pickable.
   return <mesh geometry={layer.geometry} raycast={() => undefined} renderOrder={16}>
-    <meshBasicMaterial color={PREVIEW.zone} vertexColors transparent opacity={opacity} depthWrite={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
+    <meshBasicMaterial color={color} vertexColors transparent opacity={opacity} depthWrite={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
   </mesh>;
+}
+
+export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; zones: readonly ZoneStamp[]; opacity: number }) {
+  return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={zones} filledKind="paint" color={PREVIEW.zone} opacity={opacity} />;
+}
+
+export function DentalStampLayer({ mesh, geometry, stamps, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; stamps: readonly DentalAllowStamp[]; opacity: number }) {
+  return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={stamps} filledKind="allow" color={PREVIEW.dental} opacity={opacity} />;
 }
 
 /** Contact ids a remove click at a unit-local point takes: the one nearest within Click reach. */

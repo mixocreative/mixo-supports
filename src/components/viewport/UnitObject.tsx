@@ -19,7 +19,7 @@ import { resolveSettings, unitContacts } from '../../supports/unitSupports';
 import { AddFlash, type AddedAt } from './AddFlash';
 import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
-import { type Hover, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
+import { type Hover, DentalStampLayer, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
 import type { ObjectViewportProps } from './types';
 import { MODEL_MESH, SUPPORT_MESH, useScreenBrush } from './useScreenBrush';
 
@@ -78,6 +78,7 @@ export function UnitObject(props: UnitObjectProps) {
   const dentalStrokeStamps = useRef<DentalAllowStamp[]>([]);
   const [dentalStroke, setDentalStroke] = useState<readonly DentalAllowStamp[]>([]);
   const zones = useMemo(() => (stroke.length ? [...unit.zones, ...stroke] : unit.zones), [unit.zones, stroke]);
+  const dentalStamps = useMemo(() => unit.dental && (dentalStroke.length ? [...unit.dental.stamps, ...dentalStroke] : unit.dental.stamps), [unit.dental, dentalStroke]);
   // The contacts the shown build kept (its zoned landings dropped).
   const contacts = useMemo(() => unitContacts(unit, props.supports), [unit, props.supports]);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -280,6 +281,9 @@ export function UnitObject(props: UnitObjectProps) {
     </mesh>}
     {model && editing && shown === unit.source && zones.length > 0 && <group visible={props.modelVisible}>
       <ZoneLayer mesh={unit.source} geometry={model} zones={zones} opacity={ZONE_OPACITY[zoning ? 'full' : 'faint']} />
+    </group>}
+    {model && dentalPainting && shown === unit.source && dentalStamps && dentalStamps.length > 0 && <group visible={props.modelVisible}>
+      <DentalStampLayer mesh={unit.source} geometry={model} stamps={dentalStamps} opacity={0.7} />
     </group>}
     {supportGeometry && <mesh
       geometry={supportGeometry}
