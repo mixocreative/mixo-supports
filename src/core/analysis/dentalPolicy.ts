@@ -34,3 +34,25 @@ export function dentalSupportAllowedAt(
 ): boolean {
   return policy.rim.boundaryKind === 'lower-edge-loop' && dentalAllowedAt(policy, point, normal) && opening.visible(point);
 }
+
+/**
+ * Writes one byte per rendered vertex for the exact dental support policy. The viewport uses this
+ * for its initial allowed-area mask, while the placement worker uses `dentalSupportAllowedAt` for
+ * its candidate contacts. Keeping this loop here prevents the preview and generator drifting into
+ * subtly different definitions of "allowed".
+ */
+export function dentalAllowedVertices(
+  policy: DentalPolicy,
+  opening: Pick<{ visible(point: Vector): boolean }, 'visible'>,
+  positions: Float32Array,
+  normals: Float32Array,
+  out: Uint8Array = new Uint8Array(positions.length / 3),
+): Uint8Array {
+  out.fill(0);
+  for (let vertex = 0, offset = 0; vertex < out.length; vertex += 1, offset += 3) {
+    const point: Vector = [positions[offset]!, positions[offset + 1]!, positions[offset + 2]!];
+    const normal: Vector = [normals[offset]!, normals[offset + 1]!, normals[offset + 2]!];
+    if (dentalSupportAllowedAt(policy, opening, point, normal)) out[vertex] = 1;
+  }
+  return out;
+}

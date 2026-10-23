@@ -7,7 +7,8 @@ import type { GeneratedSupportMesh, SupportContact } from '../../core/supports/m
 import { warmZoneOverlay, zoneOverlay } from '../../core/supports/overlayMesh';
 import { contactRadius, withShape } from '../../core/supports/settings';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
-import type { DentalAllowStamp } from '../../core/analysis/dentalPolicy';
+import { DentalOpeningRaycaster } from '../../core/analysis/dental';
+import { dentalAllowedVertices, type DentalAllowStamp, type DentalPolicy } from '../../core/analysis/dentalPolicy';
 import { contactToRemove } from '../../editing/removal';
 import { contactVertexRuns, selectionDelta } from '../../editing/selectionHighlight';
 import type { PrintUnit } from '../../state/project';
@@ -137,18 +138,22 @@ export function useWarmZoneOverlay(mesh: TriangleMesh | undefined, ready: boolea
  * just committed as saved copies) lays just the new stamps; any other change (undo, erase all, a
  * new model) recomputes every vertex. A vertex grid kept per model keeps both cheap.
  */
-export function SurfaceStampLayer({ mesh, geometry, stamps, filledKind, color, opacity }: {
+type SurfaceMaskInitializer = (positions: Float32Array, normals: Float32Array, out: Uint8Array) => void;
+
+export function SurfaceStampLayer({ mesh, geometry, stamps, filledKind, color, opacity, initializeMask }: {
   mesh: TriangleMesh;
   geometry: THREE.BufferGeometry;
   stamps: readonly (ZoneStamp | DentalAllowStamp)[];
   filledKind: ZoneStamp['kind'] | DentalAllowStamp['kind'];
   color: string;
   opacity: number;
+  /** An optional domain-owned baseline, applied before ordered brush stamps. */
+  initializeMask?: SurfaceMaskInitializer;
 }) {
   // The overlay engine needs only last-stamp-wins booleans; domain policy stays with its caller.
   const zones = useMemo(() => stamps.map((stamp): ZoneStamp => ({ ...stamp, kind: stamp.kind === filledKind ? 'paint' : 'erase' })), [stamps, filledKind]);
   // Built in the effect for the same reason as `SupportBodies`: the cleanup strips shared attributes.
-  const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute; zoned: Uint8Array; grid: VertexGrid | undefined; applied: readonly ZoneStamp[] }>();
+  const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute; zoned: Uint8Array; baseline: Uint8Array; grid: VertexGrid | undefined; applied: readonly ZoneStamp[] }>();
   useEffect(() => {
     // The refinement and grid are cached per model mesh; only the GPU copy is made per mount.
     // A large model (heavy-mesh tier "large") is not refined: its faces are fine enough, and the copy would cost too much.
@@ -164,7 +169,9 @@ export function SurfaceStampLayer({ mesh, geometry, stamps, filledKind, color, o
     // White RGB (the material sets the blue); alpha per vertex.
     const colors = new THREE.BufferAttribute(new Uint8Array(count * 4).fill(255), 4, true);
     sub.setAttribute('color', colors);
-    setLayer({ geometry: sub, colors, zoned: new Uint8Array(count), grid, applied: [] });
+    const zoned = new Uint8Array(count);
+    initializeMask?.(sub.getAttribute('position').array as Float32Array, sub.getAttribute('normal').array as Float32Array, zoned);
+    setLayer({ geometry: sub, colors, zoned, baseline: zoned.slice(), grid, applied: [] });
     return () => {
       if (shared) {
         sub.deleteAttribute('position');
@@ -173,7 +180,7 @@ export function SurfaceStampLayer({ mesh, geometry, stamps, filledKind, color, o
       }
       sub.dispose();
     };
-  }, [mesh, geometry]);
+  }, [mesh, geometry, initializeMask]);
   useEffect(() => {
     // A new model can run this once on the old layer (its shared attributes already stripped) before the rebuilt one arrives: skip it.
     if (!layer?.geometry.getAttribute('position')) return;
@@ -183,7 +190,8 @@ export function SurfaceStampLayer({ mesh, geometry, stamps, filledKind, color, o
     if (done.length <= zones.length && done.every((stamp, index) => sameStamp(zones[index]!, stamp))) {
       for (let index = done.length; index < zones.length; index++) stampVertices(zones[index]!, positions, normals, layer.zoned, layer.grid);
     } else {
-      zonedVertices(zones, positions, normals, layer.zoned, layer.grid);
+      layer.zoned.set(layer.baseline);
+      for (const stamp of zones) stampVertices(stamp, positions, normals, layer.zoned, layer.grid);
     }
     layer.applied = zones;
     const rgba = layer.colors.array as Uint8Array;
@@ -201,8 +209,15 @@ export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMe
   return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={zones} filledKind="paint" color={PREVIEW.zone} opacity={opacity} />;
 }
 
-export function DentalStampLayer({ mesh, geometry, stamps, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; stamps: readonly DentalAllowStamp[]; opacity: number }) {
-  return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={stamps} filledKind="allow" color={PREVIEW.dental} opacity={opacity} />;
+export function DentalStampLayer({ mesh, geometry, policy, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; policy: DentalPolicy; opacity: number }) {
+  // Edits are laid by the generic layer; the detector baseline has no edits, so a new live stroke
+  // does not rebuild the exact visibility mask.
+  const initializeMask = useMemo<SurfaceMaskInitializer>(() => {
+    const baseline: DentalPolicy = { ...policy, stamps: [] };
+    const opening = new DentalOpeningRaycaster(mesh, baseline.rim);
+    return (positions, normals, out) => void dentalAllowedVertices(baseline, opening, positions, normals, out);
+  }, [mesh, policy.rim]);
+  return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={policy.stamps} filledKind="allow" color={PREVIEW.dental} opacity={opacity} initializeMask={initializeMask} />;
 }
 
 /** Contact ids a remove click at a unit-local point takes: the one nearest within Click reach. */

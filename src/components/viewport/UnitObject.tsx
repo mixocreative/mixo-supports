@@ -282,8 +282,8 @@ export function UnitObject(props: UnitObjectProps) {
     {model && editing && shown === unit.source && zones.length > 0 && <group visible={props.modelVisible}>
       <ZoneLayer mesh={unit.source} geometry={model} zones={zones} opacity={ZONE_OPACITY[zoning ? 'full' : 'faint']} />
     </group>}
-    {model && dentalPainting && shown === unit.source && dentalStamps && dentalStamps.length > 0 && <group visible={props.modelVisible}>
-      <DentalStampLayer mesh={unit.source} geometry={model} stamps={dentalStamps} opacity={0.7} />
+    {model && dentalPainting && shown === unit.source && unit.dental && <group visible={props.modelVisible}>
+      <DentalStampLayer mesh={unit.source} geometry={model} policy={{ ...unit.dental, stamps: dentalStamps ?? unit.dental.stamps }} opacity={0.7} />
     </group>}
     {supportGeometry && <mesh
       geometry={supportGeometry}

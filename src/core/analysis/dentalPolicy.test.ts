@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dentalAllowedAt, dentalSupportAllowedAt, type DentalPolicy } from './dentalPolicy';
+import { dentalAllowedAt, dentalAllowedVertices, dentalSupportAllowedAt, type DentalPolicy } from './dentalPolicy';
 
 const policy: DentalPolicy = {
   rim: {
@@ -60,5 +60,21 @@ describe('dentalAllowedAt', () => {
     expect(dentalSupportAllowedAt(opened, hidden, [3, 0, 1], [0, -1, 0])).toBe(false);
     expect(dentalSupportAllowedAt(opened, visible, [3, 0, 1], [0, -1, 0])).toBe(true);
     expect(dentalSupportAllowedAt({ ...opened, rim: { ...opened.rim, boundaryKind: 'projection-fallback' } }, visible, [3, 0, 1], [0, -1, 0])).toBe(false);
+  });
+
+  it('builds the preview mask from the same exact gate as generated contacts', () => {
+    const opened: DentalPolicy = {
+      ...policy,
+      stamps: [{ center: [3, 0, 1], radius: 1, normal: [0, -1, 0], kind: 'allow' }],
+    };
+    const visible = { visible: (point: readonly number[]) => point[0] !== 1 };
+    const mask = dentalAllowedVertices(
+      opened,
+      visible,
+      new Float32Array([1, 0, 1, 3, 0, 1, 3, 0, 3]),
+      new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0]),
+    );
+
+    expect([...mask]).toEqual([0, 1, 0]);
   });
 });
