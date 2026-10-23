@@ -1,12 +1,9 @@
 import type { Vector } from '../vec3';
+import type { SurfaceStamp } from '../../editing/surfaceBrush';
 
 /** One brush dab of a no-support zone, in unit-local space. */
-export interface ZoneStamp {
-  center: Vector;
-  radius: number;
+export interface ZoneStamp extends SurfaceStamp<'paint' | 'erase'> {
   /** Surface normal under the brush; keeps the far side of a thin wall out of the zone. */
-  normal: Vector;
-  kind: 'paint' | 'erase';
 }
 
 /** Whether `point` is zoned: the last stamp covering it decides (paint zones, erase clears). */

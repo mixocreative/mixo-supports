@@ -1,13 +1,9 @@
 import { rimContainsPoint, type DentalRim } from './dental';
 import type { Vector } from '../vec3';
+import type { SurfaceStamp } from '../../editing/surfaceBrush';
 
 /** One unit-local brush dab that changes where automatic dental supports may attach. */
-export interface DentalAllowStamp {
-  center: Vector;
-  radius: number;
-  normal: Vector;
-  kind: 'allow' | 'erase';
-}
+export interface DentalAllowStamp extends SurfaceStamp<'allow' | 'erase'> {}
 
 /** The accepted detector footprint plus user edits. This is separate from no-support zones. */
 export interface DentalPolicy {
