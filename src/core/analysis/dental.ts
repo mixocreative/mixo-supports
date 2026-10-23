@@ -212,11 +212,13 @@ function traceRim(mesh: TriangleMesh, centre: Vector, openingDirection: Vector):
   const vertices = points(mesh);
   const projection = vertices.map((point) => dot(subtract(point, centre), openingDirection));
   const { minimum, maximum } = bounds(projection);
+  const tangent = stableTangent(openingDirection);
+  const bitangent = normalize(cross(openingDirection, tangent));
+  const supportBoundary = traceLowerFeatureLoop(mesh, projection, minimum, maximum, centre, tangent, bitangent);
+  if (supportBoundary) return makeRim(mesh, supportBoundary, openingDirection, tangent, bitangent);
   const candidates = vertices.filter((_, index) => projection[index]! >= maximum - (maximum - minimum) * 0.025);
   if (candidates.length < 6) return undefined;
   const capCentre = scale(candidates.reduce<Vector>((sum, point) => [sum[0] + point[0], sum[1] + point[1], sum[2] + point[2]], [0, 0, 0]), 1 / candidates.length);
-  const tangent = stableTangent(openingDirection);
-  const bitangent = normalize(cross(openingDirection, tangent));
   const radial = candidates.map((point) => length(subtract(point, addAlong(capCentre, openingDirection, dot(subtract(point, capCentre), openingDirection)))));
   const sortedRadii = [...radial].sort((left, right) => left - right);
   const minimumRadius = sortedRadii[0]!;
@@ -227,6 +229,11 @@ function traceRim(mesh: TriangleMesh, centre: Vector, openingDirection: Vector):
     .sort((left, right) => Math.atan2(dot(subtract(left, capCentre), bitangent), dot(subtract(left, capCentre), tangent))
       - Math.atan2(dot(subtract(right, capCentre), bitangent), dot(subtract(right, capCentre), tangent)));
   if (loop.length < 6) return undefined;
+  return makeRim(mesh, loop, openingDirection, tangent, bitangent);
+}
+
+function makeRim(mesh: TriangleMesh, loop: readonly Vector[], openingDirection: Vector, tangent: Vector, bitangent: Vector): DentalRim {
+  const capCentre = scale(loop.reduce<Vector>((sum, point) => [sum[0] + point[0], sum[1] + point[1], sum[2] + point[2]], [0, 0, 0]), 1 / loop.length);
   const visibility = rasterizeVisibleSurface(mesh, capCentre, openingDirection, tangent, bitangent);
   return {
     points: new Float32Array(loop.flat()),
@@ -239,6 +246,72 @@ function traceRim(mesh: TriangleMesh, centre: Vector, openingDirection: Vector):
     visibilityMin: visibility.min,
     visibilityMax: visibility.max,
   };
+}
+
+/** The support boundary of a closed aligner is the innermost sharp loop at its lower terminal. */
+function traceLowerFeatureLoop(
+  mesh: TriangleMesh,
+  projection: readonly number[],
+  minimum: number,
+  maximum: number,
+  centre: Vector,
+  tangent: Vector,
+  bitangent: Vector,
+): Vector[] | undefined {
+  const edges = new Map<string, { a: number; b: number; faces: number[] }>();
+  const normals: Vector[] = [];
+  for (let face = 0; face < mesh.indices.length / 3; face += 1) {
+    const at = face * 3;
+    const a = pointAt(mesh, mesh.indices[at]!);
+    const b = pointAt(mesh, mesh.indices[at + 1]!);
+    const c = pointAt(mesh, mesh.indices[at + 2]!);
+    normals.push(normalize(cross(subtract(b, a), subtract(c, a))));
+    for (let corner = 0; corner < 3; corner += 1) {
+      const a = mesh.indices[at + corner]!;
+      const b = mesh.indices[at + (corner + 1) % 3]!;
+      const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+      const edge = edges.get(key);
+      if (edge) edge.faces.push(face); else edges.set(key, { a, b, faces: [face] });
+    }
+  }
+  const graph = new Map<number, Set<number>>();
+  const sharp = Math.cos(60 * Math.PI / 180);
+  for (const edge of edges.values()) {
+    if (edge.faces.length !== 2 || Math.abs(dot(normals[edge.faces[0]!]!, normals[edge.faces[1]!]!)) > sharp) continue;
+    const a = graph.get(edge.a) ?? new Set<number>();
+    const b = graph.get(edge.b) ?? new Set<number>();
+    a.add(edge.b); b.add(edge.a);
+    graph.set(edge.a, a); graph.set(edge.b, b);
+  }
+  const seen = new Set<number>();
+  const loops: number[][] = [];
+  for (const start of graph.keys()) {
+    if (seen.has(start)) continue;
+    const component: number[] = [];
+    const queue = [start]; seen.add(start);
+    while (queue.length) {
+      const current = queue.pop()!;
+      component.push(current);
+      for (const next of graph.get(current) ?? []) if (!seen.has(next)) { seen.add(next); queue.push(next); }
+    }
+    if (component.length >= 6 && component.every((vertex) => graph.get(vertex)!.size === 2)) loops.push(component);
+  }
+  if (loops.length === 0) return undefined;
+  const depthOf = (loop: readonly number[]) => loop.reduce((sum, index) => sum + projection[index]!, 0) / loop.length;
+  const lowest = Math.min(...loops.map(depthOf));
+  const band = Math.max((maximum - minimum) * 0.025, 0.25);
+  const terminal = loops.filter((loop) => depthOf(loop) <= lowest + band);
+  if (terminal.length < 2) return undefined;
+  const radiusOf = (loop: readonly number[]) => loop.reduce((sum, index) => {
+    const delta = subtract(pointAt(mesh, index), centre);
+    return sum + Math.hypot(dot(delta, tangent), dot(delta, bitangent));
+  }, 0) / loop.length;
+  const byRadius = terminal.sort((left, right) => radiusOf(left) - radiusOf(right));
+  const selected = byRadius[0];
+  const outer = byRadius[1];
+  if (!selected || !outer || radiusOf(selected) / radiusOf(outer) < 0.7) return undefined;
+  const loopCentre = scale(selected.map((index) => pointAt(mesh, index)).reduce<Vector>((sum, point) => [sum[0] + point[0], sum[1] + point[1], sum[2] + point[2]], [0, 0, 0]), 1 / selected.length);
+  return selected.map((index) => pointAt(mesh, index)).sort((left, right) => Math.atan2(dot(subtract(left, loopCentre), bitangent), dot(subtract(left, loopCentre), tangent)) - Math.atan2(dot(subtract(right, loopCentre), bitangent), dot(subtract(right, loopCentre), tangent)));
 }
 
 function addAlong(point: Vector, direction: Vector, amount: number): Vector {
