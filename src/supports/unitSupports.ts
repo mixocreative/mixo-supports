@@ -1,7 +1,7 @@
 import { labelForIndex } from '../core/analysis/mesh';
 import type { PlacementResult, ProgressCallback, SupportPoint } from '../core/analysis/types';
 import { hidingRemovals, positionId, rekeyHandWork, type RekeyedHandWork } from '../core/analysis/placement';
-import { jobContacts, type CheckJob, type ContactInputs, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
+import { jobContacts, type CheckJob, type ContactInputs, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
 import type { GeneratedSupportMesh, SupportContact } from '../core/supports/mesh';
 import { defaultSupportSettings, toPlacementSettings, type LiveSupportSettings, type SettingKey } from '../core/supports/settings';
 import type { ContactSettings, JSONObject, PrintUnit, SceneCommand, SupportSettings } from '../state/project';
@@ -161,6 +161,12 @@ export function supportJobOf(unit: PrintUnit, unitIndex: number, mode: 'preview'
 /** Automatic placement of the unit, analysed turned but not moved (so moving never shifts the lattice). */
 export function placementJobOf(unit: PrintUnit): PlacementJob {
   return { mesh: unit.source, orientation: orientationOf(unit), settings: toPlacementSettings(resolveSettings(unit.settings)) };
+}
+
+/** Dental placement is unavailable until an accepted dental policy was stored for this unit. */
+export function dentalPlacementJobOf(unit: PrintUnit): DentalPlacementJob | undefined {
+  if (!unit.dental) return undefined;
+  return { ...placementJobOf(unit), dental: unit.dental };
 }
 
 /** Support check of the unit's current contacts (as its latest build left them), in the same turned frame as placement. */

@@ -112,7 +112,7 @@ export class AnalysisClient {
       signal: job.controller.signal,
       label: job.label,
       context: job.task.kind,
-      ...(this.gate && job.task.kind === 'place' ? { admit: (signal: AbortSignal) => this.gate!.acquire(mesh.indices.length / 3, signal) } : {}),
+      ...(this.gate && (job.task.kind === 'place' || job.task.kind === 'dental-place') ? { admit: (signal: AbortSignal) => this.gate!.acquire(mesh.indices.length / 3, signal) } : {}),
       onProgress: (fields) => {
         if (typeof fields.fraction === 'number' && typeof fields.stage === 'string') this.onProgress(job.key, fields.fraction, fields.stage);
       },
