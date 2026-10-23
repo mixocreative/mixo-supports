@@ -5,8 +5,7 @@ import { plural, t } from '../i18n';
 import { CommandButton } from './CommandButton';
 import { DoneButton } from './EditBar';
 import { KeyCaps } from './KeyCaps';
-import { RangeField } from './RangeField';
-import { Segmented } from './Segmented';
+import { SurfaceBrushBar } from './SurfaceBrushBar';
 
 /**
  * Zones mode's chrome over the viewport: the red frame and badge (the zone colour stays on the model), and the bar with
@@ -28,20 +27,22 @@ export function ZonesBar({ brush, unitName, belowPlate, hidden, ui, send, run }:
       {t('Painting no-support zones')}<span>{unitName}</span>
       <b>{plural(hidden, '1 support hidden by zones', '{n} supports hidden by zones')}</b>
     </div>
-    <div className="edit-bar">
-      <div className="edit-row">
-        <Segmented label={t('Zone brush')} value={brush.kind} onChange={(kind) => send({ type: 'setZoneKind', kind })} options={[
+    <SurfaceBrushBar
+      label="Zone brush"
+      kind={brush.kind}
+      onKindChange={(kind) => send({ type: 'setZoneKind', kind })}
+      options={[
           { value: 'paint', label: t('Paint'), hint: 'Paint no-support zones on the model' },
           { value: 'erase', label: t('Erase'), hint: 'Erase no-support zones from the model' },
-        ]} />
-        <RangeField layout="row" label="Brush size" unit="{n} mm" hint="Radius of the zone brush" min={0.5} max={10} step={0.5} value={brush.radius} onChange={(radius) => send({ type: 'setZoneRadius', radius })} />
-        <span className="edit-hint"><KeyCaps shortcut={resolve('history.undo', ui).shortcut!} /> {t('undo')}</span>
-      </div>
-      {!belowPlate && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
-      <div className="edit-row">
+      ]}
+      radius={brush.radius}
+      onRadiusChange={(radius) => send({ type: 'setZoneRadius', radius })}
+      beforeActions={<span className="edit-hint"><KeyCaps shortcut={resolve('history.undo', ui).shortcut!} /> {t('undo')}</span>}
+      note={!belowPlate && <p className="edit-note" role="note">{t('Supports attach underneath: turn the view (Bottom view) to paint where they are.')}</p>}
+      actions={<>
         <CommandButton command={resolve('zones.clearAll', ui)} run={run} />
         <DoneButton ui={ui} run={run} />
-      </div>
-    </div>
+      </>}
+    />
   </>;
 }
