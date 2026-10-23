@@ -148,7 +148,7 @@ describe('importStatus', () => {
 
   it('a large model says the view shows tips only', () => {
     expect(importStatus({ name: 'mid', triangles: 400_000 }, 400_000, 1, 'web')).toEqual({
-      key: '{name} is a large model ({n} triangles): the view shows contact tips only to stay smooth. Turn off Tips only to see whole supports.',
+      key: '{name} is a large model ({n} triangles). If the view gets slow, turn on Tips only.',
       vars: { name: 'mid', n: n(400_000), budget },
     });
   });

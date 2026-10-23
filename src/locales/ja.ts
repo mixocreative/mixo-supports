@@ -481,7 +481,7 @@ export const ja: Dictionary = {
   'Support placement cancelled; existing supports kept.': 'サポートの配置をキャンセルしました。既存のサポートはそのままです。',
   'Too detailed to edit by hand ({n} triangles). Generate and export still use the full model.': 'モデルが細かすぎるため手動では編集できません（三角形 {n} 個）。生成と書き出しは完全なモデルで行われます。',
   '{name} is a heavy model ({n} triangles, over {budget}): the view shows a simplified copy and hand editing is off. Generate and export use the full model.': '{name} は大容量のモデルです（三角形 {n} 個、{budget} 超）：表示は簡略版で、手動編集はできません。生成と書き出しは完全なモデルで行われます。',
-  '{name} is a large model ({n} triangles): the view shows contact tips only to stay smooth. Turn off Tips only to see whole supports.': '{name} は大きなモデルです（三角形 {n} 個）：動作を軽くするため接触先端のみ表示しています。サポート全体を見るには「先端のみ」をオフにしてください。',
+  '{name} is a large model ({n} triangles). If the view gets slow, turn on Tips only.': '{name} は大きなモデルです（三角形 {n} 個）。表示が重い場合は「先端のみ」をオンにしてください。',
   'The plate now holds {n} triangles, more than the {budget} this app is tuned for; it may slow down.': 'プレート上の三角形は {n} 個になり、このアプリの想定 {budget} 個を超えています。動作が遅くなる場合があります。',
   'Cancel {label}': 'キャンセル：{label}',
   'Dismiss {label}': '閉じる：{label}',

@@ -92,8 +92,8 @@ export function importStatus(heaviest: { name: string; triangles: number }, plat
   const tier = meshTier(heaviest.triangles, runtime);
   const vars = { name: heaviest.name, n: heaviest.triangles.toLocaleString(), budget: budget.toLocaleString() };
   if (tier === 'heavy') return { key: '{name} is a heavy model ({n} triangles, over {budget}): the view shows a simplified copy and hand editing is off. Generate and export use the full model.', vars };
-  // The plate warning wins over the large-model note (Tips only still turns on for a large model).
+  // The plate warning wins over the large-model note.
   if (plateTriangles > budget) return { key: 'The plate now holds {n} triangles, more than the {budget} this app is tuned for; it may slow down.', vars: { n: plateTriangles.toLocaleString(), budget: budget.toLocaleString() } };
-  if (tier === 'large') return { key: '{name} is a large model ({n} triangles): the view shows contact tips only to stay smooth. Turn off Tips only to see whole supports.', vars };
+  if (tier === 'large') return { key: '{name} is a large model ({n} triangles). If the view gets slow, turn on Tips only.', vars };
   return { key: 'Imported 1 object. Generate to place supports.', vars: { n: added }, other: 'Imported {n} objects. Generate to place supports.' };
 }

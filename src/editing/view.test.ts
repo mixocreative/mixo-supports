@@ -93,120 +93,63 @@ describe('belowPlate', () => {
 });
 
 describe('Tips only (tipsButton, tipsCamera, tipsPress)', () => {
-  const at = (manual: boolean | null, below: boolean): TipsState => ({ manual, below });
-  const PLAIN = { large: false, zones: false };
+  const PLAIN = { zones: false };
+  const shown = (state: TipsState, zones = false) => tipsButton(state, { zones }).shown;
 
-  it('starts above the plate, following the camera, tips off', () => {
-    expect(TIPS_START).toEqual({ manual: null, below: false });
-    expect(tipsButton(TIPS_START, PLAIN).shown).toBe(false);
+  it('starts off: full supports above the plate', () => {
+    expect(TIPS_START).toEqual({ above: false, belowChoice: null, below: false });
+    expect(shown(TIPS_START)).toBe(false);
   });
 
-  it('shows the manual choice when there is one, else turns on by itself below the plate', () => {
-    const table: [TipsState, boolean, boolean][] = [
-      // state, auto-on above the plate (large model), shown
-      [at(null, false), false, false],
-      [at(null, true), false, true],
-      [at(true, false), false, true],
-      [at(false, true), false, false],
-      [at(true, true), false, true],
-      [at(false, false), false, false],
-      [at(null, false), true, true],
-      [at(false, false), true, false],
-    ];
-    for (const [state, autoAbove, shown] of table) expect(tipsButton(state, { large: autoAbove, zones: false }).shown, JSON.stringify([state, autoAbove])).toBe(shown);
-  });
-
-  it('painting zones forces the tips view (both ends of every support show over the blue layer) without touching the choice', () => {
-    const table: [TipsState, boolean, boolean][] = [
-      // state, painting zones, shown
-      [at(false, false), true, true],
-      [at(false, true), true, true],
-      [at(null, false), true, true],
-      [at(false, false), false, false],
-      [at(true, false), false, true],
-    ];
-    for (const [state, zones, shown] of table) expect(tipsButton(state, { large: false, zones }).shown, JSON.stringify([state, zones])).toBe(shown);
-    // Leaving zones mode: the state was never changed, so the previous view comes back.
-    const before = at(false, true);
-    expect(tipsButton(before, { large: false, zones: true }).shown).toBe(true);
-    expect(tipsButton(before, PLAIN).shown).toBe(false);
-  });
-
-  it('crossing the plate (either way) hands the choice back to the camera; staying on one side keeps it', () => {
-    const table: [TipsState, boolean, TipsState][] = [
-      [at(false, true), false, at(null, false)],
-      [at(true, false), true, at(null, true)],
-      [at(false, false), true, at(null, true)],
-      [at(true, true), false, at(null, false)],
-      [at(false, true), true, at(false, true)],
-      [at(true, false), false, at(true, false)],
-    ];
-    for (const [state, below, next] of table) expect(tipsCamera(state, below), JSON.stringify([state, below])).toEqual(next);
-    const same = at(false, true);
-    expect(tipsCamera(same, true)).toBe(same);
-  });
-
-  it('a click always flips what shows, also below the plate (the button is never disabled)', () => {
-    const table: [TipsState, boolean, TipsState][] = [
-      [at(null, false), false, at(true, false)],
-      [at(null, true), false, at(false, true)],
-      [at(false, true), false, at(true, true)],
-      [at(true, false), false, at(false, false)],
-      [at(null, false), true, at(false, false)],
-    ];
-    for (const [state, autoAbove, next] of table) expect(tipsPress(state, { large: autoAbove, zones: false }), JSON.stringify([state, autoAbove])).toEqual(next);
-  });
-
-  it('what shows and what a click leaves, over every state, large model and zones (table)', () => {
-    const rows: string[] = [];
-    for (const manual of [null, true, false]) for (const below of [false, true]) for (const large of [false, true]) for (const zones of [false, true]) {
-      const state = at(manual, below);
-      const next = tipsPress(state, { large, zones: false });
-      rows.push(`${manual} ${below} ${large} ${zones} -> ${tipsButton(state, { large, zones }).shown} ${next.manual} ${next.below}`);
+  it('going under the plate shows the tips; coming back up restores whatever was chosen above', () => {
+    for (const above of [false, true]) {
+      let state: TipsState = { ...TIPS_START, above };
+      state = tipsCamera(state, true);
+      expect(shown(state), `below, above=${above}`).toBe(true);
+      state = tipsCamera(state, false);
+      expect(shown(state), `back up, above=${above}`).toBe(above);
     }
-    expect(rows).toEqual([
-      'null false false false -> false true false', 'null false false true -> true true false',
-      'null false true false -> true false false', 'null false true true -> true false false',
-      'null true false false -> true false true', 'null true false true -> true false true',
-      'null true true false -> true false true', 'null true true true -> true false true',
-      'true false false false -> true false false', 'true false false true -> true false false',
-      'true false true false -> true false false', 'true false true true -> true false false',
-      'true true false false -> true false true', 'true true false true -> true false true',
-      'true true true false -> true false true', 'true true true true -> true false true',
-      'false false false false -> false true false', 'false false false true -> true true false',
-      'false false true false -> false true false', 'false false true true -> true true false',
-      'false true false false -> false true true', 'false true false true -> true true true',
-      'false true true false -> false true true', 'false true true true -> true true true',
-    ]);
   });
 
-  it('zones force the button on: it says why and a press keeps the state', () => {
+  it('a press below the plate switches the tips off there only, and is forgotten after coming back up', () => {
+    let state = tipsCamera(TIPS_START, true);
+    state = tipsPress(state, PLAIN);
+    expect(shown(state)).toBe(false);
+    state = tipsCamera(state, true);
+    expect(shown(state)).toBe(false);
+    state = tipsCamera(state, false);
+    expect(shown(state)).toBe(false);
+    expect(state.above).toBe(false);
+    state = tipsCamera(state, true);
+    expect(shown(state)).toBe(true);
+  });
+
+  it('a press above the plate is the choice restored after every trip under it', () => {
+    let state = tipsPress(TIPS_START, PLAIN);
+    expect(shown(state)).toBe(true);
+    state = tipsCamera(tipsCamera(state, true), false);
+    expect(shown(state)).toBe(true);
+    state = tipsPress(state, PLAIN);
+    state = tipsCamera(tipsCamera(state, true), false);
+    expect(shown(state)).toBe(false);
+  });
+
+  it('the same side again changes nothing', () => {
+    const state = tipsCamera(TIPS_START, true);
+    expect(tipsCamera(state, true)).toBe(state);
+  });
+
+  it('painting zones forces the tips view, ignores presses and leaves the choice untouched', () => {
     const ZONES_HINT = 'While painting no-support zones only the contact tips show, so the surface stays visible.';
-    const ON = 'Only contact tips show. Turns on by itself below the plate; click to switch off. Export stays full.';
-    const OFF = 'Show only the contact tips: no pillars, braces or raft. Turns on by itself below the plate. Export stays full.';
-    for (const state of [at(null, false), at(false, true), at(true, false)]) {
-      for (const large of [false, true]) {
-        expect(tipsButton(state, { large, zones: true })).toEqual({ shown: true, forced: true, hint: ZONES_HINT });
-        expect(tipsPress(state, { large, zones: true })).toBe(state);
-        const plain = tipsButton(state, { large, zones: false });
-        expect(plain).toEqual({ shown: plain.shown, forced: false, hint: plain.shown ? ON : OFF });
-      }
+    for (const state of [TIPS_START, { ...TIPS_START, above: true }, tipsCamera(TIPS_START, true)]) {
+      expect(tipsButton(state, { zones: true })).toEqual({ shown: true, forced: true, hint: ZONES_HINT });
+      expect(tipsPress(state, { zones: true })).toBe(state);
     }
+    expect(shown(TIPS_START)).toBe(false);
   });
 
-  it('walks the owner story: Bottom view turns tips on, a click turns them off, Fit view keeps them off, orbiting above and back turns them on again', () => {
-    let state = TIPS_START;
-    state = tipsPress(state, PLAIN); // on above the plate
-    expect(tipsButton(state, PLAIN).shown).toBe(true);
-    state = tipsPress(state, PLAIN); // and off again
-    expect(tipsButton(state, PLAIN).shown).toBe(false);
-    state = tipsCamera(state, true); // Bottom view
-    expect(tipsButton(state, PLAIN).shown).toBe(true);
-    state = tipsPress(state, PLAIN); // switched off below the plate
-    expect(tipsButton(state, PLAIN).shown).toBe(false);
-    state = tipsCamera(state, true); // Fit view keeps the angle below
-    expect(tipsButton(state, PLAIN).shown).toBe(false);
-    state = tipsCamera(tipsCamera(state, false), true); // above, then below again
-    expect(tipsButton(state, PLAIN).shown).toBe(true);
+  it('hints follow what shows', () => {
+    expect(tipsButton(TIPS_START, PLAIN).hint).toBe('Show only the contact tips: no pillars, braces or raft. Turns on by itself below the plate. Export stays full.');
+    expect(tipsButton(tipsCamera(TIPS_START, true), PLAIN).hint).toBe('Only contact tips show. Turns on by itself below the plate; click to switch off. Export stays full.');
   });
 });

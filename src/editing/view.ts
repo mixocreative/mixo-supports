@@ -78,23 +78,22 @@ export function belowPlate(cameraY: number): boolean {
 }
 
 /**
- * Tips only: `manual` is the user's own choice (null: follow the camera); `below` is the plate
- * side the camera was last seen on. Below the plate the tips view turns on by itself, but the
- * user can always switch it off (or on); crossing the plate either way hands the choice back to
- * the camera.
+ * Tips only: `above` is the user's choice while the camera is above the plate (off at start);
+ * `belowChoice` is a choice made while below it (null: tips show, as the view from underneath
+ * needs); `below` is the plate side the camera was last seen on. Going under the plate turns the
+ * tips view on by itself; coming back up restores the above-plate choice untouched.
  */
 export interface TipsState {
-  manual: boolean | null;
+  above: boolean;
+  belowChoice: boolean | null;
   below: boolean;
 }
 
-/** Start: camera above the plate, following it. */
-export const TIPS_START: TipsState = { manual: null, below: false };
+/** Start: camera above the plate, full supports. */
+export const TIPS_START: TipsState = { above: false, belowChoice: null, below: false };
 
-/** What Tips only depends on besides its state: a large model on the plate, and painting zones. */
+/** What Tips only depends on besides its state: painting zones. */
 export interface TipsContext {
-  /** A large model keeps the tips view on above the plate too, to stay smooth. */
-  large: boolean;
   /** Painting no-support zones forces the tips view. */
   zones: boolean;
 }
@@ -110,12 +109,12 @@ export interface TipsButton {
 
 /**
  * Only contact tips show: always while painting no-support zones (the tips at both ends of every
- * support sit on the surface to paint, and pillars would hide the blue layer), else the user's
- * choice when there is one, else below the plate (or, with a large model, also above it). Zones
- * never change the state, so leaving them brings the previous view back.
+ * support sit on the surface to paint, and pillars would hide the blue layer); below the plate
+ * unless switched off there; above it, the user's own choice. Zones never change the state, so
+ * leaving them brings the previous view back.
  */
-export function tipsButton(state: TipsState, { large, zones }: TipsContext): TipsButton {
-  const shown = zones || (state.manual ?? (state.below || large));
+export function tipsButton(state: TipsState, { zones }: TipsContext): TipsButton {
+  const shown = zones || (state.below ? state.belowChoice ?? true : state.above);
   const hint = zones
     ? 'While painting no-support zones only the contact tips show, so the surface stays visible.'
     : shown
@@ -124,13 +123,14 @@ export function tipsButton(state: TipsState, { large, zones }: TipsContext): Tip
   return { shown, forced: zones, hint };
 }
 
-/** The camera is on the given side of the plate: crossing it resets the choice to automatic. */
+/** The camera is on the given side of the plate: going under shows the tips, coming up restores the above-plate choice. */
 export function tipsCamera(state: TipsState, below: boolean): TipsState {
-  return below === state.below ? state : { manual: null, below };
+  return below === state.below ? state : { ...state, belowChoice: null, below };
 }
 
-/** A press on the Tips only button: flips what shows now, on either side of the plate; nothing while forced. */
+/** A press on the Tips only button: flips what shows now, on the side of the plate the camera is on; nothing while forced. */
 export function tipsPress(state: TipsState, context: TipsContext): TipsState {
   const button = tipsButton(state, context);
-  return button.forced ? state : { ...state, manual: !button.shown };
+  if (button.forced) return state;
+  return state.below ? { ...state, belowChoice: !button.shown } : { ...state, above: !button.shown };
 }

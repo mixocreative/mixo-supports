@@ -485,7 +485,7 @@ export const zhHant: Dictionary = {
   'Support placement cancelled; existing supports kept.': '已取消支撐配置，保留現有支撐。',
   'Too detailed to edit by hand ({n} triangles). Generate and export still use the full model.': '模型過於精細，無法手動編輯（{n} 個三角面）。產生與匯出仍使用完整模型。',
   '{name} is a heavy model ({n} triangles, over {budget}): the view shows a simplified copy and hand editing is off. Generate and export use the full model.': '{name} 是重型模型（{n} 個三角面，超過 {budget}）：畫面顯示簡化版本，且無法手動編輯。產生與匯出仍使用完整模型。',
-  '{name} is a large model ({n} triangles): the view shows contact tips only to stay smooth. Turn off Tips only to see whole supports.': '{name} 是大型模型（{n} 個三角面）：為保持流暢，畫面只顯示接觸頭。關閉「僅支撐頭」即可查看完整支撐。',
+  '{name} is a large model ({n} triangles). If the view gets slow, turn on Tips only.': '{name} 是大型模型（{n} 個三角面）。若畫面變得不順，請開啟「僅支撐頭」。',
   'The plate now holds {n} triangles, more than the {budget} this app is tuned for; it may slow down.': '底板上目前共有 {n} 個三角面，超過本應用程式建議的 {budget} 個，操作可能變慢。',
   'Cancel {label}': '取消：{label}',
   'Dismiss {label}': '關閉：{label}',

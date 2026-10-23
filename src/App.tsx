@@ -203,9 +203,7 @@ export default function App() {
   const activeIndex = activeUnit ? scene.units.indexOf(activeUnit) : -1;
   /** Triangles of a heavy active object: the session refuses hand edits on it (Edit Mode, zones); generation and export still run. */
   const activeHeavy = activeUnit && meshTier(triangleCount(activeUnit), RUNTIME) === 'heavy' ? triangleCount(activeUnit) : undefined;
-  /** A large model on the plate keeps the tips view on above the plate too (to stay smooth), until switched off. */
-  const largeTips = useMemo(() => scene.units.some((unit) => meshTier(triangleCount(unit), RUNTIME) === 'large'), [scene.units]);
-  const tipsContext = { large: largeTips, zones: editMode === 'zones' };
+  const tipsContext = { zones: editMode === 'zones' };
   const tipsOnly = tipsButton(tips, tipsContext);
   // Support Edit Mode belongs to the active unit: it ends when that unit goes (delete, undo).
   // The selection empties on leaving a mode or changing the active object; ids that no longer
