@@ -1,6 +1,6 @@
 import type { SupportProblem } from '../core/analysis/supportCheck';
 import type { PlacementResult, TriangleMesh } from '../core/analysis/types';
-import type { CheckJob, PlacementJob } from '../core/jobs';
+import type { CheckJob, DentalPlacementJob, PlacementJob } from '../core/jobs';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
 import type { TriangleGate } from '../core/jobGate';
 import type { JobLabel } from './jobActivity';
@@ -54,6 +54,10 @@ export class AnalysisClient {
 
   place(key: string, job: PlacementJob, label: JobLabel): Promise<PlacementResult | undefined> {
     return this.submit(key, { kind: 'place', job }, label).then((result) => (result?.kind === 'placed' ? result.result : undefined));
+  }
+
+  dentalPlace(key: string, job: DentalPlacementJob, label: JobLabel): Promise<PlacementResult | undefined> {
+    return this.submit(key, { kind: 'dental-place', job }, label).then((result) => (result?.kind === 'dental-placed' ? result.result : undefined));
   }
 
   check(key: string, job: CheckJob, label: JobLabel): Promise<SupportProblem[] | undefined> {

@@ -8,6 +8,7 @@
 import type { CheckSettings } from './analysis/supportCheck';
 import { composeContacts } from './analysis/placement';
 import type { PlacementSettings, SupportPoint, TriangleMesh } from './analysis/types';
+import type { DentalPolicy } from './analysis/dentalPolicy';
 import type { SupportContact } from './supports/mesh';
 import type { LiveSupportSettings, ShapeOverride } from './supports/settings';
 import { zonedAt, type ZoneStamp } from './supports/zones';
@@ -48,6 +49,11 @@ export interface PlacementJob {
   mesh: TriangleMesh;
   orientation: JobTransform;
   settings: PlacementSettings;
+}
+
+/** Automatic placement restricted to an accepted, unit-local dental support policy. */
+export interface DentalPlacementJob extends PlacementJob {
+  dental: DentalPolicy;
 }
 
 /** What the contacts leave unsupported, with model and contacts turned by `orientation`. */
