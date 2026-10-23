@@ -2,6 +2,8 @@ import { cross, dot, length, normalize, scale, subtract, type Vector } from '../
 import type { TriangleMesh } from './types';
 
 export interface DentalRim {
+  /** Only a paired lower-edge loop may authorize automatic dental supports. */
+  boundaryKind: 'lower-edge-loop' | 'projection-fallback';
   /** Unit-local closed loop. The first point is not repeated. */
   points: Float32Array;
   /** Unit-local direction from the tooth cavity through its opening. */
@@ -215,7 +217,7 @@ function traceRim(mesh: TriangleMesh, centre: Vector, openingDirection: Vector):
   const tangent = stableTangent(openingDirection);
   const bitangent = normalize(cross(openingDirection, tangent));
   const supportBoundary = traceLowerFeatureLoop(mesh, projection, minimum, maximum, centre, tangent, bitangent);
-  if (supportBoundary) return makeRim(mesh, supportBoundary, openingDirection, tangent, bitangent);
+  if (supportBoundary) return makeRim(mesh, supportBoundary, openingDirection, tangent, bitangent, 'lower-edge-loop');
   const candidates = vertices.filter((_, index) => projection[index]! >= maximum - (maximum - minimum) * 0.025);
   if (candidates.length < 6) return undefined;
   const capCentre = scale(candidates.reduce<Vector>((sum, point) => [sum[0] + point[0], sum[1] + point[1], sum[2] + point[2]], [0, 0, 0]), 1 / candidates.length);
@@ -229,13 +231,14 @@ function traceRim(mesh: TriangleMesh, centre: Vector, openingDirection: Vector):
     .sort((left, right) => Math.atan2(dot(subtract(left, capCentre), bitangent), dot(subtract(left, capCentre), tangent))
       - Math.atan2(dot(subtract(right, capCentre), bitangent), dot(subtract(right, capCentre), tangent)));
   if (loop.length < 6) return undefined;
-  return makeRim(mesh, loop, openingDirection, tangent, bitangent);
+  return makeRim(mesh, loop, openingDirection, tangent, bitangent, 'projection-fallback');
 }
 
-function makeRim(mesh: TriangleMesh, loop: readonly Vector[], openingDirection: Vector, tangent: Vector, bitangent: Vector): DentalRim {
+function makeRim(mesh: TriangleMesh, loop: readonly Vector[], openingDirection: Vector, tangent: Vector, bitangent: Vector, boundaryKind: DentalRim['boundaryKind']): DentalRim {
   const capCentre = scale(loop.reduce<Vector>((sum, point) => [sum[0] + point[0], sum[1] + point[1], sum[2] + point[2]], [0, 0, 0]), 1 / loop.length);
   const visibility = rasterizeVisibleSurface(mesh, capCentre, openingDirection, tangent, bitangent);
   return {
+    boundaryKind,
     points: new Float32Array(loop.flat()),
     openingDirection,
     centroid: capCentre,

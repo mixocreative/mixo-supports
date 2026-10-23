@@ -109,6 +109,7 @@ describe('reduceScene', () => {
   it('keeps an accepted dental policy and its ordered editable stamps through serialization', () => {
     const dental: DentalPolicy = {
       rim: {
+        boundaryKind: 'lower-edge-loop',
         points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
         openingDirection: [0, -1, 0], centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1],
         visibilityMask: new Uint8Array([1, 0, 1, 1]), visibilityResolution: 2, visibilityMin: [-1, -1], visibilityMax: [1, 1],

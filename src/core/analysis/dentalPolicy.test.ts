@@ -3,6 +3,7 @@ import { dentalAllowedAt, dentalSupportAllowedAt, type DentalPolicy } from './de
 
 const policy: DentalPolicy = {
   rim: {
+    boundaryKind: 'lower-edge-loop',
     points: new Float32Array(),
     openingDirection: [0, 1, 0],
     centroid: [0, 0, 0],
@@ -58,5 +59,6 @@ describe('dentalAllowedAt', () => {
 
     expect(dentalSupportAllowedAt(opened, hidden, [3, 0, 1], [0, -1, 0])).toBe(false);
     expect(dentalSupportAllowedAt(opened, visible, [3, 0, 1], [0, -1, 0])).toBe(true);
+    expect(dentalSupportAllowedAt({ ...opened, rim: { ...opened.rim, boundaryKind: 'projection-fallback' } }, visible, [3, 0, 1], [0, -1, 0])).toBe(false);
   });
 });

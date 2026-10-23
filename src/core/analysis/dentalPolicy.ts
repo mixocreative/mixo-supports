@@ -36,5 +36,5 @@ export function dentalSupportAllowedAt(
   point: Vector,
   normal?: Vector,
 ): boolean {
-  return dentalAllowedAt(policy, point, normal) && opening.visible(point);
+  return policy.rim.boundaryKind === 'lower-edge-loop' && dentalAllowedAt(policy, point, normal) && opening.visible(point);
 }

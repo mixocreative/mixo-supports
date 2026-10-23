@@ -345,7 +345,7 @@ function cloneDentalPolicy(policy: DentalPolicy): DentalPolicy {
   if (visibilityMax[0] <= visibilityMin[0] || visibilityMax[1] <= visibilityMin[1]) throw new TypeError('dental visibility bounds must have area');
   for (const value of rim.points) if (!Number.isFinite(value)) throw new TypeError('dental rim points must be finite');
   return {
-    rim: { points: new Float32Array(rim.points), openingDirection, centroid, tangent, bitangent, visibilityMask: new Uint8Array(rim.visibilityMask), visibilityResolution: rim.visibilityResolution, visibilityMin, visibilityMax },
+    rim: { boundaryKind: rim.boundaryKind === 'lower-edge-loop' ? 'lower-edge-loop' : 'projection-fallback', points: new Float32Array(rim.points), openingDirection, centroid, tangent, bitangent, visibilityMask: new Uint8Array(rim.visibilityMask), visibilityResolution: rim.visibilityResolution, visibilityMin, visibilityMax },
     stamps: policy.stamps.map(cloneDentalStamp),
   };
 }
