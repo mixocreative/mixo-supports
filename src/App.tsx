@@ -19,6 +19,7 @@ import SettingsPanel from './components/SettingsPanel';
 import { ShapeBand } from './components/ShapeBand';
 import { BrandLogo } from './components/BrandLogo';
 import { EditBar } from './components/EditBar';
+import { DentalBar } from './components/DentalBar';
 import { CommandButton } from './components/CommandButton';
 import { ModeSections } from './components/ModeEntry';
 import { ObjectList } from './components/ObjectList';
@@ -42,6 +43,7 @@ import { PlateLedger, type PlateScene } from './core/plateLedger';
 import { estimateTriangles, ESTIMATE_HEAD_BYTES } from './core/import/estimate';
 import { emptyScene, reduceScene, type ContactSettings, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
+import { proposeDentalOrientation, rotationToPlateDown } from './core/analysis/dental';
 import type { ExportKind } from './supports/export';
 import type { GeneratedSupportMesh } from './core/supports/mesh';
 import { meshBounds } from './core/supports/meshQuery';
@@ -785,6 +787,27 @@ export default function App() {
       case 'transform.move': return setGizmoMode('translate');
       case 'transform.rotate': return setGizmoMode('rotate');
       case 'supports.generate': return generate();
+      case 'supports.dentalAuto': {
+        const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+        if (!unit) return;
+        const proposal = proposeDentalOrientation(unit.source);
+        if (proposal.kind !== 'proposal') return setStatus('Dental opening could not be detected safely. Rotate the model manually and use normal Generate.');
+        return send({ type: 'enterDental', proposal });
+      }
+      case 'dental.useDetected':
+      case 'dental.manualArea': {
+        const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+        const proposal = sessionRef.current.dentalProposal;
+        if (!unit || !proposal || sessionRef.current.dentalStage !== 'orientation') return;
+        const transform = id === 'dental.useDetected' ? { ...unit.transform, rotation: rotationToPlateDown(proposal.rim.openingDirection) } : unit.transform;
+        dispatch({ type: 'batch', commands: [
+          ...(transform === unit.transform ? [] : [{ type: 'transform/set' as const, unitId: unit.id, transform }]),
+          { type: 'dental/set' as const, unitId: unit.id, policy: { rim: proposal.rim, stamps: [] } },
+        ] });
+        send({ type: 'acceptDentalOrientation' });
+        requestView('bottom');
+        return;
+      }
       case 'mode.edit': {
         send({ type: 'enterEdit' });
         const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
@@ -922,6 +945,7 @@ export default function App() {
         <section {...(locked('supports') ? { inert: '' } : {})}>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
           <CommandButton command={command('supports.generate')} run={runCommand} {...(scopeGenerated ? { className: scopePending ? 'regen attention' : 'regen' } : {})} />
+          <CommandButton command={command('supports.dentalAuto')} run={runCommand} />
           <CommandButton command={command('supports.clearManual')} run={runCommand} />
           <CommandButton command={command('supports.remove')} run={runCommand} />
         </section>
@@ -984,7 +1008,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hidden={zonesHidden} ui={ui} send={send} run={runCommand} />
-          : press.kind === 'dental-orientation' || press.kind === 'dental-area' ? null
+          : press.kind === 'dental-orientation' || press.kind === 'dental-area' ? <DentalBar gesture={press} unitName={activeUnit?.name} ui={ui} send={send} run={runCommand} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>

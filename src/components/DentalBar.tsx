@@ -1,0 +1,52 @@
+import { resolve, type CommandId, type UiState } from '../editing/commands';
+import type { Gesture } from '../editing/gesture';
+import { t } from '../i18n';
+import { CommandButton } from './CommandButton';
+import { DoneButton } from './EditBar';
+import { SurfaceBrushBar } from './SurfaceBrushBar';
+
+/** Dental Auto Generate chrome: review the detector first, then paint only permitted support area. */
+export function DentalBar({ gesture, unitName, ui, send, run }: {
+  gesture: Extract<Gesture, { kind: 'dental-orientation' | 'dental-area' }>;
+  unitName: string | undefined;
+  ui: UiState;
+  send: (event: { type: 'setDentalKind'; kind: 'allow' | 'erase' } | { type: 'setDentalRadius'; radius: number }) => void;
+  run: (id: CommandId) => void;
+}) {
+  if (gesture.kind === 'dental-orientation') return <>
+    <div className="edit-frame" aria-hidden="true" />
+    <div className="edit-badge" role="status">
+      {t('Dental Auto Generate')}<span>{unitName}</span>
+      <b>{t('Review the detected lower opening before changing orientation.')}</b>
+    </div>
+    <div className="edit-bar">
+      <div className="edit-row">
+        <span className="edit-hint">{t('Detector confidence {n}%', { n: Math.round(gesture.proposal.diagnostics.confidence * 100) })}</span>
+        <CommandButton command={resolve('dental.useDetected', ui)} run={run} />
+        <CommandButton command={resolve('dental.manualArea', ui)} run={run} />
+        <DoneButton ui={ui} run={run} />
+      </div>
+      <p className="edit-note" role="note">{t('Use detected orientation rotates the opening down. Or adjust rotation with the gizmo, then keep manual orientation.')}</p>
+    </div>
+  </>;
+  return <>
+    <div className="edit-frame" aria-hidden="true" />
+    <div className="edit-badge" role="status">
+      {t('Dental support area')}<span>{unitName}</span>
+      <b>{t('Paint where supports may grow; Erase removes permission.')}</b>
+    </div>
+    <SurfaceBrushBar
+      label="Dental area brush"
+      kind={gesture.brush.kind}
+      options={[
+        { value: 'allow', label: t('Paint'), hint: 'Allow dental supports on this model surface' },
+        { value: 'erase', label: t('Erase'), hint: 'Remove dental support permission from this model surface' },
+      ]}
+      onKindChange={(kind) => send({ type: 'setDentalKind', kind })}
+      radius={gesture.brush.radius}
+      onRadiusChange={(radius) => send({ type: 'setDentalRadius', radius })}
+      note={<p className="edit-note" role="note">{t('Only the detected lower opening and your painted area can receive dental supports.')}</p>}
+      actions={<DoneButton ui={ui} run={run} />}
+    />
+  </>;
+}
