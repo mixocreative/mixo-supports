@@ -120,4 +120,14 @@ describe('filterDentalPlacement', () => {
     expect(result.points[0]!.position).toEqual([expect.closeTo(0.2666666667), 0, expect.closeTo(-0.2666666667)]);
     expect(result.points[0]!.normal).toEqual([0, -1, 0]);
   });
+
+  it('honours a later erase stamp for sampled lower surfaces', () => {
+    const downwardTriangle: TriangleMesh = { positions: new Float32Array([0, 0, 0, 0.8, 0, 0, 0, 0, 0.8]), indices: new Uint32Array([0, 1, 2]) };
+    const erased: DentalPolicy = { ...policy, stamps: [{ center: [0.27, 0, 0.27], radius: 1, normal: [0, -1, 0], kind: 'erase' }] };
+    const result = filterDentalPlacement({
+      mesh: downwardTriangle, orientation: still,
+      settings: { overhangAngleDegrees: 45, spacing: 2, edgeInset: 0, sharpEdgeAngleDegrees: 45, includeIslands: false }, dental: erased,
+    }, { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() });
+    expect(result.points).toEqual([]);
+  });
 });
