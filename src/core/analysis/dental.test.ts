@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyToDirection, applyToPoint, placementMatrix } from '../transform';
 import { dot, type Vector } from '../vec3';
-import { proposeDentalOrientation, rimContainsPoint, rotationToPlateDown } from './dental';
+import { DentalOpeningRaycaster, proposeDentalOrientation, rimContainsPoint, rotationToPlateDown } from './dental';
 import type { TriangleMesh } from './types';
 
 describe('proposeDentalOrientation', () => {
@@ -48,6 +48,16 @@ describe('proposeDentalOrientation', () => {
 
   it('refuses an invalid orientation direction', () => {
     expect(() => rotationToPlateDown([0, 0, 0])).toThrow(RangeError);
+  });
+
+  it('permits only the first surface visible through the cavity opening', () => {
+    const result = proposeDentalOrientation(watertightCup());
+    expect(result.kind).toBe('proposal');
+    if (result.kind !== 'proposal') return;
+    const raycaster = new DentalOpeningRaycaster(watertightCup(), result.rim);
+
+    expect(raycaster.visible([0, -4, 0])).toBe(true);
+    expect(raycaster.visible([9, -4, 0])).toBe(false);
   });
 });
 

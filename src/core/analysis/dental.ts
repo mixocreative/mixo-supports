@@ -110,6 +110,68 @@ export function rimContainsPoint(rim: DentalRim, point: Vector): boolean {
   return rim.visibilityMask[y * rim.visibilityResolution + x] === 1;
 }
 
+/**
+ * Exact first-surface queries along the accepted cavity opening. This deliberately keeps the
+ * mesh transient: only the approved footprint belongs in project state. A visible point is not
+ * automatically a support-eligible point; final policy still needs a trustworthy trim boundary.
+ */
+export class DentalOpeningRaycaster {
+  private readonly cells = new Map<number, number[]>();
+
+  constructor(private readonly mesh: TriangleMesh, private readonly rim: DentalRim) {
+    const { visibilityResolution: resolution } = rim;
+    for (let face = 0; face < mesh.indices.length / 3; face += 1) {
+      const triangle = [0, 1, 2].map((corner) => pointAt(mesh, mesh.indices[face * 3 + corner]!)) as [Vector, Vector, Vector];
+      const projected = triangle.map((point) => this.project(point));
+      const xs = projected.map(([u]) => this.cell(u, 0));
+      const ys = projected.map(([, v]) => this.cell(v, 1));
+      const minX = Math.max(0, Math.min(...xs));
+      const maxX = Math.min(resolution - 1, Math.max(...xs));
+      const minY = Math.max(0, Math.min(...ys));
+      const maxY = Math.min(resolution - 1, Math.max(...ys));
+      if (minX > maxX || minY > maxY) continue;
+      for (let y = minY; y <= maxY; y += 1) for (let x = minX; x <= maxX; x += 1) {
+        const key = y * resolution + x;
+        const faces = this.cells.get(key);
+        if (faces) faces.push(face); else this.cells.set(key, [face]);
+      }
+    }
+  }
+
+  /** True only when point is the first mesh surface hit from outside the accepted opening. */
+  visible(point: Vector): boolean {
+    if (!rimContainsPoint(this.rim, point)) return false;
+    const [u, v, depth] = this.project(point);
+    const x = this.cell(u, 0);
+    const y = this.cell(v, 1);
+    const faces = this.cells.get(y * this.rim.visibilityResolution + x);
+    if (!faces) return false;
+    let firstDepth = -Infinity;
+    for (const face of faces) {
+      const [a, b, c] = [0, 1, 2].map((corner) => this.project(pointAt(this.mesh, this.mesh.indices[face * 3 + corner]!))) as [[number, number, number], [number, number, number], [number, number, number]];
+      const denominator = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+      if (Math.abs(denominator) < 1e-12) continue;
+      const l1 = ((b[1] - c[1]) * (u - c[0]) + (c[0] - b[0]) * (v - c[1])) / denominator;
+      const l2 = ((c[1] - a[1]) * (u - c[0]) + (a[0] - c[0]) * (v - c[1])) / denominator;
+      const l3 = 1 - l1 - l2;
+      if (l1 < -1e-7 || l2 < -1e-7 || l3 < -1e-7) continue;
+      firstDepth = Math.max(firstDepth, l1 * a[2] + l2 * b[2] + l3 * c[2]);
+    }
+    return Number.isFinite(firstDepth) && Math.abs(depth - firstDepth) <= 1e-3;
+  }
+
+  private project(point: Vector): [number, number, number] {
+    const delta = subtract(point, this.rim.centroid);
+    return [dot(delta, this.rim.tangent), dot(delta, this.rim.bitangent), dot(delta, this.rim.openingDirection)];
+  }
+
+  private cell(value: number, axis: 0 | 1): number {
+    const min = this.rim.visibilityMin[axis];
+    const span = this.rim.visibilityMax[axis] - min;
+    return Math.floor(((value - min) / span) * this.rim.visibilityResolution);
+  }
+}
+
 function points(mesh: TriangleMesh): Vector[] {
   const out: Vector[] = [];
   for (let offset = 0; offset < mesh.positions.length; offset += 3) out.push([mesh.positions[offset]!, mesh.positions[offset + 1]!, mesh.positions[offset + 2]!]);
