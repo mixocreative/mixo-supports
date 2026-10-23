@@ -9,6 +9,11 @@ export interface DentalRim {
   centroid: Vector;
   tangent: Vector;
   bitangent: Vector;
+  /** Orthographic visibility of the cavity opening in the local rim frame. */
+  visibilityMask: Uint8Array;
+  visibilityResolution: number;
+  visibilityMin: [number, number];
+  visibilityMax: [number, number];
 }
 
 export interface DentalDiagnostics {
@@ -50,7 +55,7 @@ export function proposeDentalOrientation(mesh: TriangleMesh): DentalProposal {
   }
   // A cavity mouth has less terminal material than its closed floor.
   const openingDirection = scale(axis, ends.positive < ends.negative ? 1 : -1);
-  const rim = traceRim(vertices, centre, openingDirection);
+  const rim = traceRim(mesh, centre, openingDirection);
   if (!rim) {
     return { kind: 'inconclusive', reason: 'no-cavity', diagnostics: { confidence: terminalAreaRatio, terminalAreaRatio, axialVarianceRatio } };
   }
@@ -127,7 +132,8 @@ function terminalAreas(mesh: TriangleMesh, axis: Vector, centre: Vector): { nega
   return { negative, positive };
 }
 
-function traceRim(vertices: readonly Vector[], centre: Vector, openingDirection: Vector): DentalRim | undefined {
+function traceRim(mesh: TriangleMesh, centre: Vector, openingDirection: Vector): DentalRim | undefined {
+  const vertices = points(mesh);
   const projection = vertices.map((point) => dot(subtract(point, centre), openingDirection));
   const { minimum, maximum } = bounds(projection);
   const candidates = vertices.filter((_, index) => projection[index]! >= maximum - (maximum - minimum) * 0.025);
@@ -145,7 +151,18 @@ function traceRim(vertices: readonly Vector[], centre: Vector, openingDirection:
     .sort((left, right) => Math.atan2(dot(subtract(left, capCentre), bitangent), dot(subtract(left, capCentre), tangent))
       - Math.atan2(dot(subtract(right, capCentre), bitangent), dot(subtract(right, capCentre), tangent)));
   if (loop.length < 6) return undefined;
-  return { points: new Float32Array(loop.flat()), openingDirection, centroid: capCentre, tangent, bitangent };
+  const visibility = rasterizeVisibleSurface(mesh, capCentre, openingDirection, tangent, bitangent);
+  return {
+    points: new Float32Array(loop.flat()),
+    openingDirection,
+    centroid: capCentre,
+    tangent,
+    bitangent,
+    visibilityMask: visibility.mask,
+    visibilityResolution: visibility.resolution,
+    visibilityMin: visibility.min,
+    visibilityMax: visibility.max,
+  };
 }
 
 function addAlong(point: Vector, direction: Vector, amount: number): Vector {
@@ -155,6 +172,60 @@ function addAlong(point: Vector, direction: Vector, amount: number): Vector {
 function stableTangent(axis: Vector): Vector {
   const reference: Vector = Math.abs(axis[0]) < 0.8 ? [1, 0, 0] : [0, 0, 1];
   return normalize(cross(reference, axis));
+}
+
+function rasterizeVisibleSurface(
+  mesh: TriangleMesh,
+  centre: Vector,
+  axis: Vector,
+  tangent: Vector,
+  bitangent: Vector,
+): { mask: Uint8Array; resolution: number; min: [number, number]; max: [number, number] } {
+  const resolution = 96;
+  let minU = Infinity;
+  let minV = Infinity;
+  let maxU = -Infinity;
+  let maxV = -Infinity;
+  for (let offset = 0; offset < mesh.positions.length; offset += 3) {
+    const delta: Vector = [mesh.positions[offset]! - centre[0], mesh.positions[offset + 1]! - centre[1], mesh.positions[offset + 2]! - centre[2]];
+    const u = dot(delta, tangent);
+    const v = dot(delta, bitangent);
+    minU = Math.min(minU, u);
+    minV = Math.min(minV, v);
+    maxU = Math.max(maxU, u);
+    maxV = Math.max(maxV, v);
+  }
+  const width = Math.max(maxU - minU, 1e-6);
+  const height = Math.max(maxV - minV, 1e-6);
+  const depth = new Float64Array(resolution * resolution);
+  depth.fill(-Infinity);
+  const project = (point: Vector): [number, number, number] => {
+    const delta = subtract(point, centre);
+    return [dot(delta, tangent), dot(delta, bitangent), dot(delta, axis)];
+  };
+  for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+    const triangle = [mesh.indices[offset]!, mesh.indices[offset + 1]!, mesh.indices[offset + 2]!].map((index) => project(pointAt(mesh, index))) as [[number, number, number], [number, number, number], [number, number, number]];
+    const [a, b, c] = triangle;
+    const denominator = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+    if (Math.abs(denominator) < 1e-12) continue;
+    const minX = Math.max(0, Math.floor(((Math.min(a[0], b[0], c[0]) - minU) / width) * resolution));
+    const maxX = Math.min(resolution - 1, Math.floor(((Math.max(a[0], b[0], c[0]) - minU) / width) * resolution));
+    const minY = Math.max(0, Math.floor(((Math.min(a[1], b[1], c[1]) - minV) / height) * resolution));
+    const maxY = Math.min(resolution - 1, Math.floor(((Math.max(a[1], b[1], c[1]) - minV) / height) * resolution));
+    for (let y = minY; y <= maxY; y += 1) for (let x = minX; x <= maxX; x += 1) {
+      const u = minU + ((x + 0.5) / resolution) * width;
+      const v = minV + ((y + 0.5) / resolution) * height;
+      const l1 = ((b[1] - c[1]) * (u - c[0]) + (c[0] - b[0]) * (v - c[1])) / denominator;
+      const l2 = ((c[1] - a[1]) * (u - c[0]) + (a[0] - c[0]) * (v - c[1])) / denominator;
+      const l3 = 1 - l1 - l2;
+      if (l1 < -1e-9 || l2 < -1e-9 || l3 < -1e-9) continue;
+      const index = y * resolution + x;
+      depth[index] = Math.max(depth[index]!, l1 * a[2] + l2 * b[2] + l3 * c[2]);
+    }
+  }
+  const mask = new Uint8Array(depth.length);
+  for (let index = 0; index < depth.length; index += 1) if (Number.isFinite(depth[index])) mask[index] = 1;
+  return { mask, resolution, min: [minU, minV], max: [maxU, maxV] };
 }
 
 function pointAt(mesh: TriangleMesh, index: number): Vector {

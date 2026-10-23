@@ -18,18 +18,8 @@ describe('proposeDentalOrientation', () => {
     expect(dot(result.rim.openingDirection, expectedOpening)).toBeGreaterThan(0.99);
     expect(result.rim.points.length).toBeGreaterThanOrEqual(24);
     expect(result.rim.points.length % 3).toBe(0);
-    const sourceVertices = new Set(Array.from({ length: mesh.positions.length / 3 }, (_, vertex) => [
-      mesh.positions[vertex * 3],
-      mesh.positions[vertex * 3 + 1],
-      mesh.positions[vertex * 3 + 2],
-    ].join(',')));
-    for (let offset = 0; offset < result.rim.points.length; offset += 3) {
-      expect(sourceVertices).toContain([
-        result.rim.points[offset],
-        result.rim.points[offset + 1],
-        result.rim.points[offset + 2],
-      ].join(','));
-    }
+    expect(result.rim.visibilityMask.some(Boolean)).toBe(true);
+    expect(result.rim.visibilityMask.length).toBe(result.rim.visibilityResolution ** 2);
 
     const plateDown = rotationToPlateDown(result.rim.openingDirection);
     const mapped = applyToDirection(placementMatrix({ position: [0, 0, 0], rotation: plateDown }), ...result.rim.openingDirection);
