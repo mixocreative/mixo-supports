@@ -8,7 +8,7 @@ import { warmZoneOverlay, zoneOverlay } from '../../core/supports/overlayMesh';
 import { contactRadius, withShape } from '../../core/supports/settings';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
 import { DentalOpeningRaycaster, type DentalRim } from '../../core/analysis/dental';
-import { dentalAllowedVertices, type DentalAllowStamp, type DentalPolicy } from '../../core/analysis/dentalPolicy';
+import { dentalAllowedVertex, type DentalAllowStamp, type DentalPolicy } from '../../core/analysis/dentalPolicy';
 import { contactToRemove } from '../../editing/removal';
 import { contactVertexRuns, selectionDelta } from '../../editing/selectionHighlight';
 import type { PrintUnit } from '../../state/project';
@@ -138,9 +138,7 @@ export function useWarmZoneOverlay(mesh: TriangleMesh | undefined, ready: boolea
  * just committed as saved copies) lays just the new stamps; any other change (undo, erase all, a
  * new model) recomputes every vertex. A vertex grid kept per model keeps both cheap.
  */
-type SurfaceMaskInitializer = (positions: Float32Array, normals: Float32Array, out: Uint8Array) => void;
-
-export function SurfaceStampLayer({ mesh, geometry, stamps, filledKind, color, opacity, initializeMask }: {
+export function SurfaceStampLayer({ mesh, geometry, stamps, filledKind, color, opacity, baseline }: {
   mesh: TriangleMesh;
   geometry: THREE.BufferGeometry;
   stamps: readonly (ZoneStamp | DentalAllowStamp)[];
@@ -148,7 +146,7 @@ export function SurfaceStampLayer({ mesh, geometry, stamps, filledKind, color, o
   color: string;
   opacity: number;
   /** An optional domain-owned baseline, applied before ordered brush stamps. */
-  initializeMask?: SurfaceMaskInitializer;
+  baseline?: Uint8Array;
 }) {
   // The overlay engine needs only last-stamp-wins booleans; domain policy stays with its caller.
   const zones = useMemo(() => stamps.map((stamp): ZoneStamp => ({ ...stamp, kind: stamp.kind === filledKind ? 'paint' : 'erase' })), [stamps, filledKind]);
@@ -169,8 +167,7 @@ export function SurfaceStampLayer({ mesh, geometry, stamps, filledKind, color, o
     // White RGB (the material sets the blue); alpha per vertex.
     const colors = new THREE.BufferAttribute(new Uint8Array(count * 4).fill(255), 4, true);
     sub.setAttribute('color', colors);
-    const zoned = new Uint8Array(count);
-    initializeMask?.(sub.getAttribute('position').array as Float32Array, sub.getAttribute('normal').array as Float32Array, zoned);
+    const zoned = baseline?.slice() ?? new Uint8Array(count);
     setLayer({ geometry: sub, colors, zoned, baseline: zoned.slice(), grid, applied: [] });
     return () => {
       if (shared) {
@@ -180,7 +177,7 @@ export function SurfaceStampLayer({ mesh, geometry, stamps, filledKind, color, o
       }
       sub.dispose();
     };
-  }, [mesh, geometry, initializeMask]);
+  }, [mesh, geometry, baseline]);
   useEffect(() => {
     // A new model can run this once on the old layer (its shared attributes already stripped) before the rebuilt one arrives: skip it.
     if (!layer?.geometry.getAttribute('position')) return;
@@ -210,14 +207,48 @@ export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMe
 }
 
 export function DentalStampLayer({ mesh, geometry, policy, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; policy: DentalPolicy; opacity: number }) {
-  // Edits are laid by the generic layer; the detector baseline has no edits, so a new live stroke
-  // does not rebuild the exact visibility mask.
-  const initializeMask = useMemo<SurfaceMaskInitializer>(() => {
-    const baseline: DentalPolicy = { ...policy, stamps: [] };
-    const opening = new DentalOpeningRaycaster(mesh, baseline.rim);
-    return (positions, normals, out) => void dentalAllowedVertices(baseline, opening, positions, normals, out);
+  // The baseline is exact but large models must never lock the viewport while it is painted.
+  // Brush edits remain visible immediately; when this mask arrives the generic layer composes it
+  // with the same ordered allow/erase stamps.
+  const [baseline, setBaseline] = useState<Uint8Array>();
+  useEffect(() => {
+    const policyBaseline: DentalPolicy = { ...policy, stamps: [] };
+    const positions = mesh.positions;
+    const normals = new Float32Array(positions.length);
+    const output = new Uint8Array(positions.length / 3);
+    let opening: DentalOpeningRaycaster | undefined;
+    let vertex = 0;
+    let cancelled = false;
+    let cancel = () => {};
+    setBaseline(undefined);
+    const schedule = () => {
+      const idle = typeof requestIdleCallback === 'function';
+      const handle = idle ? requestIdleCallback(step, { timeout: 1000 }) : setTimeout(() => step(), 16);
+      cancel = () => (idle ? cancelIdleCallback(handle as number) : clearTimeout(handle as ReturnType<typeof setTimeout>));
+    };
+    const step = () => {
+      if (cancelled) return;
+      // The ray index is built at an idle boundary too; individual vertex tests then stay within a small slice.
+      if (!opening) {
+        opening = new DentalOpeningRaycaster(mesh, policyBaseline.rim);
+        schedule();
+        return;
+      }
+      const deadline = performance.now() + WARM_SLICE_MS;
+      while (vertex < output.length && performance.now() < deadline) {
+        if (dentalAllowedVertex(policyBaseline, opening, positions, normals, vertex)) output[vertex] = 1;
+        vertex += 1;
+      }
+      if (vertex < output.length) return schedule();
+      if (!cancelled) setBaseline(output);
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      cancel();
+    };
   }, [mesh, policy.rim]);
-  return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={policy.stamps} filledKind="allow" color={PREVIEW.dental} opacity={opacity} initializeMask={initializeMask} />;
+  return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={policy.stamps} filledKind="allow" color={PREVIEW.dental} opacity={opacity} baseline={baseline} />;
 }
 
 /** The proven lower-edge loop, held just above the model so the permitted area has a clear boundary. */

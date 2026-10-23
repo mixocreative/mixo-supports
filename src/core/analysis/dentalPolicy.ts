@@ -50,9 +50,21 @@ export function dentalAllowedVertices(
 ): Uint8Array {
   out.fill(0);
   for (let vertex = 0, offset = 0; vertex < out.length; vertex += 1, offset += 3) {
-    const point: Vector = [positions[offset]!, positions[offset + 1]!, positions[offset + 2]!];
-    const normal: Vector = [normals[offset]!, normals[offset + 1]!, normals[offset + 2]!];
-    if (dentalSupportAllowedAt(policy, opening, point, normal)) out[vertex] = 1;
+    if (dentalAllowedVertex(policy, opening, positions, normals, vertex, offset)) out[vertex] = 1;
   }
   return out;
+}
+
+/** One exact vertex decision, exposed so a viewport may do the same work in bounded idle slices. */
+export function dentalAllowedVertex(
+  policy: DentalPolicy,
+  opening: Pick<{ visible(point: Vector): boolean }, 'visible'>,
+  positions: Float32Array,
+  normals: Float32Array,
+  vertex: number,
+  offset = vertex * 3,
+): boolean {
+  const point: Vector = [positions[offset]!, positions[offset + 1]!, positions[offset + 2]!];
+  const normal: Vector = [normals[offset]!, normals[offset + 1]!, normals[offset + 2]!];
+  return dentalSupportAllowedAt(policy, opening, point, normal);
 }
