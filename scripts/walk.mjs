@@ -140,6 +140,8 @@ function readProps() {
     dropped: mesh ? mesh.dropped.length : -1,
     droppedDrawn: mesh ? mesh.dropped.filter((id) => drawn.has(id)).length : -1,
     customised: unit ? Object.keys(unit.contactSettings).length : -1,
+    active: out.scene?.activeUnitId,
+    first: unit?.id,
     point: unit?.settings?.pointDiameter,
     zones: unit ? unit.zones.length : -1,
     ids: out.selection ?? [],
@@ -445,6 +447,27 @@ async function walk(url, scratch) {
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     check('g Select to Unselect mid-queue keeps the earlier steps as Select', switched.hash === sequential.hash, `one after the other ${sequential.selected} (#${sequential.hash}), switched mid-queue ${switched.selected} (#${switched.hash}), selected when switching ${pendingAtSwitch}`);
     await d.exitMode();
+
+    // k. Select them from another object: the active object has none, the first selected object with customised supports takes over.
+    await page.setInputFiles('.drop input[type=file]', FIXTURE);
+    await page.waitForFunction(() => document.querySelector('footer')?.innerText.includes('2 objects'), null, { timeout: 60000 });
+    await d.settled();
+    await d.button('Select all').click();
+    await d.idle(500);
+    const beforeSelectThem = await d.props();
+    await page.locator('.shape-band button').click();
+    await d.idle(1500);
+    const afterSelectThem = await d.props();
+    const selectStatus = await d.status();
+    check('k Select them with the active object bare switches to the first object with customised supports',
+      beforeSelectThem.active !== beforeSelectThem.first && afterSelectThem.active === afterSelectThem.first && afterSelectThem.selected === chosen.selected && new RegExp(`^${chosen.selected} customised supports selected on .+\.$`).test(selectStatus),
+      `active was ${beforeSelectThem.active === beforeSelectThem.first ? 'first' : 'second'}, now ${afterSelectThem.active === afterSelectThem.first ? 'first' : 'second'}, selected ${afterSelectThem.selected} of ${chosen.selected}, status "${selectStatus}"`);
+    await d.exitMode();
+    for (let step = 0; step < 8 && !(await d.footer()).includes('1 object'); step += 1) {
+      await page.keyboard.press('Control+z');
+      await d.idle(700);
+    }
+    check('k2 Undo takes the second object away again', (await d.footer()).includes('1 object') && (await d.props()).customised === chosen.selected, `footer ${(await d.footer()).includes('1 object') ? '1 object' : 'more objects'}, customised ${(await d.props()).customised}`);
 
     // a5. Drag over from Bottom view (the camera stays there, so it runs last).
     await d.enterDragOver();

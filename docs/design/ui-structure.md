@@ -51,7 +51,7 @@ Appendix A carry the shipped state. Commit detail is in `git log --oneline 57f5e
 | Step 2: Select / Unselect switch, Shift read from the pointer event and latched at stroke start | `785c5a8`, `ae4570d`, `6ebcad7`, `d3cbc72`, `4c82c6f` |
 | Step 3 (section 11): per-support settings (`contactSettings`, `SHAPE_KEYS`), count band, Select them, Reset, ring mark, coalesced undo, regeneration keeps or resets | `8fc7742`, `7ca03e1`, `2305c39`, `ff3b726`, `66c74a4`, `7dbaaf1`, `2e0cbe5`, `f1de455`, `7d2b612`, `4297fc7`, `49114f9`, `8cb45b4`, `cb48f21`, `7f4fe9b`, `808c6a2`, `1b1b46e` |
 | Audit polish (section 13): toasts, export and cancel text, add flash, step-naming Undo and Redo hints, `disabledReason` on every disabled command, Delete always shown | `fd7e66c`, `1748ef5`, `e9ccce2`, `b44da0d`, `54be8c9`, `44315ae`, `f8d25fd`, `02630b7` |
-| CIA-06 "Supports are still building", CIA-07 idle zone overlay, Hide / Show models with Drag over, zh-Hant wording lint | `9b60d3e`, `6f7b554`, `9c4a670`, `a1e0f53`, `3cde47b` |
+| CIA-06 "Supports are still building", CIA-07 idle zone overlay (since refined in 12 ms idle slices: Open project's longest long task on the knot 328 ms to under 65 ms, output unchanged), Hide / Show models with Drag over, zh-Hant wording lint | `9b60d3e`, `6f7b554`, `9c4a670`, `a1e0f53`, `3cde47b` |
 | Project files: Save project and Open project (section 14) | `05d42c4` |
 | `npm run walk`: an AI-free browser walk, 24 checks with fixed baselines | `3c04a2a`, `4fd7537` |
 
@@ -62,9 +62,12 @@ Each item was checked against the code at `05d42c4`.
 - **Object region.** It is live while supports are selected (Q4, C9), as specified. The order changed.
   With supports selected, Support shape comes before Object so it is on screen (`cb48f21`,
   `SettingsPanel.tsx:219`). With none selected, Object comes first.
-- **Select them.** It selects the supports of the active object only, because the mode edits one
-  object. When other selected objects also have customised supports, the hint gives their count and
-  says to edit them one at a time (`commands.ts:261-275`). C10 had no such limit.
+- **Select them.** The mode edits one object, so it selects the active object's customised
+  supports. When the active object has none, it makes the first selected object (in list order)
+  that has some active, enters Support Edit Mode there and selects them, and the status line says
+  "{n} customised supports selected on {object}. {m} more on other objects." while others remain.
+  When the active object has some and others also do, the hint gives their count (`commands.ts:261-275`,
+  `App.tsx` `selectCustomised`). The walk checks the switch (k).
 - **Shift hint.** While Shift is held the hint reads "Release Shift to select" or "Release Shift to
   unselect". At rest it reads "Hold Shift to unselect" or "Hold Shift to select" (`EditBar.tsx:66`).
   The copy table in 6.2 lists only the resting wording.
@@ -1187,7 +1190,8 @@ Exact, unit-local ids are the key that overrides (11.4) and the Regenerate repor
    **"Settings for {n} selected"**, the number customised among them, and **Reset to defaults**.
    Changes then apply to the selected supports only, all get the same value, and a field whose values
    differ shows a dash placeholder until set. **Select them** selects the
-   customised supports of the active object; outside Support Edit Mode it enters the mode first **[confirm]**.
+   customised supports of the active object, or of the first selected object that has some when the
+   active one has none; outside Support Edit Mode it enters the mode first **[confirm]**.
 6. **Object-wide settings are disabled while supports are selected**, with a hint why: Preset, Lift
    height, Roof / cage, Auto placement, Tree supports, **Pillar** (middle Ø is shared), **Bracing**
    (object-wide in code: braces join neighbouring pillars, mesh.ts:225), Raft, Roof, Cage, Letter
@@ -1345,7 +1349,7 @@ ring mark. 5. The Regenerate report. Steps 1 and 2 ship without any UI change.
 | C7 | Supports follow defaults unless explicitly edited; Reset drops the override (replaces the earlier "freeze at add" and "re-snapshot" options) | decided by the coordinator, recorded | Implemented. `contactSettings` holds only edited values; Reset drops them (`8fc7742`). |
 | C8 | A support with an override is kept out of tree merges | kept out (decided) | Implemented. A support with its own shape never joins an Auto Tree branch (`autotree.ts:58,62`). |
 | C9 | Edit-mode right panel live (owner ruling of 2026-10-22) | live | Implemented, changed in order. The panel is live; Support shape sits first while supports are selected (`cb48f21`). |
-| C10 | "Select them" outside Support Edit Mode enters the mode with the customised supports selected | enters | Changed. "Select them" selects the active object's customised supports and gives the count on other selected objects (`commands.ts:261-275`). |
+| C10 | "Select them" outside Support Edit Mode enters the mode with the customised supports selected | enters | Implemented, with one limit. The mode edits one object, so "Select them" makes the first selected object with customised supports active when the active one has none, and the status line names the rest (`commands.ts:261-275`, `App.tsx` `selectCustomised`). |
 | C11 | Zones frame and badge follow mixo-app-style (red hairline for every tool mode); blue stays the zone layer on the model and the Regenerate button | red frame, zone mode named in the badge | Implemented. Red hairline frame in both modes, the zone mode in the badge, blue kept for the zone layer (`f7dc6d1`). |
 | C12 | Clear manual edits also drops per-support overrides (all hand work in one action, with an Undo toast that gives the counts) | drops them | Implemented. The toast reads "Cleared {a} added, {r} removed, {c} customised." with Undo (`toast.ts:44`, `App.tsx:540-551`). |
 | C13 | Tab is no longer a mode key (it breaks focus navigation); modes are entered and left with the buttons, Done and Esc | no Tab | Implemented. The editor never takes Tab; it moves focus (`keys.ts:77-92` has no Tab rule; `a55d4ec`). |

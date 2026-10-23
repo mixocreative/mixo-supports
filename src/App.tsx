@@ -40,7 +40,7 @@ import { assertMemoryCapacity, assertPlateCapacity, assertTriangleCapacity, memo
 import { TriangleGate } from './core/jobGate';
 import { PlateLedger, type PlateScene } from './core/plateLedger';
 import { estimateTriangles, ESTIMATE_HEAD_BYTES } from './core/import/estimate';
-import { emptyScene, type ContactSettings, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
+import { emptyScene, reduceScene, type ContactSettings, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
 import type { ExportKind } from './supports/export';
 import type { GeneratedSupportMesh } from './core/supports/mesh';
@@ -726,16 +726,41 @@ export default function App() {
     offerUndo({ kind: 'resetCustomised', count: ids.length });
   }, [contactsOf, dispatch, offerUndo]);
 
-  /** The active object's customised supports, selected: outside Support Edit Mode it enters the mode first. */
+  /**
+   * The customised supports, selected: outside Support Edit Mode it enters the mode first. The mode
+   * edits one object, so with none on the active object it makes the first selected object (in
+   * list order) that has some active, and says how many sit on the others.
+   */
   const selectCustomised = useCallback(() => {
-    const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+    const current = sceneRef.current;
+    const customisedOf = (unit: PrintUnit) => customisedAmong(unit.contactSettings, contactsOf(unit).map((contact) => contact.id));
+    let unit = current.units.find((candidate) => candidate.id === current.activeUnitId);
     if (!unit) return;
+    let ids = customisedOf(unit);
+    let others = 0;
+    let change: SceneCommand | undefined;
+    if (ids.length === 0 && sessionRef.current.mode === 'off') {
+      const withSome = current.units.filter((candidate) => current.selectedUnitIds.includes(candidate.id)).map((candidate) => ({ candidate, found: customisedOf(candidate) })).filter(({ found }) => found.length > 0);
+      if (withSome.length === 0) return;
+      const [first, ...rest] = withSome;
+      unit = first!.candidate;
+      ids = first!.found;
+      others = rest.reduce((sum, { found }) => sum + found.length, 0);
+      change = { type: 'selection/set', unitIds: current.selectedUnitIds, activeUnitId: unit.id };
+      dispatch(change);
+      // The session follows the scene in an effect; step it now so the mode can start on this object.
+      send({ type: 'activeUnitChanged', id: unit.id, heavy: meshTier(triangleCount(unit), RUNTIME) === 'heavy' ? triangleCount(unit) : undefined });
+    }
     if (sessionRef.current.mode === 'off') send({ type: 'enterEdit' });
+    // Undo inside the mode stops at the scene it began with: the one with this object active.
+    if (change) undoFloor.current = reduceScene(historyRef.current.present, change);
     if (sessionRef.current.mode !== 'edit') return;
-    const ids = customisedAmong(unit.contactSettings, contactsOf(unit).map((contact) => contact.id));
     send({ type: 'restoreSelection', ids });
-    setStatus('Selected 1 customised support.', { n: ids.length }, 'Selected {n} customised supports.');
-  }, [contactsOf, send, setStatus]);
+    if (unit.id !== current.activeUnitId) {
+      const vars = { n: ids.length, m: others, object: unit.name };
+      setStatus(others > 0 ? '1 customised support selected on {object}. {m} more on other objects.' : '1 customised support selected on {object}.', vars, others > 0 ? '{n} customised supports selected on {object}. {m} more on other objects.' : '{n} customised supports selected on {object}.');
+    } else setStatus('Selected 1 customised support.', { n: ids.length }, 'Selected {n} customised supports.');
+  }, [contactsOf, dispatch, send, setStatus]);
 
   const { exporting, runExport } = useExport({ sceneRef, builtRef, exporter, runCheck, setStatus, setStatusMessage });
 

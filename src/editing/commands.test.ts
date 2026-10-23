@@ -258,12 +258,27 @@ describe('Select them', () => {
   });
 
   it('selects on the active object and says how many sit on the other objects', () => {
-    const onlyOthers = resolve('shape.selectCustomised', at({ customisedActive: 0, customisedTargeted: 3, customisedOthers: 3 }));
-    expect(onlyOthers.enabled).toBe(false);
-    expect(onlyOthers.disabledReason).toBeDefined();
     const both = resolve('shape.selectCustomised', at({ customisedActive: 2, customisedTargeted: 5, customisedOthers: 3 }));
     expect(both.enabled).toBe(true);
     expect(both.hintVars).toEqual({ n: 3 });
     expect(resolve('shape.selectCustomised', at({ customisedActive: 2, customisedTargeted: 2 })).hintVars).toBeUndefined();
+  });
+
+  it('works from another object when the active one has none, and names the first one in the hint', () => {
+    const onlyOthers = resolve('shape.selectCustomised', at({ customisedActive: 0, customisedTargeted: 3, customisedOthers: 3 }));
+    expect(onlyOthers.enabled).toBe(true);
+    expect(onlyOthers.disabledReason).toBeUndefined();
+    expect(onlyOthers.hint).toMatch(/first selected object/);
+    expect(onlyOthers.hintVars).toBeUndefined();
+  });
+
+  it('stays off while a zone brush runs, and when no object is active', () => {
+    expect(resolve('shape.selectCustomised', at({ mode: 'zones', customisedActive: 0, customisedTargeted: 3, customisedOthers: 3 })).enabled).toBe(false);
+    expect(resolve('shape.selectCustomised', at({ active: false, customisedActive: 0, customisedTargeted: 3, customisedOthers: 3 })).disabledReason).toBeDefined();
+  });
+
+  it('is not held back by a heavy active object that has none of its own', () => {
+    expect(resolve('shape.selectCustomised', at({ heavy: 3_000_000, customisedActive: 0, customisedTargeted: 3, customisedOthers: 3 })).enabled).toBe(true);
+    expect(resolve('shape.selectCustomised', at({ heavy: 3_000_000, customisedActive: 2, customisedTargeted: 2 })).enabled).toBe(false);
   });
 });

@@ -257,18 +257,20 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     visible: (s) => s.mode === 'edit' && s.selection > 0, enabled: (s) => s.customisedSelected > 0,
     disabledReason: (s) => (s.customisedSelected > 0 ? undefined : { key: 'None of the selected supports has settings of its own.' }),
   },
-  /** The header count's action: outside Support Edit Mode it enters the mode with those supports selected. The mode edits one object, so it selects the active object's. */
+  /** The header count's action: outside Support Edit Mode it enters the mode with those supports selected. The mode edits one object: the active one, or when it has none, the first selected object that does (made active). */
   'shape.selectCustomised': {
     role: 'secondary',
     label: () => 'Select them',
     hint: (s) => (s.mode === 'edit'
       ? 'Select the supports of this object that have settings of their own'
-      : s.customisedOthers > 0
-        ? 'Enter Support Edit Mode with the supports of the active object that have settings of their own selected. {n} more on the other selected objects: edit them one at a time'
-        : 'Enter Support Edit Mode with the supports that have settings of their own selected'),
-    hintVars: (s) => (s.mode !== 'edit' && s.customisedOthers > 0 ? { n: s.customisedOthers } : undefined),
-    visible: (s) => s.customisedTargeted > 0, enabled: (s) => s.active && s.customisedActive > 0 && (s.mode === 'edit' || (s.mode === 'off' && s.heavy === undefined)),
-    disabledReason: (s) => (s.mode === 'zones' ? busyStatus(s.mode) : !s.active ? { key: 'Select an object first.' } : s.mode === 'off' && s.heavy !== undefined ? heavyReason(s) : s.customisedActive === 0 ? { key: 'Only the other selected objects have supports with settings of their own. Make one of them the active object.' } : undefined),
+      : s.customisedActive === 0 && s.customisedOthers > 0
+        ? 'Enter Support Edit Mode on the first selected object that has supports with settings of their own, with those supports selected'
+        : s.customisedOthers > 0
+          ? 'Enter Support Edit Mode with the supports of the active object that have settings of their own selected. {n} more on the other selected objects: edit them one at a time'
+          : 'Enter Support Edit Mode with the supports that have settings of their own selected'),
+    hintVars: (s) => (s.mode !== 'edit' && s.customisedActive > 0 && s.customisedOthers > 0 ? { n: s.customisedOthers } : undefined),
+    visible: (s) => s.customisedTargeted > 0, enabled: (s) => s.active && (s.mode === 'edit' ? s.customisedActive > 0 : s.mode === 'off' && (s.customisedActive > 0 ? s.heavy === undefined : s.customisedOthers > 0)),
+    disabledReason: (s) => (s.mode === 'zones' ? busyStatus(s.mode) : !s.active ? { key: 'Select an object first.' } : s.mode === 'off' && s.heavy !== undefined ? heavyReason(s) : undefined),
   },
   'edit.clearSelection': {
     role: 'secondary', shortcut: 'Esc',
