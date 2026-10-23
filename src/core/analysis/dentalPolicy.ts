@@ -28,3 +28,13 @@ export function dentalAllowedAt(policy: DentalPolicy, point: Vector, normal?: Ve
   }
   return rimContainsPoint(policy.rim, point);
 }
+
+/** The final automatic-contact gate: user approval is necessary but never bypasses cavity visibility. */
+export function dentalSupportAllowedAt(
+  policy: DentalPolicy,
+  opening: Pick<{ visible(point: Vector): boolean }, 'visible'>,
+  point: Vector,
+  normal?: Vector,
+): boolean {
+  return dentalAllowedAt(policy, point, normal) && opening.visible(point);
+}

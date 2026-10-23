@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dentalAllowedAt, type DentalPolicy } from './dentalPolicy';
+import { dentalAllowedAt, dentalSupportAllowedAt, type DentalPolicy } from './dentalPolicy';
 
 const policy: DentalPolicy = {
   rim: {
@@ -46,5 +46,17 @@ describe('dentalAllowedAt', () => {
       stamps: [{ center: [3, 0, 1], radius: 1, normal: [0, -1, 0], kind: 'allow' }],
     };
     expect(dentalAllowedAt(allowed, [3, 0, 1], [0, 1, 0])).toBe(false);
+  });
+
+  it('requires the approved area and an opening-visible surface before a contact can generate', () => {
+    const opened: DentalPolicy = {
+      ...policy,
+      stamps: [{ center: [3, 0, 1], radius: 1, normal: [0, -1, 0], kind: 'allow' }],
+    };
+    const hidden = { visible: () => false };
+    const visible = { visible: () => true };
+
+    expect(dentalSupportAllowedAt(opened, hidden, [3, 0, 1], [0, -1, 0])).toBe(false);
+    expect(dentalSupportAllowedAt(opened, visible, [3, 0, 1], [0, -1, 0])).toBe(true);
   });
 });
