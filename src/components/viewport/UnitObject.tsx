@@ -10,6 +10,7 @@ import type { Vector } from '../../core/vec3';
 import { gestureMode } from '../../editing/gesture';
 import { clickTool, pickAction, type PickInput } from '../../editing/pick';
 import { brushPreview } from '../../editing/selection';
+import { appendSurfaceStamps } from '../../editing/surfaceBrush';
 import { createStroke, zoneFill } from '../../editing/stroke';
 import { displayMesh } from '../../state/meshExtras';
 import type { PrintUnit } from '../../state/project';
@@ -154,7 +155,8 @@ export function UnitObject(props: UnitObjectProps) {
     const centers = brushStroke.samples(center, zoneFill(radius));
     if (centers.length === 0) return;
     const normal = toVector(at.normal.clone().normalize());
-    strokeStamps.current = [...strokeStamps.current, ...centers.map((between) => ({ center: between, radius, normal, kind }))];
+    const stamps: ZoneStamp[] = appendSurfaceStamps(kind, radius, centers.map((point) => ({ point, normal })));
+    strokeStamps.current = [...strokeStamps.current, ...stamps];
     setStroke(strokeStamps.current);
   };
   /** Zone strokes start on the model; Drag over strokes start on the model or a support (`useScreenBrush`). */

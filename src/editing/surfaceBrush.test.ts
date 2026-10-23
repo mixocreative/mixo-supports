@@ -13,6 +13,15 @@ describe('surface brush stamps', () => {
     expect(stamps[0]!.center).toEqual([1, 2, 3]);
   });
 
+  it('preserves stroke order while giving every stamp its own coordinate arrays', () => {
+    const first: [number, number, number] = [1, 0, 0];
+    const second: [number, number, number] = [2, 0, 0];
+    const normal: [number, number, number] = [0, -1, 0];
+    const stamps = appendSurfaceStamps('paint', 2, [{ point: first, normal }, { point: second, normal }]);
+    expect(stamps.map((stamp) => stamp.center)).toEqual([first, second]);
+    expect(stamps[0]!.normal).not.toBe(stamps[1]!.normal);
+  });
+
   it('rejects a radius that cannot produce a surface stamp', () => {
     expect(() => appendSurfaceStamps('paint', 0, [])).toThrow(RangeError);
   });
