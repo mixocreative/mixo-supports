@@ -1,5 +1,5 @@
 /** Read-only edge-network diagnosis for a neutral dental STL; never writes mesh data. */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { parseStl } from '../src/core/import/stl';
 import { proposeDentalOrientation } from '../src/core/analysis/dental';
 import { cross, dot, normalize, subtract, type Vector } from '../src/core/vec3';
@@ -149,12 +149,38 @@ function summarizeSmoothPatches(threshold: number) {
     }
     patches.set(root, patch);
   }
-  const largest = [...patches.values()].sort((a, b) => b.faces - a.faces).slice(0, 8).map((patch) => ({
+  const ranked = [...patches.entries()].sort((a, b) => b[1].faces - a[1].faces);
+  const largest = ranked.slice(0, 8).map(([, patch]) => ({
     faces: patch.faces, meanOpeningDot: patch.openingDot / patch.faces,
     openingFacingFraction: patch.openingFacing / patch.faces,
     extent: patch.high.map((value, axis) => value - patch.low[axis]!), depth: [patch.low[2], patch.high[2]],
   }));
   console.log(JSON.stringify({ label: `smooth-patches-${threshold}`, patches: patches.size, largest }));
+  if (threshold === 10 && process.env.DENTAL_PROBE_SVG) {
+    const [first, second] = ranked;
+    const low = [Infinity, Infinity, Infinity];
+    const high = [-Infinity, -Infinity, -Infinity];
+    for (const point of coordinates) for (let axis = 0; axis < 3; axis += 1) {
+      low[axis] = Math.min(low[axis]!, point[axis]!);
+      high[axis] = Math.max(high[axis]!, point[axis]!);
+    }
+    const views = [[0, 1], [0, 2], [1, 2]] as const;
+    const marks: string[][][] = views.map(() => [[], [], []]);
+    for (let face = 0; face < faceCount; face += 4) {
+      const indices = [mesh.indices[face * 3]!, mesh.indices[face * 3 + 1]!, mesh.indices[face * 3 + 2]!];
+      const centroid = [0, 1, 2].map((axis) => indices.reduce((sum, index) => sum + coordinates[index]![axis]!, 0) / 3);
+      const root = find(face);
+      const color = root === first?.[0] ? 1 : root === second?.[0] ? 2 : 0;
+      views.forEach(([horizontal, vertical], view) => {
+        const x = view * 800 + 40 + (centroid[horizontal]! - low[horizontal]!) / (high[horizontal]! - low[horizontal]!) * 720;
+        const y = 760 - (centroid[vertical]! - low[vertical]!) / (high[vertical]! - low[vertical]!) * 720;
+        marks[view]![color]!.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.25"/>`);
+      });
+    }
+    const panels = marks.map((panel, view) => `<text x="${view * 800 + 40}" y="30" font-size="22" fill="#333">${['opening plane', 'transverse / depth', 'sagittal / depth'][view]}</text><g fill="#a6a39a" opacity="0.6">${panel[0]!.join('')}</g><g fill="#168a7a" opacity="0.75">${panel[1]!.join('')}</g><g fill="#bf4b53" opacity="0.75">${panel[2]!.join('')}</g>`).join('');
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 800"><rect width="2400" height="800" fill="#efede8"/>${panels}</svg>`;
+    writeFileSync(process.env.DENTAL_PROBE_SVG, svg);
+  }
 }
 
 console.log(JSON.stringify({ label: 'mesh', vertices: mesh.positions.length / 3, faces: mesh.indices.length / 3, edges: edges.size,
