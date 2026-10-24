@@ -97,6 +97,23 @@ function summarize(label: string, selected: readonly Edge[]) {
     }
     const samples = Array.from({ length: 11 }, (_, at) => coordinates[path[Math.round((path.length - 1) * at / 10)]!]!.map((value) => Math.round(value * 100) / 100));
     console.log(JSON.stringify({ label: `sharp-60-path-${component.vertices}`, pathVertices: path.length, ends: ends.map((index) => coordinates[index]), samples }));
+    const sides = [{ faces: 0, openingDot: 0, positiveNormals: 0, negativeNormals: 0 }, { faces: 0, openingDot: 0, positiveNormals: 0, negativeNormals: 0 }];
+    for (let at = 1; at < path.length; at += 1) {
+      const from = path[at - 1]!, to = path[at]!;
+      const edge = edges.get(from < to ? `${from}:${to}` : `${to}:${from}`)!;
+      for (const face of edge.faces) {
+        const ids = [mesh.indices[face * 3]!, mesh.indices[face * 3 + 1]!, mesh.indices[face * 3 + 2]!];
+        const side = ids.some((index, corner) => index === from && ids[(corner + 1) % 3] === to) ? 0 : 1;
+        const axial = dot(normals[face]!, rim.openingDirection);
+        sides[side]!.faces += 1;
+        sides[side]!.openingDot += axial;
+        if (axial >= 0) sides[side]!.positiveNormals += 1; else sides[side]!.negativeNormals += 1;
+      }
+    }
+    console.log(JSON.stringify({ label: `sharp-60-sides-${component.vertices}`, sides: sides.map((side) => ({
+      faces: side.faces, meanOpeningDot: side.openingDot / Math.max(1, side.faces),
+      positiveNormals: side.positiveNormals, negativeNormals: side.negativeNormals,
+    })) }));
   }
 }
 
