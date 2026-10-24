@@ -120,7 +120,7 @@ function summarize(label: string, selected: readonly Edge[]) {
   return components;
 }
 
-async function exportEdgeCandidates(output: string, selected: readonly Edge[], components: ReturnType<typeof summarize>) {
+async function exportEdgeCandidates(output: string, selected: readonly Edge[], components: ReturnType<typeof summarize>, connectors: readonly number[][] = []) {
   const scene = new THREE.Group();
   scene.name = 'Geometric edge candidates — not certified support boundaries';
   const shell = new THREE.BufferGeometry();
@@ -181,6 +181,13 @@ async function exportEdgeCandidates(output: string, selected: readonly Edge[], c
     const visual = new THREE.Mesh(cylinder(selected.filter((edge) => members.has(edge.a) && members.has(edge.b))),
       new THREE.MeshBasicMaterial({ color: 0xd72cc1, side: THREE.DoubleSide }));
     visual.name = 'MAGENTA: tiny closed loops — false rim candidates';
+    scene.add(visual);
+  }
+  for (const [at, path] of connectors.entries()) {
+    if (path.length < 2) continue;
+    const items = path.slice(1).map((index, step) => edges.get(path[step]! < index ? `${path[step]}:${index}` : `${index}:${path[step]}`)!);
+    const visual = new THREE.Mesh(cylinder(items), new THREE.MeshBasicMaterial({ color: at === 0 ? 0x39c000 : 0x00ad70, side: THREE.DoubleSide }));
+    visual.name = `GREEN ${at + 1}: 20-degree shortest sharp-network connector candidate, unverified`;
     scene.add(visual);
   }
 
@@ -357,13 +364,130 @@ console.log(JSON.stringify({ label: 'mesh', vertices: mesh.positions.length / 3,
   nonManifoldEdges: [...edges.values()].filter((edge) => edge.faces.length > 2).length }));
 summarize('boundary', [...edges.values()].filter((edge) => edge.faces.length === 1));
 const sharpComponents = new Map<number, ReturnType<typeof summarize>>();
+const sharpEdges = new Map<number, Edge[]>();
 for (const threshold of [10, 20, 30, 45, 60, 75]) {
   const limit = Math.cos(threshold * Math.PI / 180);
   const selected = [...edges.values()].filter((edge) => edge.faces.length === 2 && Math.abs(dot(normals[edge.faces[0]!]!, normals[edge.faces[1]!]!)) <= limit);
   const components = summarize(`sharp-${threshold}`, selected);
-  if (process.env.DENTAL_PROBE_TRACK_CHAINS) sharpComponents.set(threshold, components);
+  if (process.env.DENTAL_PROBE_TRACK_CHAINS || process.env.DENTAL_PROBE_CONNECTORS) {
+    sharpComponents.set(threshold, components);
+    sharpEdges.set(threshold, selected);
+  }
   if (threshold === 60) summarizeFaceCuts(selected);
-  if (threshold === 60 && process.env.DENTAL_PROBE_GLB) await exportEdgeCandidates(process.env.DENTAL_PROBE_GLB, selected, components);
+  if (threshold === 60 && process.env.DENTAL_PROBE_GLB && !process.env.DENTAL_PROBE_CONNECTORS) await exportEdgeCandidates(process.env.DENTAL_PROBE_GLB, selected, components);
+}
+if (process.env.DENTAL_PROBE_CONNECTORS) {
+  const baselines = sharpComponents.get(60)?.slice(0, 2) ?? [];
+  const baselineEdges = sharpEdges.get(60) ?? [];
+  const degree = new Map<number, number>();
+  for (const component of baselines) {
+    const members = new Set(component.members);
+    for (const edge of baselineEdges) if (members.has(edge.a) && members.has(edge.b)) {
+      degree.set(edge.a, (degree.get(edge.a) ?? 0) + 1);
+      degree.set(edge.b, (degree.get(edge.b) ?? 0) + 1);
+    }
+  }
+  const ends = baselines.map((component) => component.members.filter((index) => degree.get(index) === 1));
+  const baselineMembers = baselines.map((component) => new Set(component.members));
+  const excluded = new Set(baselineEdges.filter((edge) => baselineMembers.some((members) => members.has(edge.a) && members.has(edge.b))));
+  const graph = new Map<number, { next: number; length: number }[]>();
+  for (const edge of sharpEdges.get(20) ?? []) {
+    if (excluded.has(edge)) continue;
+    const a = vertex(edge.a), b = vertex(edge.b);
+    const length = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    for (const [from, to] of [[edge.a, edge.b], [edge.b, edge.a]]) {
+      const neighbors = graph.get(from) ?? [];
+      neighbors.push({ next: to, length });
+      graph.set(from, neighbors);
+    }
+  }
+  const shortest = (start: number, end: number) => {
+    const distance = new Map<number, number>([[start, 0]]);
+    const previous = new Map<number, number>();
+    const heap: { index: number; cost: number }[] = [{ index: start, cost: 0 }];
+    const push = (entry: { index: number; cost: number }) => {
+      heap.push(entry);
+      for (let at = heap.length - 1; at > 0;) {
+        const parent = (at - 1) >> 1;
+        if (heap[parent]!.cost <= heap[at]!.cost) break;
+        [heap[parent], heap[at]] = [heap[at]!, heap[parent]!];
+        at = parent;
+      }
+    };
+    const pop = () => {
+      const first = heap[0]!;
+      const last = heap.pop()!;
+      if (heap.length) {
+        heap[0] = last;
+        for (let at = 0;;) {
+          const left = at * 2 + 1, right = left + 1;
+          if (left >= heap.length) break;
+          const child = right < heap.length && heap[right]!.cost < heap[left]!.cost ? right : left;
+          if (heap[at]!.cost <= heap[child]!.cost) break;
+          [heap[at], heap[child]] = [heap[child]!, heap[at]!];
+          at = child;
+        }
+      }
+      return first;
+    };
+    while (heap.length) {
+      const { index, cost } = pop();
+      if (cost !== distance.get(index)) continue;
+      if (index === end) break;
+      for (const { next, length } of graph.get(index) ?? []) {
+        const candidate = cost + length;
+        if (candidate >= (distance.get(next) ?? Infinity)) continue;
+        distance.set(next, candidate);
+        previous.set(next, index);
+        push({ index: next, cost: candidate });
+      }
+    }
+    const path = [end];
+    if (!distance.has(end)) return { length: null, path: [] as number[] };
+    while (path[0] !== start) path.unshift(previous.get(path[0]!)!);
+    return { length: distance.get(end)!, path };
+  };
+  const first = ends[0] ?? [], second = ends[1] ?? [];
+  const connectorPaths: number[][] = [];
+  for (let pair = 0; pair < 2; pair += 1) {
+    const a = first[pair]!, b = second[pair]!, alternate = second[1 - pair]!;
+    if (a === undefined || b === undefined) continue;
+    const direct = shortest(a, b), crossed = shortest(a, alternate);
+    if (crossed.path.length) connectorPaths.push(crossed.path);
+    for (const [label, result] of [['matched', direct], ['crossed', crossed]] as const) {
+      const axial = result.path.map((index) => coordinates[index]![2]);
+      console.log(JSON.stringify({ label: `connector-${pair}-${label}`, from: coordinates[a], to: coordinates[label === 'matched' ? b : alternate],
+        length: result.length, vertices: result.path.length,
+        axialDepth: axial.length ? [Math.min(...axial), Math.max(...axial)] : null,
+        samples: Array.from({ length: result.path.length ? 7 : 0 }, (_, at) => coordinates[result.path[Math.round((result.path.length - 1) * at / 6)]!]!.map((value) => Math.round(value * 100) / 100)) }));
+    }
+  }
+  const proposed = new Set<Edge>(excluded);
+  for (const path of connectorPaths) for (let step = 1; step < path.length; step += 1) {
+    const a = path[step - 1]!, b = path[step]!;
+    proposed.add(edges.get(a < b ? `${a}:${b}` : `${b}:${a}`)!);
+  }
+  const proposedDegree = new Map<number, number>();
+  for (const edge of proposed) for (const index of [edge.a, edge.b]) proposedDegree.set(index, (proposedDegree.get(index) ?? 0) + 1);
+  const faceParent = Int32Array.from({ length: mesh.indices.length / 3 }, (_, index) => index);
+  const findFace = (start: number): number => {
+    let root = start;
+    while (faceParent[root] !== root) root = faceParent[root]!;
+    while (start !== root) { const next = faceParent[start]!; faceParent[start] = root; start = next; }
+    return root;
+  };
+  for (const edge of edges.values()) if (edge.faces.length === 2 && !proposed.has(edge)) {
+    faceParent[findFace(edge.faces[0]!)] = findFace(edge.faces[1]!);
+  }
+  const regionSizes = new Map<number, number>();
+  for (let face = 0; face < faceParent.length; face += 1) {
+    const root = findFace(face);
+    regionSizes.set(root, (regionSizes.get(root) ?? 0) + 1);
+  }
+  console.log(JSON.stringify({ label: 'candidate-outer-loop-topology', blockedEdges: proposed.size,
+    vertices: proposedDegree.size, nonDegreeTwo: [...proposedDegree.values()].filter((count) => count !== 2).length,
+    faceRegions: regionSizes.size, largestRegions: [...regionSizes.values()].sort((a, b) => b - a).slice(0, 5) }));
+  if (process.env.DENTAL_PROBE_GLB) await exportEdgeCandidates(process.env.DENTAL_PROBE_GLB, baselineEdges, baselines, connectorPaths);
 }
 if (process.env.DENTAL_PROBE_TRACK_CHAINS) {
   const baseline = sharpComponents.get(60)?.slice(0, 2) ?? [];
