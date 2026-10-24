@@ -16,17 +16,16 @@ export function DentalBar({ gesture, unitName, ui, send, run }: {
   if (gesture.kind === 'dental-orientation') return <>
     <div className="edit-frame" aria-hidden="true" />
     <div className="edit-badge" role="status">
-      {t('Dental Auto Generate')}<span>{unitName}</span>
+      {t('Step 1 · Orientation')}<span>{unitName}</span>
       <b>{t('Review the detected lower opening before changing orientation.')}</b>
     </div>
     <div className="edit-bar">
       <div className="edit-row">
         <span className="edit-hint">{t('Detector confidence {n}%', { n: Math.round(gesture.proposal.diagnostics.confidence * 100) })}</span>
         <CommandButton command={resolve('dental.useDetected', ui)} run={run} />
-        <CommandButton command={resolve('dental.manualArea', ui)} run={run} />
-        <DoneButton ui={ui} run={run} />
+        <CommandButton command={resolve('dental.next', ui)} run={run} />
       </div>
-      <p className="edit-note" role="note">{t('Use detected orientation rotates the opening down. Or adjust rotation with the gizmo, then keep manual orientation.')}</p>
+      <p className="edit-note" role="note">{t('Auto orientation only rotates the aligner. Adjust with the rotation gizmo, then press Next.')}</p>
     </div>
   </>;
   return <>

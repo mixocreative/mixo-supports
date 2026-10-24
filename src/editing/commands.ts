@@ -16,7 +16,7 @@ export const COMMAND_IDS = [
   'supports.generate', 'supports.dentalAuto', 'supports.clearManual', 'supports.remove', 'check.run',
   'mode.edit', 'mode.zones', 'mode.exit',
   'zones.clearAll',
-  'dental.useDetected', 'dental.manualArea', 'dental.generate',
+  'dental.useDetected', 'dental.next', 'dental.generate',
   'edit.generate', 'edit.add', 'edit.remove', 'edit.dragSelect', 'edit.dragUnselect', 'edit.clearSelection', 'edit.deleteSelection',
   'setting.clickReach',
   'shape.reset', 'shape.selectCustomised',
@@ -184,7 +184,7 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     disabledReason: (s) => (s.units === 0 ? { key: 'Import a model before generating supports.' } : s.generating ? generatingReason : undefined),
   },
   'supports.dentalAuto': {
-    role: 'secondary', label: () => 'Dental Auto Generate', hint: () => 'Detect an aligner lower opening, review orientation, then limit supports to its approved lower area',
+    role: 'secondary', label: () => 'Aligner Support Production', hint: () => 'Detect an aligner lower opening, review orientation, then limit supports to its approved lower area',
     visible: always, enabled: (s) => s.mode === 'off' && editable(s) && !s.generating,
     disabledReason: (s) => (s.generating ? generatingReason : s.mode !== 'off' || !editable(s) ? entryReason(s) : undefined),
   },
@@ -237,11 +237,11 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     visible: (s) => s.mode === 'zones', enabled: (s) => s.zones > 0, disabledReason: (s) => (s.zones > 0 ? undefined : { key: 'No zones are painted yet.' }),
   },
   'dental.useDetected': {
-    role: 'primary', label: () => 'Use detected orientation', hint: () => 'Rotate the detected cavity opening down and continue to the allowed support area',
+    role: 'secondary', label: () => 'Auto orientation', hint: () => 'Rotate the aligner to the proposed orientation without advancing',
     visible: (s) => s.mode === 'dental', enabled: always, disabledReason: never,
   },
-  'dental.manualArea': {
-    role: 'secondary', label: () => 'Keep manual orientation', hint: () => 'Keep the current rotation and continue to the allowed support area',
+  'dental.next': {
+    role: 'primary', label: () => 'Next', hint: () => 'Keep the current orientation and review the proposed support area',
     visible: (s) => s.mode === 'dental', enabled: always, disabledReason: never,
   },
   'dental.generate': {

@@ -313,6 +313,23 @@ function traceLowerFeatureLoop(
   const selected = byRadius[0];
   const outer = byRadius[1];
   if (!selected || !outer || radiusOf(selected) / radiusOf(outer) < 0.7) return undefined;
+  // A local cavity/attachment can form a perfectly closed sharp pair. It is not an
+  // aligner trim unless it spans the arch in both in-plane directions.
+  const projectedExtent = (indices: readonly number[], axis: Vector): number => {
+    let low = Infinity;
+    let high = -Infinity;
+    for (const index of indices) {
+      const value = dot(subtract(pointAt(mesh, index), centre), axis);
+      low = Math.min(low, value);
+      high = Math.max(high, value);
+    }
+    return high - low;
+  };
+  const all = Array.from({ length: mesh.positions.length / 3 }, (_, index) => index);
+  for (const axis of [tangent, bitangent]) {
+    const global = projectedExtent(all, axis);
+    if (!(global > 0) || projectedExtent(selected, axis) / global < 0.6 || projectedExtent(outer, axis) / global < 0.6) return undefined;
+  }
   const loopCentre = scale(selected.map((index) => pointAt(mesh, index)).reduce<Vector>((sum, point) => [sum[0] + point[0], sum[1] + point[1], sum[2] + point[2]], [0, 0, 0]), 1 / selected.length);
   return selected.map((index) => pointAt(mesh, index)).sort((left, right) => Math.atan2(dot(subtract(left, loopCentre), bitangent), dot(subtract(left, loopCentre), tangent)) - Math.atan2(dot(subtract(right, loopCentre), bitangent), dot(subtract(right, loopCentre), tangent)));
 }

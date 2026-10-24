@@ -221,6 +221,12 @@ describe('the left panel commands', () => {
     expect(resolve('dental.generate', READY).visible).toBe(false);
   });
 
+  it('names the aligner workflow and keeps auto orientation separate from Next', () => {
+    expect(resolve('supports.dentalAuto', READY).label).toBe('Aligner Support Production');
+    expect(resolve('dental.useDetected', at({ mode: 'dental' })).label).toBe('Auto orientation');
+    expect(resolve('dental.next', at({ mode: 'dental' })).label).toBe('Next');
+  });
+
   it('Delete objects needs a selected object', () => {
     expect(resolve('objects.delete', at({ selectedObjects: 0 })).enabled).toBe(false);
     expect(resolve('objects.delete', READY).enabled).toBe(true);

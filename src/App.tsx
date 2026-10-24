@@ -793,18 +793,21 @@ export default function App() {
         if (!unit) return;
         const proposal = proposeDentalOrientation(unit.source);
         if (proposal.kind !== 'proposal') return setStatus('Dental opening could not be detected safely. Rotate the model manually and use normal Generate.');
+        setGizmoMode('rotate');
         return send({ type: 'enterDental', proposal });
       }
-      case 'dental.useDetected':
-      case 'dental.manualArea': {
+      case 'dental.useDetected': {
         const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
         const proposal = sessionRef.current.dentalProposal;
         if (!unit || !proposal || sessionRef.current.dentalStage !== 'orientation') return;
-        const transform = id === 'dental.useDetected' ? { ...unit.transform, rotation: rotationToPlateDown(proposal.rim.openingDirection) } : unit.transform;
-        dispatch({ type: 'batch', commands: [
-          ...(transform === unit.transform ? [] : [{ type: 'transform/set' as const, unitId: unit.id, transform }]),
-          { type: 'dental/set' as const, unitId: unit.id, policy: { rim: proposal.rim, stamps: [] } },
-        ] });
+        dispatch({ type: 'transform/set', unitId: unit.id, transform: { ...unit.transform, rotation: rotationToPlateDown(proposal.rim.openingDirection) } });
+        return;
+      }
+      case 'dental.next': {
+        const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+        const proposal = sessionRef.current.dentalProposal;
+        if (!unit || !proposal || sessionRef.current.dentalStage !== 'orientation') return;
+        dispatch({ type: 'dental/set', unitId: unit.id, policy: { rim: proposal.rim, stamps: [] } });
         send({ type: 'acceptDentalOrientation' });
         requestView('bottom');
         return;

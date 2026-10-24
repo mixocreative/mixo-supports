@@ -2,6 +2,11 @@
 import { readFileSync } from 'node:fs';
 import { parseStl } from '../src/core/import/stl';
 import { proposeDentalOrientation, rotationToPlateDown } from '../src/core/analysis/dental';
+import { DentalOpeningRaycaster } from '../src/core/analysis/dental';
+import { dentalAllowedVertices } from '../src/core/analysis/dentalPolicy';
+import { runPlacementJob, filterDentalPlacement } from '../src/supports/jobRunner';
+import { defaultSupportSettings, toPlacementSettings } from '../src/core/supports/settings';
+import { inverseTransformPoint } from '../src/state/transform';
 import { applyToDirection, placementMatrix, transformPositions } from '../src/core/transform';
 import type { Vector } from '../src/core/vec3';
 
@@ -34,6 +39,28 @@ if (process.env.DENTAL_PROBE_MODE === 'rim') {
   }
   const xs=coordinates.map(p=>p[0]), ys=coordinates.map(p=>p[1]);
   console.log(JSON.stringify({kind:'rim',pointCount:coordinates.length,centroid:base.rim.centroid,tangent:base.rim.tangent,bitangent:base.rim.bitangent,min:[Math.min(...xs),Math.min(...ys)],max:[Math.max(...xs),Math.max(...ys)],width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)}));
+  process.exit(0);
+}
+if (process.env.DENTAL_PROBE_MODE === 'mask') {
+  const opening=new DentalOpeningRaycaster(mesh,base.rim);
+  const mask=dentalAllowedVertices({rim:base.rim,stamps:[]},opening,mesh.positions,new Float32Array(mesh.positions.length));
+  let count=0,minU=Infinity,maxU=-Infinity,minV=Infinity,maxV=-Infinity,minD=Infinity,maxD=-Infinity;
+  for(let vertex=0;vertex<mask.length;vertex++)if(mask[vertex]){
+    count++;
+    const i=vertex*3,d:Vector=[mesh.positions[i]!-base.rim.centroid[0],mesh.positions[i+1]!-base.rim.centroid[1],mesh.positions[i+2]!-base.rim.centroid[2]];
+    const u=d[0]*base.rim.tangent[0]+d[1]*base.rim.tangent[1]+d[2]*base.rim.tangent[2],v=d[0]*base.rim.bitangent[0]+d[1]*base.rim.bitangent[1]+d[2]*base.rim.bitangent[2],depth=d[0]*original[0]+d[1]*original[1]+d[2]*original[2];
+    minU=Math.min(minU,u);maxU=Math.max(maxU,u);minV=Math.min(minV,v);maxV=Math.max(maxV,v);minD=Math.min(minD,depth);maxD=Math.max(maxD,depth);
+  }
+  console.log(JSON.stringify({kind:'mask',count,total:mask.length,projectedWidth:maxU-minU,projectedHeight:maxV-minV,depth:[minD,maxD],footprintCells:base.rim.visibilityMask.reduce((a,b)=>a+b,0)}));
+  process.exit(0);
+}
+if (process.env.DENTAL_PROBE_MODE === 'contacts') {
+  const orientation={position:[0,0,0] as Vector,rotation:rotationToPlateDown(original)};
+  const job={mesh,orientation,settings:toPlacementSettings(defaultSupportSettings),dental:{rim:base.rim,stamps:[]}};
+  const generic=runPlacementJob(job);
+  const dental=filterDentalPlacement(job,generic);
+  const depths=dental.points.map(p=>{const local=inverseTransformPoint(orientation,p.position),d:Vector=[local[0]-base.rim.centroid[0],local[1]-base.rim.centroid[1],local[2]-base.rim.centroid[2]];return d[0]*original[0]+d[1]*original[1]+d[2]*original[2];}).sort((a,b)=>a-b);
+  console.log(JSON.stringify({kind:'contacts',generic:generic.points.length,dental:dental.points.length,depthQuantiles:[0,.1,.25,.5,.75,.9,1].map(q=>depths[Math.floor(q*(depths.length-1))])}));
   process.exit(0);
 }
 if (process.env.DENTAL_PROBE_MODE === 'front') {
