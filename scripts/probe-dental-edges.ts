@@ -1,8 +1,10 @@
-/** Read-only edge-network diagnosis for a neutral dental STL; never writes mesh data. */
+/** Edge-network diagnosis for a neutral dental STL; optional SVG/GLB debug exports never alter the source mesh. */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseStl } from '../src/core/import/stl';
 import { proposeDentalOrientation } from '../src/core/analysis/dental';
 import { cross, dot, normalize, subtract, type Vector } from '../src/core/vec3';
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 
 const file = process.env.DENTAL_PROBE_FIXTURE;
 if (!file) throw new Error('DENTAL_PROBE_FIXTURE is required');
@@ -115,6 +117,90 @@ function summarize(label: string, selected: readonly Edge[]) {
       positiveNormals: side.positiveNormals, negativeNormals: side.negativeNormals,
     })) }));
   }
+  return components;
+}
+
+async function exportEdgeCandidates(output: string, selected: readonly Edge[], components: ReturnType<typeof summarize>) {
+  const scene = new THREE.Group();
+  scene.name = 'Geometric edge candidates — not certified support boundaries';
+  const shell = new THREE.BufferGeometry();
+  shell.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
+  shell.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
+  shell.computeVertexNormals();
+  const shellMesh = new THREE.Mesh(shell, new THREE.MeshBasicMaterial({ color: 0xf3efe7, side: THREE.DoubleSide, transparent: true, opacity: 0.72 }));
+  shellMesh.name = 'Neutral reference aligner';
+  scene.add(shellMesh);
+
+  const cylinder = (items: readonly Edge[]) => {
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const radius = 0.16;
+    const sides = 6;
+    for (const edge of items) {
+      const a = new THREE.Vector3(...vertex(edge.a));
+      const b = new THREE.Vector3(...vertex(edge.b));
+      const axis = b.clone().sub(a).normalize();
+      if (!Number.isFinite(axis.x)) continue;
+      const across = new THREE.Vector3(0, 0, 1);
+      if (Math.abs(axis.dot(across)) > 0.9) across.set(0, 1, 0);
+      const u = new THREE.Vector3().crossVectors(axis, across).normalize();
+      const v = new THREE.Vector3().crossVectors(axis, u).normalize();
+      const base = positions.length / 3;
+      for (const centre of [a, b]) for (let side = 0; side < sides; side += 1) {
+        const angle = side * Math.PI * 2 / sides;
+        const point = centre.clone().addScaledVector(u, Math.cos(angle) * radius).addScaledVector(v, Math.sin(angle) * radius);
+        positions.push(point.x, point.y, point.z);
+      }
+      for (let side = 0; side < sides; side += 1) {
+        const next = (side + 1) % sides;
+        indices.push(base + side, base + next, base + sides + side,
+          base + next, base + sides + next, base + sides + side);
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
+  };
+  const groups = [
+    { component: components[0], color: 0x007ed3, name: 'BLUE: large open full-arch sharp edge candidate' },
+    { component: components[1], color: 0xff9a00, name: 'ORANGE: smaller open partial sharp edge candidate' },
+  ];
+  for (const group of groups) {
+    if (!group.component) continue;
+    const members = new Set(group.component.members);
+    const items = selected.filter((edge) => members.has(edge.a) && members.has(edge.b));
+    const visual = new THREE.Mesh(cylinder(items), new THREE.MeshBasicMaterial({ color: group.color, side: THREE.DoubleSide }));
+    visual.name = group.name;
+    scene.add(visual);
+  }
+  const smallClosed = components.filter((component) => component.allDegreeTwo && component.vertices >= 6 && component.vertices < 100);
+  if (smallClosed.length) {
+    const members = new Set(smallClosed.flatMap((component) => component.members));
+    const visual = new THREE.Mesh(cylinder(selected.filter((edge) => members.has(edge.a) && members.has(edge.b))),
+      new THREE.MeshBasicMaterial({ color: 0xd72cc1, side: THREE.DoubleSide }));
+    visual.name = 'MAGENTA: tiny closed loops — false rim candidates';
+    scene.add(visual);
+  }
+
+  // GLTFExporter uses FileReader for its binary Blob even when no texture is present.
+  class NodeFileReader {
+    result: ArrayBuffer | null = null;
+    onloadend: (() => void) | null = null;
+    async readAsArrayBuffer(blob: Blob) {
+      this.result = await blob.arrayBuffer();
+      this.onloadend?.();
+    }
+  }
+  (globalThis as unknown as { FileReader: typeof FileReader }).FileReader = NodeFileReader as unknown as typeof FileReader;
+  const binary = await new GLTFExporter().parseAsync(scene, { binary: true });
+  if (!(binary instanceof ArrayBuffer)) throw new Error('Expected binary GLB');
+  writeFileSync(output, Buffer.from(binary));
+  console.log(JSON.stringify({ label: 'edge-glb', output, bytes: binary.byteLength,
+    largeChainEdges: components[0]?.vertices ? components[0].vertices - 1 : 0,
+    partialChainEdges: components[1]?.vertices ? components[1].vertices - 1 : 0,
+    smallClosedLoops: smallClosed.length }));
 }
 
 function summarizeSmoothPatches(threshold: number) {
@@ -273,7 +359,8 @@ summarize('boundary', [...edges.values()].filter((edge) => edge.faces.length ===
 for (const threshold of [10, 20, 30, 45, 60, 75]) {
   const limit = Math.cos(threshold * Math.PI / 180);
   const selected = [...edges.values()].filter((edge) => edge.faces.length === 2 && Math.abs(dot(normals[edge.faces[0]!]!, normals[edge.faces[1]!]!)) <= limit);
-  summarize(`sharp-${threshold}`, selected);
+  const components = summarize(`sharp-${threshold}`, selected);
   if (threshold === 60) summarizeFaceCuts(selected);
+  if (threshold === 60 && process.env.DENTAL_PROBE_GLB) await exportEdgeCandidates(process.env.DENTAL_PROBE_GLB, selected, components);
 }
 for (const threshold of [10, 20, 30, 45, 60]) summarizeSmoothPatches(threshold);
