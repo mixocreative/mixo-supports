@@ -99,4 +99,6 @@ Probe local Ollama availability first. Give local Ollama bounded mechanical work
 
 ## Resume contract
 
+Cloud execution note: this Git commit contains the plan and a fixture-parameterized diagnostic script, **not** the patient STL or annotated screenshots. A cloud worker can implement synthetic/general changes from the plan, but cannot complete the private-sample reproduction, 46.46° calibration, visual boundary check, or release gate until the owner supplies those assets through an explicitly approved secure channel or a local runner performs those checks and returns evidence. Do not mark those gates complete from this text alone.
+
 Successor: read this plan, `C:\Users\DCT\.claude\orchestrate\dental-auto-generate\docs\dental-rework-handoff.md`, the seven private evidence files, the local read-only probe `scripts/probe-dental-orientation.ts`, current `git status`, then start at the first unchecked gate. Distinguish **observed** findings from hypotheses. Record each completed gate, commands/results, commit, remaining risk, and exactly one next action in the handoff. If credits end, leave working tree and evidence recoverable; do not report a gate complete without its test and visual evidence.
