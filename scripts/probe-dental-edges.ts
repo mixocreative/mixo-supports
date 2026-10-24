@@ -117,6 +117,46 @@ function summarize(label: string, selected: readonly Edge[]) {
   }
 }
 
+function summarizeSmoothPatches(threshold: number) {
+  const faceCount = mesh.indices.length / 3;
+  const parent = Int32Array.from({ length: faceCount }, (_, index) => index);
+  const find = (start: number): number => {
+    let root = start;
+    while (parent[root] !== root) root = parent[root]!;
+    let next = start;
+    while (next !== root) { const prior = parent[next]!; parent[next] = root; next = prior; }
+    return root;
+  };
+  const limit = Math.cos(threshold * Math.PI / 180);
+  for (const edge of edges.values()) {
+    if (edge.faces.length !== 2) continue;
+    const [a, b] = edge.faces;
+    if (Math.abs(dot(normals[a!]!, normals[b!]!)) <= limit) continue;
+    parent[find(a!)] = find(b!);
+  }
+  const patches = new Map<number, { faces: number; openingDot: number; openingFacing: number; low: number[]; high: number[] }>();
+  for (let face = 0; face < faceCount; face += 1) {
+    const root = find(face);
+    const patch = patches.get(root) ?? { faces: 0, openingDot: 0, openingFacing: 0, low: [Infinity, Infinity, Infinity], high: [-Infinity, -Infinity, -Infinity] };
+    const axial = dot(normals[face]!, rim.openingDirection);
+    patch.faces += 1;
+    patch.openingDot += axial;
+    if (axial > 0.5) patch.openingFacing += 1;
+    const indices = [mesh.indices[face * 3]!, mesh.indices[face * 3 + 1]!, mesh.indices[face * 3 + 2]!];
+    for (const index of indices) for (let axis = 0; axis < 3; axis += 1) {
+      patch.low[axis] = Math.min(patch.low[axis]!, coordinates[index]![axis]!);
+      patch.high[axis] = Math.max(patch.high[axis]!, coordinates[index]![axis]!);
+    }
+    patches.set(root, patch);
+  }
+  const largest = [...patches.values()].sort((a, b) => b.faces - a.faces).slice(0, 8).map((patch) => ({
+    faces: patch.faces, meanOpeningDot: patch.openingDot / patch.faces,
+    openingFacingFraction: patch.openingFacing / patch.faces,
+    extent: patch.high.map((value, axis) => value - patch.low[axis]!), depth: [patch.low[2], patch.high[2]],
+  }));
+  console.log(JSON.stringify({ label: `smooth-patches-${threshold}`, patches: patches.size, largest }));
+}
+
 console.log(JSON.stringify({ label: 'mesh', vertices: mesh.positions.length / 3, faces: mesh.indices.length / 3, edges: edges.size,
   globalExtent: global, boundaryEdges: [...edges.values()].filter((edge) => edge.faces.length === 1).length,
   nonManifoldEdges: [...edges.values()].filter((edge) => edge.faces.length > 2).length }));
@@ -125,3 +165,4 @@ for (const threshold of [10, 20, 30, 45, 60, 75]) {
   const limit = Math.cos(threshold * Math.PI / 180);
   summarize(`sharp-${threshold}`, [...edges.values()].filter((edge) => edge.faces.length === 2 && Math.abs(dot(normals[edge.faces[0]!]!, normals[edge.faces[1]!]!)) <= limit));
 }
+for (const threshold of [10, 20, 30, 45, 60]) summarizeSmoothPatches(threshold);
