@@ -570,6 +570,7 @@ export const ja: Dictionary = {
   'Rotate the aligner to the proposed orientation without advancing': 'アライナーを推奨方向に回転するだけで、次のステップには進みません。',
   'Keep the current orientation and review the proposed support area': '現在の向きを保ち、推奨サポート領域を確認します。',
   'Auto orientation only rotates the aligner. Adjust with the rotation gizmo, then press Next.': '自動調整はアライナーを回転するだけです。回転ギズモで調整し、「次へ」を押してください。',
+  'Auto orientation is uncertain. Adjust the aligner with the rotation gizmo.': '自動調整の向きを確定できません。回転ギズモでアライナーを調整してください。',
   'Detect an aligner lower opening, review orientation, then limit supports to its approved lower area': 'アライナー下部の開口を検出し、向きを確認してから、承認された下部領域にサポートを限定します。',
   'Review the detected lower opening before changing orientation.': '向きを変更する前に、検出された下部開口を確認してください。',
   'Detector confidence {n}%': '検出信頼度 {n}%',

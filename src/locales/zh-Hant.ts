@@ -574,6 +574,7 @@ export const zhHant: Dictionary = {
   'Rotate the aligner to the proposed orientation without advancing': '只將牙套旋轉至建議方向，不會進入下一步。',
   'Keep the current orientation and review the proposed support area': '保留目前方向並檢視建議的支撐區域。',
   'Auto orientation only rotates the aligner. Adjust with the rotation gizmo, then press Next.': '自動調整方向只會旋轉牙套。可用旋轉控制器微調，再按「下一步」。',
+  'Auto orientation is uncertain. Adjust the aligner with the rotation gizmo.': '無法確定自動方向。請用旋轉控制器調整牙套。',
   'Detect an aligner lower opening, review orientation, then limit supports to its approved lower area': '偵測牙套下方開口、檢視方向，並把支撐限制在核准的下方區域。',
   'Review the detected lower opening before changing orientation.': '變更方向前，請先檢視偵測到的下方開口。',
   'Detector confidence {n}%': '偵測信心度 {n}%',

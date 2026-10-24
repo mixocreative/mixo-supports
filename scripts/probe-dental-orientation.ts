@@ -1,13 +1,13 @@
 // Disposable, read-only local probe. Supply DENTAL_PROBE_FIXTURE; never commit patient geometry.
 import { readFileSync } from 'node:fs';
 import { parseStl } from '../src/core/import/stl';
-import { proposeDentalOrientation, rotationToPlateDown } from '../src/core/analysis/dental';
+import { proposeDentalOrientation, rotationToDentalPose, rotationToPlateDown } from '../src/core/analysis/dental';
 import { DentalOpeningRaycaster } from '../src/core/analysis/dental';
 import { dentalAllowedVertices } from '../src/core/analysis/dentalPolicy';
 import { runPlacementJob, filterDentalPlacement } from '../src/supports/jobRunner';
 import { defaultSupportSettings, toPlacementSettings } from '../src/core/supports/settings';
 import { inverseTransformPoint } from '../src/state/transform';
-import { applyToDirection, placementMatrix, transformPositions } from '../src/core/transform';
+import { applyToDirection, applyToPoint, placementMatrix, transformPositions } from '../src/core/transform';
 import type { Vector } from '../src/core/vec3';
 
 const file = process.env.DENTAL_PROBE_FIXTURE;
@@ -80,6 +80,28 @@ if (process.env.DENTAL_PROBE_MODE === 'front') {
   const downhill:Vector=[(plate[0]-dp*original[0])/Math.sin(angle(original,plate)*Math.PI/180),(plate[1]-dp*original[1])/Math.sin(angle(original,plate)*Math.PI/180),(plate[2]-dp*original[2])/Math.sin(angle(original,plate)*Math.PI/180)];
   const minor3:Vector=[minor[0]*base.rim.tangent[0]+minor[1]*base.rim.bitangent[0],minor[0]*base.rim.tangent[1]+minor[1]*base.rim.bitangent[1],minor[0]*base.rim.tangent[2]+minor[1]*base.rim.bitangent[2]];
   console.log(JSON.stringify({kind:'front',extent:[maxX-minX,maxY-minY],major,minor,minor3,angleMinorToDownhill:angle(minor3,downhill),centralOccupancyAtMinorEnds:[occupied(true),occupied(false)],downhill}));
+  process.exit(0);
+}
+if (process.env.DENTAL_PROBE_MODE === 'pose100') {
+  let state=20261024;
+  const random=()=>((state=(1664525*state+1013904223)>>>0)/2**32);
+  let proposals=0,abstentions=0,maxError=0;
+  for(let trial=0;trial<100;trial++){
+    const scramble:Vector=[(random()*2-1)*Math.PI,(random()*2-1)*Math.PI,(random()*2-1)*Math.PI];
+    const turned={positions:transformPositions(mesh.positions,placementMatrix({position:[0,0,0],rotation:scramble})),indices:mesh.indices};
+    const found=proposeDentalOrientation(turned);
+    if(found.kind!=='proposal'){abstentions++;continue;}
+    const pose=rotationToDentalPose(turned,found.rim);
+    if(!pose){abstentions++;continue;}
+    proposals++;
+    const restored=placementMatrix({position:[0,0,0],rotation:pose});
+    for(let index=0;index<mesh.positions.length/3;index+=1013){
+      const at=index*3;
+      const point=applyToPoint(restored,turned.positions[at]!,turned.positions[at+1]!,turned.positions[at+2]!);
+      maxError=Math.max(maxError,Math.hypot(point[0]-mesh.positions[at]!,point[1]-mesh.positions[at+1]!,point[2]-mesh.positions[at+2]!));
+    }
+  }
+  console.log(JSON.stringify({kind:'pose100',seed:20261024,trials:100,proposals,abstentions,maxSampledVertexErrorMm:maxError}));
   process.exit(0);
 }
 let seed = 20261024;

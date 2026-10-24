@@ -98,6 +98,86 @@ export function rotationToPlateDown(openingDirection: Vector): Vector {
   ];
 }
 
+/**
+ * Experimental aligner preset calibrated to the owner-approved, already-correct reference pose.
+ * The opening and signed arch front establish a full local frame, so a scrambled STL can be
+ * restored without assuming its original world axes. Returns undefined for ambiguous arches.
+ * This is a convenience proposal, not a universal clinical print orientation.
+ */
+export function rotationToDentalPose(mesh: TriangleMesh, rim: DentalRim): Vector | undefined {
+  const front = estimateArchFront(mesh, rim);
+  if (!front) return undefined;
+  const targetOpening = normalize([0.03714905735095951, -0.6888892651222808, -0.7239140335269232]);
+  const targetFront = normalize([-0.01322175449610946, 0.7240118281038878, -0.6896608282146458]);
+  const targetSide = normalize(cross(targetFront, targetOpening));
+  const sourceSide = normalize(cross(front, rim.openingDirection));
+  const source = [sourceSide, front, rim.openingDirection];
+  const target = [targetSide, targetFront, targetOpening];
+  const at = (row: number, column: number) => target.reduce((sum, axis, index) => sum + axis[row]! * source[index]![column]!, 0);
+  const m11 = at(0, 0), m12 = at(0, 1), m13 = at(0, 2);
+  const m22 = at(1, 1), m23 = at(1, 2);
+  const m32 = at(2, 1), m33 = at(2, 2);
+  const y = Math.asin(Math.max(-1, Math.min(1, m13)));
+  return Math.abs(m13) < 0.9999999
+    ? [Math.atan2(-m23, m33), y, Math.atan2(-m12, m11)]
+    : [Math.atan2(m32, m22), y, 0];
+}
+
+function estimateArchFront(mesh: TriangleMesh, rim: DentalRim): Vector | undefined {
+  const count = mesh.positions.length / 3;
+  if (count < 32) return undefined;
+  const projected = (index: number): [number, number] => {
+    const delta = subtract(pointAt(mesh, index), rim.centroid);
+    return [dot(delta, rim.tangent), dot(delta, rim.bitangent)];
+  };
+  let meanU = 0, meanV = 0;
+  for (let index = 0; index < count; index += 1) {
+    const [u, v] = projected(index);
+    meanU += u; meanV += v;
+  }
+  meanU /= count; meanV /= count;
+  let suu = 0, svv = 0, suv = 0;
+  for (let index = 0; index < count; index += 1) {
+    const [u, v] = projected(index);
+    const du = u - meanU, dv = v - meanV;
+    suu += du * du; svv += dv * dv; suv += du * dv;
+  }
+  const spread = Math.hypot(suu - svv, 2 * suv);
+  if (spread / Math.max(suu + svv, 1e-9) < 0.05) return undefined;
+  const theta = 0.5 * Math.atan2(2 * suv, suu - svv);
+  const major: [number, number] = [Math.cos(theta), Math.sin(theta)];
+  const minor: [number, number] = [-major[1], major[0]];
+  const plane = (index: number): [number, number] => {
+    const [u, v] = projected(index);
+    const du = u - meanU, dv = v - meanV;
+    return [du * major[0] + dv * major[1], du * minor[0] + dv * minor[1]];
+  };
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (let index = 0; index < count; index += 1) {
+    const [x, y] = plane(index);
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  if (!(maxX > minX) || !(maxY > minY)) return undefined;
+  const ends = [new Set<number>(), new Set<number>()];
+  for (let index = 0; index < count; index += 1) {
+    const [x, y] = plane(index);
+    const fx = (x - minX) / (maxX - minX);
+    if (fx <= 0.3 || fx >= 0.7) continue;
+    const fy = (y - minY) / (maxY - minY);
+    const end = fy < 0.22 ? 0 : fy > 0.78 ? 1 : -1;
+    if (end >= 0) ends[end]!.add(Math.floor(fx * 40) * 40 + Math.floor(fy * 40));
+  }
+  const first = ends[0]!.size, second = ends[1]!.size;
+  if (Math.max(first, second) < 20 || Math.max(first, second) < 2 * Math.max(1, Math.min(first, second))) return undefined;
+  const sign = first > second ? -1 : 1;
+  return normalize([
+    sign * (minor[0] * rim.tangent[0] + minor[1] * rim.bitangent[0]),
+    sign * (minor[0] * rim.tangent[1] + minor[1] * rim.bitangent[1]),
+    sign * (minor[0] * rim.tangent[2] + minor[1] * rim.bitangent[2]),
+  ]);
+}
+
 /** Whether a unit-local point projects into the detected cavity visibility footprint. */
 export function rimContainsPoint(rim: DentalRim, point: Vector): boolean {
   const delta = subtract(point, rim.centroid);

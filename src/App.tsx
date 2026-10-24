@@ -43,7 +43,7 @@ import { PlateLedger, type PlateScene } from './core/plateLedger';
 import { estimateTriangles, ESTIMATE_HEAD_BYTES } from './core/import/estimate';
 import { emptyScene, reduceScene, type ContactSettings, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
-import { proposeDentalOrientation, rotationToPlateDown } from './core/analysis/dental';
+import { proposeDentalOrientation, rotationToDentalPose } from './core/analysis/dental';
 import type { ExportKind } from './supports/export';
 import type { GeneratedSupportMesh } from './core/supports/mesh';
 import { meshBounds } from './core/supports/meshQuery';
@@ -800,7 +800,9 @@ export default function App() {
         const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
         const proposal = sessionRef.current.dentalProposal;
         if (!unit || !proposal || sessionRef.current.dentalStage !== 'orientation') return;
-        dispatch({ type: 'transform/set', unitId: unit.id, transform: { ...unit.transform, rotation: rotationToPlateDown(proposal.rim.openingDirection) } });
+        const rotation = rotationToDentalPose(unit.source, proposal.rim);
+        if (!rotation) return setStatus('Auto orientation is uncertain. Adjust the aligner with the rotation gizmo.');
+        dispatch({ type: 'transform/set', unitId: unit.id, transform: { ...unit.transform, rotation } });
         return;
       }
       case 'dental.next': {
