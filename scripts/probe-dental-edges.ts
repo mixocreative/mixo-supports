@@ -356,11 +356,27 @@ console.log(JSON.stringify({ label: 'mesh', vertices: mesh.positions.length / 3,
   globalExtent: global, boundaryEdges: [...edges.values()].filter((edge) => edge.faces.length === 1).length,
   nonManifoldEdges: [...edges.values()].filter((edge) => edge.faces.length > 2).length }));
 summarize('boundary', [...edges.values()].filter((edge) => edge.faces.length === 1));
+const sharpComponents = new Map<number, ReturnType<typeof summarize>>();
 for (const threshold of [10, 20, 30, 45, 60, 75]) {
   const limit = Math.cos(threshold * Math.PI / 180);
   const selected = [...edges.values()].filter((edge) => edge.faces.length === 2 && Math.abs(dot(normals[edge.faces[0]!]!, normals[edge.faces[1]!]!)) <= limit);
   const components = summarize(`sharp-${threshold}`, selected);
+  if (process.env.DENTAL_PROBE_TRACK_CHAINS) sharpComponents.set(threshold, components);
   if (threshold === 60) summarizeFaceCuts(selected);
   if (threshold === 60 && process.env.DENTAL_PROBE_GLB) await exportEdgeCandidates(process.env.DENTAL_PROBE_GLB, selected, components);
+}
+if (process.env.DENTAL_PROBE_TRACK_CHAINS) {
+  const baseline = sharpComponents.get(60)?.slice(0, 2) ?? [];
+  for (const threshold of [45, 30, 20, 10]) {
+    const components = sharpComponents.get(threshold) ?? [];
+    console.log(JSON.stringify({ label: `sharp-${threshold}-tracks-sharp-60`, chains: baseline.map((chain) => {
+      const anchor = chain.members[0];
+      const host = components.find((component) => component.members.includes(anchor!));
+      const memberSet = new Set(host?.members ?? []);
+      return { baselineVertices: chain.vertices, hostVertices: host?.vertices ?? 0,
+        overlap: chain.members.filter((member) => memberSet.has(member)).length,
+        hostDepthExtent: host?.extent[2] ?? 0 };
+    }) }));
+  }
 }
 for (const threshold of [10, 20, 30, 45, 60]) summarizeSmoothPatches(threshold);
