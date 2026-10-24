@@ -144,7 +144,7 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
       if (scene.units.find((unit) => unit.id === command.unitId)?.zones.length === 0) return scene;
       return updateUnit(scene, command.unitId, (unit) => ({ ...unit, zones: [] }));
     case 'dental/set':
-      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, dental: cloneDentalPolicy(command.policy) }));
+      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, dental: cloneDentalPolicy(command.policy, unit.source) }));
     case 'dental/stamps/add':
       if (command.stamps.length === 0) return scene;
       return updateUnit(scene, command.unitId, (unit) => unit.dental === undefined
@@ -273,7 +273,7 @@ function normalizeUnit(unit: PrintUnit, copyMesh = true): PrintUnit {
     manual: cloneJsonValue(unit.manual ?? []) as unknown as SupportPoint[],
     deleted: cloneJsonValue(unit.deleted ?? []) as string[],
     zones: cloneJsonValue(unit.zones ?? []) as unknown as ZoneStamp[],
-    ...(unit.dental === undefined ? {} : { dental: cloneDentalPolicy(unit.dental) }),
+    ...(unit.dental === undefined ? {} : { dental: cloneDentalPolicy(unit.dental, unit.source) }),
     contactSettings: normalizeContactSettings(unit.contactSettings),
   });
 }
@@ -330,7 +330,7 @@ function normalizeString(value: unknown, label: string): string {
   return value;
 }
 
-function cloneDentalPolicy(policy: DentalPolicy): DentalPolicy {
+function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPolicy {
   const { rim } = policy;
   if (!(rim.points instanceof Float32Array) || !(rim.visibilityMask instanceof Uint8Array)) throw new TypeError('dental policy must contain typed arrays');
   if (rim.points.length < 6 || rim.points.length % 3 !== 0 || !Number.isInteger(rim.visibilityResolution) || rim.visibilityResolution < 1 || rim.visibilityMask.length !== rim.visibilityResolution ** 2) {
@@ -344,10 +344,30 @@ function cloneDentalPolicy(policy: DentalPolicy): DentalPolicy {
   const visibilityMax = normalizePair(rim.visibilityMax, 'dental visibility maximum');
   if (visibilityMax[0] <= visibilityMin[0] || visibilityMax[1] <= visibilityMin[1]) throw new TypeError('dental visibility bounds must have area');
   for (const value of rim.points) if (!Number.isFinite(value)) throw new TypeError('dental rim points must be finite');
-  return {
+  const base: Pick<DentalPolicy, 'rim' | 'stamps'> = {
     rim: { boundaryKind: rim.boundaryKind === 'lower-edge-loop' ? 'lower-edge-loop' : 'projection-fallback', points: new Float32Array(rim.points), openingDirection, centroid, tangent, bitangent, visibilityMask: new Uint8Array(rim.visibilityMask), visibilityResolution: rim.visibilityResolution, visibilityMin, visibilityMax },
     stamps: policy.stamps.map(cloneDentalStamp),
   };
+  if (policy.kind === 'two-contour') {
+    const { region } = policy;
+    if (region.kind !== 'proposal' || !(region.allowedFaces instanceof Uint8Array) || region.allowedFaces.length !== mesh.indices.length / 3 ||
+      !(region.outerEdges instanceof Uint32Array) || !(region.outerRidgeEdges instanceof Uint32Array) ||
+      !(region.outerConnectorEdges instanceof Uint32Array) || !(region.openingEdges instanceof Uint32Array) ||
+      region.outerEdges.length < 6 || region.openingEdges.length < 6 || region.outerEdges.length % 2 !== 0 || region.openingEdges.length % 2 !== 0) {
+      throw new TypeError('dental region does not match the mesh');
+    }
+    for (const value of region.allowedFaces) if (value !== 0 && value !== 1) throw new TypeError('dental region mask must be binary');
+    for (const value of [...region.outerEdges, ...region.outerRidgeEdges, ...region.outerConnectorEdges, ...region.openingEdges]) if (value >= mesh.positions.length / 3) throw new TypeError('dental region edge is outside the mesh');
+    return { ...base, kind: 'two-contour', region: {
+      kind: 'proposal', allowedFaces: new Uint8Array(region.allowedFaces), outerEdges: new Uint32Array(region.outerEdges),
+      outerRidgeEdges: new Uint32Array(region.outerRidgeEdges), outerConnectorEdges: new Uint32Array(region.outerConnectorEdges),
+      openingEdges: new Uint32Array(region.openingEdges), diagnostics: {
+        regionFaces: [...region.diagnostics.regionFaces], connectorLengths: [...region.diagnostics.connectorLengths],
+      },
+    } };
+  }
+  if (policy.kind !== undefined && policy.kind !== 'legacy') throw new TypeError('unknown dental policy kind');
+  return policy.kind === 'legacy' ? { ...base, kind: 'legacy' } : base;
 }
 
 function cloneDentalStamp(stamp: DentalAllowStamp): DentalAllowStamp {

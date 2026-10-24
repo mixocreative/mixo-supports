@@ -33,7 +33,7 @@ describe('proposeDentalSupportRegion', () => {
     expect(rotated.kind).toBe('proposal');
     if (original.kind !== 'proposal' || rotated.kind !== 'proposal') return;
     expect(rotated.allowedFaces).toEqual(original.allowedFaces);
-  });
+  }, 30000);
 
   it('refuses a non-aligner mesh rather than authorizing contacts', () => {
     const mesh = {

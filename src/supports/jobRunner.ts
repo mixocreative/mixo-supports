@@ -3,7 +3,8 @@ import { generatePlacement, positionId } from '../core/analysis/placement';
 import { classifyDownwardFaces, faceOverhangLimit } from '../core/analysis/mesh';
 import type { PlacementResult, ProgressCallback, SupportPoint } from '../core/analysis/types';
 import { DentalOpeningRaycaster } from '../core/analysis/dental';
-import { dentalSupportAllowedAt, type DentalPolicy } from '../core/analysis/dentalPolicy';
+import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
+import { dentalRegionAllowedOnFace, dentalSupportAllowedAt, type DentalPolicy } from '../core/analysis/dentalPolicy';
 import { jobContacts, type CheckJob, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
 import { cross, normalize, subtract } from '../core/vec3';
 import { buildSupportMesh, type GeneratedSupportMesh } from '../core/supports/mesh';
@@ -100,6 +101,23 @@ export function runPlacementJob(job: PlacementJob, onProgress?: ProgressCallback
  */
 export function filterDentalPlacement(job: DentalPlacementJob, placement: PlacementResult): PlacementResult {
   const { mesh, orientation, dental: policy, settings } = job;
+  if (policy.kind === 'two-contour') {
+    // A saved or externally modified mask is never trusted without reproducing it from this mesh.
+    const current = proposeDentalSupportRegion(mesh);
+    const same = (a: Uint8Array | Uint32Array, b: Uint8Array | Uint32Array) =>
+      a.length === b.length && a.every((value, index) => value === b[index]);
+    if (current.kind !== 'proposal' || !same(current.allowedFaces, policy.region.allowedFaces) ||
+      !same(current.outerEdges, policy.region.outerEdges) || !same(current.openingEdges, policy.region.openingEdges)) {
+      return { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() };
+    }
+    // Generic overhang candidates have no source face identity. Sample the certified triangles
+    // directly, including those the opening ray cannot see, and never infer a face from proximity.
+    const points = spacedDentalPoints(mesh, orientation, policy, undefined, settings.spacing,
+      settings.overhangAngleDegrees, []);
+    return { points, regions: placement.regions,
+      contactPositions: new Float32Array(points.flatMap((point) => point.position)),
+      contactNormals: new Float32Array(points.flatMap((point) => point.normal)) };
+  }
   const opening = new DentalOpeningRaycaster(mesh, policy.rim);
   const permitted = (point: SupportPoint) => dentalSupportAllowedAt(
     policy,
@@ -122,7 +140,7 @@ export function filterDentalPlacement(job: DentalPlacementJob, placement: Placem
  * misses still gets a contact. All policy and visibility checks remain unit-local.
  */
 function spacedDentalPoints(
-  mesh: PlacementJob['mesh'], orientation: JobTransform, policy: DentalPolicy, opening: DentalOpeningRaycaster,
+  mesh: PlacementJob['mesh'], orientation: JobTransform, policy: DentalPolicy, opening: DentalOpeningRaycaster | undefined,
   spacing: number, overhangAngleDegrees: number, initial: readonly SupportPoint[],
 ): SupportPoint[] {
   const points: SupportPoint[] = [];
@@ -149,6 +167,7 @@ function spacedDentalPoints(
   const downward = classifyDownwardFaces(turned, faceOverhangLimit(overhangAngleDegrees));
   for (let face = 0; face < mesh.indices.length / 3; face += 1) {
     if (!downward[face]) continue;
+    if (policy.kind === 'two-contour' && policy.region.allowedFaces[face] !== 1) continue;
     const offset = face * 3;
     const indices = [mesh.indices[offset]!, mesh.indices[offset + 1]!, mesh.indices[offset + 2]!];
     const local = indices.map((index) => [mesh.positions[index * 3]!, mesh.positions[index * 3 + 1]!, mesh.positions[index * 3 + 2]!] as [number, number, number]);
@@ -161,7 +180,9 @@ function spacedDentalPoints(
       const c = (column + 1 / 3) / divisions;
       const a = 1 - b - c;
       const unit = [a * local[0]![0] + b * local[1]![0] + c * local[2]![0], a * local[0]![1] + b * local[1]![1] + c * local[2]![1], a * local[0]![2] + b * local[1]![2] + c * local[2]![2]] as [number, number, number];
-      if (!dentalSupportAllowedAt(policy, opening, unit, normal)) continue;
+      if (policy.kind === 'two-contour'
+        ? !dentalRegionAllowedOnFace(policy, face, unit, normal)
+        : !opening || !dentalSupportAllowedAt(policy, opening, unit, normal)) continue;
       const position = transformPoint(orientationOnly(orientation), unit);
       const turnedNormal = transformDirection(orientationOnly(orientation), normal);
       add({ id: positionId(position), regionId: -1, position, normal: turnedNormal, source: 'interior' });

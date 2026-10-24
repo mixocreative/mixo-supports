@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dentalAllowedAt, dentalAllowedVertices, dentalSupportAllowedAt, type DentalPolicy } from './dentalPolicy';
+import { dentalAllowedAt, dentalAllowedVertices, dentalRegionAllowedOnFace, dentalSupportAllowedAt, type DentalPolicy } from './dentalPolicy';
 
 const policy: DentalPolicy = {
   rim: {
@@ -23,6 +23,19 @@ const policy: DentalPolicy = {
 };
 
 describe('dentalAllowedAt', () => {
+  it('lets paint refine but never expand beyond the detected mesh-face region', () => {
+    const detected: DentalPolicy = {
+      kind: 'two-contour', rim: policy.rim,
+      region: { kind: 'proposal', allowedFaces: new Uint8Array([1, 0]), outerEdges: new Uint32Array([0, 1]),
+        outerRidgeEdges: new Uint32Array([0, 1]), outerConnectorEdges: new Uint32Array(),
+        openingEdges: new Uint32Array([2, 3]), diagnostics: { regionFaces: [1, 1], connectorLengths: [1, 1] } },
+      stamps: [{ center: [3, 0, 1], radius: 1, normal: [0, -1, 0], kind: 'allow' }],
+    };
+    expect(dentalRegionAllowedOnFace(detected, 0, [1, 0, 1], [0, -1, 0])).toBe(true);
+    expect(dentalRegionAllowedOnFace(detected, 1, [3, 0, 1], [0, -1, 0])).toBe(false);
+    const erased: DentalPolicy = { ...detected, stamps: [...detected.stamps, { center: [1, 0, 1], radius: 1, normal: [0, -1, 0], kind: 'erase' }] };
+    expect(dentalRegionAllowedOnFace(erased, 0, [1, 0, 1], [0, -1, 0])).toBe(false);
+  });
   it('uses the detected footprint by default, then applies ordered allow and erase paint', () => {
     expect(dentalAllowedAt(policy, [1, 0, 1], [0, -1, 0])).toBe(true);
     expect(dentalAllowedAt(policy, [3, 0, 1], [0, -1, 0])).toBe(false);

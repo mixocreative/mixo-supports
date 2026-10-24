@@ -98,6 +98,18 @@ describe('analysis client', () => {
     await expect(second).resolves.toEqual(expect.objectContaining({ points: [] }));
   });
 
+  it('detects a dental region off the main thread and transfers a copy of the mesh', async () => {
+    const { workers, create } = pool();
+    const client = new AnalysisClient(create, () => {}, 1);
+    const source = mesh();
+    const pending = client.dentalRegion('dental-region:a', source, label);
+    expect(workers[0]!.received[0]!.payload.kind).toBe('dental-region');
+    expect(workers[0]!.received[0]!.payload.job.mesh).not.toBe(source);
+    const region = { kind: 'inconclusive' as const, reason: 'not-an-aligner' };
+    workers[0]!.done(0, { kind: 'dental-region-result', region });
+    await expect(pending).resolves.toEqual(region);
+  });
+
   it('replaces a queued job and stops a running one by replacing its worker', async () => {
     const { workers, create } = pool();
     const progress: string[] = [];

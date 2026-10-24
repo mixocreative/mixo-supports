@@ -20,7 +20,7 @@ import { resolveSettings, unitContacts } from '../../supports/unitSupports';
 import { AddFlash, type AddedAt } from './AddFlash';
 import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
-import { type Hover, DentalRimLine, DentalStampLayer, DentalTipMarkers, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
+import { type Hover, DentalFaceLayer, DentalRegionLines, DentalRimLine, DentalStampLayer, DentalTipMarkers, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
 import type { ObjectViewportProps } from './types';
 import { MODEL_MESH, SUPPORT_MESH, useScreenBrush } from './useScreenBrush';
 
@@ -285,8 +285,11 @@ export function UnitObject(props: UnitObjectProps) {
       <ZoneLayer mesh={unit.source} geometry={model} zones={zones} opacity={ZONE_OPACITY[zoning ? 'full' : 'faint']} />
     </group>}
     {model && dentalPainting && shown === unit.source && unit.dental && <group visible={props.modelVisible}>
-      <DentalStampLayer mesh={unit.source} geometry={model} policy={{ ...unit.dental, stamps: dentalStamps ?? unit.dental.stamps }} opacity={0.7} />
-      <DentalRimLine rim={unit.dental.rim} />
+      {unit.dental.kind === 'two-contour'
+        ? <><DentalFaceLayer mesh={unit.source} policy={{ ...unit.dental, stamps: dentalStamps ?? unit.dental.stamps }} opacity={0.7} />
+          <DentalRegionLines mesh={unit.source} policy={unit.dental} /></>
+        : <><DentalStampLayer mesh={unit.source} geometry={model} policy={{ ...unit.dental, stamps: dentalStamps ?? unit.dental.stamps }} opacity={0.7} />
+          <DentalRimLine rim={unit.dental.rim} /></>}
     </group>}
     {dentalPainting && props.dentalTips && <DentalTipMarkers points={props.dentalTips} />}
     {supportGeometry && <mesh

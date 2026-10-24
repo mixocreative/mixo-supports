@@ -275,6 +275,7 @@ export default function App() {
   const preview = useCallback(() => (workers.current.preview ??= new SupportMeshClient({ create: createMeshWorker, gate: HEAVY_JOBS })), []);
   const exporter = useCallback(() => (workers.current.export ??= new SupportMeshClient({ create: createMeshWorker, mode: 'per-job', gate: HEAVY_JOBS })), []);
   const analysis = useCallback(() => (workers.current.analysis ??= new AnalysisClient(createAnalysisWorker, undefined, undefined, HEAVY_JOBS)), []);
+  const dentalDetectionSeq = useRef(0);
   const importer = useCallback(() => (workers.current.importer ??= new ImportClient(createImportWorker)), []);
   useEffect(() => () => {
     // An import worker lives only while its import runs.
@@ -813,9 +814,21 @@ export default function App() {
         const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
         const proposal = sessionRef.current.dentalProposal;
         if (!unit || !proposal || sessionRef.current.dentalStage !== 'orientation') return;
-        dispatch({ type: 'dental/set', unitId: unit.id, policy: { rim: proposal.rim, stamps: [] } });
-        send({ type: 'acceptDentalOrientation' });
-        requestView('bottom');
+        const detection = ++dentalDetectionSeq.current;
+        setStatus('Detecting the two dental contours and support area…');
+        void analysis().dentalRegion(`dental-region:${unit.id}`, unit.source,
+          { key: 'Detecting dental support area on {name}', vars: { name: unitName(unit.id) } }).then((region) => {
+          if (dentalDetectionSeq.current !== detection ||
+            sceneRef.current.units.find((candidate) => candidate.id === unit.id) !== unit ||
+            sessionRef.current.dentalStage !== 'orientation' || sessionRef.current.dentalProposal !== proposal) return;
+          if (!region || region.kind !== 'proposal') {
+            setStatus('Dental contours could not be isolated on this model. Keep manual orientation or use normal Generate.');
+            return;
+          }
+          dispatch({ type: 'dental/set', unitId: unit.id, policy: { kind: 'two-contour', rim: proposal.rim, region, stamps: [] } });
+          send({ type: 'acceptDentalOrientation' });
+          requestView('bottom');
+        }, () => { if (dentalDetectionSeq.current === detection) setStatus('Dental contour detection failed. No support area was approved.'); });
         return;
       }
       case 'dental.generate': {
@@ -856,7 +869,7 @@ export default function App() {
       case 'zones.clearAll': return clearActiveZones();
       case 'export.active-printable': case 'export.active-supports': case 'export.separate-printable': case 'export.separate-supports': case 'export.whole-printable': return void runExport(exportKindOf(id));
     }
-  }, [checkSupports, chooseProject, saveProject, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dentalPreview, dispatch, generate, generateDental, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo]);
+  }, [analysis, checkSupports, chooseProject, saveProject, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dentalPreview, dispatch, generate, generateDental, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo, unitName]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();

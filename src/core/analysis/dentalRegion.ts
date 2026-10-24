@@ -3,7 +3,8 @@ import type { TriangleMesh } from './types';
 import { cross, distance, dot, normalize, subtract, type Vector } from '../vec3';
 
 export type DentalRegionProposal =
-  | { kind: 'proposal'; allowedFaces: Uint8Array; outerEdges: Uint32Array; openingEdges: Uint32Array;
+  | { kind: 'proposal'; allowedFaces: Uint8Array; outerEdges: Uint32Array; outerRidgeEdges: Uint32Array;
+    outerConnectorEdges: Uint32Array; openingEdges: Uint32Array;
     diagnostics: { regionFaces: [number, number]; connectorLengths: [number, number] } }
   | { kind: 'inconclusive'; reason: string };
 
@@ -145,7 +146,7 @@ function shortestRoute(graph: Map<number, { next: number; length: number }[]>, s
   return { vertices, length: costs.get(end)! };
 }
 
-function outerContour(context: MeshContext): { edges: Set<Edge>; connectorLengths: [number, number] } | null {
+function outerContour(context: MeshContext): { edges: Set<Edge>; ridgeEdges: Set<Edge>; connectorEdges: Set<Edge>; connectorLengths: [number, number] } | null {
   const candidates = components(sharpEdges(context, 60));
   const [first, second] = candidates;
   if (!first || !second || first.edges.size < 500 || second.edges.size < 300 || !openChain(first) || !openChain(second)) return null;
@@ -163,7 +164,7 @@ function outerContour(context: MeshContext): { edges: Set<Edge>; connectorLength
       graph.set(from, incident);
     }
   }
-  let choice: { edges: Set<Edge>; connectorLengths: [number, number]; total: number } | null = null;
+  let choice: { edges: Set<Edge>; ridgeEdges: Set<Edge>; connectorEdges: Set<Edge>; connectorLengths: [number, number]; total: number } | null = null;
   for (const pairing of [[0, 1], [1, 0]]) {
     const routes = pairing.map((to, at) => shortestRoute(graph, first.endpoints[at]!, second.endpoints[to]!));
     if (!routes[0] || !routes[1]) continue;
@@ -178,7 +179,8 @@ function outerContour(context: MeshContext): { edges: Set<Edge>; connectorLength
     if ([...degree.values()].some((count) => count !== 2) || all.size !== degree.size) continue;
     const connectorLengths: [number, number] = [routes[0]!.length, routes[1]!.length];
     const total = connectorLengths[0] + connectorLengths[1];
-    if (!choice || total < choice.total) choice = { edges: all, connectorLengths, total };
+    if (!choice || total < choice.total) choice = { edges: all, ridgeEdges: base,
+      connectorEdges: new Set([...all].filter((edge) => !base.has(edge))), connectorLengths, total };
   }
   return choice;
 }
@@ -332,6 +334,7 @@ export function proposeDentalSupportRegion(mesh: TriangleMesh): DentalRegionProp
     [...openingLow].some((edge) => !openingHigh.has(edge))) return fail('opening-contour-unstable');
   const classified = classifyFaces(context, outer.edges, openingHigh);
   if (!classified) return fail('surface-region-not-isolated');
-  return { kind: 'proposal', ...classified, outerEdges: pairs(outer.edges), openingEdges: pairs(openingHigh),
+  return { kind: 'proposal', ...classified, outerEdges: pairs(outer.edges), outerRidgeEdges: pairs(outer.ridgeEdges),
+    outerConnectorEdges: pairs(outer.connectorEdges), openingEdges: pairs(openingHigh),
     diagnostics: { regionFaces: classified.regionFaces, connectorLengths: outer.connectorLengths } };
 }

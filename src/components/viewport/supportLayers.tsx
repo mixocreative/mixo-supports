@@ -6,7 +6,7 @@ import type { SupportPoint, TriangleMesh } from '../../core/analysis/types';
 import type { GeneratedSupportMesh, SupportContact } from '../../core/supports/mesh';
 import { warmZoneOverlay, zoneOverlay } from '../../core/supports/overlayMesh';
 import { contactRadius, withShape } from '../../core/supports/settings';
-import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
+import { buildVertexGrid, sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
 import { DentalOpeningRaycaster, type DentalRim } from '../../core/analysis/dental';
 import { dentalAllowedVertex, type DentalAllowStamp, type DentalPolicy } from '../../core/analysis/dentalPolicy';
 import { contactToRemove } from '../../editing/removal';
@@ -15,6 +15,7 @@ import type { PrintUnit } from '../../state/project';
 import { resolveSettings } from '../../supports/unitSupports';
 import { PREVIEW } from './style';
 import { toGeometry } from './geometry';
+import { dentalContourSegments, dentalFaceOverlay } from './dentalFaceOverlay';
 
 export interface Hover {
   /** Unit-local point under the pointer and the surface normal there. */
@@ -249,6 +250,61 @@ export function DentalStampLayer({ mesh, geometry, policy, opacity }: { mesh: Tr
     };
   }, [mesh, policy.rim]);
   return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={policy.stamps} filledKind="allow" color={PREVIEW.dental} opacity={opacity} baseline={baseline} />;
+}
+
+/** The exact approved triangles only: shared vertices cannot bleed colour onto tooth faces. */
+export function DentalFaceLayer({ mesh, policy, opacity }: { mesh: TriangleMesh; policy: Extract<DentalPolicy, { kind: 'two-contour' }>; opacity: number }) {
+  const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute;
+    positions: Float32Array; normals: Float32Array; mask: Uint8Array; grid: VertexGrid | undefined;
+    applied: readonly DentalAllowStamp[] }>();
+  useEffect(() => {
+    const { positions, normals } = dentalFaceOverlay(mesh, policy.region.allowedFaces);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    const colors = new THREE.BufferAttribute(new Uint8Array(positions.length / 3 * 4).fill(255), 4, true);
+    geometry.setAttribute('color', colors);
+    setLayer({ geometry, colors, positions, normals, mask: new Uint8Array(positions.length / 3).fill(1),
+      grid: buildVertexGrid(positions), applied: [] });
+    return () => geometry.dispose();
+  }, [mesh, policy.region]);
+  useEffect(() => {
+    if (!layer) return;
+    const stamps = policy.stamps;
+    const incremental = layer.applied.length <= stamps.length && layer.applied.every((stamp, at) => {
+      const next = stamps[at]!;
+      return stamp.kind === next.kind && sameStamp({ ...stamp, kind: 'paint' }, { ...next, kind: 'paint' });
+    });
+    if (!incremental) layer.mask.fill(1);
+    for (let at = incremental ? layer.applied.length : 0; at < stamps.length; at += 1) {
+      const stamp = stamps[at]!;
+      stampVertices({ ...stamp, kind: stamp.kind === 'allow' ? 'paint' : 'erase' },
+        layer.positions, layer.normals, layer.mask, layer.grid);
+    }
+    layer.applied = stamps;
+    const rgba = layer.colors.array as Uint8Array;
+    for (let vertex = 0; vertex < layer.mask.length; vertex += 1) rgba[vertex * 4 + 3] = layer.mask[vertex] ? 255 : 0;
+    layer.colors.needsUpdate = true;
+  }, [layer, policy.stamps]);
+  if (!layer) return null;
+  return <mesh geometry={layer.geometry} raycast={() => undefined} renderOrder={16}>
+    <meshBasicMaterial color={PREVIEW.dental} vertexColors side={THREE.DoubleSide} transparent opacity={opacity}
+      depthWrite={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
+  </mesh>;
+}
+
+/** Exact mesh edges, not a planar proxy for the non-planar dental trim. */
+export function DentalRegionLines({ mesh, policy }: { mesh: TriangleMesh; policy: Extract<DentalPolicy, { kind: 'two-contour' }> }) {
+  const lines = useMemo(() => [policy.region.outerEdges, policy.region.openingEdges].map((pairs) => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(dentalContourSegments(mesh, pairs), 3));
+    return geometry;
+  }), [mesh, policy.region]);
+  useEffect(() => () => lines.forEach((line) => line.dispose()), [lines]);
+  return <group raycast={() => undefined} renderOrder={17}>
+    <lineSegments geometry={lines[0]} raycast={() => undefined}><lineBasicMaterial color="#007ed3" depthTest={false} depthWrite={false} /></lineSegments>
+    <lineSegments geometry={lines[1]} raycast={() => undefined}><lineBasicMaterial color="#ee1938" depthTest={false} depthWrite={false} /></lineSegments>
+  </group>;
 }
 
 /** The proven lower-edge loop, held just above the model so the permitted area has a clear boundary. */

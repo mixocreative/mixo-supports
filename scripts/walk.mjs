@@ -145,6 +145,7 @@ function readProps() {
     point: unit?.settings?.pointDiameter,
     zones: unit ? unit.zones.length : -1,
     dentalBoundary: unit?.dental?.rim.boundaryKind ?? '',
+    dentalKind: unit?.dental?.kind ?? '',
     dentalStamps: unit?.dental?.stamps.length ?? -1,
     ids: out.selection ?? [],
   };
@@ -555,21 +556,26 @@ async function walk(url, scratch, dentalFixture) {
       await page.setInputFiles('.drop input[type=file]', dentalFixture);
       const dentalName = path.basename(dentalFixture, path.extname(dentalFixture));
       await page.waitForFunction((name) => document.body.innerText.includes(name), dentalName, { timeout: 60000 });
-      await d.button('Dental Auto Generate').click();
-      await page.waitForFunction(() => document.body.innerText.includes('Review the detected lower opening'), null, { timeout: 90000 });
+      await d.button('Aligner Support Production').click();
+      await page.waitForFunction(() => document.body.innerText.includes('Step 1 · Orientation'), null, { timeout: 90000 });
       await page.screenshot({ path: path.join(scratch, 'dental-orientation.png') });
-      await d.button('Use detected orientation').click();
-      await page.waitForFunction(() => document.body.innerText.includes('Dental support area'), null, { timeout: 90000 });
+      await d.button('Auto orientation').click();
+      check('l1 automatic orientation stays in Step 1', (await page.locator('.edit-badge').innerText()).includes('Step 1 · Orientation'));
+      await d.button('Next').click();
+      await page.waitForFunction(() => document.body.innerText.includes('Step 2 · Support area'), null, { timeout: 90000 });
       await d.idle(1000);
       await page.screenshot({ path: path.join(scratch, 'dental-area.png') });
       const approved = await d.props();
-      check('l1 dental preview accepts only a proven lower-edge loop', approved.dentalBoundary === 'lower-edge-loop' && approved.dentalStamps === 0, `boundary "${approved.dentalBoundary}", manual markers ${approved.dentalStamps}`);
-      await d.button('Generate dental supports').click();
+      check('l2 dental area holds the two-contour face mask', approved.dentalKind === 'two-contour' && approved.dentalStamps === 0, `policy "${approved.dentalKind}", manual markers ${approved.dentalStamps}`);
+      await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /Safe support tips: [1-9]/.test(note.innerText)), null, { timeout: 180000 });
+      await d.button('Next').click();
+      await page.waitForFunction(() => document.body.innerText.includes('Step 3 · Review supports'), null, { timeout: 240000 });
       await page.waitForFunction(() => /[1-9][\d,]* automatic/.test(document.querySelector('footer')?.innerText ?? '') && ![...document.querySelectorAll('button')].some((b) => /Generating dental supports/.test(b.innerText)), null, { timeout: 240000 });
       await d.quiet();
+      await page.screenshot({ path: path.join(scratch, 'dental-generated.png') });
       const dentalSupports = await d.counts();
       const placed = await d.props();
-      check('l2 dental generation produces supports only after the approved-area stage', dentalSupports.auto > 0 && placed.dentalBoundary === 'lower-edge-loop', `automatic ${dentalSupports.auto}, boundary "${placed.dentalBoundary}"`);
+      check('l3 dental generation produces supports only after the approved-area stage', dentalSupports.auto > 0 && placed.dentalKind === 'two-contour', `automatic ${dentalSupports.auto}, policy "${placed.dentalKind}"`);
     }
   } catch (error) {
     check('walk ran to the end', false, error.message);

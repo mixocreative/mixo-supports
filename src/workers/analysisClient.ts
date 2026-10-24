@@ -1,4 +1,5 @@
 import type { SupportProblem } from '../core/analysis/supportCheck';
+import type { DentalRegionProposal } from '../core/analysis/dentalRegion';
 import type { PlacementResult, TriangleMesh } from '../core/analysis/types';
 import type { CheckJob, DentalPlacementJob, PlacementJob } from '../core/jobs';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
@@ -60,6 +61,11 @@ export class AnalysisClient {
     return this.submit(key, { kind: 'dental-place', job }, label).then((result) => (result?.kind === 'dental-placed' ? result.result : undefined));
   }
 
+  dentalRegion(key: string, mesh: TriangleMesh, label: JobLabel): Promise<DentalRegionProposal | undefined> {
+    return this.submit(key, { kind: 'dental-region', job: { mesh } }, label).then((result) =>
+      result?.kind === 'dental-region-result' ? result.region : undefined);
+  }
+
   check(key: string, job: CheckJob, label: JobLabel): Promise<SupportProblem[] | undefined> {
     return this.submit(key, { kind: 'check', job }, label).then((result) => (result?.kind === 'checked' ? result.problems : undefined));
   }
@@ -112,7 +118,7 @@ export class AnalysisClient {
       signal: job.controller.signal,
       label: job.label,
       context: job.task.kind,
-      ...(this.gate && (job.task.kind === 'place' || job.task.kind === 'dental-place') ? { admit: (signal: AbortSignal) => this.gate!.acquire(mesh.indices.length / 3, signal) } : {}),
+      ...(this.gate && (job.task.kind === 'place' || job.task.kind === 'dental-place' || job.task.kind === 'dental-region') ? { admit: (signal: AbortSignal) => this.gate!.acquire(mesh.indices.length / 3, signal) } : {}),
       onProgress: (fields) => {
         if (typeof fields.fraction === 'number' && typeof fields.stage === 'string') this.onProgress(job.key, fields.fraction, fields.stage);
       },

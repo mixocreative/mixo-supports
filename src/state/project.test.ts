@@ -126,6 +126,27 @@ describe('reduceScene', () => {
     expect(reduceScene(edited, { type: 'dental/clear', unitId: 'unit-a' }).units[0]!.dental).toBeUndefined();
   });
 
+  it('round-trips the exact two-contour face mask and refuses a mask for another mesh', () => {
+    const rim = {
+      boundaryKind: 'projection-fallback' as const, points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      openingDirection: [0, -1, 0] as [number, number, number], centroid: [0, 0, 0] as [number, number, number],
+      tangent: [1, 0, 0] as [number, number, number], bitangent: [0, 0, 1] as [number, number, number],
+      visibilityMask: new Uint8Array([1, 0, 1, 1]), visibilityResolution: 2,
+      visibilityMin: [-1, -1] as [number, number], visibilityMax: [1, 1] as [number, number],
+    };
+    const policy: DentalPolicy = { kind: 'two-contour', rim, stamps: [], region: {
+      kind: 'proposal', allowedFaces: new Uint8Array([1]), outerEdges: new Uint32Array([0, 1, 1, 2, 2, 0]),
+      outerRidgeEdges: new Uint32Array([0, 1, 1, 2]), outerConnectorEdges: new Uint32Array([2, 0]),
+      openingEdges: new Uint32Array([0, 2, 2, 1, 1, 0]), diagnostics: { regionFaces: [1, 0], connectorLengths: [1, 1] },
+    } };
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: unitA });
+    const withPolicy = reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy });
+    expect(withPolicy.units[0]!.dental).toEqual(policy);
+    expect(deserializeScene(serializeScene(withPolicy))).toEqual(withPolicy);
+    expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
+      region: { ...policy.region, allowedFaces: new Uint8Array([1, 0]) } } })).toThrow();
+  });
+
   it('treats empty zone adds and clearing no zones as no-ops', () => {
     const scene = reduceScene(emptyScene, { type: 'unit/add', unit: unitA });
     expect(reduceScene(scene, { type: 'zones/add', unitId: 'unit-a', stamps: [] })).toBe(scene);

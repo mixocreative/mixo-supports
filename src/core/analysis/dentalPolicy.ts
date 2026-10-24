@@ -1,4 +1,5 @@
 import { rimContainsPoint, type DentalRim } from './dental';
+import type { DentalRegionProposal } from './dentalRegion';
 import type { Vector } from '../vec3';
 import type { SurfaceStamp } from '../../editing/surfaceBrush';
 
@@ -6,9 +7,27 @@ import type { SurfaceStamp } from '../../editing/surfaceBrush';
 export interface DentalAllowStamp extends SurfaceStamp<'allow' | 'erase'> {}
 
 /** The accepted detector footprint plus user edits. This is separate from no-support zones. */
-export interface DentalPolicy {
+interface DentalPolicyBase {
   rim: DentalRim;
   stamps: readonly DentalAllowStamp[];
+}
+
+/** Old saved policies stay readable but cannot inherit the two-contour permission implicitly. */
+export type DentalPolicy =
+  | (DentalPolicyBase & { kind?: 'legacy' })
+  | (DentalPolicyBase & { kind: 'two-contour'; region: Extract<DentalRegionProposal, { kind: 'proposal' }> });
+
+/** Exact face gate. Add paint may restore an erased candidate face, never cross a contour. */
+export function dentalRegionAllowedOnFace(policy: DentalPolicy, face: number, point: Vector, normal: Vector): boolean {
+  if (policy.kind !== 'two-contour' || policy.region.allowedFaces[face] !== 1) return false;
+  for (let index = policy.stamps.length - 1; index >= 0; index -= 1) {
+    const stamp = policy.stamps[index]!;
+    const dx = point[0] - stamp.center[0], dy = point[1] - stamp.center[1], dz = point[2] - stamp.center[2];
+    if (dx * dx + dy * dy + dz * dz > stamp.radius * stamp.radius) continue;
+    if (normal[0] * stamp.normal[0] + normal[1] * stamp.normal[1] + normal[2] * stamp.normal[2] <= 0) continue;
+    return stamp.kind === 'allow';
+  }
+  return true;
 }
 
 /** Whether an automatic support contact is permitted by the baseline footprint and ordered edits. */
