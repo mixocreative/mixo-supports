@@ -6,10 +6,12 @@ import type { SupportProblem } from '../../core/analysis/supportCheck';
 import type { GeneratedSupportMesh } from '../../core/supports/mesh';
 import { contactAtTriangle, tipsOf } from '../../core/supports/meshQuery';
 import type { ZoneStamp } from '../../core/supports/zones';
+import type { DentalAllowStamp } from '../../core/analysis/dentalPolicy';
 import type { Vector } from '../../core/vec3';
 import { gestureMode } from '../../editing/gesture';
 import { clickTool, pickAction, type PickInput } from '../../editing/pick';
 import { brushPreview } from '../../editing/selection';
+import { appendSurfaceStamps } from '../../editing/surfaceBrush';
 import { createStroke, zoneFill } from '../../editing/stroke';
 import { displayMesh } from '../../state/meshExtras';
 import type { PrintUnit } from '../../state/project';
@@ -17,7 +19,7 @@ import { resolveSettings, unitContacts } from '../../supports/unitSupports';
 import { AddFlash, type AddedAt } from './AddFlash';
 import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
-import { type Hover, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
+import { type Hover, DentalRimLine, DentalStampLayer, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
 import type { ObjectViewportProps } from './types';
 import { MODEL_MESH, SUPPORT_MESH, useScreenBrush } from './useScreenBrush';
 
@@ -28,7 +30,7 @@ function toVector(vector: THREE.Vector3): Vector {
 /** The viewport settings and callbacks one object takes, plus its own unit, supports and state. */
 interface UnitObjectProps extends Pick<ObjectViewportProps,
   | 'gesture' | 'liveTool' | 'selection' | 'tipsView' | 'modelVisible' | 'wireframe'
-  | 'onSelect' | 'onAddContact' | 'onRemoveContact' | 'onErase' | 'onEditMiss' | 'onToggleContact' | 'onPaint' | 'onShift' | 'onZoneStroke' | 'onNoBodies'> {
+  | 'onSelect' | 'onAddContact' | 'onRemoveContact' | 'onErase' | 'onEditMiss' | 'onToggleContact' | 'onPaint' | 'onShift' | 'onZoneStroke' | 'onDentalStroke' | 'onNoBodies'> {
   problems: readonly SupportProblem[];
   /** A support just added to this object: a ring flashes at its tip. */
   added?: AddedAt;
@@ -55,7 +57,9 @@ export function UnitObject(props: UnitObjectProps) {
   useWarmZoneOverlay(shown === unit.source ? shown : undefined, props.supports !== undefined);
   // Painting zones: supports are drawn but take no pointer events (presses reach the model).
   const zoning = editing && gesture.kind === 'zones';
-  const supportGeometry = useGeometry(supports, editing && !zoning);
+  const dentalPainting = editing && gesture.kind === 'dental-area';
+  const surfacePainting = zoning || dentalPainting;
+  const supportGeometry = useGeometry(supports, editing && !surfacePainting);
   // Select supports: Click picks one support at a time; Drag over (the brush) owns the left button.
   const selecting = gesture.kind === 'pick' || gesture.kind === 'drag';
   const clickSelecting = gesture.kind === 'pick';
@@ -67,10 +71,14 @@ export function UnitObject(props: UnitObjectProps) {
   const switchBrush = useMemo(() => (switchRadius !== undefined && switchMode ? { radius: switchRadius, mode: switchMode } : undefined), [switchRadius, switchMode]);
   /** Zone brush settings, only while this object's zones are painted. */
   const zoneBrush = zoning && gesture.kind === 'zones' ? gesture.brush : undefined;
+  const dentalBrush = dentalPainting && gesture.kind === 'dental-area' ? gesture.brush : undefined;
   /** Stamps of the zone stroke in progress (the ref is what the stroke end hands on). */
   const strokeStamps = useRef<ZoneStamp[]>([]);
   const [stroke, setStroke] = useState<readonly ZoneStamp[]>([]);
+  const dentalStrokeStamps = useRef<DentalAllowStamp[]>([]);
+  const [dentalStroke, setDentalStroke] = useState<readonly DentalAllowStamp[]>([]);
   const zones = useMemo(() => (stroke.length ? [...unit.zones, ...stroke] : unit.zones), [unit.zones, stroke]);
+  const dentalStamps = useMemo(() => unit.dental && (dentalStroke.length ? [...unit.dental.stamps, ...dentalStroke] : unit.dental.stamps), [unit.dental, dentalStroke]);
   // The contacts the shown build kept (its zoned landings dropped).
   const contacts = useMemo(() => unitContacts(unit, props.supports), [unit, props.supports]);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -98,10 +106,17 @@ export function UnitObject(props: UnitObjectProps) {
     window.removeEventListener('blur', release);
     if (controls) controls.enabled = true;
     const stamps = strokeStamps.current;
-    if (stamps.length === 0) return;
-    strokeStamps.current = [];
-    props.onZoneStroke(unit.id, stamps);
-    setStroke([]);
+    if (stamps.length > 0) {
+      strokeStamps.current = [];
+      props.onZoneStroke(unit.id, stamps);
+      setStroke([]);
+    }
+    const dentalStamps = dentalStrokeStamps.current;
+    if (dentalStamps.length > 0) {
+      dentalStrokeStamps.current = [];
+      props.onDentalStroke(unit.id, dentalStamps);
+      setDentalStroke([]);
+    }
   };
   useEffect(() => () => void brushStroke.end(), [brushStroke]);
   /** A stroke starts: the orbit is off and the release is caught anywhere until it ends. */
@@ -129,38 +144,46 @@ export function UnitObject(props: UnitObjectProps) {
     onPaint: (ids, mode) => props.onPaint(unit.id, ids, mode),
     onNoBodies: props.onNoBodies,
   });
-  const brushOver = circleOver || Boolean(hover && zoneBrush);
+  const brushOver = circleOver || Boolean(hover && (zoneBrush || dentalBrush));
   useEffect(() => {
     onBrushOver?.(brushOver);
     return () => onBrushOver?.(false);
   }, [brushOver, onBrushOver]);
   const preview = useMemo(() => brushPreview(props.selection, brushed, brush?.mode), [props.selection, brushed, brush?.mode]);
-  const selectionColored = useSelectionColors(supportGeometry, supports, editing && !zoning, preview.solid, supportColor);
+  const selectionColored = useSelectionColors(supportGeometry, supports, editing && !surfacePainting, preview.solid, supportColor);
   // The brush going away mid-stroke (tool or mode changed, another object made active) ends the
   // stroke at once, so the orbit is back without waiting for the release.
-  const brushing = Boolean(brush || zoneBrush);
+  const brushing = Boolean(brush || zoneBrush || dentalBrush);
   useEffect(() => {
     if (!brushing) brushStroke.end();
   }, [brushing, brushStroke]);
-  /** Zone brush: unit-local point under the pointer and its surface normal. */
+  /** Surface brush: unit-local point under the pointer and its surface normal. */
   const paint = (event: ThreeEvent<PointerEvent>) => {
-    if (!zoneBrush) return;
+    const surfaceBrush = zoneBrush ?? dentalBrush;
+    if (!surfaceBrush) return;
     const at: Hover = { point: event.object.worldToLocal(event.point.clone()), normal: event.face?.normal.clone() ?? new THREE.Vector3(0, -1, 0), remove: false };
     setHover(at);
     if (brushStroke.move((event.buttons & 1) !== 0) !== 'sample') return;
     const center = toVector(at.point);
-    const { radius, kind } = zoneBrush;
+    const { radius } = surfaceBrush;
     // New stamps (a fast drag's gap filled) share this hit's normal.
     const centers = brushStroke.samples(center, zoneFill(radius));
     if (centers.length === 0) return;
     const normal = toVector(at.normal.clone().normalize());
-    strokeStamps.current = [...strokeStamps.current, ...centers.map((between) => ({ center: between, radius, normal, kind }))];
-    setStroke(strokeStamps.current);
+    if (zoneBrush) {
+      const stamps: ZoneStamp[] = appendSurfaceStamps(zoneBrush.kind, radius, centers.map((point) => ({ point, normal })));
+      strokeStamps.current = [...strokeStamps.current, ...stamps];
+      setStroke(strokeStamps.current);
+    } else if (dentalBrush) {
+      const stamps: DentalAllowStamp[] = appendSurfaceStamps(dentalBrush.kind, radius, centers.map((point) => ({ point, normal })));
+      dentalStrokeStamps.current = [...dentalStrokeStamps.current, ...stamps];
+      setDentalStroke(dentalStrokeStamps.current);
+    }
   };
   /** Zone strokes start on the model; Drag over strokes start on the model or a support (`useScreenBrush`). */
   const startStroke = (event: ThreeEvent<PointerEvent>) => {
     if (brush) return event.stopPropagation();
-    if (!zoneBrush || !brushStroke.begin(event.button)) return;
+    if (!zoneBrush && !dentalBrush || !brushStroke.begin(event.button)) return;
     event.stopPropagation();
     beginStroke();
     paint(event);
@@ -169,7 +192,7 @@ export function UnitObject(props: UnitObjectProps) {
   const hoverModel = (event: ThreeEvent<PointerEvent>) => {
     if (!editing) return;
     event.stopPropagation();
-    if (zoneBrush) return paint(event);
+    if (zoneBrush || dentalBrush) return paint(event);
     // Drag over previews through its own circle; the model under the pointer shows nothing.
     if (brush || zoning) return leave();
     // Selecting previews supports only: the model under the pointer shows nothing.
@@ -241,7 +264,7 @@ export function UnitObject(props: UnitObjectProps) {
       visible={props.modelVisible}
       userData={MODEL_MESH}
       // Painting zones: other objects take no pointer events (a press passes through to the active one).
-      raycast={gesture.kind === 'zones' && !props.active ? () => undefined : acceleratedRaycast}
+      raycast={(gesture.kind === 'zones' || gesture.kind === 'dental-area') && !props.active ? () => undefined : acceleratedRaycast}
       onClick={(event) => clickModel(event, false)}
       onContextMenu={(event) => clickModel(event, true)}
       {...(editing ? { onPointerDown: startStroke, onPointerMove: hoverModel, onPointerOut: leave } : {})}
@@ -259,12 +282,16 @@ export function UnitObject(props: UnitObjectProps) {
     {model && editing && shown === unit.source && zones.length > 0 && <group visible={props.modelVisible}>
       <ZoneLayer mesh={unit.source} geometry={model} zones={zones} opacity={ZONE_OPACITY[zoning ? 'full' : 'faint']} />
     </group>}
+    {model && dentalPainting && shown === unit.source && unit.dental && <group visible={props.modelVisible}>
+      <DentalStampLayer mesh={unit.source} geometry={model} policy={{ ...unit.dental, stamps: dentalStamps ?? unit.dental.stamps }} opacity={0.7} />
+      <DentalRimLine rim={unit.dental.rim} />
+    </group>}
     {supportGeometry && <mesh
       geometry={supportGeometry}
       userData={SUPPORT_MESH}
-      raycast={zoning ? () => undefined : acceleratedRaycast}
+      raycast={surfacePainting ? () => undefined : acceleratedRaycast}
       // Supports take pointer events only while edited (not while painting zones), so they cost no raycasts otherwise.
-      {...(editing && !zoning ? {
+      {...(editing && !surfacePainting ? {
         onClick: (event: ThreeEvent<MouseEvent>) => clickSupport(event, false),
         onContextMenu: (event: ThreeEvent<MouseEvent>) => clickSupport(event, true),
         onPointerDown: startStroke,
@@ -276,15 +303,15 @@ export function UnitObject(props: UnitObjectProps) {
       {/* Keyed: three compiles vertex colours into the shader, so turning them on needs a new material. */}
       <meshStandardMaterial key={selectionColored ? 'selection' : 'plain'} color={selectionColored ? '#ffffff' : supportColor} vertexColors={selectionColored} metalness={0} roughness={0.9} />
     </mesh>}
-    {editing && hover && !brush && <EditPreview hover={hover} unit={unit} contacts={contacts} {...(zoneBrush
-      ? { brush: { radius: zoneBrush.radius, color: zoneBrush.kind === 'paint' ? PREVIEW.zone : PREVIEW.ring } }
+    {editing && hover && !brush && <EditPreview hover={hover} unit={unit} contacts={contacts} {...(zoneBrush || dentalBrush
+      ? { brush: { radius: (zoneBrush ?? dentalBrush)!.radius, color: zoneBrush?.kind === 'paint' ? PREVIEW.zone : dentalBrush?.kind === 'allow' ? PREVIEW.dental : PREVIEW.ring } }
       : {})} />}
-    {editing && !zoning && supports && supportGeometry && <>
+    {editing && !surfacePainting && supports && supportGeometry && <>
       <SupportBodies supports={supports} geometry={supportGeometry} ids={doomed} opacity={1} />
       {pointed && !props.selection.has(pointed) && <SupportBodies supports={supports} geometry={supportGeometry} ids={[pointed]} opacity={SEE_THROUGH} />}
       <SupportBodies supports={supports} geometry={supportGeometry} ids={preview.ghost} opacity={SEE_THROUGH} color={PREVIEW[preview.ghostTone]} />
     </>}
-    {editing && !zoning && <CustomisedMarks unit={unit} contacts={contacts} />}
+    {editing && !surfacePainting && <CustomisedMarks unit={unit} contacts={contacts} />}
     {props.added && <AddFlash key={props.added.seq} at={props.added} radius={Math.max(2, resolveSettings(unit.settings).eraseRadius)} />}
     {props.problems.length > 0 && <ProblemMarkers problems={props.problems} />}
   </group>;

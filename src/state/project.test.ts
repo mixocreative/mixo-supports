@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Object3D } from 'three';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import type { ZoneStamp } from '../core/supports/zones';
+import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import { deserializeScene, emptyScene, identityTransform, reduceScene, serializeScene, type PrintScene, type PrintUnit } from './project';
 
 const source: TriangleMesh = {
@@ -103,6 +104,26 @@ describe('reduceScene', () => {
     expect(two.units[0]!.zones).toEqual([a, b]);
     expect(reduceScene(two, { type: 'supports/clear-manual', unitId: 'unit-a' }).units[0]!.zones).toEqual([a, b]);
     expect(reduceScene(two, { type: 'zones/clear', unitId: 'unit-a' }).units[0]!.zones).toEqual([]);
+  });
+
+  it('keeps an accepted dental policy and its ordered editable stamps through serialization', () => {
+    const dental: DentalPolicy = {
+      rim: {
+        boundaryKind: 'lower-edge-loop',
+        points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        openingDirection: [0, -1, 0], centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1],
+        visibilityMask: new Uint8Array([1, 0, 1, 1]), visibilityResolution: 2, visibilityMin: [-1, -1], visibilityMax: [1, 1],
+      },
+      stamps: [],
+    };
+    const scene = reduceScene(emptyScene, { type: 'unit/add', unit: unitA });
+    const accepted = reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: dental });
+    const edited = reduceScene(accepted, { type: 'dental/stamps/add', unitId: 'unit-a', stamps: [{ center: [0, 0, 0], radius: 1, normal: [0, -1, 0], kind: 'allow' }] });
+
+    expect(edited.units[0]!.dental).toEqual({ ...dental, stamps: [{ center: [0, 0, 0], radius: 1, normal: [0, -1, 0], kind: 'allow' }] });
+    expect(edited.units[0]!.dental!.rim.visibilityMask).not.toBe(dental.rim.visibilityMask);
+    expect(deserializeScene(serializeScene(edited))).toEqual(edited);
+    expect(reduceScene(edited, { type: 'dental/clear', unitId: 'unit-a' }).units[0]!.dental).toBeUndefined();
   });
 
   it('treats empty zone adds and clearing no zones as no-ops', () => {

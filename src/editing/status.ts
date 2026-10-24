@@ -8,6 +8,8 @@ import type { EditMode, StatusMessage } from './types';
 /** What a click or drag does now, per gesture: the current tool in Support Edit Mode, the brush in zones mode. */
 const GESTURE_STATUS = {
   zones: 'Paint where supports must not grow; drag on the model.',
+  'dental-orientation': 'Review the detected aligner orientation, then accept it or adjust it manually.',
+  'dental-area': 'Mark where dental supports may grow; Remove clears permission. Drag on the model.',
   add: 'Support Edit Mode: click the model to add, right-click a support to remove.',
   remove: 'Support Edit Mode: click a support, or the model next to one, to remove it.',
   pick: 'Support Edit Mode: click supports to select them, right-click a support to remove.',
@@ -51,12 +53,13 @@ function standingStatus(session: EditSession): StatusMessage | undefined {
  * left to the host, which says why.
  */
 export function sessionStatus(previous: EditSession, next: EditSession, event: SessionEvent): StatusMessage | undefined {
-  const entering = (event.type === 'enterEdit' || event.type === 'enterZones') && previous.mode === 'off';
+  const entering = (event.type === 'enterEdit' || event.type === 'enterZones' || event.type === 'enterDental') && previous.mode === 'off';
   if (entering && previous.activeUnitId === undefined) return { key: event.type === 'enterEdit' ? 'Select an object to edit its supports.' : 'Select an object first.' };
   if (entering && previous.heavy !== undefined) return heavyStatus(previous);
   if (event.type === 'exit' && next.mode === 'off') {
     if (previous.mode === 'edit') return { key: 'Support edits kept.' };
     if (previous.mode === 'zones') return { key: 'No-support zones kept.' };
+    if (previous.mode === 'dental') return { key: 'Dental support area kept.' };
   }
   if (next.mode === 'off' || next === previous) return undefined;
   const now = standingStatus(next);
@@ -75,7 +78,7 @@ export function heavyStatus(session: EditSession): StatusMessage | undefined {
 
 /** Another object was picked while a mode is on: finish the mode first. */
 export function busyStatus(mode: Exclude<EditMode, 'off'>): StatusMessage {
-  return { key: mode === 'zones' ? 'Finish painting zones first: press Esc or Done.' : 'Finish editing supports first: press Esc or Done.' };
+  return { key: mode === 'zones' ? 'Finish painting zones first: press Esc or Done.' : mode === 'dental' ? 'Finish Dental Auto Generate first: press Esc or Done.' : 'Finish editing supports first: press Esc or Done.' };
 }
 
 /** A file dropped or chosen while a mode is on: refused with the busy line, the mode stays; undefined outside the modes. */

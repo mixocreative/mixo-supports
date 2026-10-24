@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlacementSettings, TriangleMesh } from '../core/analysis/types';
-import type { PlacementJob } from '../core/jobs';
+import type { DentalPlacementJob, PlacementJob } from '../core/jobs';
+import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import { TriangleGate } from '../core/jobGate';
 import { AnalysisClient, analysisPoolSize } from './analysisClient';
 import { JobActivity } from './jobActivity';
@@ -36,7 +37,17 @@ function pool() {
 
 const mesh = (): TriangleMesh => ({ positions: new Float32Array(9), indices: new Uint32Array([0, 1, 2]) });
 const job = (model = mesh()): PlacementJob => ({ mesh: model, orientation: { position: [0, 0, 0], rotation: [0, 0, 0] }, settings: {} as PlacementSettings });
+const dentalPolicy: DentalPolicy = {
+  rim: {
+    boundaryKind: 'lower-edge-loop', points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]),
+    openingDirection: [0, -1, 0], centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1],
+    visibilityMask: new Uint8Array([1]), visibilityResolution: 1, visibilityMin: [-1, -1], visibilityMax: [1, 1],
+  },
+  stamps: [],
+};
+const dentalJob = (model = mesh()): DentalPlacementJob => ({ ...job(model), dental: dentalPolicy });
 const placed = { kind: 'placed', result: { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() } };
+const dentalPlaced = { ...placed, kind: 'dental-placed' as const };
 const label = { key: 'Placing contacts on {name}', vars: { name: 'A' } };
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -69,6 +80,22 @@ describe('analysis client', () => {
     expect(sent.positions).not.toBe(model.positions);
     expect(sent.positions).toEqual(model.positions);
     expect(workers[0]!.transfers[0]).toEqual([sent.positions.buffer, sent.indices.buffer]);
+  });
+
+  it('runs dental placement through the same worker and triangle gate as ordinary placement', async () => {
+    const { workers, create } = pool();
+    const gate = new TriangleGate(1);
+    const client = new AnalysisClient(create, () => {}, 2, gate);
+    const first = client.dentalPlace('dental:a', dentalJob(), label);
+    const second = client.place('place:b', job(), label);
+    await tick();
+    expect(workers[0]!.received[0]!.payload.kind).toBe('dental-place');
+    expect(workers).toHaveLength(1);
+    workers[0]!.done(0, dentalPlaced);
+    await expect(first).resolves.toEqual(expect.objectContaining({ points: [] }));
+    await tick();
+    workers[1]!.done(0, placed);
+    await expect(second).resolves.toEqual(expect.objectContaining({ points: [] }));
   });
 
   it('replaces a queued job and stops a running one by replacing its worker', async () => {

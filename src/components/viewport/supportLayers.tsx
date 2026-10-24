@@ -7,6 +7,8 @@ import type { GeneratedSupportMesh, SupportContact } from '../../core/supports/m
 import { warmZoneOverlay, zoneOverlay } from '../../core/supports/overlayMesh';
 import { contactRadius, withShape } from '../../core/supports/settings';
 import { sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
+import { DentalOpeningRaycaster, type DentalRim } from '../../core/analysis/dental';
+import { dentalAllowedVertex, type DentalAllowStamp, type DentalPolicy } from '../../core/analysis/dentalPolicy';
 import { contactToRemove } from '../../editing/removal';
 import { contactVertexRuns, selectionDelta } from '../../editing/selectionHighlight';
 import type { PrintUnit } from '../../state/project';
@@ -136,9 +138,20 @@ export function useWarmZoneOverlay(mesh: TriangleMesh | undefined, ready: boolea
  * just committed as saved copies) lays just the new stamps; any other change (undo, erase all, a
  * new model) recomputes every vertex. A vertex grid kept per model keeps both cheap.
  */
-export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; zones: readonly ZoneStamp[]; opacity: number }) {
+export function SurfaceStampLayer({ mesh, geometry, stamps, filledKind, color, opacity, baseline }: {
+  mesh: TriangleMesh;
+  geometry: THREE.BufferGeometry;
+  stamps: readonly (ZoneStamp | DentalAllowStamp)[];
+  filledKind: ZoneStamp['kind'] | DentalAllowStamp['kind'];
+  color: string;
+  opacity: number;
+  /** An optional domain-owned baseline, applied before ordered brush stamps. */
+  baseline?: Uint8Array;
+}) {
+  // The overlay engine needs only last-stamp-wins booleans; domain policy stays with its caller.
+  const zones = useMemo(() => stamps.map((stamp): ZoneStamp => ({ ...stamp, kind: stamp.kind === filledKind ? 'paint' : 'erase' })), [stamps, filledKind]);
   // Built in the effect for the same reason as `SupportBodies`: the cleanup strips shared attributes.
-  const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute; zoned: Uint8Array; grid: VertexGrid | undefined; applied: readonly ZoneStamp[] }>();
+  const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute; zoned: Uint8Array; baseline: Uint8Array; grid: VertexGrid | undefined; applied: readonly ZoneStamp[] }>();
   useEffect(() => {
     // The refinement and grid are cached per model mesh; only the GPU copy is made per mount.
     // A large model (heavy-mesh tier "large") is not refined: its faces are fine enough, and the copy would cost too much.
@@ -154,7 +167,8 @@ export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMe
     // White RGB (the material sets the blue); alpha per vertex.
     const colors = new THREE.BufferAttribute(new Uint8Array(count * 4).fill(255), 4, true);
     sub.setAttribute('color', colors);
-    setLayer({ geometry: sub, colors, zoned: new Uint8Array(count), grid, applied: [] });
+    const zoned = baseline?.slice() ?? new Uint8Array(count);
+    setLayer({ geometry: sub, colors, zoned, baseline: zoned.slice(), grid, applied: [] });
     return () => {
       if (shared) {
         sub.deleteAttribute('position');
@@ -163,7 +177,7 @@ export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMe
       }
       sub.dispose();
     };
-  }, [mesh, geometry]);
+  }, [mesh, geometry, baseline]);
   useEffect(() => {
     // A new model can run this once on the old layer (its shared attributes already stripped) before the rebuilt one arrives: skip it.
     if (!layer?.geometry.getAttribute('position')) return;
@@ -173,7 +187,8 @@ export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMe
     if (done.length <= zones.length && done.every((stamp, index) => sameStamp(zones[index]!, stamp))) {
       for (let index = done.length; index < zones.length; index++) stampVertices(zones[index]!, positions, normals, layer.zoned, layer.grid);
     } else {
-      zonedVertices(zones, positions, normals, layer.zoned, layer.grid);
+      layer.zoned.set(layer.baseline);
+      for (const stamp of zones) stampVertices(stamp, positions, normals, layer.zoned, layer.grid);
     }
     layer.applied = zones;
     const rgba = layer.colors.array as Uint8Array;
@@ -183,8 +198,77 @@ export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMe
   if (!layer) return null;
   // Drawn over the model (polygon offset), never pickable.
   return <mesh geometry={layer.geometry} raycast={() => undefined} renderOrder={16}>
-    <meshBasicMaterial color={PREVIEW.zone} vertexColors transparent opacity={opacity} depthWrite={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
+    <meshBasicMaterial color={color} vertexColors transparent opacity={opacity} depthWrite={false} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
   </mesh>;
+}
+
+export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; zones: readonly ZoneStamp[]; opacity: number }) {
+  return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={zones} filledKind="paint" color={PREVIEW.zone} opacity={opacity} />;
+}
+
+export function DentalStampLayer({ mesh, geometry, policy, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; policy: DentalPolicy; opacity: number }) {
+  // The baseline is exact but large models must never lock the viewport while it is painted.
+  // Brush edits remain visible immediately; when this mask arrives the generic layer composes it
+  // with the same ordered allow/erase stamps.
+  const [baseline, setBaseline] = useState<Uint8Array>();
+  useEffect(() => {
+    const policyBaseline: DentalPolicy = { ...policy, stamps: [] };
+    const positions = mesh.positions;
+    const normals = new Float32Array(positions.length);
+    const output = new Uint8Array(positions.length / 3);
+    let opening: DentalOpeningRaycaster | undefined;
+    let vertex = 0;
+    let cancelled = false;
+    let cancel = () => {};
+    setBaseline(undefined);
+    const schedule = () => {
+      const idle = typeof requestIdleCallback === 'function';
+      const handle = idle ? requestIdleCallback(step, { timeout: 1000 }) : setTimeout(() => step(), 16);
+      cancel = () => (idle ? cancelIdleCallback(handle as number) : clearTimeout(handle as ReturnType<typeof setTimeout>));
+    };
+    const step = () => {
+      if (cancelled) return;
+      // The ray index is built at an idle boundary too; individual vertex tests then stay within a small slice.
+      if (!opening) {
+        opening = new DentalOpeningRaycaster(mesh, policyBaseline.rim);
+        schedule();
+        return;
+      }
+      const deadline = performance.now() + WARM_SLICE_MS;
+      while (vertex < output.length && performance.now() < deadline) {
+        if (dentalAllowedVertex(policyBaseline, opening, positions, normals, vertex)) output[vertex] = 1;
+        vertex += 1;
+      }
+      if (vertex < output.length) return schedule();
+      if (!cancelled) setBaseline(output);
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      cancel();
+    };
+  }, [mesh, policy.rim]);
+  return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={policy.stamps} filledKind="allow" color={PREVIEW.dental} opacity={opacity} baseline={baseline} />;
+}
+
+/** The proven lower-edge loop, held just above the model so the permitted area has a clear boundary. */
+export function DentalRimLine({ rim }: { rim: DentalRim }) {
+  const geometry = useMemo(() => {
+    const line = new THREE.BufferGeometry();
+    line.setAttribute('position', new THREE.BufferAttribute(rim.points.slice(), 3));
+    return line;
+  }, [rim.points]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  const offset = useMemo(() => new THREE.Vector3(...rim.openingDirection).multiplyScalar(0.035), [rim.openingDirection]);
+  if (rim.boundaryKind !== 'lower-edge-loop') return null;
+  return <group position={offset} raycast={() => undefined} renderOrder={17}>
+    <lineLoop geometry={geometry} raycast={() => undefined}>
+      <lineBasicMaterial color={PREVIEW.dental} transparent opacity={0.9} depthTest={false} depthWrite={false} />
+    </lineLoop>
+    <lineLoop geometry={geometry} scale={1.001} raycast={() => undefined}>
+      <lineBasicMaterial color={PREVIEW.dental} transparent opacity={0.22} depthTest={false} depthWrite={false} />
+    </lineLoop>
+  </group>;
 }
 
 /** Contact ids a remove click at a unit-local point takes: the one nearest within Click reach. */

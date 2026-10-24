@@ -13,9 +13,10 @@ export const COMMAND_IDS = [
   'objects.selectAll', 'objects.delete',
   'transform.select', 'transform.move', 'transform.rotate',
   'project.open', 'project.save',
-  'supports.generate', 'supports.clearManual', 'supports.remove', 'check.run',
+  'supports.generate', 'supports.dentalAuto', 'supports.clearManual', 'supports.remove', 'check.run',
   'mode.edit', 'mode.zones', 'mode.exit',
   'zones.clearAll',
+  'dental.useDetected', 'dental.manualArea', 'dental.generate',
   'edit.generate', 'edit.add', 'edit.remove', 'edit.dragSelect', 'edit.dragUnselect', 'edit.clearSelection', 'edit.deleteSelection',
   'setting.clickReach',
   'shape.reset', 'shape.selectCustomised',
@@ -182,6 +183,11 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     visible: always, enabled: (s) => s.units > 0 && !s.generating,
     disabledReason: (s) => (s.units === 0 ? { key: 'Import a model before generating supports.' } : s.generating ? generatingReason : undefined),
   },
+  'supports.dentalAuto': {
+    role: 'secondary', label: () => 'Dental Auto Generate', hint: () => 'Detect an aligner lower opening, review orientation, then limit supports to its approved lower area',
+    visible: always, enabled: (s) => s.mode === 'off' && editable(s) && !s.generating,
+    disabledReason: (s) => (s.generating ? generatingReason : s.mode !== 'off' || !editable(s) ? entryReason(s) : undefined),
+  },
   'supports.clearManual': {
     role: 'destructive', label: () => 'Clear manual edits', hint: () => 'Remove manual supports and bring back removed automatic ones, at once. Undo brings the edits back',
     visible: always, enabled: (s) => s.units > 0, disabledReason: (s) => (s.units > 0 ? undefined : noModelReason),
@@ -229,6 +235,20 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
   'zones.clearAll': {
     role: 'destructive', label: () => 'Clear all zones', hint: () => 'Clear every no-support zone of this object at once. Undo brings them back',
     visible: (s) => s.mode === 'zones', enabled: (s) => s.zones > 0, disabledReason: (s) => (s.zones > 0 ? undefined : { key: 'No zones are painted yet.' }),
+  },
+  'dental.useDetected': {
+    role: 'primary', label: () => 'Use detected orientation', hint: () => 'Rotate the detected cavity opening down and continue to the allowed support area',
+    visible: (s) => s.mode === 'dental', enabled: always, disabledReason: never,
+  },
+  'dental.manualArea': {
+    role: 'secondary', label: () => 'Keep manual orientation', hint: () => 'Keep the current rotation and continue to the allowed support area',
+    visible: (s) => s.mode === 'dental', enabled: always, disabledReason: never,
+  },
+  'dental.generate': {
+    role: 'primary', label: (s) => (s.generating ? 'Generating dental supports…' : 'Generate dental supports'),
+    hint: () => 'Generate supports only on the approved dental area',
+    visible: (s) => s.mode === 'dental', enabled: (s) => !s.generating,
+    disabledReason: (s) => (s.generating ? generatingReason : undefined),
   },
   'edit.generate': {
     role: 'secondary',

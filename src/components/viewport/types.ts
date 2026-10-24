@@ -1,6 +1,7 @@
 import type { SupportProblem } from '../../core/analysis/supportCheck';
 import type { GeneratedSupportMesh } from '../../core/supports/mesh';
 import type { ZoneStamp } from '../../core/supports/zones';
+import type { DentalAllowStamp } from '../../core/analysis/dentalPolicy';
 import type { Vector } from '../../core/vec3';
 import type { Gesture } from '../../editing/gesture';
 import type { AddAction, BrushMode, EditTool, SelectStyle } from '../../editing/types';
@@ -39,6 +40,8 @@ export interface ObjectViewportProps {
   onShift: (held: boolean) => void;
   /** One finished zone stroke on a unit, stamps in unit-local space. */
   onZoneStroke: (unitId: string, stamps: ZoneStamp[]) => void;
+  /** One finished Dental support-area stroke on the active unit, in unit-local space. */
+  onDentalStroke: (unitId: string, stamps: DentalAllowStamp[]) => void;
   /** Drag over was pressed while the object has no support bodies drawn (none yet, or all removed). */
   onNoBodies: () => void;
   /** Support check findings to mark, positions in their unit's local frame. */

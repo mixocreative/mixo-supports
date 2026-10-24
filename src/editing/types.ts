@@ -3,7 +3,7 @@
  * right-click or Ctrl+click a support, or the model near one, to remove it.
  * `zones` paints no-support zones on the active object's surface instead.
  */
-export type EditMode = 'off' | 'edit' | 'zones';
+export type EditMode = 'off' | 'edit' | 'zones' | 'dental';
 /** Support Edit Mode tool: Add supports clicks the model to add; Select supports picks supports to act on. */
 export type EditTool = 'add' | 'select';
 /** Add supports: a click adds a support, or (Remove) removes the one it hits: the touch path of the right-click. */
@@ -14,6 +14,8 @@ export type SelectStyle = 'click' | 'brush';
 export type BrushMode = 'select' | 'unselect';
 /** The zone brush paints no-support zones or erases them. */
 export type ZoneKind = 'paint' | 'erase';
+/** Dental support-area brush: allow additions to the detected footprint or remove permission. */
+export type DentalKind = 'allow' | 'erase';
 
 /** What one history step did, in the words Undo and Redo name it by. */
 export const STEP_KINDS = ['addObjects', 'deleteObjects', 'generate', 'removeSupports', 'clearManual', 'addSupport', 'deleteSupports', 'zones', 'move', 'settings', 'openProject'] as const;

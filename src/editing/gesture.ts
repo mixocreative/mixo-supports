@@ -1,7 +1,7 @@
 import type { Brush } from './brushScheduler';
 import { effectiveBrushMode } from './selection';
 import type { EditSession } from './session';
-import type { BrushMode, EditMode, ZoneKind } from './types';
+import type { BrushMode, DentalKind, EditMode, ZoneKind } from './types';
 
 /**
  * What a press or a drag on the canvas does now: nothing special outside the modes, the zone brush
@@ -11,6 +11,8 @@ import type { BrushMode, EditMode, ZoneKind } from './types';
 export type Gesture =
   | { kind: 'none' }
   | { kind: 'zones'; brush: { radius: number; kind: ZoneKind } }
+  | { kind: 'dental-orientation'; proposal: NonNullable<EditSession['dentalProposal']> }
+  | { kind: 'dental-area'; brush: { radius: number; kind: DentalKind } }
   /** `remove`: a click removes the support it hits instead of adding one. */
   | { kind: 'add'; remove: boolean }
   | { kind: 'pick' }
@@ -23,6 +25,10 @@ export function gesture(session: EditSession): Gesture {
   switch (session.mode) {
     case 'off': return { kind: 'none' };
     case 'zones': return { kind: 'zones', brush: { radius: session.zoneRadius, kind: session.zoneKind } };
+    case 'dental':
+      return session.dentalStage === 'orientation'
+        ? { kind: 'dental-orientation', proposal: session.dentalProposal! }
+        : { kind: 'dental-area', brush: { radius: session.dentalRadius, kind: session.dentalKind } };
     case 'edit':
       if (session.tool === 'add') return { kind: 'add', remove: session.addAction === 'remove' };
       return session.selectStyle === 'click' ? { kind: 'pick' } : { kind: 'drag', brush: { radius: session.brushRadius, mode: effectiveBrushMode(session.brushMode, session.shiftHeld) }, base: session.brushMode, flipped: session.shiftHeld, sizing: session.brushSizing };
@@ -31,5 +37,5 @@ export function gesture(session: EditSession): Gesture {
 
 /** The mode a gesture belongs to. */
 export function gestureMode(gesture: Gesture): EditMode {
-  return gesture.kind === 'none' ? 'off' : gesture.kind === 'zones' ? 'zones' : 'edit';
+  return gesture.kind === 'none' ? 'off' : gesture.kind === 'zones' ? 'zones' : gesture.kind.startsWith('dental-') ? 'dental' : 'edit';
 }

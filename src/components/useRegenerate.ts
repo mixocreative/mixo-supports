@@ -8,7 +8,7 @@ import type { Message } from '../i18n';
 import { memoryInfo } from '../state/runtime';
 import type { PrintScene, PrintUnit, SceneCommand } from '../state/project';
 import { landPlacements, type FinishedPlacement } from '../supports/landing';
-import { orientationOf, placementJobOf, resolveSettings } from '../supports/unitSupports';
+import { dentalPlacementJobOf, orientationOf, placementJobOf, resolveSettings } from '../supports/unitSupports';
 import type { AnalysisClient } from '../workers/analysisClient';
 import { codedJobError } from '../workers/jobErrors';
 import { isAbort, RUNTIME, triangleCount, type SetStatus } from './appShared';
@@ -91,6 +91,40 @@ export function useRegenerate(host: {
     else setStatus('Analysing overhangs for 1 object.', { n: units.length }, 'Analysing overhangs for {n} objects.');
   }, [analysis, dispatch, forgetPlacing, offerUndo, sceneRef, setStatus, setStatusMessage, targets, unitName]);
 
+  /** Runs the separately-approved Dental policy for one unit; ordinary Generate remains generic. */
+  const generateDental = useCallback((unitId: string) => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
+    const job = unit && dentalPlacementJobOf(unit);
+    if (!unit || !job) return setStatus('Approve a dental support area before generating dental supports.');
+    try {
+      assertGenerateMemory(Math.min(triangleCount(unit), refusalLimit(RUNTIME)), RUNTIME, memoryInfo().deviceMemoryGb);
+    } catch (error) {
+      return setStatusMessage(errorStatus('place', codedJobError(error)));
+    }
+    const settings = resolveSettings(unit.settings);
+    const orientation = orientationOf(unit);
+    placing.current.add(unit.id);
+    setGenerating(true);
+    void analysis().dentalPlace(`dental-place:${unit.id}`, job, { key: 'Placing dental contacts on {name}', vars: { name: unitName(unit.id) } }).then((result): FinishedPlacement | undefined => {
+      forgetPlacing(unit.id);
+      return result ? { unitId: unit.id, orientation, settings, result } : undefined;
+    }, (error: unknown) => {
+      forgetPlacing(unit.id);
+      setStatusMessage(isAbort(error) ? { key: 'Dental support placement cancelled; existing supports kept.' } : errorStatus('place', codedJobError(error), { name: unit.name }));
+      return undefined;
+    }).then((finished) => {
+      if (!finished) return;
+      const { commands, landed, again } = landPlacements(sceneRef.current.units, [finished]);
+      if (again.length > 0) return generateDental(again[0]!.id);
+      if (landed.length === 0) return;
+      dispatch({ type: 'batch', commands });
+      const message = landedStatus(landed);
+      setStatusMessage(message);
+      if (landed.every((entry) => entry.report)) offerUndo({ kind: 'regenerate', message });
+    });
+    setStatus('Analysing approved dental surface for {name}.', { name: unit.name });
+  }, [analysis, dispatch, forgetPlacing, offerUndo, sceneRef, setStatus, setStatusMessage, unitName]);
+
   const generateRef = useRef(generate);
   generateRef.current = generate;
   /** A placement change is waiting out its burst: the pending note holds back, the regeneration is on its way. */
@@ -107,5 +141,5 @@ export function useRegenerate(host: {
   }, [mode]);
   useEffect(() => () => queue.current!.cancel(), []);
 
-  return { generate, generating, regenQueued: queued, scheduleRegenerate, forgetPlacing };
+  return { generate, generateDental, generating, regenQueued: queued, scheduleRegenerate, forgetPlacing };
 }

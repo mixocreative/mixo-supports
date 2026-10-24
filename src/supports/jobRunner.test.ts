@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
-import type { ContactInputs, JobTransform, SupportJob } from '../core/jobs';
+import type { ContactInputs, DentalPlacementJob, JobTransform, SupportJob } from '../core/jobs';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
-import { runSupportJob } from './jobRunner';
+import type { DentalPolicy } from '../core/analysis/dentalPolicy';
+import { filterDentalPlacement, runSupportJob } from './jobRunner';
 
 type V = [number, number, number];
 
@@ -75,5 +76,58 @@ describe('runSupportJob: per-support settings travel with the job', () => {
     expect(Array.from(received.positions)).toEqual(Array.from(built.positions));
     expect(built.components.filter((component) => component.part === 'tip').map((component) => component.contactId)).toEqual(['auto-a']);
     expect(Array.from(runSupportJob(job(model, still, { ...contacts, contactSettings: {} })).positions)).not.toEqual(Array.from(built.positions));
+  });
+});
+
+describe('filterDentalPlacement', () => {
+  const triangle: TriangleMesh = { positions: new Float32Array([-2, 0, -2, 2, 0, -2, 0, 0, 2]), indices: new Uint32Array([0, 1, 2]) };
+  const policy: DentalPolicy = {
+    rim: {
+      boundaryKind: 'lower-edge-loop', points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]),
+      openingDirection: [0, 1, 0], centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1],
+      visibilityMask: new Uint8Array([1, 1, 1, 1]), visibilityResolution: 2, visibilityMin: [-2, -2], visibilityMax: [2, 2],
+    }, stamps: [],
+  };
+
+  it('keeps only unit-local contacts inside the approved, opening-visible dental region', () => {
+    const placed = {
+      points: [point('inside', [0, 0, 0], [0, 1, 0]), point('outside', [3, 0, 0], [0, 1, 0])], regions: [],
+      contactPositions: new Float32Array(), contactNormals: new Float32Array(),
+    };
+    const result = filterDentalPlacement({ mesh: triangle, orientation: still, settings: { overhangAngleDegrees: 45, spacing: 2, edgeInset: 0, sharpEdgeAngleDegrees: 45, includeIslands: false }, dental: policy }, placed);
+    expect(result.points.map((candidate) => candidate.id)).toContain('inside');
+    expect(result.points.map((candidate) => candidate.id)).not.toContain('outside');
+  });
+
+  it('adds a spaced contact on an approved downward face even with no generic candidate', () => {
+    const downwardTriangle: TriangleMesh = { positions: new Float32Array([0, 0, 0, 0.8, 0, 0, 0, 0, 0.8]), indices: new Uint32Array([0, 1, 2]) };
+    const dentalJob: DentalPlacementJob = {
+      mesh: downwardTriangle, orientation: still,
+      settings: { overhangAngleDegrees: 45, spacing: 2, edgeInset: 0, sharpEdgeAngleDegrees: 45, includeIslands: false }, dental: policy,
+    };
+    const result = filterDentalPlacement(dentalJob, { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() });
+    expect(result.points).toHaveLength(1);
+    expect(result.points[0]).toMatchObject({ source: 'interior', normal: [0, -1, 0] });
+  });
+
+  it('keeps the approval test unit-local when the dental model was rotated for placement', () => {
+    const downwardTriangle: TriangleMesh = { positions: new Float32Array([0, 0, 0, 0.8, 0, 0, 0, 0, 0.8]), indices: new Uint32Array([0, 1, 2]) };
+    const result = filterDentalPlacement({
+      mesh: downwardTriangle, orientation: { position: [0, 0, 0], rotation: [0, Math.PI / 2, 0] },
+      settings: { overhangAngleDegrees: 45, spacing: 2, edgeInset: 0, sharpEdgeAngleDegrees: 45, includeIslands: false }, dental: policy,
+    }, { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() });
+    expect(result.points).toHaveLength(1);
+    expect(result.points[0]!.position).toEqual([expect.closeTo(0.2666666667), 0, expect.closeTo(-0.2666666667)]);
+    expect(result.points[0]!.normal).toEqual([0, -1, 0]);
+  });
+
+  it('honours a later erase stamp for sampled lower surfaces', () => {
+    const downwardTriangle: TriangleMesh = { positions: new Float32Array([0, 0, 0, 0.8, 0, 0, 0, 0, 0.8]), indices: new Uint32Array([0, 1, 2]) };
+    const erased: DentalPolicy = { ...policy, stamps: [{ center: [0.27, 0, 0.27], radius: 1, normal: [0, -1, 0], kind: 'erase' }] };
+    const result = filterDentalPlacement({
+      mesh: downwardTriangle, orientation: still,
+      settings: { overhangAngleDegrees: 45, spacing: 2, edgeInset: 0, sharpEdgeAngleDegrees: 45, includeIslands: false }, dental: erased,
+    }, { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() });
+    expect(result.points).toEqual([]);
   });
 });

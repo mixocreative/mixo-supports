@@ -1,4 +1,4 @@
-import { runCheckJob, runPlacementJob } from '../supports/jobRunner';
+import { filterDentalPlacement, runCheckJob, runPlacementJob } from '../supports/jobRunner';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
 import { serveTask, transferable } from './serveTask';
 
@@ -15,5 +15,9 @@ serveTask<AnalysisTask, AnalysisResult>((task, { progress: post }) => {
   };
   if (task.kind === 'check') return { kind: 'checked', problems: runCheckJob(task.job, progress) };
   const result = runPlacementJob(task.job, progress);
+  if (task.kind === 'dental-place') {
+    const filtered = filterDentalPlacement(task.job, result);
+    return transferable({ kind: 'dental-placed', result: filtered }, [filtered.contactPositions.buffer, filtered.contactNormals.buffer]);
+  }
   return transferable({ kind: 'placed', result }, [result.contactPositions.buffer, result.contactNormals.buffer]);
 });

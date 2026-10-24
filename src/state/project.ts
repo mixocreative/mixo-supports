@@ -2,6 +2,7 @@ import type { PlacementResult, Region, SupportPoint, TriangleMesh } from '../cor
 import { contactsHiddenByMarkers, rekeyPoints, remapDeleted } from '../core/analysis/placement';
 import { defaultSupportSettings, parseShapeOverride, type ShapeOverride } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
+import type { DentalAllowStamp, DentalPolicy } from '../core/analysis/dentalPolicy';
 import type { ModelTransform } from './transform';
 
 export { identityTransform } from './transform';
@@ -36,6 +37,8 @@ export interface PrintUnit {
   deleted: string[];
   /** Ordered brush stamps of no-support zones (the last covering stamp wins); automatic contacts inside are dropped. */
   zones: ZoneStamp[];
+  /** Accepted local dental footprint and its ordered allow/erase edits; absent until the workflow is approved. */
+  dental?: DentalPolicy;
   /**
    * Per-support settings by exact contact id (automatic or manual): only the keys the user set.
    * A support without an entry follows `settings`; adding a support creates none.
@@ -74,6 +77,9 @@ export type SceneCommand =
   | { type: 'handWork/set'; unitId: string; deleted: string[]; contactSettings: ContactSettings }
   | { type: 'zones/add'; unitId: string; stamps: ZoneStamp[] }
   | { type: 'zones/clear'; unitId: string }
+  | { type: 'dental/set'; unitId: string; policy: DentalPolicy }
+  | { type: 'dental/stamps/add'; unitId: string; stamps: DentalAllowStamp[] }
+  | { type: 'dental/clear'; unitId: string }
   /** Gives each named support the patch's keys on top of its own (one history step for all of them). */
   | { type: 'contactSettings/set'; unitId: string; contactIds: string[]; patch: ShapeOverride }
   /** The named supports follow the object's settings again. */
@@ -137,6 +143,15 @@ export function reduceScene(scene: PrintScene, command: SceneCommand): PrintScen
     case 'zones/clear':
       if (scene.units.find((unit) => unit.id === command.unitId)?.zones.length === 0) return scene;
       return updateUnit(scene, command.unitId, (unit) => ({ ...unit, zones: [] }));
+    case 'dental/set':
+      return updateUnit(scene, command.unitId, (unit) => ({ ...unit, dental: cloneDentalPolicy(command.policy) }));
+    case 'dental/stamps/add':
+      if (command.stamps.length === 0) return scene;
+      return updateUnit(scene, command.unitId, (unit) => unit.dental === undefined
+        ? unit
+        : { ...unit, dental: { ...unit.dental, stamps: [...unit.dental.stamps, ...command.stamps.map(cloneDentalStamp)] } });
+    case 'dental/clear':
+      return updateUnit(scene, command.unitId, ({ dental: _dental, ...unit }) => unit);
     case 'contactSettings/set': {
       const patch = parseShapeOverride(command.patch);
       const unit = scene.units.find((candidate) => candidate.id === command.unitId);
@@ -211,14 +226,14 @@ export function deserializeScene(serialized: string): PrintScene {
 export function sceneJsonReplacer(_key: string, value: unknown): unknown {
   if (value instanceof Float32Array) return { $printSceneType: 'Float32Array', values: Array.from(value) };
   if (value instanceof Uint32Array) return { $printSceneType: 'Uint32Array', values: Array.from(value) };
+  if (value instanceof Uint8Array) return { $printSceneType: 'Uint8Array', values: Array.from(value) };
   return value;
 }
 
 export function sceneJsonReviver(_key: string, value: unknown): unknown {
   if (!isTypedArrayEncoding(value)) return value;
-  return value.$printSceneType === 'Float32Array'
-    ? new Float32Array(value.values)
-    : new Uint32Array(value.values);
+  if (value.$printSceneType === 'Float32Array') return new Float32Array(value.values);
+  return value.$printSceneType === 'Uint32Array' ? new Uint32Array(value.values) : new Uint8Array(value.values);
 }
 
 /**
@@ -258,6 +273,7 @@ function normalizeUnit(unit: PrintUnit, copyMesh = true): PrintUnit {
     manual: cloneJsonValue(unit.manual ?? []) as unknown as SupportPoint[],
     deleted: cloneJsonValue(unit.deleted ?? []) as string[],
     zones: cloneJsonValue(unit.zones ?? []) as unknown as ZoneStamp[],
+    ...(unit.dental === undefined ? {} : { dental: cloneDentalPolicy(unit.dental) }),
     contactSettings: normalizeContactSettings(unit.contactSettings),
   });
 }
@@ -314,10 +330,40 @@ function normalizeString(value: unknown, label: string): string {
   return value;
 }
 
-function isTypedArrayEncoding(value: unknown): value is { $printSceneType: 'Float32Array' | 'Uint32Array'; values: number[] } {
+function cloneDentalPolicy(policy: DentalPolicy): DentalPolicy {
+  const { rim } = policy;
+  if (!(rim.points instanceof Float32Array) || !(rim.visibilityMask instanceof Uint8Array)) throw new TypeError('dental policy must contain typed arrays');
+  if (rim.points.length < 6 || rim.points.length % 3 !== 0 || !Number.isInteger(rim.visibilityResolution) || rim.visibilityResolution < 1 || rim.visibilityMask.length !== rim.visibilityResolution ** 2) {
+    throw new TypeError('dental policy has invalid footprint dimensions');
+  }
+  const openingDirection = normalizeVector(rim.openingDirection, 'dental opening direction');
+  const centroid = normalizeVector(rim.centroid, 'dental centroid');
+  const tangent = normalizeVector(rim.tangent, 'dental tangent');
+  const bitangent = normalizeVector(rim.bitangent, 'dental bitangent');
+  const visibilityMin = normalizePair(rim.visibilityMin, 'dental visibility minimum');
+  const visibilityMax = normalizePair(rim.visibilityMax, 'dental visibility maximum');
+  if (visibilityMax[0] <= visibilityMin[0] || visibilityMax[1] <= visibilityMin[1]) throw new TypeError('dental visibility bounds must have area');
+  for (const value of rim.points) if (!Number.isFinite(value)) throw new TypeError('dental rim points must be finite');
+  return {
+    rim: { boundaryKind: rim.boundaryKind === 'lower-edge-loop' ? 'lower-edge-loop' : 'projection-fallback', points: new Float32Array(rim.points), openingDirection, centroid, tangent, bitangent, visibilityMask: new Uint8Array(rim.visibilityMask), visibilityResolution: rim.visibilityResolution, visibilityMin, visibilityMax },
+    stamps: policy.stamps.map(cloneDentalStamp),
+  };
+}
+
+function cloneDentalStamp(stamp: DentalAllowStamp): DentalAllowStamp {
+  if (stamp.kind !== 'allow' && stamp.kind !== 'erase' || !Number.isFinite(stamp.radius) || stamp.radius <= 0) throw new TypeError('dental stamp must have a positive radius and known kind');
+  return { center: normalizeVector(stamp.center, 'dental stamp center'), radius: stamp.radius, normal: normalizeVector(stamp.normal, 'dental stamp normal'), kind: stamp.kind };
+}
+
+function normalizePair(vector: readonly number[], label: string): [number, number] {
+  if (vector.length !== 2 || vector.some((value) => !Number.isFinite(value))) throw new TypeError(`${label} must contain two finite numbers`);
+  return [vector[0]!, vector[1]!];
+}
+
+function isTypedArrayEncoding(value: unknown): value is { $printSceneType: 'Float32Array' | 'Uint32Array' | 'Uint8Array'; values: number[] } {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const encoded = value as Record<string, unknown>;
-  return (encoded.$printSceneType === 'Float32Array' || encoded.$printSceneType === 'Uint32Array')
+  return (encoded.$printSceneType === 'Float32Array' || encoded.$printSceneType === 'Uint32Array' || encoded.$printSceneType === 'Uint8Array')
     && Array.isArray(encoded.values)
     && encoded.values.every((entry) => typeof entry === 'number');
 }

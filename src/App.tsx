@@ -19,6 +19,7 @@ import SettingsPanel from './components/SettingsPanel';
 import { ShapeBand } from './components/ShapeBand';
 import { BrandLogo } from './components/BrandLogo';
 import { EditBar } from './components/EditBar';
+import { DentalBar } from './components/DentalBar';
 import { CommandButton } from './components/CommandButton';
 import { ModeSections } from './components/ModeEntry';
 import { ObjectList } from './components/ObjectList';
@@ -42,10 +43,12 @@ import { PlateLedger, type PlateScene } from './core/plateLedger';
 import { estimateTriangles, ESTIMATE_HEAD_BYTES } from './core/import/estimate';
 import { emptyScene, reduceScene, type ContactSettings, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
+import { proposeDentalOrientation, rotationToPlateDown } from './core/analysis/dental';
 import type { ExportKind } from './supports/export';
 import type { GeneratedSupportMesh } from './core/supports/mesh';
 import { meshBounds } from './core/supports/meshQuery';
 import { problemInZone, type ZoneStamp } from './core/supports/zones';
+import type { DentalAllowStamp } from './core/analysis/dentalPolicy';
 import { deleteCommands } from './supports/selection';
 import { gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
@@ -91,6 +94,8 @@ const exportKindOf = (id: CommandId) => id.slice('export.'.length) as ExportKind
 const VIEWPORT_CLASS: Record<GestureKind, string> = {
   none: '',
   zones: ' viewport--editing viewport--zones',
+  'dental-orientation': ' viewport--editing viewport--dental',
+  'dental-area': ' viewport--editing viewport--dental',
   add: ' viewport--editing',
   pick: ' viewport--editing',
   drag: ' viewport--editing',
@@ -275,7 +280,7 @@ export default function App() {
     p?.dispose(); e?.dispose(); a?.dispose();
   }, []);
 
-  const { generate, generating, regenQueued, scheduleRegenerate, forgetPlacing } = useRegenerate({
+  const { generate, generateDental, generating, regenQueued, scheduleRegenerate, forgetPlacing } = useRegenerate({
     sceneRef, mode: editMode, targets, analysis, unitName, dispatch, offerUndo, setStatus, setStatusMessage,
   });
 
@@ -299,6 +304,7 @@ export default function App() {
     workers.current.preview?.forget(unitId);
     workers.current.export?.forget(unitId);
     workers.current.analysis?.cancel(`place:${unitId}`);
+    workers.current.analysis?.cancel(`dental-place:${unitId}`);
     workers.current.analysis?.cancel(`check:${unitId}`);
     forgetPlacing(unitId);
     setProblems((current) => {
@@ -563,6 +569,12 @@ export default function App() {
     dispatch({ type: 'zones/add', unitId, stamps });
     setStatus(stamps[stamps.length - 1]!.kind === 'paint' ? 'Zone painted: automatic supports inside are hidden.' : 'Zone erased.');
   }, [dispatch, setStatus]);
+  /** One Dental surface stroke is one undo step and never shares no-support-zone commands. */
+  const onDentalStroke = useCallback((unitId: string, stamps: DentalAllowStamp[]) => {
+    if (sessionRef.current.mode !== 'dental' || sessionRef.current.dentalStage !== 'area' || unitId !== sceneRef.current.activeUnitId || stamps.length === 0) return;
+    dispatch({ type: 'dental/stamps/add', unitId, stamps });
+    setStatus(stamps[stamps.length - 1]!.kind === 'allow' ? 'Dental support area allowed.' : 'Dental support permission removed.');
+  }, [dispatch, setStatus]);
   const clearActiveZones = useCallback(() => {
     const unitId = sceneRef.current.activeUnitId;
     if (!unitId || !sceneRef.current.units.find((unit) => unit.id === unitId)?.zones.length) return;
@@ -776,6 +788,33 @@ export default function App() {
       case 'transform.move': return setGizmoMode('translate');
       case 'transform.rotate': return setGizmoMode('rotate');
       case 'supports.generate': return generate();
+      case 'supports.dentalAuto': {
+        const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+        if (!unit) return;
+        const proposal = proposeDentalOrientation(unit.source);
+        if (proposal.kind !== 'proposal') return setStatus('Dental opening could not be detected safely. Rotate the model manually and use normal Generate.');
+        return send({ type: 'enterDental', proposal });
+      }
+      case 'dental.useDetected':
+      case 'dental.manualArea': {
+        const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+        const proposal = sessionRef.current.dentalProposal;
+        if (!unit || !proposal || sessionRef.current.dentalStage !== 'orientation') return;
+        const transform = id === 'dental.useDetected' ? { ...unit.transform, rotation: rotationToPlateDown(proposal.rim.openingDirection) } : unit.transform;
+        dispatch({ type: 'batch', commands: [
+          ...(transform === unit.transform ? [] : [{ type: 'transform/set' as const, unitId: unit.id, transform }]),
+          { type: 'dental/set' as const, unitId: unit.id, policy: { rim: proposal.rim, stamps: [] } },
+        ] });
+        send({ type: 'acceptDentalOrientation' });
+        requestView('bottom');
+        return;
+      }
+      case 'dental.generate': {
+        const unitId = sceneRef.current.activeUnitId;
+        if (!unitId || sessionRef.current.mode !== 'dental' || sessionRef.current.dentalStage !== 'area') return;
+        generateDental(unitId);
+        return send({ type: 'exit' });
+      }
       case 'mode.edit': {
         send({ type: 'enterEdit' });
         const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
@@ -805,7 +844,7 @@ export default function App() {
       case 'zones.clearAll': return clearActiveZones();
       case 'export.active-printable': case 'export.active-supports': case 'export.separate-printable': case 'export.separate-supports': case 'export.whole-printable': return void runExport(exportKindOf(id));
     }
-  }, [checkSupports, chooseProject, saveProject, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dispatch, generate, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo]);
+  }, [checkSupports, chooseProject, saveProject, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dispatch, generate, generateDental, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -913,6 +952,7 @@ export default function App() {
         <section {...(locked('supports') ? { inert: '' } : {})}>
           <h3>{t('Supports for {scope}', { scope: scopeLabel })}</h3>
           <CommandButton command={command('supports.generate')} run={runCommand} {...(scopeGenerated ? { className: scopePending ? 'regen attention' : 'regen' } : {})} />
+          <CommandButton command={command('supports.dentalAuto')} run={runCommand} />
           <CommandButton command={command('supports.clearManual')} run={runCommand} />
           <CommandButton command={command('supports.remove')} run={runCommand} />
         </section>
@@ -949,6 +989,7 @@ export default function App() {
           onPaint={onPaint}
           onShift={onShift}
           onZoneStroke={onZoneStroke}
+          onDentalStroke={onDentalStroke}
           onNoBodies={onNoBodies}
           problems={listedProblems}
           {...(added ? { added } : {})}
@@ -974,6 +1015,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hidden={zonesHidden} ui={ui} send={send} run={runCommand} />
+          : press.kind === 'dental-orientation' || press.kind === 'dental-area' ? <DentalBar gesture={press} unitName={activeUnit?.name} ui={ui} send={send} run={runCommand} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>

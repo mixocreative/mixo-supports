@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
+import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import { identityTransform, type PrintUnit } from '../state/project';
 import { applyTransform } from '../state/transform';
 import { meshBounds } from '../core/supports/meshQuery';
 import { defaultSupportSettings } from '../core/supports/settings';
 import { jobContacts } from '../core/jobs';
-import { hiddenByZones, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './unitSupports';
+import { dentalPlacementJobOf, hiddenByZones, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './unitSupports';
 
 // A closed 10 mm cube: its underside (y = -5) is where the contacts sit.
 const source: TriangleMesh = {
@@ -82,6 +83,23 @@ describe('unit supports', () => {
   it('merges settings over defaults and composes contacts', () => {
     expect(resolveSettings({ preset: 'HEAVY', touchDiameter: 1 })).toMatchObject({ preset: 'HEAVY', touchDiameter: 1, raftEnabled: true });
     expect(unitContacts(unit, undefined).map((contact) => contact.id)).toEqual(['auto-0', 'manual-a']);
+  });
+
+  it('only makes a dental placement job after its support area was accepted', () => {
+    expect(dentalPlacementJobOf(unit)).toBeUndefined();
+    const dental: DentalPolicy = {
+      rim: {
+        boundaryKind: 'lower-edge-loop', points: new Float32Array([0, -5, -1, 1, -5, -1, 0, -5, 1]),
+        openingDirection: [0, -1, 0], centroid: [0, -5, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1],
+        visibilityMask: new Uint8Array([1]), visibilityResolution: 1, visibilityMin: [-1, -1], visibilityMax: [1, 1],
+      },
+      stamps: [],
+    };
+    expect(dentalPlacementJobOf({ ...unit, dental })).toMatchObject({
+      mesh: source,
+      orientation: { position: [0, 0, 0], rotation: generated.rotation },
+      dental,
+    });
   });
 
   it('builds supports in unit space that reach the plate at the generation transform', () => {

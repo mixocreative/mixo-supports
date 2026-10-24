@@ -144,6 +144,8 @@ function readProps() {
     first: unit?.id,
     point: unit?.settings?.pointDiameter,
     zones: unit ? unit.zones.length : -1,
+    dentalBoundary: unit?.dental?.rim.boundaryKind ?? '',
+    dentalStamps: unit?.dental?.stamps.length ?? -1,
     ids: out.selection ?? [],
   };
 }
@@ -261,7 +263,7 @@ async function exportSupports(d, dir) {
 let browser;
 let vite;
 
-async function walk(url, scratch) {
+async function walk(url, scratch, dentalFixture) {
   browser = await launch();
   const context = await browser.newContext({ viewport: VIEWPORT, acceptDownloads: true });
   await context.addInitScript(() => { try { localStorage.setItem('mixo-supports.lang', 'en'); } catch { /* storage off */ } });
@@ -545,6 +547,30 @@ async function walk(url, scratch) {
     await (await chooser3).setFiles(wrong);
     await d.idle(1000);
     check('i6 a newer file is refused with a message and the plate stays', /newer version/.test(await d.status()) && (await page.locator('footer').innerText()).includes('1 object'), `status "${await d.status()}"`);
+
+    if (dentalFixture) {
+      // The opt-in Dental lane never checks a patient model into the repository. The caller gives
+      // its local fixture explicitly (for example, `DENTAL_WALK_FIXTURE=... npm run walk`).
+      await page.goto(url);
+      await page.setInputFiles('.drop input[type=file]', dentalFixture);
+      const dentalName = path.basename(dentalFixture, path.extname(dentalFixture));
+      await page.waitForFunction((name) => document.body.innerText.includes(name), dentalName, { timeout: 60000 });
+      await d.button('Dental Auto Generate').click();
+      await page.waitForFunction(() => document.body.innerText.includes('Review the detected lower opening'), null, { timeout: 90000 });
+      await page.screenshot({ path: path.join(scratch, 'dental-orientation.png') });
+      await d.button('Use detected orientation').click();
+      await page.waitForFunction(() => document.body.innerText.includes('Dental support area'), null, { timeout: 90000 });
+      await d.idle(1000);
+      await page.screenshot({ path: path.join(scratch, 'dental-area.png') });
+      const approved = await d.props();
+      check('l1 dental preview accepts only a proven lower-edge loop', approved.dentalBoundary === 'lower-edge-loop' && approved.dentalStamps === 0, `boundary "${approved.dentalBoundary}", manual markers ${approved.dentalStamps}`);
+      await d.button('Generate dental supports').click();
+      await page.waitForFunction(() => /[1-9][\d,]* automatic/.test(document.querySelector('footer')?.innerText ?? '') && ![...document.querySelectorAll('button')].some((b) => /Generating dental supports/.test(b.innerText)), null, { timeout: 240000 });
+      await d.quiet();
+      const dentalSupports = await d.counts();
+      const placed = await d.props();
+      check('l2 dental generation produces supports only after the approved-area stage', dentalSupports.auto > 0 && placed.dentalBoundary === 'lower-edge-loop', `automatic ${dentalSupports.auto}, boundary "${placed.dentalBoundary}"`);
+    }
   } catch (error) {
     check('walk ran to the end', false, error.message);
     await page.screenshot({ path: path.join(scratch, 'walk-error.png') }).catch(() => {});
@@ -565,7 +591,7 @@ async function walk(url, scratch) {
   check('h no console errors or warnings', errors.length === 0, errors.length ? errors.slice(0, 3).join(' || ') : '0 messages');
 }
 
-// WALK_OUT: where a failing run leaves its screenshots and files (CI uploads it); a passing run removes them.
+// WALK_OUT: where a run leaves its screenshots and files for review; ordinary passing runs remove them.
 const scratch = process.env.WALK_OUT ? (mkdirSync(path.resolve(process.env.WALK_OUT), { recursive: true }), mkdtempSync(path.join(path.resolve(process.env.WALK_OUT), 'run-'))) : mkdtempSync(path.join(tmpdir(), 'mixo-walk-'));
 async function stopAll() {
   await browser?.close().catch(() => {});
@@ -580,13 +606,14 @@ try {
   const url = `http://127.0.0.1:${port}/mixo-supports/`;
   await waitFor(url, vite);
   console.log(`walk on ${url}`);
-  await walk(url, scratch);
+  const dentalFixture = process.env.DENTAL_WALK_FIXTURE;
+  await walk(url, scratch, dentalFixture);
 } catch (error) {
   check('walk setup', false, error.message);
 } finally {
   await stopAll();
 }
 const failed = results.filter((r) => !r.ok).length;
-if (failed === 0) rmSync(scratch, { recursive: true, force: true });
+if (failed === 0 && !process.env.WALK_OUT) rmSync(scratch, { recursive: true, force: true });
 console.log(`${failed === 0 ? 'ALL PASS' : `${failed} FAIL`} (${results.length} checks, ${Math.round((Date.now() - started) / 1000)} s)`);
 process.exit(failed === 0 ? 0 : 1);

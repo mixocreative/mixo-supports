@@ -1,7 +1,7 @@
 import type { Gesture } from '../../editing/gesture';
 
 /** Colours of the edit preview and check markers (the app's red, kraft, blue and an amber). */
-export const PREVIEW = { add: '#b59f78', remove: '#7f0019', ring: '#3b3631', zone: '#1d3461', island: '#b3261e', overhang: '#d97706' };
+export const PREVIEW = { add: '#b59f78', remove: '#7f0019', ring: '#3b3631', zone: '#1d3461', dental: '#2f6f5e', island: '#b3261e', overhang: '#d97706' };
 /** Opacity of the no-support zone layer in zones mode (`full`) and in Support Edit Mode (`faint`). */
 export const ZONE_OPACITY = { full: 0.7, faint: 0.3 } as const;
 /** Opacity of a support body previewed (not yet selected) in red. */
@@ -20,6 +20,8 @@ export function canvasCursor(gesture: Gesture, overBrush: boolean): string {
     case 'pick': return 'default';
     case 'add': return 'crosshair';
     case 'zones': return overBrush ? BRUSH_CURSOR[gesture.brush.kind] : 'crosshair';
+    case 'dental-orientation': return 'default';
+    case 'dental-area': return overBrush ? BRUSH_CURSOR[gesture.brush.kind === 'allow' ? 'paint' : 'erase'] : 'crosshair';
     case 'drag': return overBrush ? BRUSH_CURSOR[gesture.brush.mode] : 'grab';
   }
 }
