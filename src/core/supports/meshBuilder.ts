@@ -29,13 +29,14 @@ export class MeshBuilder {
     if (!this.parts.includes(component.part)) this.parts.push(component.part);
   }
 
-  finish(dropped: string[] = []): GeneratedSupportMesh {
+  finish(dropped: string[] = [], droppedByZones: string[] = []): GeneratedSupportMesh {
     return {
       positions: new Float32Array(this.positions),
       indices: new Uint32Array(this.indices),
       parts: [...this.parts],
       components: this.components.map((component) => ({ ...component })),
       dropped,
+      droppedByZones,
     };
   }
 

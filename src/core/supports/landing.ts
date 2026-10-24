@@ -15,6 +15,10 @@ import { add, cross, normalizeOrDown, scale, subtract, type Vector } from '../ve
 export interface Landing {
   point: Vector;
   normal: Vector;
+  /** Face hit on the exact source mesh, even when the visible landing is voxel-remeshed. */
+  faceIndex?: number;
+  /** Exact hit on that face; use this point for face-local paint permission. */
+  sourcePoint?: Vector;
 }
 
 /**
@@ -59,7 +63,8 @@ export class LineTarget {
   cast(from: Vector, length: number): Landing | undefined {
     const hint = this.exact.cast(from, length);
     if (!this.remesh || !hint) return hint;
-    return this.remesh.castDown(from, length, hint.point[1] + 2 * this.remesh.voxel);
+    const landed = this.remesh.castDown(from, length, hint.point[1] + 2 * this.remesh.voxel);
+    return landed ? { ...landed, faceIndex: hint.faceIndex, sourcePoint: hint.point } : undefined;
   }
 
   normal(contact: SupportContact): Vector {
@@ -105,9 +110,9 @@ class DownRaycaster {
   }
 
   /** Nearest surface straight below `from` within `length`, with its upward face normal. */
-  cast(from: Vector, length: number): { point: Vector; normal: Vector } | undefined {
+  cast(from: Vector, length: number): Landing | undefined {
     const faces = this.cells.get(`${Math.floor(from[0] / this.cell)}|${Math.floor(from[2] / this.cell)}`) ?? [];
-    let best: { point: Vector; normal: Vector } | undefined;
+    let best: Landing | undefined;
     for (const face of faces) {
       const [a, b, c] = [0, 1, 2].map((k) => {
         const i = this.mesh.indices[face * 3 + k]! * 3;
@@ -124,7 +129,7 @@ class DownRaycaster {
       if (!best || y > best.point[1]) {
         let normal = normalizeOrDown(cross(subtract(b, a), subtract(c, a)));
         if (normal[1] < 0) normal = [-normal[0], -normal[1], -normal[2]];
-        best = { point: [from[0], y, from[2]], normal };
+        best = { point: [from[0], y, from[2]], normal, faceIndex: face };
       }
     }
     return best;

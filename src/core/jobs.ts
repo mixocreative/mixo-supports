@@ -35,6 +35,8 @@ export interface ContactInputs {
 /** One unit's support mesh, built in unit-local space. */
 export interface SupportJob {
   mesh: TriangleMesh;
+  /** Accepted dental policy also constrains secondary model landings during mesh construction. */
+  dental?: DentalPolicy;
   /** The transform the supports were generated at (plate space is its frame); null: no supports, an empty mesh. */
   frame: JobTransform | null;
   settings: LiveSupportSettings;

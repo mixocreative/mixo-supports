@@ -44,8 +44,8 @@ export function placementPending(unit: PrintUnit): boolean {
 const contactCache = new WeakMap<PrintUnit, readonly SupportContact[]>();
 const builtCache = new WeakMap<PrintUnit, { dropped: readonly string[]; contacts: readonly SupportContact[] }>();
 
-/** What the unit's latest support build reported: the automatic contacts it left out for landing in a zone. */
-export type BuiltSupports = Pick<GeneratedSupportMesh, 'dropped'>;
+/** What the latest build omitted, with the no-support-zone subset recorded separately. */
+export type BuiltSupports = Pick<GeneratedSupportMesh, 'dropped' | 'droppedByZones'>;
 
 /** A unit's latest support build and the unit version it was built from. */
 export interface UnitBuild<T extends BuiltSupports = GeneratedSupportMesh> {
@@ -73,7 +73,7 @@ export function currentBuilds<T extends BuiltSupports>(units: readonly PrintUnit
 
 /**
  * Final contacts in unit-local space: automatic minus deleted and no-support zones, plus
- * manual, minus those whose support the unit's latest build (`built`) dropped for landing in a zone.
+ * manual, minus those whose support the unit's latest build (`built`) dropped at a secondary landing.
  * Units are immutable, so each list is worked out once per unit object and build; it is frozen and
  * shared by every caller, never to be changed in place.
  */
@@ -92,7 +92,7 @@ export function unitContacts(unit: PrintUnit, built: BuiltSupports | undefined):
   return kept;
 }
 
-const hiddenCache = new WeakMap<PrintUnit, { dropped: readonly string[] | undefined; count: number }>();
+const hiddenCache = new WeakMap<PrintUnit, { droppedByZones: readonly string[] | undefined; count: number }>();
 
 /**
  * How many automatic supports the unit's no-support zones hide: the contacts a zone takes out of
@@ -102,12 +102,14 @@ const hiddenCache = new WeakMap<PrintUnit, { dropped: readonly string[] | undefi
  */
 export function hiddenByZones(unit: PrintUnit, built: BuiltSupports | undefined): number {
   if (unit.zones.length === 0) return 0;
-  const dropped = built?.dropped;
+  const dropped = built?.droppedByZones ?? built?.dropped;
   const cached = hiddenCache.get(unit);
-  if (cached && cached.dropped === dropped) return cached.count;
+  if (cached && cached.droppedByZones === dropped) return cached.count;
   const automatic = (contacts: readonly SupportContact[]) => contacts.filter((contact) => contact.origin !== 'manual').length;
-  const count = automatic(jobContacts({ ...contactInputs(unit), zones: [] })) - automatic(unitContacts(unit, built));
-  hiddenCache.set(unit, { dropped, count });
+  const zoneDropped = new Set(dropped);
+  const visible = jobContacts(contactInputs(unit)).filter((contact) => !zoneDropped.has(contact.id));
+  const count = automatic(jobContacts({ ...contactInputs(unit), zones: [] })) - automatic(visible);
+  hiddenCache.set(unit, { droppedByZones: dropped, count });
   return count;
 }
 
@@ -150,6 +152,7 @@ export function supportJobOf(unit: PrintUnit, unitIndex: number, mode: 'preview'
   const settings = resolveSettings(unit.settings);
   return {
     mesh: unit.source,
+    ...(unit.dental ? { dental: unit.dental } : {}),
     frame: unit.supports === undefined ? null : generationTransform(unit),
     settings,
     contacts: contactInputs(unit),

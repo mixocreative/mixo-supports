@@ -36,7 +36,8 @@ export function tipsOf(mesh: GeneratedSupportMesh): GeneratedSupportMesh {
     offset += triangles.length;
   }
   const parts = (['tip', 'neck'] as const).filter((part) => components.some((component) => component.part === part));
-  return { positions: mesh.positions, indices, parts, components, dropped: mesh.dropped };
+  return { positions: mesh.positions, indices, parts, components, dropped: mesh.dropped,
+    ...(mesh.droppedByZones ? { droppedByZones: mesh.droppedByZones } : {}) };
 }
 
 /** Triangles of a tube within `reach` of its end (its last vertex): the landing tip of a landing pillar. */

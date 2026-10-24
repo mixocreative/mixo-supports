@@ -567,15 +567,18 @@ async function walk(url, scratch, dentalFixture) {
       await page.screenshot({ path: path.join(scratch, 'dental-area.png') });
       const approved = await d.props();
       check('l2 dental area holds the two-contour face mask', approved.dentalKind === 'two-contour' && approved.dentalStamps === 0, `policy "${approved.dentalKind}", manual markers ${approved.dentalStamps}`);
-      await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /Safe support tips: [1-9]/.test(note.innerText)), null, { timeout: 180000 });
+      await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /Proposed support tips: [1-9]/.test(note.innerText)), null, { timeout: 180000 });
       await d.button('Next').click();
       await page.waitForFunction(() => document.body.innerText.includes('Step 3 · Review supports'), null, { timeout: 240000 });
       await page.waitForFunction(() => /[1-9][\d,]* automatic/.test(document.querySelector('footer')?.innerText ?? '') && ![...document.querySelectorAll('button')].some((b) => /Generating dental supports/.test(b.innerText)), null, { timeout: 240000 });
       await d.quiet();
+      await d.button('Done', false).waitFor({ state: 'visible', timeout: 300000 });
       await page.screenshot({ path: path.join(scratch, 'dental-generated.png') });
       const dentalSupports = await d.counts();
       const placed = await d.props();
-      check('l3 dental generation produces supports only after the approved-area stage', dentalSupports.auto > 0 && placed.dentalKind === 'two-contour', `automatic ${dentalSupports.auto}, policy "${placed.dentalKind}"`);
+      check('l3 dental generation finishes a support mesh only after the approved-area stage',
+        dentalSupports.auto > 0 && placed.dentalKind === 'two-contour' && placed.tris > 0 && placed.drawn > 0 && placed.droppedDrawn === 0,
+        `automatic ${dentalSupports.auto}, mesh triangles ${placed.tris}, drawn ${placed.drawn}, forbidden secondary landings dropped ${placed.dropped}, dropped still drawn ${placed.droppedDrawn}`);
     }
   } catch (error) {
     check('walk ran to the end', false, error.message);

@@ -41,6 +41,7 @@ describe('buildSupportMesh: a column landing in a no-support zone', () => {
     expect(build([]).dropped).toEqual([]);
     const atReal = build([paint(real)]);
     expect(atReal.dropped).toEqual(['auto-shelf']);
+    expect(atReal.droppedByZones).toEqual(['auto-shelf']);
     expect(builtIds(atReal).has('auto-shelf')).toBe(false);
     const atPredicted = build([paint(predicted)]);
     expect(atPredicted.dropped).toEqual([]);
@@ -78,6 +79,26 @@ describe('buildSupportMesh: a column landing in a no-support zone', () => {
     expect(Array.from(erased.indices)).toEqual(Array.from(plain.indices));
     expect(Array.from(erased.positions)).toEqual(Array.from(plain.positions));
   });
+
+  it('drops an automatic column when its secondary model landing is forbidden, including tips-only preview', () => {
+    const exact = lineTarget(model, { ...base, lowPolyMode: true });
+    const faceIndex = exact.cast([0, 18, 0], exact.height)?.faceIndex;
+    expect(faceIndex).toBeDefined();
+    const deny = (landing: { faceIndex?: number }) => landing.faceIndex === undefined;
+    expect(buildSupportMesh([tilted], { ...base, lowPolyMode: true }, { model, landingAllowed: deny }).dropped).toEqual(['auto-shelf']);
+    expect(buildSupportMesh([tilted], { ...base, lowPolyMode: true }, { model, landingAllowed: deny }).droppedByZones).toEqual([]);
+    expect(buildSupportMesh([tilted], { ...base, lowPolyMode: true, previewMode: 'ONLY_TIP' }, { model, landingAllowed: deny }).dropped).toEqual(['auto-shelf']);
+    expect(buildSupportMesh([tilted], { ...base, lowPolyMode: true }, { model, landingAllowed: () => true }).dropped).toEqual([]);
+  });
+
+  it('retains the exact source-face point when a remesh moves the visible landing', () => {
+    const from: V = [0, 18, 0];
+    const exact = lineTarget(model, { ...base, lowPolyMode: true }).cast(from, 20);
+    const remeshed = lineTarget(model, { ...base, lowPolyMode: false }).cast(from, 20);
+    expect(exact?.faceIndex).toBeDefined();
+    expect(remeshed?.faceIndex).toBe(exact?.faceIndex);
+    expect(remeshed?.sourcePoint).toEqual(exact?.point);
+  });
 });
 
 describe('buildSupportMesh: an Auto Tree landing in a no-support zone', () => {
@@ -109,5 +130,12 @@ describe('buildSupportMesh: an Auto Tree landing in a no-support zone', () => {
     expect(contacts.filter((contact) => !expected.includes(contact.id)).some((contact) => built.has(contact.id))).toBe(true);
     // A tips-only preview draws tree members as columns, but drops the same ones.
     expect(buildSupportMesh(contacts, { ...settings, previewMode: 'ONLY_TIP' }, { model, zones: [zone] }).dropped).toEqual(expected);
+  });
+
+  it('drops all automatic tree members when the tree lands on a forbidden model face', () => {
+    const forbidden = landed[0]!.hit.faceIndex;
+    expect(forbidden).toBeDefined();
+    const filtered = buildSupportMesh(contacts, settings, { model, landingAllowed: (hit) => hit.faceIndex !== forbidden });
+    expect(filtered.dropped).toEqual(['auto--0.9', 'auto-0.9']);
   });
 });

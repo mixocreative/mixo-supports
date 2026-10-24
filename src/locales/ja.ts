@@ -575,7 +575,7 @@ export const ja: Dictionary = {
   'Support area is marked. Press Next, or paint to adjust.': 'サポート領域を示しました。「次へ」を押すか、塗り直して調整してください。',
   'Add area': '領域を追加',
   'Remove area': '領域を削除',
-  'Drag on the model to paint; drag empty space to rotate the view. Safe support tips: {n}.': 'モデル上をドラッグして塗り、空白部分をドラッグして視点を回転します。安全なサポート先端：{n}。',
+  'Drag on the model to paint; drag empty space to rotate the view. Proposed support tips: {n}. Final generation may exclude tips whose supports touch an unapproved face.': 'モデル上をドラッグして塗り、空白部分をドラッグして視点を回転します。候補のサポート先端：{n}。サポートが許可されていない面に触れる場合、最終生成時にその先端を除外することがあります。',
   'Build supports from the reviewed dental tips and continue to final review': '確認したデンタルサポート先端からサポートを作成し、最終確認へ進みます。',
   'Wait for safe dental tips before continuing.': '安全なデンタルサポート先端が準備できるまでお待ちください。',
   'No safe dental tips are ready. Review the marked area.': '安全なデンタルサポート先端がありません。指定領域を確認してください。',

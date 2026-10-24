@@ -51,8 +51,10 @@ export interface SupportComponent {
 export interface GeneratedSupportMesh extends TriangleMesh {
   parts: SupportPart[];
   components: SupportComponent[];
-  /** Automatic contacts this build left out because their support lands in a no-support zone. */
+  /** Automatic contacts this build left out because a secondary landing was forbidden. */
   dropped: string[];
+  /** Subset of dropped contacts rejected specifically by a no-support zone. */
+  droppedByZones?: string[];
 }
 
 export interface SupportMeshOptions {
@@ -76,6 +78,8 @@ export interface SupportMeshOptions {
    * one, is not built; its contact ids go to `dropped`. Manual contacts are never dropped.
    */
   zones?: readonly ZoneStamp[];
+  /** Reject an automatic support if its secondary contact would land on a forbidden model face. */
+  landingAllowed?: (landing: Landing) => boolean;
 }
 
 export interface Column {
@@ -158,10 +162,18 @@ export function buildSupportMesh(
   const zones = options.zones?.some((stamp) => stamp.kind === 'paint') ? options.zones : undefined;
   const zoned = (landing: Landing | undefined) => zones !== undefined && landing !== undefined && zonedAt(zones, landing.point, landing.normal);
   const dropped = new Set<number>();
-  const zonedTrees = new Set(zones ? layout?.trees.filter((tree) => zoned(treeLanding(tree, settings, ray).hit)) : []);
-  for (const tree of zonedTrees) for (const member of tree.members) dropped.add(member);
+  const droppedByZones = new Set<number>();
+  const blockedTrees = new Set(zones || options.landingAllowed ? layout?.trees.filter((tree) => {
+    const hit = treeLanding(tree, settings, ray).hit;
+    if (zoned(hit)) {
+      for (const member of tree.members) droppedByZones.add(member);
+      return true;
+    }
+    return hit !== undefined && options.landingAllowed !== undefined && !options.landingAllowed(hit);
+  }) : []);
+  for (const tree of blockedTrees) for (const member of tree.members) dropped.add(member);
   const inTree = new Set(layout?.trees.flatMap((tree) => tree.members));
-  const trees = layout && !tipOnly ? layout.trees.filter((tree) => !zonedTrees.has(tree)) : [];
+  const trees = layout && !tipOnly ? layout.trees.filter((tree) => !blockedTrees.has(tree)) : [];
   const treeOf = new Map<number, number>();
   trees.forEach((tree, t) => tree.members.forEach((member) => treeOf.set(member, t)));
 
@@ -173,7 +185,10 @@ export function buildSupportMesh(
     if (!column) return;
     // A tips-only preview casts no landing for its geometry, so it casts one for the zone test alone.
     // Tree members are tested at their junction above, also when a tips-only preview draws them as columns.
-    if (zones && contact.origin !== 'manual' && !inTree.has(index) && zoned(tipOnly ? columnLanding(contact, own, ray).hit : column.landing)) {
+    const landing = tipOnly ? columnLanding(contact, own, ray).hit : column.landing;
+    if (contact.origin !== 'manual' && !inTree.has(index) &&
+      (zoned(landing) || (landing !== undefined && options.landingAllowed !== undefined && !options.landingAllowed(landing)))) {
+      if (zoned(landing)) droppedByZones.add(index);
       dropped.add(index);
       return;
     }
@@ -227,7 +242,8 @@ export function buildSupportMesh(
     if (settings.trussEnabled) addBraces(builder, columns, settings, segments);
     addStructures(builder, footprints, settings, options, segments, raftTop);
   }
-  return builder.finish([...dropped].sort((a, b) => a - b).map((index) => contacts[index]!.id));
+  const ids = (indices: Set<number>) => [...indices].sort((a, b) => a - b).map((index) => contacts[index]!.id);
+  return builder.finish(ids(dropped), ids(droppedByZones));
 }
 
 /**

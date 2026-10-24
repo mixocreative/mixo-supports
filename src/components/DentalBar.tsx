@@ -60,7 +60,7 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
       radius={gesture.brush.radius}
       onRadiusChange={(radius) => send({ type: 'setDentalRadius', radius })}
       note={<>
-        <p className="edit-note" role="note">{t('Drag on the model to paint; drag empty space to rotate the view. Safe support tips: {n}.', { n: tipCount })}</p>
+        <p className="edit-note" role="note">{t('Drag on the model to paint; drag empty space to rotate the view. Proposed support tips: {n}. Final generation may exclude tips whose supports touch an unapproved face.', { n: tipCount })}</p>
         {previewStatus !== 'ready' || tipCount === 0 ? <p className="edit-note" role="status">{t(previewStatus === 'error'
           ? 'Could not preview safe support tips. Adjust the area or retry.'
           : previewStatus === 'ready' ? 'No safe support tips were found. Automatic placement is paused.'

@@ -6,8 +6,9 @@ import { DentalOpeningRaycaster } from '../core/analysis/dental';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
 import { dentalRegionAllowedOnFace, dentalSupportAllowedAt, type DentalPolicy } from '../core/analysis/dentalPolicy';
 import { jobContacts, type CheckJob, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
-import { cross, normalize, subtract } from '../core/vec3';
+import { cross, normalize, subtract, type Vector } from '../core/vec3';
 import { buildSupportMesh, type GeneratedSupportMesh } from '../core/supports/mesh';
+import type { Landing } from '../core/supports/landing';
 import { raftOutline } from '../core/supports/raft';
 import { RemeshTarget } from '../core/supports/remesh';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
@@ -61,7 +62,7 @@ function cachedRemesh(source: object, frame: JobTransform, model: ReturnType<typ
 
 /**
  * Support mesh of one unit in its local space, ready to render under the unit's parent group, with
- * the automatic contacts it left out for landing in a no-support zone (`dropped`). The remesh and
+ * the automatic contacts it left out for a forbidden secondary landing (`dropped`). The remesh and
  * raft caches are keyed on `job.mesh`, so passing the same mesh object again keeps them warm.
  */
 export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): GeneratedSupportMesh {
@@ -76,6 +77,19 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     ...(contact.shape ? { shape: contact.shape } : {}),
   }));
   const model = applyTransform(job.mesh, frame);
+  const dental = job.dental;
+  const landingAllowed = dental?.kind === 'two-contour' ? (landing: Landing): boolean => {
+    const face = landing.faceIndex;
+    if (face === undefined || face < 0 || face >= job.mesh.indices.length / 3) return false;
+    const at = face * 3;
+    const vertex = (corner: number): Vector => {
+      const offset = job.mesh.indices[at + corner]! * 3;
+      return [job.mesh.positions[offset]!, job.mesh.positions[offset + 1]!, job.mesh.positions[offset + 2]!];
+    };
+    const a = vertex(0), b = vertex(1), c = vertex(2);
+    const normal = normalize(cross(subtract(b, a), subtract(c, a)));
+    return dentalRegionAllowedOnFace(dental, face, inverseTransformPoint(frame, landing.sourcePoint ?? landing.point), normal);
+  } : undefined;
   const mesh = buildSupportMesh(contacts, settings, {
     mode: job.mode,
     labelText: job.labelText,
@@ -85,6 +99,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     ...(settings.raftEnabled || settings.roofMode !== 'OFF' ? { raftOutline: cachedOutline(job.mesh, frame, model, settings) } : {}),
     ...(onProgress ? { onProgress } : {}),
     zones: job.contacts.zones.map((stamp) => ({ ...stamp, center: transformPoint(frame, stamp.center), normal: transformDirection(frame, stamp.normal) })),
+    ...(landingAllowed ? { landingAllowed } : {}),
   });
   onProgress?.(1, 'Done');
   return inverseTransformMesh(mesh, frame);

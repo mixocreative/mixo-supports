@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import type { ContactInputs, DentalPlacementJob, JobTransform, SupportJob } from '../core/jobs';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
+import { columnLanding, lineTarget } from '../core/supports/landing';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
@@ -61,6 +62,37 @@ describe('runSupportJob: zones are unit-local, landings are cast in the generati
     expect(runSupportJob(job(standing, upright, contacts)).dropped).toEqual(['auto-shelf']);
     // Lying flat the shelf is beside the slab, not over it: nothing lands in the zone.
     expect(runSupportJob(job(standing, still, contacts)).dropped).toEqual([]);
+  });
+});
+
+describe('runSupportJob: dental secondary contacts', () => {
+  const model = boxes([[-20, 5, -20], [20, 9, 20]], [[-5, 20, -5], [5, 24, 5]]);
+  const mask = new Uint8Array(model.indices.length / 3).fill(1);
+  mask[6] = 0;
+  mask[7] = 0;
+  const dental: DentalPolicy = { kind: 'two-contour', stamps: [], rim: {
+    boundaryKind: 'projection-fallback', points: new Float32Array(), openingDirection: [0, -1, 0],
+    centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1], visibilityMask: new Uint8Array(),
+    visibilityResolution: 0, visibilityMin: [0, 0], visibilityMax: [0, 0],
+  }, region: { kind: 'proposal', allowedFaces: mask, outerEdges: new Uint32Array(),
+    outerRidgeEdges: new Uint32Array(), outerConnectorEdges: new Uint32Array(), openingEdges: new Uint32Array(),
+    diagnostics: { regionFaces: [mask.reduce((a, b) => a + b, 0), 2], connectorLengths: [0, 0] } } };
+  const contacts: ContactInputs = { points: [point('auto-shelf', [0, 20, 0], [0, -1, 0])], manual: [],
+    deleted: [], zones: [], contactSettings: {} };
+
+  it('drops an automatic support whose column lands on a forbidden dental face', () => {
+    const ray = lineTarget(model, settings);
+    const landing = columnLanding({ id: 'auto-shelf', position: [0, 20, 0], normal: [0, -1, 0] }, settings, ray).hit;
+    expect(landing?.faceIndex).toBeDefined();
+    expect(mask[landing!.faceIndex!]).toBe(0);
+    const built = runSupportJob({ ...job(model, still, contacts), dental });
+    expect(built.dropped).toEqual(['auto-shelf']);
+  });
+
+  it('keeps a column when the secondary landing face is allowed', () => {
+    const allowed: DentalPolicy = { ...dental, region: { ...dental.region,
+      allowedFaces: new Uint8Array(mask.length).fill(1) } };
+    expect(runSupportJob({ ...job(model, still, contacts), dental: allowed }).dropped).toEqual([]);
   });
 });
 

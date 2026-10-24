@@ -47,6 +47,11 @@ describe('unit supports', () => {
     expect(hiddenByZones(zoned, undefined)).toBe(1);
   });
 
+  it('does not count dental landing rejections as no-support-zone removals', () => {
+    const zoned: PrintUnit = { ...unit, deleted: [], manual: [], zones: [{ center: [0, -5, 0], radius: 1, normal: [0, -1, 0], kind: 'paint' }] };
+    expect(hiddenByZones(zoned, { dropped: ['auto-1'], droppedByZones: [] })).toBe(1);
+  });
+
   it('never counts a manual support as hidden by zones, even one lying inside a zone', () => {
     const zoned: PrintUnit = { ...unit, deleted: [], manual: [point('manual-a', 0), point('manual-b', 0.5)], zones: [{ center: [0, -5, 0], radius: 1, normal: [0, -1, 0], kind: 'paint' }] };
     expect(unitContacts(zoned, undefined).filter((contact) => contact.id.startsWith('manual-'))).toHaveLength(2);
@@ -100,6 +105,7 @@ describe('unit supports', () => {
       orientation: { position: [0, 0, 0], rotation: generated.rotation },
       dental,
     });
+    expect(supportJobOf({ ...unit, dental }, 0).dental).toBe(dental);
   });
 
   it('builds supports in unit space that reach the plate at the generation transform', () => {

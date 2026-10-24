@@ -23,6 +23,8 @@ describe('DentalBar', () => {
     const areaHtml = renderToStaticMarkup(<DentalBar gesture={area} unitName="sample" ui={ui} send={() => {}} run={() => {}} tipCount={12} />);
     expect(areaHtml).toContain('Step 2');
     expect(areaHtml).toContain('12');
+    expect(areaHtml).toContain('Proposed support tips');
+    expect(areaHtml).toContain('Final generation may exclude tips');
     expect(areaHtml).toContain('Next');
     expect(areaHtml).not.toContain('Done');
     const emptyHtml = renderToStaticMarkup(<DentalBar gesture={area} unitName="sample" ui={{ mode: 'dental' } as UiState} send={() => {}} run={() => {}} tipCount={0} previewStatus="ready" />);

@@ -58,5 +58,5 @@ export const SURFACE_TOOL_TEXTS: readonly string[] = [
   'Paint areas of the model where automatic supports must not grow',
   'Supports attach underneath: turn the view (Bottom view) to paint where they are.',
   'Support area is marked. Press Next, or paint to adjust.',
-  'Drag on the model to paint; drag empty space to rotate the view. Safe support tips: {n}.',
+  'Drag on the model to paint; drag empty space to rotate the view. Proposed support tips: {n}. Final generation may exclude tips whose supports touch an unapproved face.',
 ];

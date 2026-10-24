@@ -579,7 +579,7 @@ export const zhHant: Dictionary = {
   'Support area is marked. Press Next, or paint to adjust.': '已標記支撐區域。按「下一步」繼續，或塗刷調整。',
   'Add area': '增加區域',
   'Remove area': '移除區域',
-  'Drag on the model to paint; drag empty space to rotate the view. Safe support tips: {n}.': '在模型上拖曳可塗刷；在空白處拖曳可旋轉視角。安全支撐頭：{n}。',
+  'Drag on the model to paint; drag empty space to rotate the view. Proposed support tips: {n}. Final generation may exclude tips whose supports touch an unapproved face.': '在模型上拖曳可塗刷；在空白處拖曳可旋轉視角。候選支撐頭：{n}。若支撐會接觸未允許的模型面，最終產生支撐時可能排除該支撐頭。',
   'Build supports from the reviewed dental tips and continue to final review': '從檢視過的牙套支撐頭建立支撐，進入最後檢視。',
   'Wait for safe dental tips before continuing.': '請等待安全的牙套支撐頭產生後再繼續。',
   'No safe dental tips are ready. Review the marked area.': '目前沒有安全的牙套支撐頭。請檢視標記區域。',

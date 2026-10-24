@@ -45,6 +45,14 @@ Construct the triangle-adjacency graph. Block adjacency across every outer-loop 
 
 On the reference the cut yields 254,344 candidate underside faces (mean dot `+0.381`) and 119,612 other faces (mean dot `-0.299`). Either contour alone does **not** isolate the region. Both closed loops are necessary.
 
+### 5. Check secondary support landings
+
+The Step 2 placement worker samples downward-facing approved triangles directly. It records proposed tip IDs but does not build full supports. During the Step 3 support build, `LineTarget.cast` first casts a vertical ray against the exact indexed source mesh. The ray result carries its hit face index and exact hit point. If a voxel-remeshed landing is used for the visible geometry, retain the original face index and hit point with that result.
+
+For each automatic column that lands on the model, and each automatic tree junction that lands on the model, transform the exact hit point back to unit-local coordinates. Calculate the source triangle's geometric normal from its three indexed vertices. Call `dentalRegionAllowedOnFace(policy, faceIndex, localHitPoint, normal)`. If it returns false, omit that column or all members of that tree. A support that lands on the build plate has no second model contact and needs no second-face test. The rule does not reject manual supports. Record the omitted contact IDs in `dropped`; keep painted-zone omissions separately in `droppedByZones`.
+
+This gate checks contact points, not intersections along pillars, braces, rafts, or roofs. On the reference, Step 2 proposed 397 tips and the full build kept 393. Four failed the secondary-landing check. The Step 2 count therefore says "proposed" and warns that the final count can be lower. Matching the Step 2 and Step 3 contact IDs needs a placement-time landing preflight; that work is still open.
+
 ### Pose of the diagnostic GLB
 
 The GLB review tool calls `rotationToDentalPose` after detection. This step transforms the displayed model and contours; it does not change triangle indices or face membership. Project all vertices onto the opening plane. Compute the principal axis of their 2 × 2 covariance matrix, then its perpendicular minor axis. Reject a nearly rotationally symmetric footprint when eigenvalue spread divided by trace is below `0.05`.
@@ -59,4 +67,4 @@ To recreate this in another language: preserve mesh indexing and triangle order;
 
 ### Limits and next safety gate
 
-These measurements prove rotation consistency on one STL, not correctness on different aligners. An unusual trim, missing posterior section, scan hole, reversed/inconsistent winding, attachment, or second projected opening can cause abstention or a plausible but wrong candidate. The fixed edge-count, extent, angle, pixel, and region thresholds are calibrated only to the reference. The implementation now samples eligible downward-facing *triangles* directly rather than requiring an opening-ray hit; Add paint can restore an erased candidate face but cannot authorize a face beyond either contour. Before release, test distinct similar STLs with labeled allowed/forbidden faces and verify final transformed tips and secondary support-body landings. User approval of the algorithm on this example is not proof of those remaining gates.
+These measurements prove rotation consistency on one STL, not correctness on different aligners. An unusual trim, missing posterior section, scan hole, reversed/inconsistent winding, attachment, or second projected opening can cause abstention or a plausible but wrong candidate. The fixed edge-count, extent, angle, pixel, and region thresholds are calibrated only to the reference. The implementation samples eligible downward-facing *triangles* directly rather than requiring an opening-ray hit; Add paint can restore an erased candidate face but cannot authorize a face beyond either contour. Before release, test distinct similar STLs with labeled allowed/forbidden faces and inspect final support-body paths. User approval of the algorithm on this example is not proof of those remaining gates.
