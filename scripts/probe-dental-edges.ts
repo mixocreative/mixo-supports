@@ -183,12 +183,63 @@ function summarizeSmoothPatches(threshold: number) {
   }
 }
 
+function summarizeFaceCuts(selected: readonly Edge[]) {
+  const vertexEdges = new Map<number, Edge[]>();
+  for (const edge of selected) for (const index of [edge.a, edge.b]) {
+    const incident = vertexEdges.get(index) ?? [];
+    incident.push(edge);
+    vertexEdges.set(index, incident);
+  }
+  const seen = new Set<number>();
+  const barriers: Set<Edge>[] = [];
+  for (const start of vertexEdges.keys()) {
+    if (seen.has(start)) continue;
+    const queue = [start]; seen.add(start);
+    const component = new Set<Edge>();
+    while (queue.length) {
+      const current = queue.pop()!;
+      for (const edge of vertexEdges.get(current)!) {
+        component.add(edge);
+        const next = edge.a === current ? edge.b : edge.a;
+        if (!seen.has(next)) { seen.add(next); queue.push(next); }
+      }
+    }
+    barriers.push(component);
+  }
+  barriers.sort((a, b) => b.size - a.size);
+  const faceCount = mesh.indices.length / 3;
+  for (const count of [1, 2]) {
+    const blocked = new Set([...barriers.slice(0, count).flatMap((component) => [...component])]);
+    const parent = Int32Array.from({ length: faceCount }, (_, index) => index);
+    const find = (start: number): number => {
+      let root = start;
+      while (parent[root] !== root) root = parent[root]!;
+      let next = start;
+      while (next !== root) { const prior = parent[next]!; parent[next] = root; next = prior; }
+      return root;
+    };
+    for (const edge of edges.values()) {
+      if (edge.faces.length !== 2 || blocked.has(edge)) continue;
+      parent[find(edge.faces[0]!)] = find(edge.faces[1]!);
+    }
+    const sizes = new Map<number, number>();
+    for (let face = 0; face < faceCount; face += 1) {
+      const root = find(face);
+      sizes.set(root, (sizes.get(root) ?? 0) + 1);
+    }
+    console.log(JSON.stringify({ label: `face-cut-largest-${count}-sharp-60-chains`, barrierEdges: blocked.size,
+      regions: sizes.size, largest: [...sizes.values()].sort((a, b) => b - a).slice(0, 5) }));
+  }
+}
+
 console.log(JSON.stringify({ label: 'mesh', vertices: mesh.positions.length / 3, faces: mesh.indices.length / 3, edges: edges.size,
   globalExtent: global, boundaryEdges: [...edges.values()].filter((edge) => edge.faces.length === 1).length,
   nonManifoldEdges: [...edges.values()].filter((edge) => edge.faces.length > 2).length }));
 summarize('boundary', [...edges.values()].filter((edge) => edge.faces.length === 1));
 for (const threshold of [10, 20, 30, 45, 60, 75]) {
   const limit = Math.cos(threshold * Math.PI / 180);
-  summarize(`sharp-${threshold}`, [...edges.values()].filter((edge) => edge.faces.length === 2 && Math.abs(dot(normals[edge.faces[0]!]!, normals[edge.faces[1]!]!)) <= limit));
+  const selected = [...edges.values()].filter((edge) => edge.faces.length === 2 && Math.abs(dot(normals[edge.faces[0]!]!, normals[edge.faces[1]!]!)) <= limit);
+  summarize(`sharp-${threshold}`, selected);
+  if (threshold === 60) summarizeFaceCuts(selected);
 }
 for (const threshold of [10, 20, 30, 45, 60]) summarizeSmoothPatches(threshold);
