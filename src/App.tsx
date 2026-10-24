@@ -30,6 +30,7 @@ import { isAbort, RUNTIME, triangleCount } from './components/appShared';
 import { useFixSpot } from './components/useFixSpot';
 import { useExport } from './components/useExport';
 import { useRegenerate } from './components/useRegenerate';
+import { currentDentalPreview, useDentalPreview } from './components/useDentalPreview';
 import { useProjectFile } from './components/useProjectFile';
 import { isProjectFile } from './state/projectFile';
 import { hint } from './components/hint';
@@ -96,6 +97,7 @@ const VIEWPORT_CLASS: Record<GestureKind, string> = {
   zones: ' viewport--editing viewport--zones',
   'dental-orientation': ' viewport--editing viewport--dental',
   'dental-area': ' viewport--editing viewport--dental',
+  'dental-review': ' viewport--editing viewport--dental',
   add: ' viewport--editing',
   pick: ' viewport--editing',
   drag: ' viewport--editing',
@@ -283,6 +285,8 @@ export default function App() {
   const { generate, generateDental, generating, regenQueued, scheduleRegenerate, forgetPlacing } = useRegenerate({
     sceneRef, mode: editMode, targets, analysis, unitName, dispatch, offerUndo, setStatus, setStatusMessage,
   });
+  const dentalPreviewState = useDentalPreview(activeUnit, editMode === 'dental' && session.dentalStage === 'area', analysis, unitName);
+  const dentalPreview = dentalPreviewState.kind === 'ready' ? currentDentalPreview(activeUnit, dentalPreviewState.preview) : undefined;
 
   const requested = useRef(new Map<string, { unit: PrintUnit; index: number }>());
   const buildTimers = useRef(new Map<string, number>());
@@ -815,11 +819,14 @@ export default function App() {
         return;
       }
       case 'dental.generate': {
-        const unitId = sceneRef.current.activeUnitId;
-        if (!unitId || sessionRef.current.mode !== 'dental' || sessionRef.current.dentalStage !== 'area') return;
-        generateDental(unitId);
-        return send({ type: 'exit' });
+        const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+        if (!unit || sessionRef.current.mode !== 'dental' || sessionRef.current.dentalStage !== 'area') return;
+        const reviewed = currentDentalPreview(unit, dentalPreview);
+        if (!reviewed || reviewed.result.points.length === 0) return setStatus('No safe dental tips are ready. Review the marked area.');
+        if (!generateDental(reviewed)) return setStatus('The model changed while dental tips were reviewed. Wait for the new preview.');
+        return send({ type: 'acceptDentalArea' });
       }
+      case 'dental.back': return send({ type: 'backDentalArea' });
       case 'mode.edit': {
         send({ type: 'enterEdit' });
         const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
@@ -849,7 +856,7 @@ export default function App() {
       case 'zones.clearAll': return clearActiveZones();
       case 'export.active-printable': case 'export.active-supports': case 'export.separate-printable': case 'export.separate-supports': case 'export.whole-printable': return void runExport(exportKindOf(id));
     }
-  }, [checkSupports, chooseProject, saveProject, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dispatch, generate, generateDental, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo]);
+  }, [checkSupports, chooseProject, saveProject, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dentalPreview, dispatch, generate, generateDental, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -874,7 +881,7 @@ export default function App() {
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
     mode: editMode, activeName: activeUnit?.name, supported: scene.units.some((unit) => unit.supports), zones: activeUnit?.zones.length ?? 0, exporting, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction, method: session.selectStyle, dragAction: effectiveBrushMode(session.brushMode, session.shiftHeld),
-    selection: selection.size, customisedActive, customisedSelected, customisedTargeted: bandCounts.customised, customisedOthers: Math.max(0, bandCounts.customised - customisedActive), activeSupported: Boolean(activeUnit?.supports), generating, canUndo, canRedo: history.future.length > 0, undoStep, redoStep, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
+    selection: selection.size, customisedActive, customisedSelected, customisedTargeted: bandCounts.customised, customisedOthers: Math.max(0, bandCounts.customised - customisedActive), activeSupported: Boolean(activeUnit?.supports), generating, dentalPreviewReady: Boolean(dentalPreview?.result.points.length), canUndo, canRedo: history.future.length > 0, undoStep, redoStep, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
   };
   const command = (id: CommandId) => resolve(id, ui);
   useEffect(() => {
@@ -978,6 +985,7 @@ export default function App() {
         <ObjectViewport
           scene={scene}
           supportMeshes={supportMeshes}
+          {...(dentalPreview ? { dentalTips: { unitId: dentalPreview.unitId, points: dentalPreview.localPoints } } : {})}
           gesture={press}
           gizmoMode={gizmoMode}
           modelVisible={modelVisible}
@@ -1020,7 +1028,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hidden={zonesHidden} ui={ui} send={send} run={runCommand} />
-          : press.kind === 'dental-orientation' || press.kind === 'dental-area' ? <DentalBar gesture={press} unitName={activeUnit?.name} ui={ui} send={send} run={runCommand} />
+          : press.kind === 'dental-orientation' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview?.localPoints.length ?? 0} previewStatus={dentalPreviewState.kind} reviewReady={Boolean(activeUnit?.supports && built.get(activeUnit.id)?.unit === activeUnit)} send={send} run={runCommand} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>

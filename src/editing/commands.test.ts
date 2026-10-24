@@ -215,9 +215,10 @@ describe('the left panel commands', () => {
     expect(resolve('supports.generate', at({ generating: true, generated: true })).label).toBe('Generating supports…');
   });
 
-  it('keeps Dental generation inside the dental workflow and blocks a duplicate placement', () => {
-    expect(resolve('dental.generate', at({ mode: 'dental' }))).toMatchObject({ visible: true, enabled: true, role: 'primary' });
-    expect(resolve('dental.generate', at({ mode: 'dental', generating: true }))).toMatchObject({ enabled: false, label: 'Generating dental supports…', disabledReason: { key: 'Supports are being generated: wait for it to finish.' } });
+  it('continues dental generation only after reviewed tips are ready', () => {
+    expect(resolve('dental.generate', at({ mode: 'dental' }))).toMatchObject({ visible: true, enabled: false, role: 'primary' });
+    expect(resolve('dental.generate', at({ mode: 'dental', dentalPreviewReady: true }))).toMatchObject({ enabled: true, label: 'Next' });
+    expect(resolve('dental.generate', at({ mode: 'dental', dentalPreviewReady: true, generating: true }))).toMatchObject({ enabled: false, disabledReason: { key: 'Supports are being generated: wait for it to finish.' } });
     expect(resolve('dental.generate', READY).visible).toBe(false);
   });
 

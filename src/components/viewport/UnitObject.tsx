@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { acceleratedRaycast } from 'three-mesh-bvh';
 import type { SupportProblem } from '../../core/analysis/supportCheck';
+import type { SupportPoint } from '../../core/analysis/types';
 import type { GeneratedSupportMesh } from '../../core/supports/mesh';
 import { contactAtTriangle, tipsOf } from '../../core/supports/meshQuery';
 import type { ZoneStamp } from '../../core/supports/zones';
@@ -19,7 +20,7 @@ import { resolveSettings, unitContacts } from '../../supports/unitSupports';
 import { AddFlash, type AddedAt } from './AddFlash';
 import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
-import { type Hover, DentalRimLine, DentalStampLayer, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
+import { type Hover, DentalRimLine, DentalStampLayer, DentalTipMarkers, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
 import type { ObjectViewportProps } from './types';
 import { MODEL_MESH, SUPPORT_MESH, useScreenBrush } from './useScreenBrush';
 
@@ -36,6 +37,7 @@ interface UnitObjectProps extends Pick<ObjectViewportProps,
   added?: AddedAt;
   unit: PrintUnit;
   supports?: GeneratedSupportMesh;
+  dentalTips?: readonly SupportPoint[];
   selected: boolean;
   active: boolean;
   /** The unit's group, with the unit it belongs to, so a stale group of a removed unit is never taken for the active one. */
@@ -50,7 +52,7 @@ export function UnitObject(props: UnitObjectProps) {
   const editing = editMode !== 'off' && props.active;
   // The tips view draws (and picks) only the contact tips of the built supports.
   const tips = useMemo(() => (props.tipsView && props.supports ? tipsOf(props.supports) : undefined), [props.tipsView, props.supports]);
-  const supports = tips ?? props.supports;
+  const supports = gesture.kind === 'dental-area' ? undefined : tips ?? props.supports;
   // A heavy model draws its simplified copy (it takes no hand edits); supports and export use the full one.
   const shown = displayMesh(unit.source);
   const model = useGeometry(shown, true);
@@ -286,6 +288,7 @@ export function UnitObject(props: UnitObjectProps) {
       <DentalStampLayer mesh={unit.source} geometry={model} policy={{ ...unit.dental, stamps: dentalStamps ?? unit.dental.stamps }} opacity={0.7} />
       <DentalRimLine rim={unit.dental.rim} />
     </group>}
+    {dentalPainting && props.dentalTips && <DentalTipMarkers points={props.dentalTips} />}
     {supportGeometry && <mesh
       geometry={supportGeometry}
       userData={SUPPORT_MESH}

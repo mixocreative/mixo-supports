@@ -16,4 +16,26 @@ describe('DentalBar', () => {
     expect(html).toContain('Next');
     expect(html).not.toContain('Done');
   });
+
+  it('shows Next without Done in Step 2, then Done only in Step 3', () => {
+    const ui = { mode: 'dental', dentalPreviewReady: true } as UiState;
+    const area = { kind: 'dental-area', brush: { kind: 'allow', radius: 2 } } as Gesture & { kind: 'dental-area' };
+    const areaHtml = renderToStaticMarkup(<DentalBar gesture={area} unitName="sample" ui={ui} send={() => {}} run={() => {}} tipCount={12} />);
+    expect(areaHtml).toContain('Step 2');
+    expect(areaHtml).toContain('12');
+    expect(areaHtml).toContain('Next');
+    expect(areaHtml).not.toContain('Done');
+    const emptyHtml = renderToStaticMarkup(<DentalBar gesture={area} unitName="sample" ui={{ mode: 'dental' } as UiState} send={() => {}} run={() => {}} tipCount={0} previewStatus="ready" />);
+    expect(emptyHtml).toContain('No safe support tips');
+    expect(emptyHtml).not.toContain('>Done');
+
+    const review = { kind: 'dental-review' } as Gesture & { kind: 'dental-review' };
+    const reviewHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={ui} reviewReady send={() => {}} run={() => {}} />);
+    expect(reviewHtml).toContain('Step 3');
+    expect(reviewHtml).toContain('Back');
+    expect(reviewHtml).toContain('Done');
+    const buildingHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={ui} reviewReady={false} send={() => {}} run={() => {}} />);
+    expect(buildingHtml).not.toContain('Done');
+    expect(buildingHtml).toContain('Building supports');
+  });
 });

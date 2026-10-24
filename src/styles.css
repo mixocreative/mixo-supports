@@ -450,6 +450,7 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 /* ---- Edit bar tools and selection ---------------------------------------- */
 /* Viewport tools keep the app's button sizes; segments get room for their words. */
 .edit-bar .segmented button { padding: 6px 10px; }
+.dental-brush .segmented button { min-width: 92px; min-height: 36px; font-weight: 500; }
 /* Tips only forced on while painting zones: it does nothing, yet it still reads as on; its title says why. */
 .viewport-view button[aria-pressed='true'][aria-disabled='true'] { opacity: 1; color: var(--paper); cursor: default; }
 .edit-size { display: flex; gap: 8px; align-items: center; }

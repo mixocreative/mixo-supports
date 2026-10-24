@@ -16,7 +16,7 @@ export const COMMAND_IDS = [
   'supports.generate', 'supports.dentalAuto', 'supports.clearManual', 'supports.remove', 'check.run',
   'mode.edit', 'mode.zones', 'mode.exit',
   'zones.clearAll',
-  'dental.useDetected', 'dental.next', 'dental.generate',
+  'dental.useDetected', 'dental.next', 'dental.generate', 'dental.back',
   'edit.generate', 'edit.add', 'edit.remove', 'edit.dragSelect', 'edit.dragUnselect', 'edit.clearSelection', 'edit.deleteSelection',
   'setting.clickReach',
   'shape.reset', 'shape.selectCustomised',
@@ -75,6 +75,8 @@ export interface UiState {
   generated: boolean;
   /** A placement job is running: Generate waits for it. */
   generating: boolean;
+  /** The reviewed dental contact placement matches the current model and paint. */
+  dentalPreviewReady?: boolean;
 }
 
 interface Command {
@@ -245,10 +247,14 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     visible: (s) => s.mode === 'dental', enabled: always, disabledReason: never,
   },
   'dental.generate': {
-    role: 'primary', label: (s) => (s.generating ? 'Generating dental supports…' : 'Generate dental supports'),
-    hint: () => 'Generate supports only on the approved dental area',
-    visible: (s) => s.mode === 'dental', enabled: (s) => !s.generating,
-    disabledReason: (s) => (s.generating ? generatingReason : undefined),
+    role: 'primary', label: () => 'Next',
+    hint: () => 'Build supports from the reviewed dental tips and continue to final review',
+    visible: (s) => s.mode === 'dental', enabled: (s) => !s.generating && Boolean(s.dentalPreviewReady),
+    disabledReason: (s) => (s.generating ? generatingReason : s.dentalPreviewReady ? undefined : { key: 'Wait for safe dental tips before continuing.' }),
+  },
+  'dental.back': {
+    role: 'secondary', label: () => 'Back', hint: () => 'Return to the dental area and keep your edits',
+    visible: (s) => s.mode === 'dental', enabled: always, disabledReason: never,
   },
   'edit.generate': {
     role: 'secondary',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GLOSSARY, ZONE_ONLY_WORDS, ZONE_TEXTS } from './glossary';
+import { GLOSSARY, SURFACE_TOOL_WORDS, SURFACE_TOOL_TEXTS } from './glossary';
 import { DICTIONARY } from './i18n';
 
 const GLOSSARY_MD = import.meta.glob<string>(['../docs/migration/glossary.md'], { query: '?raw', import: 'default', eager: true })['../docs/migration/glossary.md']!;
@@ -34,8 +34,8 @@ describe('glossary', () => {
     expect(problems).toEqual([]);
   });
 
-  it('Paint, Erase and Brush only name no-support zone tools', () => {
-    expect(KEYS.filter((key) => ZONE_ONLY_WORDS.test(key) && !/\bzones?\b/i.test(key) && !ZONE_TEXTS.includes(key))).toEqual([]);
+  it('Paint, Erase and Brush only name model-surface tools', () => {
+    expect(KEYS.filter((key) => SURFACE_TOOL_WORDS.test(key) && !/\b(zones?|dental)\b/i.test(key) && !SURFACE_TOOL_TEXTS.includes(key))).toEqual([]);
   });
 
   it('the docs call the Drag over size control by its UI name, Circle size (never the retired "Size")', () => {

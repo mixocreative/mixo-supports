@@ -1,4 +1,5 @@
 import type { SupportProblem } from '../../core/analysis/supportCheck';
+import type { SupportPoint } from '../../core/analysis/types';
 import type { GeneratedSupportMesh } from '../../core/supports/mesh';
 import type { ZoneStamp } from '../../core/supports/zones';
 import type { DentalAllowStamp } from '../../core/analysis/dentalPolicy';
@@ -14,6 +15,8 @@ export type GizmoMode = 'none' | 'translate' | 'rotate';
 export interface ObjectViewportProps {
   scene: PrintScene;
   supportMeshes: ReadonlyMap<string, GeneratedSupportMesh>;
+  /** Dental Step 2 markers from the placement worker, never a built support mesh. */
+  dentalTips?: { unitId: string; points: readonly SupportPoint[] };
   /** What a press or drag does now (editing/gesture): the mode, the tool and its brush. */
   gesture: Gesture;
   gizmoMode: GizmoMode;

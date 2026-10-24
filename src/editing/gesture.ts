@@ -13,6 +13,7 @@ export type Gesture =
   | { kind: 'zones'; brush: { radius: number; kind: ZoneKind } }
   | { kind: 'dental-orientation'; proposal: NonNullable<EditSession['dentalProposal']> }
   | { kind: 'dental-area'; brush: { radius: number; kind: DentalKind } }
+  | { kind: 'dental-review' }
   /** `remove`: a click removes the support it hits instead of adding one. */
   | { kind: 'add'; remove: boolean }
   | { kind: 'pick' }
@@ -28,7 +29,9 @@ export function gesture(session: EditSession): Gesture {
     case 'dental':
       return session.dentalStage === 'orientation'
         ? { kind: 'dental-orientation', proposal: session.dentalProposal! }
-        : { kind: 'dental-area', brush: { radius: session.dentalRadius, kind: session.dentalKind } };
+        : session.dentalStage === 'area'
+          ? { kind: 'dental-area', brush: { radius: session.dentalRadius, kind: session.dentalKind } }
+          : { kind: 'dental-review' };
     case 'edit':
       if (session.tool === 'add') return { kind: 'add', remove: session.addAction === 'remove' };
       return session.selectStyle === 'click' ? { kind: 'pick' } : { kind: 'drag', brush: { radius: session.brushRadius, mode: effectiveBrushMode(session.brushMode, session.shiftHeld) }, base: session.brushMode, flipped: session.shiftHeld, sizing: session.brushSizing };

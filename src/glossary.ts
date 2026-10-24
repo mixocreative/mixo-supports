@@ -41,20 +41,22 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   { concept: 'Export', en: /\bexport/i, zh: ['匯出'], ja: ['書き出'], avoid: { zh: ['輸出'], ja: ['エクスポート'] } },
   { concept: 'Delete', en: /\bdelet/i, zh: ['刪除'], ja: ['削除'] },
   { concept: 'Remove (supports)', en: /\bremov/i, zh: ['移除'], ja: ['削除'] },
-  { concept: 'Paint (zones only)', en: /\bpaint/i, zh: ['塗刷'], ja: ['塗る', '塗り', '塗装', '塗ります'] },
-  { concept: 'Erase (zones only)', en: /\berase/i, zh: ['擦除'], ja: ['消す', '消し', '消去'] },
+  { concept: 'Paint (surface)', en: /\bpaint/i, zh: ['塗刷'], ja: ['塗る', '塗り', '塗装', '塗ります'] },
+  { concept: 'Erase (surface)', en: /\berase/i, zh: ['擦除'], ja: ['消す', '消し', '消去'] },
   { concept: 'Undo', en: /\bundo\b/i, zh: ['復原'], ja: ['元に戻'] },
 ];
 
 /**
  * English words reserved for one tool (mixo-app-style: different gestures get different words):
- * Paint / Erase / Brush only for marking no-support zones on the surface.
+ * Paint / Erase / Brush only for marking a model surface, not support picking.
  */
-export const ZONE_ONLY_WORDS = /\b(paint\w*|erase\w*|brush\w*)\b/i;
-/** Zone texts that do not say "zone" themselves (the zones bar and its status lines). */
-export const ZONE_TEXTS: readonly string[] = [
+export const SURFACE_TOOL_WORDS = /\b(paint\w*|erase\w*|brush\w*)\b/i;
+/** Surface-tool texts that do not name their zone or dental context themselves. */
+export const SURFACE_TOOL_TEXTS: readonly string[] = [
   'Paint', 'Erase', 'Brush size', 'Painted',
   'Paint where supports must not grow; drag on the model.',
   'Paint areas of the model where automatic supports must not grow',
   'Supports attach underneath: turn the view (Bottom view) to paint where they are.',
+  'Support area is marked. Press Next, or paint to adjust.',
+  'Drag on the model to paint; drag empty space to rotate the view. Safe support tips: {n}.',
 ];

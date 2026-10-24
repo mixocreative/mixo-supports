@@ -6,10 +6,13 @@ import { DoneButton } from './EditBar';
 import { SurfaceBrushBar } from './SurfaceBrushBar';
 
 /** Dental Auto Generate chrome: review the detector first, then mark only permitted support area. */
-export function DentalBar({ gesture, unitName, ui, send, run }: {
-  gesture: Extract<Gesture, { kind: 'dental-orientation' | 'dental-area' }>;
+export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus = 'loading', reviewReady = true, send, run }: {
+  gesture: Extract<Gesture, { kind: 'dental-orientation' | 'dental-area' | 'dental-review' }>;
   unitName: string | undefined;
   ui: UiState;
+  tipCount?: number;
+  previewStatus?: 'idle' | 'loading' | 'ready' | 'error';
+  reviewReady?: boolean;
   send: (event: { type: 'setDentalKind'; kind: 'allow' | 'erase' } | { type: 'setDentalRadius'; radius: number }) => void;
   run: (id: CommandId) => void;
 }) {
@@ -28,26 +31,43 @@ export function DentalBar({ gesture, unitName, ui, send, run }: {
       <p className="edit-note" role="note">{t('Auto orientation only rotates the aligner. Adjust with the rotation gizmo, then press Next.')}</p>
     </div>
   </>;
+  if (gesture.kind === 'dental-review') return <>
+    <div className="edit-frame" aria-hidden="true" />
+    <div className="edit-badge" role="status">
+      {t('Step 3 · Review supports')}<span>{unitName}</span>
+      <b>{t('Review the generated supports, then finish.')}</b>
+    </div>
+    <div className="edit-bar"><div className="edit-row">
+      <CommandButton command={resolve('dental.back', ui)} run={run} />
+      {reviewReady ? <DoneButton ui={ui} run={run} /> : <span className="edit-hint" role="status">{t('Building supports…')}</span>}
+    </div></div>
+  </>;
   return <>
     <div className="edit-frame" aria-hidden="true" />
     <div className="edit-badge" role="status">
-      {t('Dental support area')}<span>{unitName}</span>
-      <b>{t('Mark where supports may grow; Remove clears permission.')}</b>
+      {t('Step 2 · Support area')}<span>{unitName}</span>
+      <b>{t('Support area is marked. Press Next, or paint to adjust.')}</b>
     </div>
     <SurfaceBrushBar
+      className="dental-brush"
       label="Dental area marker"
       kind={gesture.brush.kind}
       options={[
-        { value: 'allow', label: t('Allow'), hint: 'Allow dental supports on this model surface' },
-        { value: 'erase', label: t('Remove'), hint: 'Remove dental support permission from this model surface' },
+        { value: 'allow', label: t('Add area'), hint: 'Allow dental supports on this model surface' },
+        { value: 'erase', label: t('Remove area'), hint: 'Remove dental support permission from this model surface' },
       ]}
       onKindChange={(kind) => send({ type: 'setDentalKind', kind })}
       radius={gesture.brush.radius}
       onRadiusChange={(radius) => send({ type: 'setDentalRadius', radius })}
-      note={<p className="edit-note" role="note">{t('Only the detected lower opening and your marked area can receive dental supports.')}</p>}
+      note={<>
+        <p className="edit-note" role="note">{t('Drag on the model to paint; drag empty space to rotate the view. Safe support tips: {n}.', { n: tipCount })}</p>
+        {previewStatus !== 'ready' || tipCount === 0 ? <p className="edit-note" role="status">{t(previewStatus === 'error'
+          ? 'Could not preview safe support tips. Adjust the area or retry.'
+          : previewStatus === 'ready' ? 'No safe support tips were found. Automatic placement is paused.'
+            : 'Finding safe support tips…')}</p> : null}
+      </>}
       actions={<>
         <CommandButton command={resolve('dental.generate', ui)} run={run} />
-        <DoneButton ui={ui} run={run} secondary />
       </>}
     />
   </>;

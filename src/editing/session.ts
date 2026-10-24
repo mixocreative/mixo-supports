@@ -30,7 +30,7 @@ export interface EditSession {
   /** Zone brush radius in mm. */
   zoneRadius: number;
   /** Dental stays on its orientation preview until the user accepts it. */
-  dentalStage: 'orientation' | 'area';
+  dentalStage: 'orientation' | 'area' | 'review';
   dentalProposal: Extract<DentalProposal, { kind: 'proposal' }> | undefined;
   dentalKind: DentalKind;
   dentalRadius: number;
@@ -74,6 +74,8 @@ export type SessionEvent =
   | { type: 'enterZones' }
   | { type: 'enterDental'; proposal: Extract<DentalProposal, { kind: 'proposal' }> }
   | { type: 'acceptDentalOrientation' }
+  | { type: 'acceptDentalArea' }
+  | { type: 'backDentalArea' }
   | { type: 'exit' }
   | { type: 'leave' }
   | { type: 'activeUnitChanged'; id: string | undefined; heavy?: number | undefined }
@@ -122,6 +124,14 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
         : state;
     case 'acceptDentalOrientation':
       return state.mode === 'dental' && state.dentalStage === 'orientation' && state.dentalProposal
+        ? { ...state, dentalStage: 'area' }
+        : state;
+    case 'acceptDentalArea':
+      return state.mode === 'dental' && state.dentalStage === 'area'
+        ? { ...state, dentalStage: 'review' }
+        : state;
+    case 'backDentalArea':
+      return state.mode === 'dental' && state.dentalStage === 'review'
         ? { ...state, dentalStage: 'area' }
         : state;
     case 'exit':

@@ -58,7 +58,11 @@ describe('reduceSession: modes', () => {
     const area = reduceSession(dental, { type: 'acceptDentalOrientation' });
     expect(area).toMatchObject({ mode: 'dental', dentalStage: 'area' });
     expect(gesture(area)).toMatchObject({ kind: 'dental-area', brush: { kind: 'allow', radius: 2 } });
-    expect(reduceSession(area, { type: 'exit' }).mode).toBe('off');
+    const review = reduceSession(area, { type: 'acceptDentalArea' });
+    expect(review).toMatchObject({ mode: 'dental', dentalStage: 'review' });
+    expect(gesture(review)).toMatchObject({ kind: 'dental-review' });
+    expect(reduceSession(review, { type: 'backDentalArea' }).dentalStage).toBe('area');
+    expect(reduceSession(review, { type: 'exit' }).mode).toBe('off');
   });
 
   it('exit outside the modes changes nothing', () => {

@@ -84,6 +84,7 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       key={unit.id}
       unit={unit}
       supports={props.supportMeshes.get(unit.id)}
+      {...(props.dentalTips?.unitId === unit.id ? { dentalTips: props.dentalTips.points } : {})}
       tipsView={props.tipsView}
       selected={selected.has(unit.id)}
       active={unit.id === activeId}

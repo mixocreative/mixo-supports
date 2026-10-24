@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { FULL_TIER_MAX } from '../../core/budget';
 import type { SupportProblem } from '../../core/analysis/supportCheck';
-import type { TriangleMesh } from '../../core/analysis/types';
+import type { SupportPoint, TriangleMesh } from '../../core/analysis/types';
 import type { GeneratedSupportMesh, SupportContact } from '../../core/supports/mesh';
 import { warmZoneOverlay, zoneOverlay } from '../../core/supports/overlayMesh';
 import { contactRadius, withShape } from '../../core/supports/settings';
@@ -269,6 +269,28 @@ export function DentalRimLine({ rim }: { rim: DentalRim }) {
       <lineBasicMaterial color={PREVIEW.dental} transparent opacity={0.22} depthTest={false} depthWrite={false} />
     </lineLoop>
   </group>;
+}
+
+/** Step 2's actual reviewed contact set, drawn directly without building any support body. */
+export function DentalTipMarkers({ points }: { points: readonly SupportPoint[] }) {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    const matrix = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+    const size = new THREE.Vector3(0.42, 0.42, 0.42);
+    points.forEach((point, index) => {
+      position.set(...point.position).addScaledVector(new THREE.Vector3(...point.normal), 0.08);
+      mesh.setMatrixAt(index, matrix.compose(position, new THREE.Quaternion(), size));
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+  }, [points]);
+  if (points.length === 0) return null;
+  return <instancedMesh key={points.length} ref={ref} args={[undefined, undefined, points.length]} raycast={() => undefined} frustumCulled={false}>
+    <sphereGeometry args={[1, 7, 5]} />
+    <meshStandardMaterial color={PREVIEW.dental} roughness={0.65} />
+  </instancedMesh>;
 }
 
 /** Contact ids a remove click at a unit-local point takes: the one nearest within Click reach. */
