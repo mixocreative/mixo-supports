@@ -2,6 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseStl } from '../src/core/import/stl';
 import { proposeDentalOrientation } from '../src/core/analysis/dental';
+import { placementMatrix, transformPositions } from '../src/core/transform';
 import { cross, dot, normalize, subtract, type Vector } from '../src/core/vec3';
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
@@ -9,7 +10,12 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 const file = process.env.DENTAL_PROBE_FIXTURE;
 if (!file) throw new Error('DENTAL_PROBE_FIXTURE is required');
 const bytes = readFileSync(file);
-const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+let mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+if (process.env.DENTAL_PROBE_ROTATION) {
+  const angles = process.env.DENTAL_PROBE_ROTATION.split(',').map(Number);
+  if (angles.length !== 3 || angles.some((angle) => !Number.isFinite(angle))) throw new Error('DENTAL_PROBE_ROTATION must be 3 comma-separated radians');
+  mesh = { ...mesh, positions: transformPositions(mesh.positions, placementMatrix({ position: [0, 0, 0], rotation: angles as [number, number, number] })) };
+}
 const proposal = proposeDentalOrientation(mesh);
 if (proposal.kind !== 'proposal') throw new Error(`No opening proposal: ${proposal.reason}`);
 const { rim } = proposal;
@@ -120,16 +126,23 @@ function summarize(label: string, selected: readonly Edge[]) {
   return components;
 }
 
-async function exportEdgeCandidates(output: string, selected: readonly Edge[], components: ReturnType<typeof summarize>, connectors: readonly number[][] = []) {
+async function exportEdgeCandidates(output: string, selected: readonly Edge[], components: ReturnType<typeof summarize>,
+  connectors: readonly number[][] = [], regionFaces?: readonly number[][], openingEdges: readonly Edge[] = []) {
   const scene = new THREE.Group();
   scene.name = 'Geometric edge candidates — not certified support boundaries';
-  const shell = new THREE.BufferGeometry();
-  shell.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
-  shell.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
-  shell.computeVertexNormals();
-  const shellMesh = new THREE.Mesh(shell, new THREE.MeshBasicMaterial({ color: 0xf3efe7, side: THREE.DoubleSide, transparent: true, opacity: 0.72 }));
-  shellMesh.name = 'Neutral reference aligner';
-  scene.add(shellMesh);
+  const addSurface = (indices: Uint32Array | number[], color: number, name: string, opacity = 1) => {
+    const surface = new THREE.BufferGeometry();
+    surface.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
+    surface.setIndex(new THREE.BufferAttribute(indices instanceof Uint32Array ? indices : new Uint32Array(indices), 1));
+    surface.computeVertexNormals();
+    const visual = new THREE.Mesh(surface, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide,
+      transparent: opacity < 1, opacity }));
+    visual.name = name;
+    scene.add(visual);
+  };
+  if (regionFaces) regionFaces.forEach((indices, at) => addSurface(indices, at === 0 ? 0x27a69a : 0xea8c6b,
+    `${at === 0 ? 'TEAL' : 'CORAL'}: topological face region ${at + 1} — unclassified`));
+  else addSurface(mesh.indices, 0xf3efe7, 'Neutral reference aligner', 0.72);
 
   const cylinder = (items: readonly Edge[]) => {
     const positions: number[] = [];
@@ -188,6 +201,11 @@ async function exportEdgeCandidates(output: string, selected: readonly Edge[], c
     const items = path.slice(1).map((index, step) => edges.get(path[step]! < index ? `${path[step]}:${index}` : `${index}:${path[step]}`)!);
     const visual = new THREE.Mesh(cylinder(items), new THREE.MeshBasicMaterial({ color: at === 0 ? 0x39c000 : 0x00ad70, side: THREE.DoubleSide }));
     visual.name = `GREEN ${at + 1}: 20-degree shortest sharp-network connector candidate, unverified`;
+    scene.add(visual);
+  }
+  if (openingEdges.length) {
+    const visual = new THREE.Mesh(cylinder(openingEdges), new THREE.MeshBasicMaterial({ color: 0xee1938, side: THREE.DoubleSide }));
+    visual.name = 'RED: central projected opening silhouette loop candidate';
     scene.add(visual);
   }
 
@@ -363,6 +381,9 @@ console.log(JSON.stringify({ label: 'mesh', vertices: mesh.positions.length / 3,
   globalExtent: global, boundaryEdges: [...edges.values()].filter((edge) => edge.faces.length === 1).length,
   nonManifoldEdges: [...edges.values()].filter((edge) => edge.faces.length > 2).length }));
 summarize('boundary', [...edges.values()].filter((edge) => edge.faces.length === 1));
+let outerCandidate: Set<Edge> | null = null;
+let innerCandidate: Set<Edge> | null = null;
+let connectorPathsForExport: number[][] = [];
 const sharpComponents = new Map<number, ReturnType<typeof summarize>>();
 const sharpEdges = new Map<number, Edge[]>();
 for (const threshold of [10, 20, 30, 45, 60, 75]) {
@@ -462,11 +483,13 @@ if (process.env.DENTAL_PROBE_CONNECTORS) {
         samples: Array.from({ length: result.path.length ? 7 : 0 }, (_, at) => coordinates[result.path[Math.round((result.path.length - 1) * at / 6)]!]!.map((value) => Math.round(value * 100) / 100)) }));
     }
   }
+  connectorPathsForExport = connectorPaths;
   const proposed = new Set<Edge>(excluded);
   for (const path of connectorPaths) for (let step = 1; step < path.length; step += 1) {
     const a = path[step - 1]!, b = path[step]!;
     proposed.add(edges.get(a < b ? `${a}:${b}` : `${b}:${a}`)!);
   }
+  outerCandidate = proposed;
   const proposedDegree = new Map<number, number>();
   for (const edge of proposed) for (const index of [edge.a, edge.b]) proposedDegree.set(index, (proposedDegree.get(index) ?? 0) + 1);
   const faceParent = Int32Array.from({ length: mesh.indices.length / 3 }, (_, index) => index);
@@ -501,6 +524,158 @@ if (process.env.DENTAL_PROBE_TRACK_CHAINS) {
         overlap: chain.members.filter((member) => memberSet.has(member)).length,
         hostDepthExtent: host?.extent[2] ?? 0 };
     }) }));
+  }
+}
+if (process.env.DENTAL_PROBE_OPENING) {
+  const measureProjection = (size: number) => {
+    const low = [Infinity, Infinity], high = [-Infinity, -Infinity];
+    for (const point of coordinates) for (let axis = 0; axis < 2; axis += 1) {
+      low[axis] = Math.min(low[axis]!, point[axis]!);
+      high[axis] = Math.max(high[axis]!, point[axis]!);
+    }
+    const scale = (size - 4) / Math.max(high[0]! - low[0]!, high[1]! - low[1]!);
+    const projected = coordinates.map((point) => [(point[0] - low[0]!) * scale + 2, (point[1] - low[1]!) * scale + 2] as const);
+    const occupied = new Uint8Array(size * size);
+    for (let face = 0; face < mesh.indices.length / 3; face += 1) {
+      const a = projected[mesh.indices[face * 3]!]!, b = projected[mesh.indices[face * 3 + 1]!]!, c = projected[mesh.indices[face * 3 + 2]!]!;
+      const area = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      if (Math.abs(area) < 1e-8) continue;
+      const x0 = Math.max(0, Math.floor(Math.min(a[0], b[0], c[0]))), x1 = Math.min(size - 1, Math.ceil(Math.max(a[0], b[0], c[0])));
+      const y0 = Math.max(0, Math.floor(Math.min(a[1], b[1], c[1]))), y1 = Math.min(size - 1, Math.ceil(Math.max(a[1], b[1], c[1])));
+      for (let y = y0; y <= y1; y += 1) for (let x = x0; x <= x1; x += 1) {
+        const px = x + 0.5, py = y + 0.5;
+        const u = ((b[0] - px) * (c[1] - py) - (b[1] - py) * (c[0] - px)) / area;
+        const v = ((c[0] - px) * (a[1] - py) - (c[1] - py) * (a[0] - px)) / area;
+        const w = 1 - u - v;
+        if (u >= -1e-8 && v >= -1e-8 && w >= -1e-8) occupied[y * size + x] = 1;
+      }
+    }
+    const labels = new Int32Array(size * size);
+    let label = 0;
+    const holes: { id: number; pixels: number; perimeterPixels: number; low: number[]; high: number[]; centroid: number[] }[] = [];
+    for (let start = 0; start < labels.length; start += 1) {
+      if (occupied[start] || labels[start]) continue;
+      label += 1;
+      const queue = [start]; labels[start] = label;
+      let exterior = false, perimeterPixels = 0, sumX = 0, sumY = 0;
+      const bounds = { low: [Infinity, Infinity], high: [-Infinity, -Infinity] };
+      for (let head = 0; head < queue.length; head += 1) {
+        const current = queue[head]!, x = current % size, y = Math.floor(current / size);
+        if (x === 0 || y === 0 || x === size - 1 || y === size - 1) exterior = true;
+        sumX += x; sumY += y;
+        bounds.low[0] = Math.min(bounds.low[0]!, x); bounds.low[1] = Math.min(bounds.low[1]!, y);
+        bounds.high[0] = Math.max(bounds.high[0]!, x); bounds.high[1] = Math.max(bounds.high[1]!, y);
+        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+          const next = ny * size + nx;
+          if (occupied[next]) { perimeterPixels += 1; continue; }
+          if (!labels[next]) { labels[next] = label; queue.push(next); }
+        }
+      }
+      if (!exterior) holes.push({ id: label, pixels: queue.length, perimeterPixels,
+        low: bounds.low.map((value, axis) => low[axis]! + (value - 2) / scale),
+        high: bounds.high.map((value, axis) => low[axis]! + (value - 2) / scale),
+        centroid: [low[0]! + (sumX / queue.length - 2) / scale, low[1]! + (sumY / queue.length - 2) / scale] });
+    }
+    holes.sort((a, b) => b.pixels - a.pixels);
+    if (holes[0]) {
+      const holeId = holes[0].id;
+      const candidate: Edge[] = [];
+      for (const edge of edges.values()) {
+        if (edge.faces.length !== 2) continue;
+        const axialA = dot(normals[edge.faces[0]!]!, rim.openingDirection);
+        const axialB = dot(normals[edge.faces[1]!]!, rim.openingDirection);
+        if (axialA * axialB > 0) continue;
+        const a = projected[edge.a]!, b = projected[edge.b]!;
+        const x = Math.round((a[0] + b[0]) / 2), y = Math.round((a[1] + b[1]) / 2);
+        let nearHole = false;
+        for (let dy = -2; dy <= 2 && !nearHole; dy += 1) for (let dx = -2; dx <= 2; dx += 1) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && nx < size && ny >= 0 && ny < size && labels[ny * size + nx] === holeId) { nearHole = true; break; }
+        }
+        if (nearHole) candidate.push(edge);
+      }
+      summarize(`projected-inner-silhouette-edges-${size}`, candidate);
+      const adjacency = new Map<number, number[]>();
+      for (const edge of candidate) for (const [from, to] of [[edge.a, edge.b], [edge.b, edge.a]]) {
+        const next = adjacency.get(from) ?? [];
+        next.push(to);
+        adjacency.set(from, next);
+      }
+      const degreeHistogram = new Map<number, number>();
+      for (const next of adjacency.values()) degreeHistogram.set(next.length, (degreeHistogram.get(next.length) ?? 0) + 1);
+      const branch = [...adjacency.keys()].find((index) => adjacency.get(index)!.length > 2);
+      const visited = new Set<string>();
+      const loops: number[][] = [];
+      if (branch !== undefined) for (const neighbor of adjacency.get(branch)!) {
+        const firstKey = branch < neighbor ? `${branch}:${neighbor}` : `${neighbor}:${branch}`;
+        if (visited.has(firstKey)) continue;
+        const loop = [branch, neighbor];
+        visited.add(firstKey);
+        while (loop.at(-1) !== branch && loop.length <= adjacency.size) {
+          const current = loop.at(-1)!, prior = loop.at(-2)!;
+          const next = adjacency.get(current)!.find((index) => index !== prior);
+          if (next === undefined) break;
+          const key = current < next ? `${current}:${next}` : `${next}:${current}`;
+          if (visited.has(key)) break;
+          visited.add(key);
+          loop.push(next);
+        }
+        if (loop.at(-1) === branch) loops.push(loop);
+      }
+      console.log(JSON.stringify({ label: `projected-inner-silhouette-cycles-${size}`, degreeHistogram: [...degreeHistogram],
+        loops: loops.map((loop) => {
+          const points = loop.map((index) => coordinates[index]!);
+          return { edges: loop.length - 1, extent: [0, 1, 2].map((axis) => Math.max(...points.map((point) => point[axis]!)) - Math.min(...points.map((point) => point[axis]!))),
+            projectedCentroid: [0, 1].map((axis) => points.reduce((sum, point) => sum + point[axis]!, 0) / points.length) };
+        }) }));
+      const mainLoop = loops.sort((a, b) => b.length - a.length)[0];
+      if (size === 512 && mainLoop && mainLoop.length > 50) {
+        innerCandidate = new Set(mainLoop.slice(1).map((index, step) => {
+          const prior = mainLoop[step]!;
+          return edges.get(prior < index ? `${prior}:${index}` : `${index}:${prior}`)!;
+        }));
+      }
+    }
+    return { size, occupiedPixels: occupied.reduce((sum, value) => sum + value, 0),
+      holes: holes.length, largest: holes.slice(0, 4).map(({ id: _id, ...hole }) => hole) };
+  };
+  for (const size of [256, 384, 512]) console.log(JSON.stringify({ label: 'projected-opening', ...measureProjection(size) }));
+}
+if (outerCandidate && innerCandidate) {
+  const blocked = new Set<Edge>([...outerCandidate, ...innerCandidate]);
+  const faceParent = Int32Array.from({ length: mesh.indices.length / 3 }, (_, index) => index);
+  const findFace = (start: number): number => {
+    let root = start;
+    while (faceParent[root] !== root) root = faceParent[root]!;
+    while (start !== root) { const next = faceParent[start]!; faceParent[start] = root; start = next; }
+    return root;
+  };
+  for (const edge of edges.values()) if (edge.faces.length === 2 && !blocked.has(edge)) faceParent[findFace(edge.faces[0]!)] = findFace(edge.faces[1]!);
+  const regions = new Map<number, { faces: number; openingDot: number; positiveFacing: number }>();
+  for (let face = 0; face < faceParent.length; face += 1) {
+    const root = findFace(face);
+    const region = regions.get(root) ?? { faces: 0, openingDot: 0, positiveFacing: 0 };
+    const axial = dot(normals[face]!, rim.openingDirection);
+    region.faces += 1;
+    region.openingDot += axial;
+    if (axial > 0.5) region.positiveFacing += 1;
+    regions.set(root, region);
+  }
+  console.log(JSON.stringify({ label: 'two-contour-face-cut', blockedEdges: blocked.size, regions: regions.size,
+    largest: [...regions.values()].sort((a, b) => b.faces - a.faces).slice(0, 6).map((region) => ({ faces: region.faces,
+      meanOpeningDot: region.openingDot / region.faces, positiveFacingFraction: region.positiveFacing / region.faces })) }));
+  if (process.env.DENTAL_PROBE_REGION_GLB) {
+    const roots = [...regions.entries()].sort((a, b) => b[1].faces - a[1].faces).map(([root]) => root);
+    const regionIndices = roots.map(() => [] as number[]);
+    for (let face = 0; face < faceParent.length; face += 1) {
+      const at = roots.indexOf(findFace(face));
+      if (at < 0) continue;
+      regionIndices[at]!.push(mesh.indices[face * 3]!, mesh.indices[face * 3 + 1]!, mesh.indices[face * 3 + 2]!);
+    }
+    await exportEdgeCandidates(process.env.DENTAL_PROBE_REGION_GLB, sharpEdges.get(60) ?? [], sharpComponents.get(60) ?? [],
+      connectorPathsForExport, regionIndices, [...innerCandidate]);
   }
 }
 for (const threshold of [10, 20, 30, 45, 60]) summarizeSmoothPatches(threshold);
