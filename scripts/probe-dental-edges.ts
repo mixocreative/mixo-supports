@@ -127,7 +127,7 @@ function summarize(label: string, selected: readonly Edge[]) {
 }
 
 async function exportEdgeCandidates(output: string, selected: readonly Edge[], components: ReturnType<typeof summarize>,
-  connectors: readonly number[][] = [], regionFaces?: readonly number[][], openingEdges: readonly Edge[] = []) {
+  connectors: readonly number[][] = [], regionFaces?: readonly number[][], openingEdges: readonly Edge[] = [], reviewMode = false) {
   const scene = new THREE.Group();
   scene.name = 'Geometric edge candidates — not certified support boundaries';
   const addSurface = (indices: Uint32Array | number[], color: number, name: string, opacity = 1) => {
@@ -140,14 +140,16 @@ async function exportEdgeCandidates(output: string, selected: readonly Edge[], c
     visual.name = name;
     scene.add(visual);
   };
-  if (regionFaces) regionFaces.forEach((indices, at) => addSurface(indices, at === 0 ? 0x27a69a : 0xea8c6b,
-    `${at === 0 ? 'TEAL' : 'CORAL'}: topological face region ${at + 1} — unclassified`));
+  if (regionFaces) regionFaces.forEach((indices, at) => addSurface(indices,
+    reviewMode ? (at === 0 ? 0x1aa998 : 0xeceae5) : (at === 0 ? 0x27a69a : 0xea8c6b),
+    reviewMode ? (at === 0 ? 'TEAL: proposed support-contact faces — awaiting owner approval' : 'NEUTRAL: all other faces, no proposed contacts')
+      : `${at === 0 ? 'TEAL' : 'CORAL'}: topological face region ${at + 1} — unclassified`));
   else addSurface(mesh.indices, 0xf3efe7, 'Neutral reference aligner', 0.72);
 
   const cylinder = (items: readonly Edge[]) => {
     const positions: number[] = [];
     const indices: number[] = [];
-    const radius = 0.16;
+    const radius = reviewMode ? 0.23 : 0.16;
     const sides = 6;
     for (const edge of items) {
       const a = new THREE.Vector3(...vertex(edge.a));
@@ -178,7 +180,8 @@ async function exportEdgeCandidates(output: string, selected: readonly Edge[], c
   };
   const groups = [
     { component: components[0], color: 0x007ed3, name: 'BLUE: large open full-arch sharp edge candidate' },
-    { component: components[1], color: 0xff9a00, name: 'ORANGE: smaller open partial sharp edge candidate' },
+    { component: components[1], color: reviewMode ? 0xffd000 : 0xff9a00,
+      name: `${reviewMode ? 'YELLOW' : 'ORANGE'}: smaller open partial sharp edge candidate` },
   ];
   for (const group of groups) {
     if (!group.component) continue;
@@ -189,7 +192,7 @@ async function exportEdgeCandidates(output: string, selected: readonly Edge[], c
     scene.add(visual);
   }
   const smallClosed = components.filter((component) => component.allDegreeTwo && component.vertices >= 6 && component.vertices < 100);
-  if (smallClosed.length) {
+  if (smallClosed.length && !reviewMode) {
     const members = new Set(smallClosed.flatMap((component) => component.members));
     const visual = new THREE.Mesh(cylinder(selected.filter((edge) => members.has(edge.a) && members.has(edge.b))),
       new THREE.MeshBasicMaterial({ color: 0xd72cc1, side: THREE.DoubleSide }));
@@ -676,6 +679,20 @@ if (outerCandidate && innerCandidate) {
     }
     await exportEdgeCandidates(process.env.DENTAL_PROBE_REGION_GLB, sharpEdges.get(60) ?? [], sharpComponents.get(60) ?? [],
       connectorPathsForExport, regionIndices, [...innerCandidate]);
+  }
+  if (process.env.DENTAL_PROBE_REVIEW_GLB) {
+    if (regions.size !== 2) throw new Error('Review GLB requires exactly two bounded face regions');
+    const roots = [...regions.entries()].sort((a, b) => b[1].faces - a[1].faces);
+    if (!(roots[0]![1].openingDot > 0 && roots[1]![1].openingDot < 0)) throw new Error('Review GLB region signs are ambiguous');
+    const regionIndices = roots.map(() => [] as number[]);
+    const rootIndex = new Map(roots.map(([root], index) => [root, index]));
+    for (let face = 0; face < faceParent.length; face += 1) {
+      const at = rootIndex.get(findFace(face));
+      if (at === undefined) continue;
+      regionIndices[at]!.push(mesh.indices[face * 3]!, mesh.indices[face * 3 + 1]!, mesh.indices[face * 3 + 2]!);
+    }
+    await exportEdgeCandidates(process.env.DENTAL_PROBE_REVIEW_GLB, sharpEdges.get(60) ?? [], sharpComponents.get(60) ?? [],
+      connectorPathsForExport, regionIndices, [...innerCandidate], true);
   }
 }
 for (const threshold of [10, 20, 30, 45, 60]) summarizeSmoothPatches(threshold);
