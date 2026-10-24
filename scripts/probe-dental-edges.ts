@@ -207,6 +207,40 @@ function summarizeFaceCuts(selected: readonly Edge[]) {
     barriers.push(component);
   }
   barriers.sort((a, b) => b.size - a.size);
+  const main = barriers[0];
+  if (main) {
+    const degree = new Map<number, number>();
+    for (const edge of main) for (const index of [edge.a, edge.b]) degree.set(index, (degree.get(index) ?? 0) + 1);
+    const endpoints = [...degree.entries()].filter(([, count]) => count === 1).map(([index]) => index);
+    const weak = Math.cos(10 * Math.PI / 180);
+    const graph = new Map<number, number[]>();
+    for (const edge of edges.values()) {
+      if (main.has(edge) || edge.faces.length !== 2 || Math.abs(dot(normals[edge.faces[0]!]!, normals[edge.faces[1]!]!)) > weak) continue;
+      for (const [from, to] of [[edge.a, edge.b], [edge.b, edge.a]]) {
+        const next = graph.get(from) ?? [];
+        next.push(to);
+        graph.set(from, next);
+      }
+    }
+    if (endpoints.length === 2) {
+      const [start, end] = endpoints;
+      const previous = new Map<number, number>();
+      const queue = [start!]; previous.set(start!, -1);
+      for (let head = 0; head < queue.length && !previous.has(end!); head += 1) {
+        for (const next of graph.get(queue[head]!) ?? []) if (!previous.has(next)) { previous.set(next, queue[head]!); queue.push(next); }
+      }
+      const path: number[] = [];
+      if (previous.has(end!)) for (let next = end!; next !== -1; next = previous.get(next)!) path.push(next);
+      const low = [Infinity, Infinity, Infinity], high = [-Infinity, -Infinity, -Infinity];
+      for (const index of path) for (let axis = 0; axis < 3; axis += 1) {
+        low[axis] = Math.min(low[axis]!, coordinates[index]![axis]!);
+        high[axis] = Math.max(high[axis]!, coordinates[index]![axis]!);
+      }
+      console.log(JSON.stringify({ label: 'sharp-10-alternate-main-chain', reachableVertices: queue.length,
+        pathVertices: path.length, extent: path.length ? high.map((value, axis) => value - low[axis]!) : [],
+        samples: Array.from({ length: path.length ? 11 : 0 }, (_, at) => coordinates[path[Math.round((path.length - 1) * at / 10)]!]!.map((value) => Math.round(value * 100) / 100)) }));
+    }
+  }
   const faceCount = mesh.indices.length / 3;
   for (const count of [1, 2]) {
     const blocked = new Set([...barriers.slice(0, count).flatMap((component) => [...component])]);
