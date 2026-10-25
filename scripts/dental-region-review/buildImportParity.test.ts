@@ -2,11 +2,15 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseStl } from '../../src/core/import/stl';
 import { proposeDentalOrientation } from '../../src/core/analysis/dental';
+import { sampleDiagnosticContourContacts } from '../../src/core/analysis/dentalContourContacts';
+import { contourPerimeter } from '../../src/core/analysis/dentalRimCoverage';
+import { positionId } from '../../src/core/analysis/placement';
 import { defaultSupportSettings } from '../../src/core/supports/settings';
 import { runSupportJob } from '../../src/supports/jobRunner';
 import { placeImportedUnits } from '../../src/state/import';
-import { inverseTransformDirection, inverseTransformPoint } from '../../src/state/transform';
+import { inverseTransformDirection, inverseTransformPoint, transformPoint } from '../../src/state/transform';
 import { buildDentalReview } from './build';
+import { unresolvedCircularArcs } from './phaseGap';
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
@@ -22,6 +26,18 @@ describe('dental import and preview parity', () => {
     if (review.kind !== 'proposal') return;
     const retained = new Set(review.supports.components.flatMap((part) => part.contactId ? [part.contactId] : []));
     expect(retained.size).toBe(100);
+    const shifted = sampleDiagnosticContourContacts(unit.source, review.region.openingEdges,
+      review.bands.innerOtherSide, { spacing: 2, phaseMm: 0, maxSearchDistance: 1.5 });
+    expect(shifted.kind).toBe('proposal');
+    if (shifted.kind !== 'proposal') return;
+    const turn = { position: [0, 0, 0] as [number, number, number], rotation: review.frame.rotation };
+    const retainedAt = (review.region.contacts ?? []).filter((contact) => contact.rim === 'opening' &&
+      retained.has(positionId(transformPoint(turn, contact.position)))).map((contact) => contact.distanceAlongContour);
+    const arcs = unresolvedCircularArcs(contourPerimeter(unit.source, review.region.openingEdges), retainedAt,
+      shifted.contacts.map((contact) => ({ atMm: contact.distanceAlongContour, face: contact.face })), 4);
+    expect(arcs.map((arc) => [Math.round(arc.gapMm), arc.candidates.length])).toEqual([
+      [10, 5], [6, 3], [10, 5], [8, 4], [8, 4],
+    ]);
   }, 180000);
 
   it('keeps dental automatic contact IDs the same in preview and export', () => {
