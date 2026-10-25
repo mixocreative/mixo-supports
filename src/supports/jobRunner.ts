@@ -4,9 +4,10 @@ import { classifyDownwardFaces, faceOverhangLimit } from '../core/analysis/mesh'
 import type { PlacementResult, ProgressCallback, SupportPoint } from '../core/analysis/types';
 import { DentalOpeningRaycaster } from '../core/analysis/dental';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
+import type { DiagnosticContourContact } from '../core/analysis/dentalContourContacts';
 import { dentalRegionAllowedOnFace, dentalSupportAllowedAt, type DentalPolicy } from '../core/analysis/dentalPolicy';
 import { jobContacts, type CheckJob, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
-import { cross, normalize, subtract, type Vector } from '../core/vec3';
+import { cross, dot, normalize, subtract, type Vector } from '../core/vec3';
 import { buildSupportMesh, type GeneratedSupportMesh } from '../core/supports/mesh';
 import type { Landing } from '../core/supports/landing';
 import { raftOutline } from '../core/supports/raft';
@@ -22,6 +23,8 @@ import { applyTransform, inverseTransformDirection, inverseTransformMesh, invers
  */
 
 type Outline = ReturnType<typeof raftOutline>;
+const DENTAL_PRIMARY_POSITION_TOLERANCE = 0.03;
+const DENTAL_PRIMARY_NORMAL_DOT_MINIMUM = 0.95;
 const outlineCache = new WeakMap<object, Map<string, Outline>>();
 
 /** The raft outline depends only on the model, its frame, Expand Width and voxels; cache it per model. */
@@ -68,7 +71,19 @@ function cachedRemesh(source: object, frame: JobTransform, model: ReturnType<typ
 export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): GeneratedSupportMesh {
   const { frame, settings } = job;
   if (frame === null) return buildSupportMesh([], defaultSupportSettings);
-  const contacts = jobContacts(job.contacts).map((contact) => ({
+  const dental = job.dental;
+  const allContacts = jobContacts(job.contacts);
+  const hasAutomatic = allContacts.some((contact) => contact.origin !== 'manual');
+  const currentDental = dental?.kind === 'two-contour' && hasAutomatic ? matchingDentalRegion(job.mesh, dental) : undefined;
+  const dentalValid = !dental || !hasAutomatic || currentDental !== undefined;
+  const permittedContacts = allContacts.filter((contact) => contact.origin === 'manual' ||
+    !dental || (currentDental && dental.kind === 'two-contour' && currentDental.contacts.some((candidate) => {
+      return sameDentalPrimary(contact, candidate) &&
+        dentalRegionAllowedOnFace(dental, candidate.face, candidate.position, candidate.normal);
+    })));
+  const permittedIds = new Set(permittedContacts.map((contact) => contact.id));
+  const rejectedAutoIds = allContacts.filter((contact) => contact.origin !== 'manual' && !permittedIds.has(contact.id)).map((contact) => contact.id);
+  const contacts = permittedContacts.map((contact) => ({
     id: contact.id,
     position: transformPoint(frame, contact.position),
     normal: transformDirection(frame, contact.normal),
@@ -77,8 +92,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     ...(contact.shape ? { shape: contact.shape } : {}),
   }));
   const model = applyTransform(job.mesh, frame);
-  const dental = job.dental;
-  const landingAllowed = dental?.kind === 'two-contour' ? (landing: Landing): boolean => {
+  const landingAllowed = dentalValid && dental?.kind === 'two-contour' ? (landing: Landing): boolean => {
     const face = landing.faceIndex;
     if (face === undefined || face < 0 || face >= job.mesh.indices.length / 3) return false;
     const at = face * 3;
@@ -101,6 +115,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     zones: job.contacts.zones.map((stamp) => ({ ...stamp, center: transformPoint(frame, stamp.center), normal: transformDirection(frame, stamp.normal) })),
     ...(landingAllowed ? { landingAllowed } : {}),
   });
+  mesh.dropped.push(...rejectedAutoIds);
   onProgress?.(1, 'Done');
   return inverseTransformMesh(mesh, frame);
 }
@@ -111,20 +126,15 @@ export function runPlacementJob(job: PlacementJob, onProgress?: ProgressCallback
 }
 
 /**
- * Keeps only generic-placement contacts that are allowed by an accepted dental boundary in
- * unit-local coordinates. The caller may use the returned placement with the normal landing path.
+ * Two-contour placement uses recomputed contour samples; legacy placement still uses generic
+ * downward faces plus its opening-visibility rule. All permission checks are unit-local.
  */
 export function filterDentalPlacement(job: DentalPlacementJob, placement: PlacementResult): PlacementResult {
   const { mesh, orientation, dental: policy, settings } = job;
   if (policy.kind === 'two-contour') {
     // A saved or externally modified mask is never trusted without reproducing it from this mesh.
-    const current = proposeDentalSupportRegion(mesh);
-    const same = (a: Uint8Array | Uint32Array, b: Uint8Array | Uint32Array) =>
-      a.length === b.length && a.every((value, index) => value === b[index]);
-    if (current.kind !== 'proposal' || !current.contactFaces || !current.contacts || !policy.region.contactFaces ||
-      !same(current.allowedFaces, policy.region.allowedFaces) ||
-      !same(current.contactFaces, policy.region.contactFaces) ||
-      !same(current.outerEdges, policy.region.outerEdges) || !same(current.openingEdges, policy.region.openingEdges)) {
+    const current = matchingDentalRegion(mesh, policy);
+    if (!current) {
       return { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() };
     }
     // Use the recomputed exact source faces, never generic overhang points or saved contacts.
@@ -156,10 +166,28 @@ export function filterDentalPlacement(job: DentalPlacementJob, placement: Placem
   };
 }
 
+function matchingDentalRegion(mesh: PlacementJob['mesh'], policy: Extract<DentalPolicy, { kind: 'two-contour' }>) {
+  const current = proposeDentalSupportRegion(mesh);
+  const same = (a: Uint8Array | Uint32Array, b: Uint8Array | Uint32Array) =>
+    a.length === b.length && a.every((value, index) => value === b[index]);
+  if (current.kind !== 'proposal' || !current.contactFaces || !current.contacts || !policy.region.contactFaces ||
+    !same(current.allowedFaces, policy.region.allowedFaces) ||
+    !same(current.contactFaces, policy.region.contactFaces) ||
+    !same(current.outerEdges, policy.region.outerEdges) || !same(current.openingEdges, policy.region.openingEdges)) return undefined;
+  return { ...current, contactFaces: current.contactFaces, contacts: current.contacts };
+}
+
+function sameDentalPrimary(contact: { position: Vector; normal: Vector }, candidate: DiagnosticContourContact): boolean {
+  const dx = candidate.position[0] - contact.position[0];
+  const dy = candidate.position[1] - contact.position[1];
+  const dz = candidate.position[2] - contact.position[2];
+  return dx * dx + dy * dy + dz * dz < DENTAL_PRIMARY_POSITION_TOLERANCE ** 2 &&
+    dot(candidate.normal, contact.normal) > DENTAL_PRIMARY_NORMAL_DOT_MINIMUM;
+}
+
 /**
- * Fill every approved downward-facing surface at the placement spacing. This deliberately does
- * not rely on generic overhang candidates: an approved patch that generic ray/remesh sampling
- * misses still gets a contact. All policy and visibility checks remain unit-local.
+ * Legacy-only fallback: fill opening-visible downward faces at placement spacing. The
+ * two-contour policy returns earlier with narrow sampled contacts and never enters this loop.
  */
 function spacedDentalPoints(
   mesh: PlacementJob['mesh'], orientation: JobTransform, policy: DentalPolicy, opening: DentalOpeningRaycaster | undefined,
@@ -189,7 +217,6 @@ function spacedDentalPoints(
   const downward = classifyDownwardFaces(turned, faceOverhangLimit(overhangAngleDegrees));
   for (let face = 0; face < mesh.indices.length / 3; face += 1) {
     if (!downward[face]) continue;
-    if (policy.kind === 'two-contour' && policy.region.allowedFaces[face] !== 1) continue;
     const offset = face * 3;
     const indices = [mesh.indices[offset]!, mesh.indices[offset + 1]!, mesh.indices[offset + 2]!];
     const local = indices.map((index) => [mesh.positions[index * 3]!, mesh.positions[index * 3 + 1]!, mesh.positions[index * 3 + 2]!] as [number, number, number]);
@@ -202,9 +229,7 @@ function spacedDentalPoints(
       const c = (column + 1 / 3) / divisions;
       const a = 1 - b - c;
       const unit = [a * local[0]![0] + b * local[1]![0] + c * local[2]![0], a * local[0]![1] + b * local[1]![1] + c * local[2]![1], a * local[0]![2] + b * local[1]![2] + c * local[2]![2]] as [number, number, number];
-      if (policy.kind === 'two-contour'
-        ? !dentalRegionAllowedOnFace(policy, face, unit, normal)
-        : !opening || !dentalSupportAllowedAt(policy, opening, unit, normal)) continue;
+      if (!opening || !dentalSupportAllowedAt(policy, opening, unit, normal)) continue;
       const position = transformPoint(orientationOnly(orientation), unit);
       const turnedNormal = transformDirection(orientationOnly(orientation), normal);
       add({ id: positionId(position), regionId: -1, position, normal: turnedNormal, source: 'interior' });

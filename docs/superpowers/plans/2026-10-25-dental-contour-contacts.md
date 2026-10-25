@@ -6,6 +6,8 @@
 
 **Stack:** TypeScript, Vitest, Vite, React, Three.js, existing indexed STL pipeline.
 
+Documentation checkpoint 2026-10-25: `dentalwork/plain-language.md` and `dentalwork/technical-algorithm.md` explain that the broad between-loop face cut labels contour sides but does not grant contacts. The current candidate strip starts at exact mesh-edge loops and follows adjacent faces on the `otherSide`. Both documents preserve the earlier ray, smooth-patch, and broad-area approaches with failure evidence, so future work can reassess them without confusing them with the live mask.
+
 ## Task 0: establish exact contour-face incidence (completed checkpoint)
 
 Files: `src/core/analysis/dentalContourEvidence.ts`, `.test.ts`.
@@ -48,7 +50,7 @@ Local-connectivity follow-up: the sampler now blocks contour edges in a source-f
 
 ## Task 4: switch placement and policy safely
 
-Checkpoint 2026-10-25: the two-contour placement path now uses recomputed exact source-face contour samples and narrow `contactFaces`; old saved policies fail closed. Brush permission and preview are confined to that mask. Tests cover broad-face exclusion, stale masks, and round-trip project data. One-reference browser walk passed Step 1–3 and showed 87 final supports. **Not closed:** the final support builder validates secondary landing against the saved mask, without independently recomputing the footprint; full support-body crossing and early-layer island gates are untested. Fix those before Task 4 acceptance. No-hole outer-only remains disabled.
+Checkpoint 2026-10-25: the two-contour placement path uses recomputed exact source-face contour samples and narrow `contactFaces`; old saved policies fail closed. Brush permission and preview are confined to that mask. The final builder now independently recomputes the footprint, compares it with the saved policy, and drops any automatic primary tip that does not match a current exact-face sample; manual supports remain. The secondary-landing gate operates only after this validation. One-reference browser walk passed Step 1–3 and showed 87 final supports before the final-build guard; the direct GLB command after the guard still generates 90 tips with 5 omissions. **Not closed:** full body crossings and early-layer island gates are untested, the safe anatomical side is not independently labeled, and no-hole outer-only remains disabled.
 
 Files: `src/core/analysis/dentalPolicy.ts`, `src/supports/jobRunner.ts`, `src/workers/analysisWorker.ts`, associated tests.
 
@@ -66,7 +68,7 @@ Files: `src/App.tsx`, `src/components/DentalBar.tsx`, viewport overlay and tests
 2. Extend the standalone GLB command to show the distinct detector methods and proposed strips. Run it on reference and scrambled reference.
 3. Run `npm test`, `npm run build`, browser walk, and visual review. Add independent with-hole and no-hole patient meshes when supplied. Check layer islands, body crossings, latency/cancellation, and physical-print settings. Merge/release only after these gates; otherwise leave a clear branch checkpoint and handoff.
 
-The standalone batch subtask is implemented early for the sole available reference: it can now include the app's current generated support mesh and reports omitted tips. Its teal overlay and contacts are explicitly labeled **legacy diagnostic behavior** until Tasks 3–4 replace the broad permission. Do not mistake this exporter checkpoint for Task 5 acceptance.
+The standalone batch uses the live narrow-contact code for the sole available reference and reports omitted tips. Its teal overlay marks the current narrow candidate footprint, but this exporter checkpoint is not Task 5 acceptance or dental certification.
 
 ## Handoff after every checkpoint
 

@@ -5,6 +5,7 @@ import { defaultSupportSettings, type LiveSupportSettings } from '../core/suppor
 import { columnLanding, lineTarget } from '../core/supports/landing';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { DentalPolicy } from '../core/analysis/dentalPolicy';
+import { dentalRegionAllowedOnFace } from '../core/analysis/dentalPolicy';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
 import { parseStl } from '../core/import/stl';
 import { readFileSync } from 'node:fs';
@@ -80,19 +81,32 @@ describe('runSupportJob: dental secondary contacts', () => {
   const contacts: ContactInputs = { points: [point('auto-shelf', [0, 20, 0], [0, -1, 0])], manual: [],
     deleted: [], zones: [], contactSettings: {} };
 
-  it('drops an automatic support whose column lands on a forbidden dental face', () => {
+  it('does not build automatic supports from a dental policy that cannot be reproduced from its STL', () => {
+    const forged: DentalPolicy = { ...dental, region: { ...dental.region,
+      contactFaces: new Uint8Array(mask.length).fill(1) } };
+    const inputs: ContactInputs = { ...contacts,
+      points: [point('auto-slab', [15, 5, 0], [0, -1, 0])],
+      manual: [point('manual-shelf', [2, 20, 2], [0, -1, 0])] };
+    const built = runSupportJob({ ...job(model, still, inputs), dental: forged });
+    expect(built.dropped).toContain('auto-slab');
+    expect(built.components.some((component) => component.contactId === 'auto-slab')).toBe(false);
+    expect(built.components.some((component) => component.contactId === 'manual-shelf')).toBe(true);
+  });
+
+  it('marks a forbidden secondary landing face as disallowed', () => {
     const ray = lineTarget(model, settings);
     const landing = columnLanding({ id: 'auto-shelf', position: [0, 20, 0], normal: [0, -1, 0] }, settings, ray).hit;
     expect(landing?.faceIndex).toBeDefined();
     expect(mask[landing!.faceIndex!]).toBe(0);
-    const built = runSupportJob({ ...job(model, still, contacts), dental });
-    expect(built.dropped).toEqual(['auto-shelf']);
+    expect(dentalRegionAllowedOnFace(dental, landing!.faceIndex!, landing!.sourcePoint ?? landing!.point, [0, 1, 0])).toBe(false);
   });
 
-  it('keeps a column when the secondary landing face is allowed', () => {
+  it('does not trust an all-ones mask even if its local secondary landing gate allows a face', () => {
     const allowed: DentalPolicy = { ...dental, region: { ...dental.region,
       contactFaces: new Uint8Array(mask.length).fill(1) } };
-    expect(runSupportJob({ ...job(model, still, contacts), dental: allowed }).dropped).toEqual([]);
+    const landing = columnLanding({ id: 'auto-shelf', position: [0, 20, 0], normal: [0, -1, 0] }, settings, lineTarget(model, settings)).hit;
+    expect(dentalRegionAllowedOnFace(allowed, landing!.faceIndex!, landing!.sourcePoint ?? landing!.point, [0, 1, 0])).toBe(true);
+    expect(runSupportJob({ ...job(model, still, contacts), dental: allowed }).dropped).toEqual(['auto-shelf']);
   });
 });
 
@@ -189,3 +203,23 @@ describe('filterDentalPlacement', () => {
     expect(result.points).toEqual([]);
   });
 });
+
+it('rejects an automatic primary tip not present in the recomputed dental contact samples', () => {
+  const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
+  const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+  const region = proposeDentalSupportRegion(mesh);
+  expect(region.kind).toBe('proposal');
+  if (region.kind !== 'proposal') return;
+  const source = region.contacts![0]!;
+  const forged: SupportPoint = point('auto-forged',
+    [source.position[0] + 5, source.position[1], source.position[2]], source.normal);
+  const policy: DentalPolicy = { kind: 'two-contour', region, stamps: [], rim: {
+    boundaryKind: 'projection-fallback', points: new Float32Array(), openingDirection: [0, -1, 0],
+    centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1], visibilityMask: new Uint8Array(),
+    visibilityResolution: 0, visibilityMin: [0, 0], visibilityMax: [0, 0],
+  } };
+  const built = runSupportJob({ ...job(mesh, still, { points: [forged], manual: [], deleted: [], zones: [], contactSettings: {} }),
+    dental: policy });
+  expect(built.dropped).toContain('auto-forged');
+  expect(built.components.some((component) => component.contactId === 'auto-forged')).toBe(false);
+}, 30000);
