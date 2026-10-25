@@ -1,7 +1,8 @@
 import type { TriangleMesh } from '../../src/core/analysis/types';
 import type { GeneratedSupportMesh, SupportPart } from '../../src/core/supports/mesh';
 import { tipsOf } from '../../src/core/supports/meshQuery';
-import { BufferGeometry, Float32BufferAttribute, Matrix4 } from 'three';
+import type { Vector } from '../../src/core/vec3';
+import { BufferGeometry, Float32BufferAttribute, Line3, Matrix4, Vector3 } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 
 export interface SupportCrossingReport {
@@ -14,6 +15,8 @@ export interface SupportCrossingReport {
   outsideContactBand: Partial<Record<SupportPart, number>>;
   contactIdsByPart: Partial<Record<SupportPart, string[]>>;
   examples: { modelFace: number; supportFace: number; part: SupportPart; contactId?: string }[];
+  /** Distance of actual non-coplanar neck/mesh intersection segments from their owning primary contact; secondary landings are not classified. */
+  neckReach?: { measuredPairs: number; coplanarPairs: number; maxDistanceMm: number };
 }
 
 function geometry(mesh: TriangleMesh): BufferGeometry {
@@ -24,9 +27,11 @@ function geometry(mesh: TriangleMesh): BufferGeometry {
 }
 
 /** Exact triangle intersections; this is a diagnostic, not a production collision gate. Both meshes must share plate space. */
-export function diagnoseSupportCrossings(model: TriangleMesh, supports: GeneratedSupportMesh, contactFaces?: Uint8Array): SupportCrossingReport {
+export function diagnoseSupportCrossings(model: TriangleMesh, supports: GeneratedSupportMesh, contactFaces?: Uint8Array,
+  contactPositions?: ReadonlyMap<string, Vector>): SupportCrossingReport {
   const report: SupportCrossingReport = { total: 0, bodyPillarCrossings: 0, bodyPillarOutsideContactBand: 0,
     bodyPillarContactIds: [], byPart: {}, outsideContactBand: {}, contactIdsByPart: {}, examples: [] };
+  if (contactPositions) report.neckReach = { measuredPairs: 0, coplanarPairs: 0, maxDistanceMm: 0 };
   if (model.indices.length === 0 || supports.indices.length === 0) return report;
   if (contactFaces && contactFaces.length !== model.indices.length / 3) throw new Error('Contact mask does not match model faces');
   const contacts = new Map<SupportPart, Set<string>>();
@@ -39,6 +44,7 @@ export function diagnoseSupportCrossings(model: TriangleMesh, supports: Generate
   const supportGeometry = geometry(supports);
   const modelBvh = new MeshBVH(modelGeometry, { indirect: true });
   const supportBvh = new MeshBVH(supportGeometry, { indirect: true });
+  const modelNormal = new Vector3(), supportNormal = new Vector3(), segment = new Line3();
   modelBvh.bvhcast(supportBvh, new Matrix4(), {
     intersectsTriangles: (modelTriangle, supportTriangle, modelIndex, supportIndex) => {
       if (!modelTriangle.intersectsTriangle(supportTriangle)) return false;
@@ -58,6 +64,18 @@ export function diagnoseSupportCrossings(model: TriangleMesh, supports: Generate
       if (owner.contactId) {
         if (!contacts.has(owner.part)) contacts.set(owner.part, new Set());
         contacts.get(owner.part)!.add(owner.contactId);
+      }
+      const contact = owner.part === 'neck' && owner.contactId ? contactPositions?.get(owner.contactId) : undefined;
+      if (contact && report.neckReach) {
+        modelTriangle.getNormal(modelNormal);
+        supportTriangle.getNormal(supportNormal);
+        if (Math.abs(modelNormal.dot(supportNormal)) > 1 - 1e-10) report.neckReach.coplanarPairs++;
+        else if (modelTriangle.intersectsTriangle(supportTriangle, segment)) {
+          const point = new Vector3(...contact);
+          report.neckReach.measuredPairs++;
+          report.neckReach.maxDistanceMm = Math.max(report.neckReach.maxDistanceMm,
+            segment.start.distanceTo(point), segment.end.distanceTo(point));
+        }
       }
       if (report.examples.length < 30) report.examples.push({ modelFace, supportFace, part: owner.part, contactId: owner.contactId });
       return false;

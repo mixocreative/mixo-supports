@@ -42,4 +42,12 @@ describe('diagnoseSupportCrossings', () => {
     expect(result.byPart.pillar).toBe(1);
     expect(result.bodyPillarCrossings).toBe(0);
   });
+
+  it('measures neck intersection reach from its intended contact', () => {
+    const support = supports([-1, -1, 0, 1, 1, 0, 1, -1, 0]);
+    support.components[0]!.part = 'neck';
+    const result = diagnoseSupportCrossings(model, support, undefined, new Map([['a', [0, 0, 0] as [number, number, number]]]));
+    expect(result.neckReach?.measuredPairs).toBe(1);
+    expect(result.neckReach?.maxDistanceMm).toBeCloseTo(1);
+  });
 });
