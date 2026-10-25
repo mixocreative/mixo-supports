@@ -1,5 +1,13 @@
 # Dental rework handoff
 
+## 2026-10-25 contour-contact design shift (active)
+
+The owner approved a new direct-print rule: tips should be near validated lower contours on the non-fitting side, not spread across the broad teal face mask or exactly on a sharp crest. Two-contour models can use outer and central-opening rim bands; a proven no-hole model may use outer-only. Read [the approved design](superpowers/specs/2026-10-25-dental-contour-contacts.md) and [the phased plan](superpowers/plans/2026-10-25-dental-contour-contacts.md). This supersedes the broad-face *permission* portion of the old plan; the old face cut remains diagnostic. The existing app still uses that old broad mask until Task 4, so **do not release this branch yet**.
+
+First reversible code checkpoint: added `inspectContourIncidence` in `src/core/analysis/dentalContourEvidence.ts` with a test that was red before implementation. It checks simple loop topology and reports the exact two source faces adjacent to each contour edge, without labeling either safe. The reference has 2,665 valid outer and 339 valid central-opening two-sided edges; the source-face pairs stay identical after a pose scramble. A gap, branch, or missing two-sided mesh edge abstains. `npx vitest run src/core/analysis/dentalContourEvidence.test.ts`: 2 passed; `npm test`: 105 files / 1,189 tests passed; `npm run build`: passed (existing bundle-size warning). No production dental permission or UI was changed in this checkpoint.
+
+Next exact action: extract outer/opening contour detection from `dentalRegion.ts` into a pure contour module without changing the old result, then add `present | absent | ambiguous` central-opening evidence. Before any contact generation switch, label real forbidden cavity/tooth faces and verify which of each edge's two adjacent face sides is exterior. A second with-hole aligner and a real no-hole aligner are still needed for cross-model acceptance; synthetic fixtures alone do not establish anatomical safety. Update this handoff and the private orchestration copy after each verified commit.
+
 Updated 2026-10-24. Read [the active plan](superpowers/plans/2026-10-24-dental-rework.md) and [the reference README](dental-reference/README.md) before making changes. This is an implementation program with explicit gates, not a completed fix.
 
 ## Verified baseline
