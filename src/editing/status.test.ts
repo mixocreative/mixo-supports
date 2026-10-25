@@ -125,6 +125,7 @@ describe('busyStatus', () => {
   it('tells the user to finish the mode first', () => {
     expect(busyStatus('zones')).toEqual({ key: 'Finish painting zones first: press Esc or Done.' });
     expect(busyStatus('edit')).toEqual({ key: 'Finish editing supports first: press Esc or Done.' });
+    expect(busyStatus('dental')).toEqual({ key: 'Use the dental step controls, or press Esc to exit.' });
   });
 });
 

@@ -614,7 +614,7 @@ export const ja: Dictionary = {
   'Review the detected aligner orientation, then accept it or adjust it manually.': '検出されたアライナーの向きを確認し、受け入れるか手動で調整してください。',
   'Mark where dental supports may grow; Remove clears permission. Drag on the model.': 'デンタルサポートを生成できる場所を指定します。削除すると許可を外します。モデル上でドラッグしてください。',
   'Dental support area kept.': 'デンタルサポート領域を保持しました。',
-  'Finish Dental Auto Generate first: press Esc or Done.': '先にアライナー自動生成を完了してください。Esc または「完了」を押します。',
+  'Use the dental step controls, or press Esc to exit.': 'アライナーのステップ操作を使うか、Esc で終了してください。',
   'Generate dental supports': 'デンタルサポートを生成',
   'Generating dental supports…': 'デンタルサポートを生成中…',
   'Generate supports only on the approved dental area': '承認済みのデンタル領域だけにサポートを生成します',

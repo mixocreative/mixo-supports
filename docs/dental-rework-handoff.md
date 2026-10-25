@@ -96,6 +96,12 @@ Continue Gate 0/2 geometry diagnosis: map the measured full-arch open chain and 
 
 After each verified checkpoint, append: date; files/commit; exact command and result; observed finding; unresolved risk; one next action. Keep local and cloud handoffs in sync. Use local Ollama for bounded mechanical tasks when available, or a compatible low-cost agent; main agent owns geometry and safety decisions and verifies all delegated output. Push only an honest verified checkpoint, not an implied release.
 
+## 2026-10-25 dental sidebar copy checkpoint
+
+- The left sidebar's dental-mode lock hint incorrectly said “Esc or Done” during Steps 1 and 2, although Done belongs only to Step 3. `busyStatus('dental')` now gives stage-neutral instructions to use the dental controls or press Esc; Traditional Chinese and Japanese translations match. The other editing modes are unchanged.
+- Test-first: the new `src/editing/status.test.ts` expectation failed against the old text, then passed after the fix. `npm test`: **110 files / 1,203 tests passed**; `npm run build`: passed with the existing large-chunk warning. Files: `src/editing/status.ts`, `.test.ts`, `src/locales/zh-Hant.ts`, `src/locales/ja.ts`.
+- This is a UI copy correction, not geometry validation. Remaining gates: inspect the live three-step workflow and generated contact/body geometry, especially unintended upper-surface contact and crossing support bodies. One owner-approved reference STL is not evidence for other patients or no-hole aligners.
+
 ## 2026-10-25 isolated candidate detector checkpoint
 
 - Added pure `src/core/analysis/dentalRegion.ts` with one public entry point, `proposeDentalSupportRegion(mesh)`. It returns either a proposal containing the two exact mesh-edge loops and per-triangle candidate mask, or `inconclusive`; at this historical checkpoint it was **not wired into contact generation**. The method document has since moved to `dentalwork/technical-algorithm.md`, with a separate `dentalwork/plain-language.md`.

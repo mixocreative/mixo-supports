@@ -618,7 +618,7 @@ export const zhHant: Dictionary = {
   'Review the detected aligner orientation, then accept it or adjust it manually.': '檢視偵測到的牙套方向，然後接受或手動調整。',
   'Mark where dental supports may grow; Remove clears permission. Drag on the model.': '標記牙套支撐可產生的位置；移除會清除許可。請在模型上拖曳。',
   'Dental support area kept.': '已保留牙套支撐區域。',
-  'Finish Dental Auto Generate first: press Esc or Done.': '請先完成牙套自動產生：按 Esc 或「完成」。',
+  'Use the dental step controls, or press Esc to exit.': '請使用牙套步驟控制，或按 Esc 離開。',
   'Generate dental supports': '產生牙套支撐',
   'Generating dental supports…': '正在產生牙套支撐…',
   'Generate supports only on the approved dental area': '只在核准的牙套區域產生支撐',

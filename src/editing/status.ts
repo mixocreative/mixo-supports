@@ -79,7 +79,7 @@ export function heavyStatus(session: EditSession): StatusMessage | undefined {
 
 /** Another object was picked while a mode is on: finish the mode first. */
 export function busyStatus(mode: Exclude<EditMode, 'off'>): StatusMessage {
-  return { key: mode === 'zones' ? 'Finish painting zones first: press Esc or Done.' : mode === 'dental' ? 'Finish Dental Auto Generate first: press Esc or Done.' : 'Finish editing supports first: press Esc or Done.' };
+  return { key: mode === 'zones' ? 'Finish painting zones first: press Esc or Done.' : mode === 'dental' ? 'Use the dental step controls, or press Esc to exit.' : 'Finish editing supports first: press Esc or Done.' };
 }
 
 /** A file dropped or chosen while a mode is on: refused with the busy line, the mode stays; undefined outside the modes. */
