@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { parseStl } from '../../src/core/import/stl';
+import { crossingAutomaticBodyContactIds } from '../../src/core/supports/dentalBodyClearance';
 import { buildDentalReview } from './build';
 import { diagnoseSupportCrossings } from './crossings';
 
@@ -10,5 +11,7 @@ const model = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + b
 const review = buildDentalReview(model);
 if (review.kind !== 'proposal') throw new Error(`Dental review inconclusive: ${review.reason}`);
 const report = diagnoseSupportCrossings(model, review.supports, review.region.contactFaces);
+const coreCrossingIds = crossingAutomaticBodyContactIds(model, review.supports,
+  new Set(review.placement.points.map((point) => point.id)));
 process.stdout.write(JSON.stringify({ proposed: review.placement.points.length, omitted: review.supports.dropped.length,
-  modelFaces: model.indices.length / 3, supportFaces: review.supports.indices.length / 3, ...report }) + '\n');
+  modelFaces: model.indices.length / 3, supportFaces: review.supports.indices.length / 3, coreCrossingIds, ...report }) + '\n');

@@ -1,6 +1,6 @@
 # Dental support region: two mesh contours
 
-> The two-contour face cut below is diagnostic. The live branch uses its side labels to construct narrow contour strips and sampled exact-face contacts; see [the design](../docs/superpowers/specs/2026-10-25-dental-contour-contacts.md). This is not clinically validated.
+> The two-contour face cut below is diagnostic. The live branch uses its side labels to construct narrow contour strips and sampled exact-face contacts; see [the design](../docs/superpowers/specs/2026-10-25-dental-contour-contacts.md). This is not clinically validated. See [support-module boundaries](support-module-boundaries.md) for the generic-vs-dental split and planned Early-Layer Islands check.
 
 ## Which result depends on which
 
@@ -81,7 +81,7 @@ The Step 2 placement worker no longer samples all downward-facing broad-region t
 
 For each automatic column that lands on the model, and each automatic tree junction that lands on the model, transform the exact hit point back to unit-local coordinates. Calculate the source triangle's geometric normal from its three indexed vertices. Call `dentalRegionAllowedOnFace(policy, faceIndex, localHitPoint, normal)`. If it returns false, omit that column or all members of that tree. A support that lands on the build plate has no second model contact and needs no second-face test. The rule does not reject manual supports. Record the omitted contact IDs in `dropped`; keep painted-zone omissions separately in `droppedByZones`.
 
-This gate checks contact points, not intersections along pillars, braces, rafts, or roofs. In a current browser walk on the reference, Step 3 showed 87 finished supports, with three forbidden secondary landings dropped during construction. The count is fixture/settings-dependent; Step 2 remains a proposal. Full body-clearance and early-layer island gates remain open.
+The secondary-landing gate checks contact points, not intersections along the generated body. A separate automatic-pillar pass now builds the actual support mesh, tests shaft triangles against indexed source-model triangles (including coplanar overlaps), omits the crossing automatic contact IDs, rebuilds, and rechecks. If the rebuilt automatic layout still crosses, it fails closed to manual-only supports. Intentional primary-neck and approved secondary-tip reach are excluded from this narrow pillar classification. The pre-fix reference had 107 pillar intersection pairs from two automatic contacts; the filtered one-reference output has zero forbidden automatic-pillar intersections in the independent BVH diagnostic. This is not a guarantee for braces, trees, roofs, manual supports, or other patient meshes. Early-layer island detection is not implemented.
 
 ### Pose of the diagnostic GLB
 

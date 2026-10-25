@@ -1,10 +1,15 @@
 import type { TriangleMesh } from '../../src/core/analysis/types';
 import type { GeneratedSupportMesh, SupportPart } from '../../src/core/supports/mesh';
+import { tipsOf } from '../../src/core/supports/meshQuery';
 import { BufferGeometry, Float32BufferAttribute, Matrix4 } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 
 export interface SupportCrossingReport {
   total: number;
+  /** Pillar triangle pairs not part of the builder's explicit secondary landing-tip reach. */
+  bodyPillarCrossings: number;
+  bodyPillarOutsideContactBand: number;
+  bodyPillarContactIds: string[];
   byPart: Partial<Record<SupportPart, number>>;
   outsideContactBand: Partial<Record<SupportPart, number>>;
   contactIdsByPart: Partial<Record<SupportPart, string[]>>;
@@ -20,10 +25,16 @@ function geometry(mesh: TriangleMesh): BufferGeometry {
 
 /** Exact triangle intersections; this is a diagnostic, not a production collision gate. Both meshes must share plate space. */
 export function diagnoseSupportCrossings(model: TriangleMesh, supports: GeneratedSupportMesh, contactFaces?: Uint8Array): SupportCrossingReport {
-  const report: SupportCrossingReport = { total: 0, byPart: {}, outsideContactBand: {}, contactIdsByPart: {}, examples: [] };
+  const report: SupportCrossingReport = { total: 0, bodyPillarCrossings: 0, bodyPillarOutsideContactBand: 0,
+    bodyPillarContactIds: [], byPart: {}, outsideContactBand: {}, contactIdsByPart: {}, examples: [] };
   if (model.indices.length === 0 || supports.indices.length === 0) return report;
   if (contactFaces && contactFaces.length !== model.indices.length / 3) throw new Error('Contact mask does not match model faces');
   const contacts = new Map<SupportPart, Set<string>>();
+  const bodyPillarContacts = new Set<string>();
+  const tipView = tipsOf(supports);
+  const tipTriangles = new Set<string>();
+  const triangleKey = (indices: Uint32Array, at: number) => `${indices[at]},${indices[at + 1]},${indices[at + 2]}`;
+  for (let at = 0; at < tipView.indices.length; at += 3) tipTriangles.add(triangleKey(tipView.indices, at));
   const modelGeometry = geometry(model);
   const supportGeometry = geometry(supports);
   const modelBvh = new MeshBVH(modelGeometry, { indirect: true });
@@ -39,6 +50,11 @@ export function diagnoseSupportCrossings(model: TriangleMesh, supports: Generate
       report.total++;
       report.byPart[owner.part] = (report.byPart[owner.part] ?? 0) + 1;
       if (contactFaces && !contactFaces[modelFace]) report.outsideContactBand[owner.part] = (report.outsideContactBand[owner.part] ?? 0) + 1;
+      if (owner.part === 'pillar' && !tipTriangles.has(triangleKey(supports.indices, at))) {
+        report.bodyPillarCrossings++;
+        if (contactFaces && !contactFaces[modelFace]) report.bodyPillarOutsideContactBand++;
+        if (owner.contactId) bodyPillarContacts.add(owner.contactId);
+      }
       if (owner.contactId) {
         if (!contacts.has(owner.part)) contacts.set(owner.part, new Set());
         contacts.get(owner.part)!.add(owner.contactId);
@@ -48,6 +64,7 @@ export function diagnoseSupportCrossings(model: TriangleMesh, supports: Generate
     },
   });
   for (const [part, ids] of contacts) report.contactIdsByPart[part] = [...ids].sort();
+  report.bodyPillarContactIds = [...bodyPillarContacts].sort();
   modelGeometry.dispose();
   supportGeometry.dispose();
   return report;

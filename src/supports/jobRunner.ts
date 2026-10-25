@@ -9,6 +9,7 @@ import { dentalRegionAllowedOnFace, dentalSupportAllowedAt, type DentalPolicy } 
 import { jobContacts, type CheckJob, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
 import { cross, dot, normalize, subtract, type Vector } from '../core/vec3';
 import { buildSupportMesh, type GeneratedSupportMesh } from '../core/supports/mesh';
+import { crossingAutomaticBodyContactIds } from '../core/supports/dentalBodyClearance';
 import type { Landing } from '../core/supports/landing';
 import { raftOutline } from '../core/supports/raft';
 import { RemeshTarget } from '../core/supports/remesh';
@@ -104,7 +105,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     const normal = normalize(cross(subtract(b, a), subtract(c, a)));
     return dentalRegionAllowedOnFace(dental, face, inverseTransformPoint(frame, landing.sourcePoint ?? landing.point), normal);
   } : undefined;
-  const mesh = buildSupportMesh(contacts, settings, {
+  const buildOptions = {
     mode: job.mode,
     labelText: job.labelText,
     model,
@@ -114,8 +115,28 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     ...(onProgress ? { onProgress } : {}),
     zones: job.contacts.zones.map((stamp) => ({ ...stamp, center: transformPoint(frame, stamp.center), normal: transformDirection(frame, stamp.normal) })),
     ...(landingAllowed ? { landingAllowed } : {}),
-  });
-  mesh.dropped.push(...rejectedAutoIds);
+  };
+  let mesh = buildSupportMesh(contacts, settings, buildOptions);
+  if (dental?.kind === 'two-contour' && hasAutomatic) {
+    const automaticIds = new Set(contacts.filter((contact) => contact.origin !== 'manual').map((contact) => contact.id));
+    const crossing = crossingAutomaticBodyContactIds(model, mesh, automaticIds);
+    if (crossing.length > 0) {
+      const blocked = new Set(crossing);
+      const dropped = new Set(mesh.dropped);
+      const safeContacts = contacts.filter((contact) => !blocked.has(contact.id));
+      mesh = buildSupportMesh(safeContacts, settings, buildOptions);
+      for (const id of mesh.dropped) dropped.add(id);
+      // A changed tree/brace layout can expose another shaft. Bound the rebuild cost and refuse
+      // all remaining automatic supports if that happens rather than returning a crossing body.
+      const remaining = crossingAutomaticBodyContactIds(model, mesh, new Set([...automaticIds].filter((id) => !blocked.has(id))));
+      if (remaining.length > 0) {
+        for (const id of automaticIds) blocked.add(id);
+        mesh = buildSupportMesh(safeContacts.filter((contact) => contact.origin === 'manual'), settings, buildOptions);
+      }
+      mesh.dropped = [...new Set([...dropped, ...mesh.dropped, ...blocked])];
+    }
+  }
+  mesh.dropped = [...new Set([...mesh.dropped, ...rejectedAutoIds])];
   onProgress?.(1, 'Done');
   return inverseTransformMesh(mesh, frame);
 }

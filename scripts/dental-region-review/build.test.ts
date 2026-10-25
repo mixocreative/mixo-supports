@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { parseStl } from '../../src/core/import/stl';
+import { crossingAutomaticBodyContactIds } from '../../src/core/supports/dentalBodyClearance';
 import { placementMatrix, transformPositions } from '../../src/core/transform';
 import { classifyDownwardFaces, faceOverhangLimit } from '../../src/core/analysis/mesh';
 import { applyTransform } from '../../src/state/transform';
@@ -24,6 +25,8 @@ describe('complete dental GLB review', () => {
     expect(review.supports.indices.length).toBeGreaterThan(0);
     expect(review.supports.components.some((part) => part.part === 'neck')).toBe(true);
     expect(review.supports.dropped.length).toBeLessThan(review.placement.points.length);
+    expect(crossingAutomaticBodyContactIds(mesh, review.supports,
+      new Set(review.placement.points.map((point) => point.id)))).toEqual([]);
     expect(review.frame.position[1]).toBeGreaterThan(0);
     const downward = classifyDownwardFaces(applyTransform(mesh, review.frame), faceOverhangLimit(50));
     const counts = Object.fromEntries(Object.entries(review.bands).filter(([key]) => key !== 'kind')
@@ -81,5 +84,7 @@ describe('complete dental GLB review', () => {
     expect(review.placement.points.length).toBeGreaterThan(0);
     expect(review.supports.components.some((part) => part.part === 'neck')).toBe(true);
     expect(review.supports.dropped.length).toBeLessThan(review.placement.points.length);
+    expect(crossingAutomaticBodyContactIds(scrambled, review.supports,
+      new Set(review.placement.points.map((point) => point.id)))).toEqual([]);
   }, 180000);
 });

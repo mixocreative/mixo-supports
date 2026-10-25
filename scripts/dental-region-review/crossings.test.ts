@@ -20,6 +20,7 @@ describe('diagnoseSupportCrossings', () => {
     const result = diagnoseSupportCrossings(model, supports([-1, -1, 0, 1, 1, 0, 1, -1, 0]));
     expect(result.total).toBe(1);
     expect(result.byPart.pillar).toBe(1);
+    expect(result.bodyPillarCrossings).toBe(1);
     expect(result.contactIdsByPart.pillar).toEqual(['a']);
     expect(result.examples[0]).toMatchObject({ modelFace: 0, supportFace: 0, part: 'pillar', contactId: 'a' });
   });
@@ -32,5 +33,13 @@ describe('diagnoseSupportCrossings', () => {
   it('counts crossings on faces outside the contact band', () => {
     const result = diagnoseSupportCrossings(model, supports([-1, -1, 0, 1, 1, 0, 1, -1, 0]), new Uint8Array([0]));
     expect(result.outsideContactBand.pillar).toBe(1);
+  });
+
+  it('separates a pillar secondary-landing tip from the shaft', () => {
+    const support = supports([-1, -1, 0, 1, 1, 0, 1, -1, 0]);
+    support.components[0]!.landingReach = 5;
+    const result = diagnoseSupportCrossings(model, support);
+    expect(result.byPart.pillar).toBe(1);
+    expect(result.bodyPillarCrossings).toBe(0);
   });
 });
