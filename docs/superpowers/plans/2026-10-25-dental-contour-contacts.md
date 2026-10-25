@@ -12,12 +12,12 @@ Files: `src/core/analysis/dentalContourEvidence.ts`, `.test.ts`.
 
 The tests were red while the module was absent, then green. This pure topology helper checks one simple closed mesh-edge loop and returns the two exact source face IDs per contour edge. It grants **no** contact permission. On the reference it verifies all 2,665 outer and 339 opening edges after a pose scramble. This is the evidence needed to design and test the exterior-side choice in Task 3, not a shortcut around that gate.
 
-## Task 1: freeze current behavior and isolate detection (first checkpoint)
+## Task 1: freeze current behavior and isolate detection (completed checkpoint)
 
 Files: `src/core/analysis/dentalRegion.ts`, new `src/core/analysis/dentalContours.ts`, their tests, `dentalwork/technical-algorithm.md`.
 
-1. Add a failing test calling a contour-only detector on the reference and on a scrambled copy. Assert its outer and opening edge identities match the current detector; a cube returns inconclusive. Run `npx vitest run src/core/analysis/dentalContours.test.ts` and see red.
-2. Move the graph/context/contour extraction into `dentalContours.ts`; leave `classifyFaces` diagnostic in `dentalRegion.ts`. Preserve current public behavior for the checkpoint. Rerun focused tests, `npm test`, and `npm run build`.
+1. Added a test for exact existing outer/opening edge identities, rotation invariance, and non-aligner abstention. It failed with the missing module before implementation.
+2. Moved graph/context/contour extraction into `dentalContours.ts`; left `classifyFaces` diagnostic in `dentalRegion.ts`. Preserved current public behavior. Focused tests, full `npm test` (106 files / 1,191 tests), and `npm run build` passed.
 3. Document the module contract and commit a checkpoint. Do not call the old broad mask safe.
 
 ## Task 2: classify central-opening state

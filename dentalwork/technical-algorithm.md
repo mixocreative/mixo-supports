@@ -2,6 +2,8 @@
 
 > Historical implementation note: this document reconstructs the current two-contour **face-mask** algorithm. The approved next design uses narrow exterior-side contour bands instead; see the [new design](../docs/superpowers/specs/2026-10-25-dental-contour-contacts.md). This face mask remains diagnostic and must not be treated as the final direct-print contact policy.
 
+Code layout changed without changing this algorithm: `src/core/analysis/dentalContours.ts` now detects the mesh-edge contours, and `src/core/analysis/dentalRegion.ts` performs the old face cut. `src/core/analysis/dentalContourEvidence.ts` independently validates one closed contour and returns each edge's two incident source faces; it deliberately does not choose a contact side.
+
 This document describes `proposeDentalSupportRegion` in `src/core/analysis/dentalRegion.ts`. It is a reproducible **candidate detector** measured on the one owner-approved [`reference-aligner.stl`](../docs/dental-reference/reference-aligner.stl); its thresholds are not yet validated on other patients. In `codex/dental-rework`, the operator's Step 1 Next accepts a successful candidate and uses its face mask for dental contacts. A failed or changed mask yields no automatic tips; this is not a claim of clinical validation across models. See [the plain-language explanation](plain-language.md) for an operator-level description.
 
 ## Technical reconstruction
