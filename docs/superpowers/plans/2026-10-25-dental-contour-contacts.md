@@ -28,6 +28,8 @@ Files: `src/core/analysis/dentalContours.ts`, `.test.ts`, new fixtures under `sr
 2. Implement occupancy evidence independent of loop lifting and emit `present | absent | ambiguous`. Keep `outer-only` disabled for production until a real no-hole aligner is reviewed.
 3. Run focused/full tests and record reference metrics.
 
+Checkpoint: `inspectDentalCentralOpening` now reports `present`, `absent`, or `ambiguous`. The reference remains a stable 339-edge `present` loop. A closed synthetic cube returns `absent` at both raster resolutions; a broken mesh returns `ambiguous`. The production contour proposal still abstains on absence, so no outer-only contacts are enabled. Focused tests, 1,194 full tests, and build passed. Remaining Task 2 evidence: an actual no-hole aligner, multi-hole and resolution-disagreement cases, and safe outer-only policy wiring.
+
 ## Task 3: certify exterior-side strips
 
 Files: new `src/core/analysis/dentalContactBand.ts` and `.test.ts`; `dentalwork/technical-algorithm.md`, `dentalwork/plain-language.md`.

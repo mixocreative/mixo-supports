@@ -4,6 +4,8 @@
 
 Code layout changed without changing this algorithm: `src/core/analysis/dentalContours.ts` now detects the mesh-edge contours, and `src/core/analysis/dentalRegion.ts` performs the old face cut. `src/core/analysis/dentalContourEvidence.ts` independently validates one closed contour and returns each edge's two incident source faces; it deliberately does not choose a contact side.
 
+The projected central-opening test now reports `present`, `absent`, or `ambiguous`: no enclosed holes at both 256 and 512 pixels is `absent`; a stable, identical lifted mesh-edge loop is `present`; small/multiple holes, failed loop lift, or resolution disagreement is `ambiguous`. Current support generation still requires `present`; `absent` remains an inconclusive production result pending real no-hole aligner validation.
+
 This document describes `proposeDentalSupportRegion` in `src/core/analysis/dentalRegion.ts`. It is a reproducible **candidate detector** measured on the one owner-approved [`reference-aligner.stl`](../docs/dental-reference/reference-aligner.stl); its thresholds are not yet validated on other patients. In `codex/dental-rework`, the operator's Step 1 Next accepts a successful candidate and uses its face mask for dental contacts. A failed or changed mask yields no automatic tips; this is not a claim of clinical validation across models. See [the plain-language explanation](plain-language.md) for an operator-level description.
 
 ## Technical reconstruction

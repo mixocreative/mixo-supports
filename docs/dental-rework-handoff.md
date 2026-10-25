@@ -12,6 +12,8 @@ Second reversible checkpoint (`b16789a`, pushed to `origin/codex/dental-rework`)
 
 Next exact action: add `present | absent | ambiguous` central-opening evidence. Before any contact generation switch, label real forbidden cavity/tooth faces and verify which of each edge's two adjacent face sides is exterior. A second with-hole aligner and a real no-hole aligner are still needed for cross-model acceptance; synthetic fixtures alone do not establish anatomical safety. Update this handoff and the private orchestration copy after each verified commit.
 
+Opening-state checkpoint: `inspectDentalCentralOpening(mesh, rim)` in `dentalContours.ts` distinguishes a stable 339-edge central loop on the sole reference from stable projected absence on a closed cube and ambiguity on broken topology. The low/high resolution loop comparison still gates the reference. `proposeDentalContours` deliberately returns inconclusive on `central-opening-absent`; this diagnostic does **not** enable outer-only supports. `npm test`: 107 files / 1,194 tests; `npm run build`: passed. Next: test multi-hole/resolution-disagreement cases, then derive and review a narrow exterior-side contact strip with labeled forbidden reference faces. Without a real no-hole STL, outer-only anatomical validation remains open.
+
 Updated 2026-10-24. Read [the active plan](superpowers/plans/2026-10-24-dental-rework.md) and [the reference README](dental-reference/README.md) before making changes. This is an implementation program with explicit gates, not a completed fix.
 
 ## Verified baseline

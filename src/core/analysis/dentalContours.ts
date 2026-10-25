@@ -185,7 +185,17 @@ function outerContour(context: MeshContext): { edges: Set<Edge>; ridgeEdges: Set
   return choice;
 }
 
-function openingHole(context: MeshContext, size: number): { labels: Int32Array; id: number; pixels: [number, number][] } | null {
+type HoleRaster =
+  | { kind: 'present'; labels: Int32Array; id: number; pixels: [number, number][] }
+  | { kind: 'absent' }
+  | { kind: 'ambiguous'; reason: string };
+type OpeningLoop = { kind: 'present'; edges: Set<Edge> } | { kind: 'absent' } | { kind: 'ambiguous'; reason: string };
+export type CentralOpeningEvidence =
+  | { kind: 'present'; edges: Uint32Array }
+  | { kind: 'absent' }
+  | { kind: 'ambiguous'; reason: string };
+
+function openingHole(context: MeshContext, size: number): HoleRaster {
   const low: [number, number] = [Infinity, Infinity];
   const high: [number, number] = [-Infinity, -Infinity];
   for (const point of context.projected) for (let axis = 0; axis < 2; axis += 1) {
@@ -229,13 +239,14 @@ function openingHole(context: MeshContext, size: number): { labels: Int32Array; 
     }
     if (!exterior) holes.push({ id, count: queue.length });
   }
-  if (holes.length !== 1 || holes[0]!.count < size * size * 0.01) return null;
-  return { labels, id: holes[0]!.id, pixels };
+  if (holes.length === 0) return { kind: 'absent' };
+  if (holes.length !== 1 || holes[0]!.count < size * size * 0.01) return { kind: 'ambiguous', reason: 'projected-holes-uncertain' };
+  return { kind: 'present', labels, id: holes[0]!.id, pixels };
 }
 
-function openingContour(context: MeshContext, size: number): Set<Edge> | null {
+function openingContour(context: MeshContext, size: number): OpeningLoop {
   const hole = openingHole(context, size);
-  if (!hole) return null;
+  if (hole.kind !== 'present') return hole;
   const selected: Edge[] = [];
   for (const edge of context.edges.values()) {
     const first = dot(context.normals[edge.faces[0]!]!, context.rim.openingDirection);
@@ -257,8 +268,9 @@ function openingContour(context: MeshContext, size: number): Set<Edge> | null {
     graph.set(index, incident);
   }
   const branch = [...graph.keys()].filter((index) => graph.get(index)!.length > 2);
-  if (branch.length > 1 || [...graph.values()].some((incident) => incident.length !== 2 && incident.length !== 4)) return null;
-  if (branch.length === 0) return selected.length > 50 && components(selected).length === 1 ? new Set(selected) : null;
+  if (branch.length > 1 || [...graph.values()].some((incident) => incident.length !== 2 && incident.length !== 4)) return { kind: 'ambiguous', reason: 'opening-loop-branched' };
+  if (branch.length === 0) return selected.length > 50 && components(selected).length === 1
+    ? { kind: 'present', edges: new Set(selected) } : { kind: 'ambiguous', reason: 'opening-loop-not-closed' };
   const centre = branch[0]!;
   const visited = new Set<Edge>();
   const loops: Set<Edge>[] = [];
@@ -278,8 +290,8 @@ function openingContour(context: MeshContext, size: number): Set<Edge> | null {
     if (current === centre) loops.push(path);
   }
   loops.sort((a, b) => b.size - a.size);
-  if (!loops[0] || loops[0].size < 50 || loops.length > 2 || (loops[1] && loops[1].size > 10)) return null;
-  return loops[0];
+  if (!loops[0] || loops[0].size < 50 || loops.length > 2 || (loops[1] && loops[1].size > 10)) return { kind: 'ambiguous', reason: 'opening-loop-not-isolated' };
+  return { kind: 'present', edges: loops[0] };
 }
 
 function pairs(edges: Set<Edge>): Uint32Array {
@@ -287,6 +299,25 @@ function pairs(edges: Set<Edge>): Uint32Array {
   let at = 0;
   for (const edge of [...edges].sort((a, b) => a.key - b.key)) { result[at++] = edge.a; result[at++] = edge.b; }
   return result;
+}
+
+function centralOpening(context: MeshContext): OpeningLoop {
+  const low = openingContour(context, 256);
+  const high = openingContour(context, 512);
+  if (low.kind === 'absent' && high.kind === 'absent') return { kind: 'absent' };
+  if (low.kind !== 'present' || high.kind !== 'present') return { kind: 'ambiguous', reason: 'opening-resolution-disagreement' };
+  if (low.edges.size !== high.edges.size || [...low.edges].some((edge) => !high.edges.has(edge))) {
+    return { kind: 'ambiguous', reason: 'opening-contour-unstable' };
+  }
+  return high;
+}
+
+/** Missing projected opening is distinct from an uncertain or failed loop lift. Neither grants permission. */
+export function inspectDentalCentralOpening(mesh: TriangleMesh, rim: DentalRim): CentralOpeningEvidence {
+  const context = buildContext(mesh, rim);
+  if (!context) return { kind: 'ambiguous', reason: 'invalid-mesh' };
+  const result = centralOpening(context);
+  return result.kind === 'present' ? { kind: 'present', edges: pairs(result.edges) } : result;
 }
 
 /** Detects mesh-edge contours only. It does not classify faces or grant support permission. */
@@ -297,12 +328,11 @@ export function proposeDentalContours(mesh: TriangleMesh): DentalContourProposal
   if (!context) return fail('non-manifold-or-degenerate-mesh');
   const outer = outerContour(context);
   if (!outer) return fail('outer-ridge-not-closed');
-  const openingLow = openingContour(context, 256);
-  const openingHigh = openingContour(context, 512);
-  if (!openingLow || !openingHigh || openingLow.size !== openingHigh.size ||
-    [...openingLow].some((edge) => !openingHigh.has(edge))) return fail('opening-contour-unstable');
-  return { kind: 'proposal', context, outer: outer.edges, opening: openingHigh,
+  const opening = centralOpening(context);
+  if (opening.kind === 'absent') return fail('central-opening-absent');
+  if (opening.kind === 'ambiguous') return fail(opening.reason);
+  return { kind: 'proposal', context, outer: outer.edges, opening: opening.edges,
     outerEdges: pairs(outer.edges), outerRidgeEdges: pairs(outer.ridgeEdges),
-    outerConnectorEdges: pairs(outer.connectorEdges), openingEdges: pairs(openingHigh),
+    outerConnectorEdges: pairs(outer.connectorEdges), openingEdges: pairs(opening.edges),
     connectorLengths: outer.connectorLengths };
 }
