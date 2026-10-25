@@ -52,6 +52,8 @@ Files: `src/App.tsx`, `src/components/DentalBar.tsx`, viewport overlay and tests
 2. Extend the standalone GLB command to show the distinct detector methods and proposed strips. Run it on reference and scrambled reference.
 3. Run `npm test`, `npm run build`, browser walk, and visual review. Add independent with-hole and no-hole patient meshes when supplied. Check layer islands, body crossings, latency/cancellation, and physical-print settings. Merge/release only after these gates; otherwise leave a clear branch checkpoint and handoff.
 
+The standalone batch subtask is implemented early for the sole available reference: it can now include the app's current generated support mesh and reports omitted tips. Its teal overlay and contacts are explicitly labeled **legacy diagnostic behavior** until Tasks 3–4 replace the broad permission. Do not mistake this exporter checkpoint for Task 5 acceptance.
+
 ## Handoff after every checkpoint
 
 Update `docs/dental-rework-handoff.md` and the private orchestration handoff with commit, files, red/green commands, exact observations, open safety risks, and one next action. Push only tested branch checkpoints. Main model owns anatomy and release judgment; use local Ollama only for bounded mechanical work, then verify every result.

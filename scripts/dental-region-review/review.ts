@@ -3,8 +3,11 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import type { TriangleMesh } from '../../src/core/analysis/types';
 import type { DentalRegionProposal } from '../../src/core/analysis/dentalRegion';
 import { proposeDentalOrientation, rotationToDentalPose } from '../../src/core/analysis/dental';
+import type { GeneratedSupportMesh } from '../../src/core/supports/mesh';
+import type { JobTransform } from '../../src/core/jobs';
 
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
+type ReviewLayers = { supports: GeneratedSupportMesh; frame: JobTransform; proposedTips: number; droppedTips: number };
 
 function faceGeometry(mesh: TriangleMesh, mask: Uint8Array, selected: 0 | 1): THREE.BufferGeometry {
   const indices: number[] = [];
@@ -51,7 +54,7 @@ function edgeTubes(mesh: TriangleMesh, pairs: Uint32Array, radius: number): THRE
 }
 
 /** Diagnostic GLB only. Names and metadata never include the input STL filename or patient fields. */
-export async function exportDentalRegionReview(mesh: TriangleMesh, region: Region): Promise<ArrayBuffer> {
+export async function exportDentalRegionReview(mesh: TriangleMesh, region: Region, layers?: ReviewLayers): Promise<ArrayBuffer> {
   if (region.allowedFaces.length !== mesh.indices.length / 3) throw new Error('Region mask does not match mesh triangles');
   const scene = new THREE.Group();
   scene.name = 'Unapproved dental support-region candidate';
@@ -62,11 +65,21 @@ export async function exportDentalRegionReview(mesh: TriangleMesh, region: Regio
     visual.name = name;
     scene.add(visual);
   };
-  add('TEAL candidate support faces', faceGeometry(mesh, region.allowedFaces, 1), 0x1aa998);
+  add('TEAL legacy broad mask NOT safe', faceGeometry(mesh, region.allowedFaces, 1), 0x1aa998);
   add('NEUTRAL other faces', faceGeometry(mesh, region.allowedFaces, 0), 0xeceae5);
   add('BLUE outer sharp-ridge contour', edgeTubes(mesh, region.outerRidgeEdges, 0.23), 0x007ed3);
   add('GREEN outer ridge connector paths', edgeTubes(mesh, region.outerConnectorEdges, 0.23), 0x16b34f);
   add('RED central opening contour', edgeTubes(mesh, region.openingEdges, 0.23), 0xee1938);
+  if (layers) {
+    if (layers.supports.indices.length === 0) throw new Error('Support build returned no geometry');
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(layers.supports.positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(layers.supports.indices, 1));
+    add('GOLD app-generated support mesh', geometry, 0xb99b59);
+    scene.position.set(...layers.frame.position);
+    scene.userData = { proposedTips: layers.proposedTips, droppedTips: layers.droppedTips,
+      source: 'app dental placement and support builder', approval: 'diagnostic only' };
+  }
 
   const orientation = proposeDentalOrientation(mesh);
   if (orientation.kind !== 'proposal') throw new Error('Dental orientation is inconclusive');

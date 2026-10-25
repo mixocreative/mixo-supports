@@ -27,7 +27,7 @@ describe('separate dental-region review exporter', () => {
     const jsonLength = view.getUint32(12, true);
     const json = JSON.parse(new TextDecoder().decode(new Uint8Array(glb, 20, jsonLength))) as { nodes: { name?: string }[] };
     const names = json.nodes.map((node) => node.name);
-    expect(names).toContain('TEAL candidate support faces');
+    expect(names).toContain('TEAL legacy broad mask NOT safe');
     expect(names).toContain('NEUTRAL other faces');
     expect(names).toContain('BLUE outer sharp-ridge contour');
     expect(names).toContain('GREEN outer ridge connector paths');
