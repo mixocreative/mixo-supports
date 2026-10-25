@@ -1,7 +1,7 @@
 import type { TriangleMesh } from './types';
 import { dot } from '../vec3';
 import { proposeDentalContours, type Edge, type MeshContext } from './dentalContours';
-import { proposeDentalContactFootprint } from './dentalContactFootprint';
+import { defaultDentalContactFootprintSettings, proposeDentalContactFootprint } from './dentalContactFootprint';
 import type { DiagnosticContourContact } from './dentalContourContacts';
 
 export type DentalRegionProposal =
@@ -54,8 +54,7 @@ export function proposeDentalSupportRegion(mesh: TriangleMesh): DentalRegionProp
     outerRidgeEdges: contours.outerRidgeEdges, outerConnectorEdges: contours.outerConnectorEdges,
     openingEdges: contours.openingEdges,
     diagnostics: { regionFaces: classified.regionFaces, connectorLengths: contours.connectorLengths } };
-  const footprint = proposeDentalContactFootprint(mesh, region,
-    { setback: 0.2, width: 1.2, outerSpacing: 3, innerSpacing: 5, maxSearchDistance: 1.5 });
+  const footprint = proposeDentalContactFootprint(mesh, region, defaultDentalContactFootprintSettings);
   if (footprint.kind !== 'proposal') return { kind: 'inconclusive', reason: `contact-footprint-${footprint.reason}` };
   return { ...region, contactFaces: footprint.contactFaces,
     contacts: [...footprint.outerContacts, ...footprint.innerContacts] };

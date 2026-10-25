@@ -13,6 +13,11 @@ export interface DentalContactFootprintSettings {
   maxSearchDistance: number;
 }
 
+/** Current one-reference defaults; keep widths and spacing together for future validated overrides. */
+export const defaultDentalContactFootprintSettings: Readonly<DentalContactFootprintSettings> = {
+  setback: 0.2, width: 1.2, outerSpacing: 3, innerSpacing: 2, maxSearchDistance: 1.5,
+};
+
 export type DentalContactFootprint =
   | { kind: 'proposal'; contactFaces: Uint8Array; outerContacts: DiagnosticContourContact[];
     innerContacts: DiagnosticContourContact[] }

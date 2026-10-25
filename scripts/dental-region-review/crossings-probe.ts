@@ -3,7 +3,9 @@ import { parseStl } from '../../src/core/import/stl';
 import { crossingAutomaticBodyContactIds } from '../../src/core/supports/dentalBodyClearance';
 import { buildDentalReview } from './build';
 import { diagnoseSupportCrossings } from './crossings';
-import { inverseTransformPoint } from '../../src/state/transform';
+import { inverseTransformPoint, transformPoint } from '../../src/state/transform';
+import { positionId } from '../../src/core/analysis/placement';
+import { largestCircularGap } from './rimCoverage';
 
 const input = process.argv[2];
 if (!input) throw new Error('Usage: npx vite-node --script scripts/dental-region-review/crossings-probe.ts model.stl');
@@ -17,5 +19,27 @@ const contactPositions = new Map(review.placement.points.map((point) => [point.i
 const report = diagnoseSupportCrossings(model, review.supports, review.region.contactFaces, contactPositions);
 const coreCrossingIds = crossingAutomaticBodyContactIds(model, review.supports,
   new Set(review.placement.points.map((point) => point.id)));
+const builtIds = new Set(review.supports.components.flatMap((component) => component.contactId ? [component.contactId] : []));
+const candidates = review.region.contacts;
+if (!candidates) throw new Error('Dental review has no contact samples');
+const contourCoverage = (edges: Uint32Array, mask: Uint8Array) => {
+  let perimeter = 0;
+  for (let at = 0; at < edges.length; at += 2) {
+    const a = edges[at]! * 3, b = edges[at + 1]! * 3;
+    perimeter += Math.hypot(model.positions[a]! - model.positions[b]!,
+      model.positions[a + 1]! - model.positions[b + 1]!, model.positions[a + 2]! - model.positions[b + 2]!);
+  }
+  const sampled = candidates.filter((contact) => mask[contact.face] === 1);
+  const retained = sampled.filter((contact) => builtIds.has(positionId(transformPoint(orientationOnly, contact.position))));
+  return { perimeterMm: perimeter, proposed: sampled.length, retained: retained.length,
+    maxProposedGapMm: largestCircularGap(perimeter, sampled.map((contact) => contact.distanceAlongContour)),
+    maxRetainedGapMm: largestCircularGap(perimeter, retained.map((contact) => contact.distanceAlongContour)),
+    omittedAtMm: sampled.filter((contact) => !builtIds.has(positionId(transformPoint(orientationOnly, contact.position))))
+      .map((contact) => contact.distanceAlongContour) };
+};
+const rimCoverage = {
+  outer: contourCoverage(review.region.outerEdges, review.bands.outerOtherSide),
+  opening: contourCoverage(review.region.openingEdges, review.bands.innerOtherSide),
+};
 process.stdout.write(JSON.stringify({ proposed: review.placement.points.length, omitted: review.supports.dropped.length,
-  modelFaces: model.indices.length / 3, supportFaces: review.supports.indices.length / 3, coreCrossingIds, ...report }) + '\n');
+  modelFaces: model.indices.length / 3, supportFaces: review.supports.indices.length / 3, coreCrossingIds, rimCoverage, ...report }) + '\n');
