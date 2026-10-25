@@ -30,6 +30,8 @@ Files: `src/core/analysis/dentalContours.ts`, `.test.ts`, new fixtures under `sr
 
 Checkpoint: `inspectDentalCentralOpening` now reports `present`, `absent`, or `ambiguous`. The reference remains a stable 339-edge `present` loop. A closed synthetic cube returns `absent` at both raster resolutions; a broken mesh returns `ambiguous`. The production contour proposal still abstains on absence, so no outer-only contacts are enabled. Focused tests, 1,194 full tests, and build passed. Remaining Task 2 evidence: an actual no-hole aligner, multi-hole and resolution-disagreement cases, and safe outer-only policy wiring.
 
+Owner clarified the shape requirement: a simple U-shaped aligner with no enclosed projected central hole should still use its detected outer trim ridge. The central opening contour is optional **only after absence is proved** at multiple resolutions; an ambiguous/missing lifted contour remains an abstention. Do not interpret a generic solid cube as proof of a usable outer-only dental model. Preserve the same contour-local contact and support-path safety gates for both variants.
+
 ## Task 3: certify exterior-side strips
 
 Files: new `src/core/analysis/dentalContactBand.ts` and `.test.ts`; `dentalwork/technical-algorithm.md`, `dentalwork/plain-language.md`.

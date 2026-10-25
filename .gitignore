@@ -2,3 +2,5 @@ node_modules/
 dist/
 .playwright-mcp/
 walk-out/
+dentalwork/fixtures/case-*/
+__pycache__/
