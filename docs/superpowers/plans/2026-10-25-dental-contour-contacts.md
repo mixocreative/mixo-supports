@@ -42,6 +42,8 @@ Diagnostic sub-checkpoint: a pure 3D face-adjacency/geodesic function now propos
 
 Next diagnostic checkpoint: `sampleDiagnosticContourContacts` orders each exact mesh-edge loop and proposes 2 mm-arclength samples on caller-supplied bands. The reference GLB now shows 109 lime outer / 45 pink inner provisional positions on the `otherSide` alternatives; zero samples were skipped at a 1.5 mm centroid-search limit. These are not generated contacts, and nearest-centroid selection does not prove geodesic locality, approach clearance, or layer-island safety. Rotation/source-face tests and visual renders passed. Before Task 4, replace or validate the spatial nearest-face choice with local surface connectivity, label forbidden examples, and test support-body paths. Do not infer non-fitting anatomy from `otherSide` naming.
 
+Local-connectivity follow-up: the sampler now blocks contour edges in a source-face adjacency graph and searches each incident side separately under a 3D centroid-path budget. A synthetic disconnected surface that previously stole a contact is rejected; the sole reference retained exactly the same 109/45 marker geometry (byte-identical review GLB) and the scrambled-pose test stayed green. This resolves the *cross-component nearest-point* flaw, not anatomy or collision safety. Remaining Task 3: labeled permitted/forbidden source faces, independently reviewed exterior-side selection, and support-body/path/island tests; independent STLs are still unavailable.
+
 ## Task 4: switch placement and policy safely
 
 Files: `src/core/analysis/dentalPolicy.ts`, `src/supports/jobRunner.ts`, `src/workers/analysisWorker.ts`, associated tests.

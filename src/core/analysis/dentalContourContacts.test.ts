@@ -12,6 +12,26 @@ const reference = () => {
 };
 
 describe('sampleDiagnosticContourContacts', () => {
+  it('does not jump to a spatially closer but disconnected surface', () => {
+    const mesh = {
+      positions: new Float32Array([
+        0, 0, 0, 2, 0, 0, 1, 2, 0, 1, 0, 2,
+        0.2, 0.01, 0, 0.3, 0.01, 0, 0.25, 0.11, 0, 0.25, 0.01, 0.1,
+      ]),
+      indices: new Uint32Array([
+        0, 1, 2, 0, 3, 1, 1, 3, 2, 2, 3, 0,
+        4, 5, 6, 4, 7, 5, 5, 7, 6, 6, 7, 4,
+      ]),
+    };
+    const band = new Uint8Array([0, 1, 1, 1, 1, 0, 0, 0]);
+    const result = sampleDiagnosticContourContacts(mesh, new Uint32Array([0, 1, 1, 2, 2, 0]), band,
+      { spacing: 0.5, maxSearchDistance: 1.5 });
+    expect(result.kind).toBe('proposal');
+    if (result.kind !== 'proposal') return;
+    expect(result.contacts.length).toBeGreaterThan(0);
+    expect(result.contacts.every((contact) => contact.face < 4)).toBe(true);
+  });
+
   it('samples exact source faces in a selected contour-side strip without granting production permission', () => {
     const mesh = reference();
     const region = proposeDentalSupportRegion(mesh);
