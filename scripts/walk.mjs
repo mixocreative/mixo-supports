@@ -559,15 +559,19 @@ async function walk(url, scratch, dentalFixture) {
       await d.button('Aligner Support Production').click();
       await page.waitForFunction(() => document.body.innerText.includes('Step 1 · Orientation'), null, { timeout: 90000 });
       await page.screenshot({ path: path.join(scratch, 'dental-orientation.png') });
+      check('l0 Step 1 offers orientation and Next without premature Done',
+        await d.button('Auto orientation').isVisible() && await d.button('Next').isVisible() && await d.button('Done', false).count() === 0 && !/Esc or Done/.test(await page.locator('.panel.left').innerText()));
       await d.button('Auto orientation').click();
       check('l1 automatic orientation stays in Step 1', (await page.locator('.edit-badge').innerText()).includes('Step 1 · Orientation'));
       await d.button('Next').click();
       await page.waitForFunction(() => document.body.innerText.includes('Step 2 · Support area'), null, { timeout: 90000 });
       await d.idle(1000);
-      await page.screenshot({ path: path.join(scratch, 'dental-area.png') });
       const approved = await d.props();
       check('l2 dental area holds the two-contour face mask', approved.dentalKind === 'two-contour' && approved.dentalStamps === 0, `policy "${approved.dentalKind}", manual markers ${approved.dentalStamps}`);
       await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /Proposed support tips: [1-9]/.test(note.innerText)), null, { timeout: 180000 });
+      await page.screenshot({ path: path.join(scratch, 'dental-area.png') });
+      check('l2b Step 2 offers paint and Next without premature Done',
+        await d.button('Add area').isVisible() && await d.button('Remove area').isVisible() && await d.button('Next').isVisible() && await d.button('Done', false).count() === 0);
       await d.button('Next').click();
       await page.waitForFunction(() => document.body.innerText.includes('Step 3 · Review supports'), null, { timeout: 240000 });
       await page.waitForFunction(() => /[1-9][\d,]* automatic/.test(document.querySelector('footer')?.innerText ?? '') && ![...document.querySelectorAll('button')].some((b) => /Generating dental supports/.test(b.innerText)), null, { timeout: 240000 });
