@@ -6,6 +6,9 @@ import { diagnoseSupportCrossings } from './crossings';
 import { inverseTransformPoint, transformPoint } from '../../src/state/transform';
 import { positionId } from '../../src/core/analysis/placement';
 import { largestCircularGap } from './rimCoverage';
+import { sampleDiagnosticContourContacts } from '../../src/core/analysis/dentalContourContacts';
+import { defaultDentalContactFootprintSettings } from '../../src/core/analysis/dentalContactFootprint';
+import { unresolvedCircularArcs } from './phaseGap';
 
 const input = process.argv[2];
 if (!input) throw new Error('Usage: npx vite-node --script scripts/dental-region-review/crossings-probe.ts model.stl');
@@ -22,7 +25,7 @@ const coreCrossingIds = crossingAutomaticBodyContactIds(model, review.supports,
 const builtIds = new Set(review.supports.components.flatMap((component) => component.contactId ? [component.contactId] : []));
 const candidates = review.region.contacts;
 if (!candidates) throw new Error('Dental review has no contact samples');
-const contourCoverage = (edges: Uint32Array, mask: Uint8Array) => {
+const contourCoverage = (edges: Uint32Array, mask: Uint8Array, spacing: number) => {
   let perimeter = 0;
   for (let at = 0; at < edges.length; at += 2) {
     const a = edges[at]! * 3, b = edges[at + 1]! * 3;
@@ -31,15 +34,24 @@ const contourCoverage = (edges: Uint32Array, mask: Uint8Array) => {
   }
   const sampled = candidates.filter((contact) => mask[contact.face] === 1);
   const retained = sampled.filter((contact) => builtIds.has(positionId(transformPoint(orientationOnly, contact.position))));
+  const shifted = sampleDiagnosticContourContacts(model, edges, mask,
+    { spacing, phaseMm: 0, maxSearchDistance: defaultDentalContactFootprintSettings.maxSearchDistance });
   return { perimeterMm: perimeter, proposed: sampled.length, retained: retained.length,
     maxProposedGapMm: largestCircularGap(perimeter, sampled.map((contact) => contact.distanceAlongContour)),
     maxRetainedGapMm: largestCircularGap(perimeter, retained.map((contact) => contact.distanceAlongContour)),
     omittedAtMm: sampled.filter((contact) => !builtIds.has(positionId(transformPoint(orientationOnly, contact.position))))
-      .map((contact) => contact.distanceAlongContour) };
+      .map((contact) => contact.distanceAlongContour),
+    alternatePhaseArcs: shifted.kind === 'proposal'
+      ? unresolvedCircularArcs(perimeter, retained.map((contact) => contact.distanceAlongContour),
+        shifted.contacts.map((contact) => ({ atMm: contact.distanceAlongContour, face: contact.face })), spacing * 2)
+      : { inconclusive: shifted.reason },
+  };
 };
 const rimCoverage = {
-  outer: contourCoverage(review.region.outerEdges, review.bands.outerOtherSide),
-  opening: contourCoverage(review.region.openingEdges, review.bands.innerOtherSide),
+  outer: contourCoverage(review.region.outerEdges, review.bands.outerOtherSide,
+    defaultDentalContactFootprintSettings.outerSpacing),
+  opening: contourCoverage(review.region.openingEdges, review.bands.innerOtherSide,
+    defaultDentalContactFootprintSettings.innerSpacing),
 };
 process.stdout.write(JSON.stringify({ proposed: review.placement.points.length, omitted: review.supports.dropped.length,
   modelFaces: model.indices.length / 3, supportFaces: review.supports.indices.length / 3, coreCrossingIds, rimCoverage, ...report }) + '\n');
