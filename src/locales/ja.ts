@@ -585,6 +585,8 @@ export const ja: Dictionary = {
   'Back': '戻る',
   'Return to the dental area and keep your edits': '変更を保ったままデンタル領域に戻ります。',
   'Building supports…': 'サポートを作成中…',
+  'Automatic rim gaps: outer {outer} mm, opening {opening} mm. Review the rim; omitted contacts were not forced.': '自動サポートの縁の間隔：外側 {outer} mm、中央開口 {opening} mm。縁を確認してください。除外された接触点は強制追加していません。',
+  'Rim coverage could not be verified. Review the rim and supports before finishing.': '縁のサポート範囲を確認できません。完了前に縁とサポートを確認してください。',
   'Finding safe support tips…': '安全なサポート先端を探しています…',
   'No safe support tips were found. Automatic placement is paused.': '安全なサポート先端が見つからず、自動配置を停止しました。',
   'Could not preview safe support tips. Adjust the area or retry.': '安全なサポート先端をプレビューできません。領域を調整するか再試行してください。',

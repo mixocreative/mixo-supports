@@ -6,13 +6,14 @@ import { DoneButton } from './EditBar';
 import { SurfaceBrushBar } from './SurfaceBrushBar';
 
 /** Dental Auto Generate chrome: review the detector first, then mark only permitted support area. */
-export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus = 'loading', reviewReady = true, send, run }: {
+export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus = 'loading', reviewReady = true, rimGap, send, run }: {
   gesture: Extract<Gesture, { kind: 'dental-orientation' | 'dental-area' | 'dental-review' }>;
   unitName: string | undefined;
   ui: UiState;
   tipCount?: number;
   previewStatus?: 'idle' | 'loading' | 'ready' | 'error';
   reviewReady?: boolean;
+  rimGap?: { outerMm: number; openingMm: number } | 'unavailable';
   send: (event: { type: 'setDentalKind'; kind: 'allow' | 'erase' } | { type: 'setDentalRadius'; radius: number }) => void;
   run: (id: CommandId) => void;
 }) {
@@ -40,7 +41,12 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
     <div className="edit-bar"><div className="edit-row">
       <CommandButton command={resolve('dental.back', ui)} run={run} />
       {reviewReady ? <DoneButton ui={ui} run={run} /> : <span className="edit-hint" role="status">{t('Building supports…')}</span>}
-    </div></div>
+    </div>
+      {reviewReady && rimGap ? <p className="edit-note" role="alert">{rimGap === 'unavailable'
+        ? t('Rim coverage could not be verified. Review the rim and supports before finishing.')
+        : t('Automatic rim gaps: outer {outer} mm, opening {opening} mm. Review the rim; omitted contacts were not forced.',
+          { outer: rimGap.outerMm.toFixed(1), opening: rimGap.openingMm.toFixed(1) })}</p> : null}
+    </div>
   </>;
   return <>
     <div className="edit-frame" aria-hidden="true" />

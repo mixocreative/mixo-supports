@@ -234,6 +234,11 @@ export default function App() {
   /** Whether the unit changed since its shown supports were built (counts follow once the build returns). */
   const building = (unit: PrintUnit) => unit.supports !== undefined && !buildSettled(unit);
   const activeMesh = activeUnit ? built.get(activeUnit.id)?.mesh : undefined;
+  const dentalRimGap = activeUnit?.dental?.kind === 'two-contour' && built.get(activeUnit.id)?.unit === activeUnit
+    ? activeMesh?.dentalRimCoverage?.needsReview
+      ? { outerMm: activeMesh.dentalRimCoverage.outer.maxGapMm, openingMm: activeMesh.dentalRimCoverage.opening.maxGapMm }
+      : activeMesh?.dentalRimCoverage ? undefined : 'unavailable' as const
+    : undefined;
   const activeContacts = useMemo(() => (activeUnit ? unitContacts(activeUnit, activeMesh) : []), [activeUnit, activeMesh]);
   useEffect(() => send({ type: 'contactsChanged', contacts: activeContacts }), [activeContacts, send]);
   /** Supports the active object's zones hide, in the build the viewport shows. */
@@ -1041,7 +1046,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hidden={zonesHidden} ui={ui} send={send} run={runCommand} />
-          : press.kind === 'dental-orientation' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview?.localPoints.length ?? 0} previewStatus={dentalPreviewState.kind} reviewReady={Boolean(activeUnit?.supports && built.get(activeUnit.id)?.unit === activeUnit)} send={send} run={runCommand} />
+          : press.kind === 'dental-orientation' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview?.localPoints.length ?? 0} previewStatus={dentalPreviewState.kind} reviewReady={Boolean(activeUnit?.supports && built.get(activeUnit.id)?.unit === activeUnit)} rimGap={dentalRimGap} send={send} run={runCommand} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>

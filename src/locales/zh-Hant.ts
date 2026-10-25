@@ -589,6 +589,8 @@ export const zhHant: Dictionary = {
   'Back': '返回',
   'Return to the dental area and keep your edits': '返回牙套支撐區域並保留調整。',
   'Building supports…': '正在建立支撐…',
+  'Automatic rim gaps: outer {outer} mm, opening {opening} mm. Review the rim; omitted contacts were not forced.': '自動邊緣支撐空隙：外緣 {outer} mm、中央開口 {opening} mm。請檢查邊緣；未強行加入被略過的接觸點。',
+  'Rim coverage could not be verified. Review the rim and supports before finishing.': '無法驗證邊緣支撐覆蓋。完成前請檢查邊緣與支撐。',
   'Finding safe support tips…': '正在尋找安全支撐頭…',
   'No safe support tips were found. Automatic placement is paused.': '找不到安全支撐頭，已暫停自動配置。',
   'Could not preview safe support tips. Adjust the area or retry.': '無法預覽安全支撐頭。請調整區域或重試。',

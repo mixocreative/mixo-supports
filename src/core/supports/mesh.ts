@@ -1,4 +1,5 @@
 import type { ProgressCallback, TriangleMesh } from '../analysis/types';
+import type { DentalRimCoverage } from '../analysis/dentalRimCoverage';
 import { tipDepth, tipRadius, withShape, type LiveSupportSettings, type ShapeOverride, type TipSection } from './settings';
 import { autoTreeLayout, type AutoTree } from './autotree';
 import type { RemeshTarget } from './remesh';
@@ -55,6 +56,8 @@ export interface GeneratedSupportMesh extends TriangleMesh {
   dropped: string[];
   /** Subset of dropped contacts rejected specifically by a no-support zone. */
   droppedByZones?: string[];
+  /** Final built contacts on each dental rim; absent when the detector could not certify a contour. */
+  dentalRimCoverage?: DentalRimCoverage;
 }
 
 export interface SupportMeshOptions {

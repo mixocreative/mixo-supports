@@ -3,6 +3,8 @@ import { inspectContourIncidence } from './dentalContourEvidence';
 
 type Vec3 = [number, number, number];
 export type DiagnosticContourContact = {
+  /** Production detector sets this; older saved policies and standalone diagnostics may omit it. */
+  rim?: 'outer' | 'opening';
   face: number;
   position: Vec3;
   normal: Vec3;

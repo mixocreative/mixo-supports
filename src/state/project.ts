@@ -364,6 +364,9 @@ function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPoli
       }
       for (const value of contactFaces) if (value !== 0 && value !== 1) throw new TypeError('dental contact mask must be binary');
       for (const contact of contacts) {
+        if (contact.rim !== undefined && contact.rim !== 'outer' && contact.rim !== 'opening') {
+          throw new TypeError('dental contact rim must be outer or opening');
+        }
         if (!Number.isInteger(contact.face) || contactFaces[contact.face] !== 1 ||
           !Number.isFinite(contact.distanceAlongContour) || contact.distanceAlongContour < 0 ||
           !Number.isFinite(contact.distanceFromContour) || contact.distanceFromContour < 0) {
@@ -380,6 +383,7 @@ function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPoli
       openingEdges: new Uint32Array(region.openingEdges),
       ...(contactFaces && contacts ? { contactFaces: new Uint8Array(contactFaces),
         contacts: contacts.map((contact) => ({ face: contact.face,
+          ...(contact.rim ? { rim: contact.rim } : {}),
           position: normalizeVector(contact.position, 'dental contact position'),
           normal: normalizeVector(contact.normal, 'dental contact normal'),
           distanceAlongContour: contact.distanceAlongContour, distanceFromContour: contact.distanceFromContour })) } : {}),

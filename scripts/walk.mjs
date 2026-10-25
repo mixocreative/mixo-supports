@@ -583,6 +583,10 @@ async function walk(url, scratch, dentalFixture) {
       check('l3 dental generation finishes a support mesh only after the approved-area stage',
         dentalSupports.auto > 0 && placed.dentalKind === 'two-contour' && placed.tris > 0 && placed.drawn > 0 && placed.droppedDrawn === 0,
         `automatic ${dentalSupports.auto}, mesh triangles ${placed.tris}, drawn ${placed.drawn}, forbidden secondary landings dropped ${placed.dropped}, dropped still drawn ${placed.droppedDrawn}`);
+      const rimWarning = await page.locator('.edit-bar [role="alert"]').innerText();
+      check('l4 final dental rim gap is disclosed before Done',
+        /Automatic rim gaps: outer [\d.]+ mm, opening [\d.]+ mm/.test(rimWarning) && /Review the rim/.test(rimWarning),
+        `warning "${rimWarning}"`);
     }
   } catch (error) {
     check('walk ran to the end', false, error.message);

@@ -17,6 +17,8 @@ describe('final dental rim coverage', () => {
     const review = buildDentalReview(mesh);
     expect(review.kind).toBe('proposal');
     if (review.kind !== 'proposal') return;
+    expect(review.supports.dentalRimCoverage?.opening.maxGapMm).toBeCloseTo(8, 4);
+    expect(review.supports.dentalRimCoverage?.opening.needsReview).toBe(true);
     const opening = review.region.openingEdges;
     let perimeter = 0;
     for (let at = 0; at < opening.length; at += 2) {

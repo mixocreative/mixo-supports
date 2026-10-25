@@ -57,5 +57,6 @@ export function proposeDentalSupportRegion(mesh: TriangleMesh): DentalRegionProp
   const footprint = proposeDentalContactFootprint(mesh, region, defaultDentalContactFootprintSettings);
   if (footprint.kind !== 'proposal') return { kind: 'inconclusive', reason: `contact-footprint-${footprint.reason}` };
   return { ...region, contactFaces: footprint.contactFaces,
-    contacts: [...footprint.outerContacts, ...footprint.innerContacts] };
+    contacts: [...footprint.outerContacts.map((contact) => ({ ...contact, rim: 'outer' as const })),
+      ...footprint.innerContacts.map((contact) => ({ ...contact, rim: 'opening' as const }))] };
 }

@@ -36,6 +36,10 @@ describe('DentalBar', () => {
     expect(reviewHtml).toContain('Step 3');
     expect(reviewHtml).toContain('Back');
     expect(reviewHtml).toContain('Done');
+    const gapHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={ui} reviewReady
+      rimGap={{ outerMm: 4.2, openingMm: 8 }} send={() => {}} run={() => {}} />);
+    expect(gapHtml).toContain('8.0 mm');
+    expect(gapHtml).toContain('Review the rim');
     const buildingHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={ui} reviewReady={false} send={() => {}} run={() => {}} />);
     expect(buildingHtml).not.toContain('Done');
     expect(buildingHtml).toContain('Building supports');
