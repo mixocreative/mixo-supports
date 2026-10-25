@@ -5,12 +5,18 @@ import os
 import sys
 
 args = sys.argv[sys.argv.index('--') + 1:]
-source, directory = args
+source, directory, *hidden = args
 os.makedirs(directory, exist_ok=True)
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 bpy.ops.import_scene.gltf(filepath=source)
 meshes = [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
+if hidden:
+    prefixes = tuple(hidden[0].split(','))
+    for obj in meshes:
+        if obj.name.startswith(prefixes):
+            obj.hide_render = True
+    meshes = [obj for obj in meshes if not obj.hide_render]
 points = [obj.matrix_world @ mathutils.Vector(corner) for obj in meshes for corner in obj.bound_box]
 low = mathutils.Vector(tuple(min(point[axis] for point in points) for axis in range(3)))
 high = mathutils.Vector(tuple(max(point[axis] for point in points) for axis in range(3)))

@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { parseStl } from '../../src/core/import/stl';
 import { placementMatrix, transformPositions } from '../../src/core/transform';
+import { classifyDownwardFaces, faceOverhangLimit } from '../../src/core/analysis/mesh';
+import { applyTransform } from '../../src/state/transform';
 import { buildDentalReview } from './build';
 import { exportDentalRegionReview } from './review';
 
@@ -23,10 +25,16 @@ describe('complete dental GLB review', () => {
     expect(review.supports.components.some((part) => part.part === 'neck')).toBe(true);
     expect(review.supports.dropped.length).toBeLessThan(review.placement.points.length);
     expect(review.frame.position[1]).toBeGreaterThan(0);
+    const downward = classifyDownwardFaces(applyTransform(mesh, review.frame), faceOverhangLimit(50));
+    const counts = Object.fromEntries(Object.entries(review.bands).filter(([key]) => key !== 'kind')
+      .map(([key, mask]) => [key, (mask as Uint8Array).reduce((sum, enabled, face) => sum + (enabled && downward[face] ? 1 : 0), 0)]));
+    expect(counts.outerOtherSide).toBeGreaterThan(100);
+    expect(counts.innerOtherSide).toBeLessThan(10);
 
     const glb = await exportDentalRegionReview(mesh, review.region, {
       supports: review.supports, frame: review.frame,
       proposedTips: review.placement.points.length, droppedTips: review.supports.dropped.length,
+      bands: review.bands,
     });
     const view = new DataView(glb);
     expect(view.getUint32(0, true)).toBe(0x46546c67);
@@ -39,6 +47,10 @@ describe('complete dental GLB review', () => {
     expect(names).toContain('BLUE outer sharp-ridge contour');
     expect(names).toContain('GREEN outer ridge connector paths');
     expect(names).toContain('RED central opening contour');
+    expect(names).toContain('VIOLET diagnostic outer opening-side strip');
+    expect(names).toContain('AMBER diagnostic outer other-side strip');
+    expect(names).toContain('CYAN diagnostic inner opening-side strip');
+    expect(names).toContain('MAGENTA diagnostic inner other-side strip');
     const loaded = await new GLTFLoader().parseAsync(glb, '');
     const model = loaded.scene.getObjectByName('TEAL_legacy_broad_mask_NOT_safe');
     const supports = loaded.scene.getObjectByName('GOLD_app-generated_support_mesh');

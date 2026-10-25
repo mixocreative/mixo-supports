@@ -5,9 +5,11 @@ import type { DentalRegionProposal } from '../../src/core/analysis/dentalRegion'
 import { proposeDentalOrientation, rotationToDentalPose } from '../../src/core/analysis/dental';
 import type { GeneratedSupportMesh } from '../../src/core/supports/mesh';
 import type { JobTransform } from '../../src/core/jobs';
+import type { DentalDiagnosticBands } from '../../src/core/analysis/dentalContactBand';
 
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
-type ReviewLayers = { supports: GeneratedSupportMesh; frame: JobTransform; proposedTips: number; droppedTips: number };
+type ReviewLayers = { supports: GeneratedSupportMesh; frame: JobTransform; bands?: DentalDiagnosticBands;
+  proposedTips: number; droppedTips: number };
 
 function faceGeometry(mesh: TriangleMesh, mask: Uint8Array, selected: 0 | 1): THREE.BufferGeometry {
   const indices: number[] = [];
@@ -19,6 +21,27 @@ function faceGeometry(mesh: TriangleMesh, mask: Uint8Array, selected: 0 | 1): TH
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
   geometry.setIndex(indices);
+  return geometry;
+}
+
+function offsetFaceGeometry(mesh: TriangleMesh, mask: Uint8Array, offset: number): THREE.BufferGeometry {
+  const positions: number[] = [];
+  for (let face = 0; face < mask.length; face += 1) {
+    if (!mask[face]) continue;
+    const at = face * 3;
+    const points = [0, 1, 2].map((corner) => {
+      const vertex = mesh.indices[at + corner]! * 3;
+      return new THREE.Vector3(mesh.positions[vertex]!, mesh.positions[vertex + 1]!, mesh.positions[vertex + 2]!);
+    });
+    const normal = new THREE.Vector3().crossVectors(
+      points[1]!.clone().sub(points[0]!), points[2]!.clone().sub(points[0]!)).normalize();
+    for (const point of points) {
+      point.addScaledVector(normal, offset);
+      positions.push(point.x, point.y, point.z);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   return geometry;
 }
 
@@ -71,6 +94,13 @@ export async function exportDentalRegionReview(mesh: TriangleMesh, region: Regio
   add('GREEN outer ridge connector paths', edgeTubes(mesh, region.outerConnectorEdges, 0.23), 0x16b34f);
   add('RED central opening contour', edgeTubes(mesh, region.openingEdges, 0.23), 0xee1938);
   if (layers) {
+    if (layers.bands) {
+      const bands = layers.bands;
+      add('VIOLET diagnostic outer opening-side strip', offsetFaceGeometry(mesh, bands.outerOpeningSide, 0.08), 0x8844cc);
+      add('AMBER diagnostic outer other-side strip', offsetFaceGeometry(mesh, bands.outerOtherSide, 0.08), 0xffa000);
+      add('CYAN diagnostic inner opening-side strip', offsetFaceGeometry(mesh, bands.innerOpeningSide, 0.08), 0x00c7dd);
+      add('MAGENTA diagnostic inner other-side strip', offsetFaceGeometry(mesh, bands.innerOtherSide, 0.08), 0xe33fa9);
+    }
     if (layers.supports.indices.length === 0) throw new Error('Support build returned no geometry');
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(layers.supports.positions, 3));

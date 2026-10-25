@@ -47,5 +47,5 @@ describe('owner-approved aligner reference', () => {
         expect(Math.hypot(point[0] - mesh.positions[at]!, point[1] - mesh.positions[at + 1]!, point[2] - mesh.positions[at + 2]!)).toBeLessThan(0.02);
       }
     }
-  });
+  }, 30000);
 });

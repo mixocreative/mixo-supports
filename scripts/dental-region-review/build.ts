@@ -1,5 +1,6 @@
 import { proposeDentalOrientation, rotationToDentalPose } from '../../src/core/analysis/dental';
 import { proposeDentalSupportRegion, type DentalRegionProposal } from '../../src/core/analysis/dentalRegion';
+import { diagnosticDentalSideBands, type DentalDiagnosticBands } from '../../src/core/analysis/dentalContactBand';
 import type { PlacementResult, TriangleMesh } from '../../src/core/analysis/types';
 import type { JobTransform } from '../../src/core/jobs';
 import type { GeneratedSupportMesh } from '../../src/core/supports/mesh';
@@ -9,13 +10,16 @@ import { applyTransform, inverseTransformDirection, inverseTransformPoint } from
 
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
 export type DentalReviewBuild =
-  | { kind: 'proposal'; region: Region; frame: JobTransform; placement: PlacementResult; supports: GeneratedSupportMesh }
+  | { kind: 'proposal'; region: Region; bands: DentalDiagnosticBands; frame: JobTransform;
+    placement: PlacementResult; supports: GeneratedSupportMesh }
   | { kind: 'inconclusive'; reason: string };
 
 /** Runs the same detector, dental placement filter, and support builder used by the app. */
 export function buildDentalReview(mesh: TriangleMesh): DentalReviewBuild {
   const region = proposeDentalSupportRegion(mesh);
   if (region.kind !== 'proposal') return region;
+  const bands = diagnosticDentalSideBands(mesh, region, { setback: 0.2, width: 1.2 });
+  if (bands.kind !== 'proposal') return { kind: 'inconclusive', reason: `diagnostic-band-${bands.reason}` };
   const orientation = proposeDentalOrientation(mesh);
   if (orientation.kind !== 'proposal') return { kind: 'inconclusive', reason: `orientation-${orientation.reason}` };
   const rotation = rotationToDentalPose(mesh, orientation.rim);
@@ -41,5 +45,5 @@ export function buildDentalReview(mesh: TriangleMesh): DentalReviewBuild {
   const supports = runSupportJob({ mesh, dental, frame, settings: { ...defaultSupportSettings, roofSeededModes: [] },
     contacts: { points: localPoints, manual: [], deleted: [], zones: [], contactSettings: {} },
     labelText: 'A', mode: 'export' });
-  return { kind: 'proposal', region, frame, placement, supports };
+  return { kind: 'proposal', region, bands, frame, placement, supports };
 }

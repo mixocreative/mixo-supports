@@ -38,12 +38,14 @@ Files: new `src/core/analysis/dentalContactBand.ts` and `.test.ts`; `dentalwork/
 2. Implement bounded mesh-geodesic distance from contour edges on each side, explicit cavity/exterior side choice, local setback/width parameters, and exact per-face permission. Validate 3D side continuity; never expand by 2D distance alone.
 3. Produce a GLB review artifact separating blue/green/red contours, each candidate band, cavity exclusion, and tip markers. Obtain operator review before enabling the bands.
 
+Diagnostic sub-checkpoint: a pure 3D face-adjacency/geodesic function now proposes **both** sides of both contours, not yet the safe side. The standalone GLB shows the four strips in violet/amber/cyan/magenta alongside old gold supports. Reference counts at 0.2–1.2 mm are 6,450 / 10,988 / 2,543 / 2,188 faces respectively; a scrambled copy preserves the outer-other mask. This is visual evidence only. Remaining Task 3: label forbidden and permitted reference faces, choose the non-fitting side from anatomy, test support-contact positions and secondary landings, and validate against another STL when supplied.
+
 ## Task 4: switch placement and policy safely
 
 Files: `src/core/analysis/dentalPolicy.ts`, `src/supports/jobRunner.ts`, `src/workers/analysisWorker.ts`, associated tests.
 
 1. Write failing tests showing broad between-loop faces produce zero contacts, eligible band faces produce contacts, forged/stale proposals fail, and secondary landings outside a band drop.
-2. Replace `allowedFaces` as the production gate with certified band faces and preserve ordered erase/allow stamps **within** that band. Recompute and compare the band on placement. Disable the old broad policy rather than silently migrating it.
+2. Replace `allowedFaces` as the production gate with certified band faces and preserve ordered erase/allow stamps **within** that band. Sample contacts along contour arclength and move them to exact faces in the certified strip; do not require downward normals alone. Reject non-downward contacts unless the approach/body path and layer-island checks pass. Recompute and compare the band on placement. Disable the old broad policy rather than silently migrating it.
 3. Run focused/full tests and build; compare Step 2 proposed and Step 3 retained source contact IDs.
 
 ## Task 5: operator flow and validation
