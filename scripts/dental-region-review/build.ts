@@ -1,6 +1,7 @@
 import { proposeDentalOrientation, rotationToDentalPose } from '../../src/core/analysis/dental';
 import { proposeDentalSupportRegion, type DentalRegionProposal } from '../../src/core/analysis/dentalRegion';
 import { diagnosticDentalSideBands, type DentalDiagnosticBands } from '../../src/core/analysis/dentalContactBand';
+import { sampleDiagnosticContourContacts, type DiagnosticContourContact } from '../../src/core/analysis/dentalContourContacts';
 import type { PlacementResult, TriangleMesh } from '../../src/core/analysis/types';
 import type { JobTransform } from '../../src/core/jobs';
 import type { GeneratedSupportMesh } from '../../src/core/supports/mesh';
@@ -9,8 +10,12 @@ import { filterDentalPlacement, runSupportJob } from '../../src/supports/jobRunn
 import { applyTransform, inverseTransformDirection, inverseTransformPoint } from '../../src/state/transform';
 
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
+export type DiagnosticReviewContacts = {
+  outer: { contacts: DiagnosticContourContact[]; skippedSamples: number };
+  inner: { contacts: DiagnosticContourContact[]; skippedSamples: number };
+};
 export type DentalReviewBuild =
-  | { kind: 'proposal'; region: Region; bands: DentalDiagnosticBands; frame: JobTransform;
+  | { kind: 'proposal'; region: Region; bands: DentalDiagnosticBands; diagnosticContacts: DiagnosticReviewContacts; frame: JobTransform;
     placement: PlacementResult; supports: GeneratedSupportMesh }
   | { kind: 'inconclusive'; reason: string };
 
@@ -20,6 +25,13 @@ export function buildDentalReview(mesh: TriangleMesh): DentalReviewBuild {
   if (region.kind !== 'proposal') return region;
   const bands = diagnosticDentalSideBands(mesh, region, { setback: 0.2, width: 1.2 });
   if (bands.kind !== 'proposal') return { kind: 'inconclusive', reason: `diagnostic-band-${bands.reason}` };
+  const outer = sampleDiagnosticContourContacts(mesh, region.outerEdges, bands.outerOtherSide,
+    { spacing: 2, maxSearchDistance: 1.5 });
+  const inner = sampleDiagnosticContourContacts(mesh, region.openingEdges, bands.innerOtherSide,
+    { spacing: 2, maxSearchDistance: 1.5 });
+  if (outer.kind !== 'proposal' || inner.kind !== 'proposal') {
+    return { kind: 'inconclusive', reason: `diagnostic-contact-${outer.kind !== 'proposal' ? outer.reason : inner.kind !== 'proposal' ? inner.reason : 'unknown'}` };
+  }
   const orientation = proposeDentalOrientation(mesh);
   if (orientation.kind !== 'proposal') return { kind: 'inconclusive', reason: `orientation-${orientation.reason}` };
   const rotation = rotationToDentalPose(mesh, orientation.rim);
@@ -45,5 +57,5 @@ export function buildDentalReview(mesh: TriangleMesh): DentalReviewBuild {
   const supports = runSupportJob({ mesh, dental, frame, settings: { ...defaultSupportSettings, roofSeededModes: [] },
     contacts: { points: localPoints, manual: [], deleted: [], zones: [], contactSettings: {} },
     labelText: 'A', mode: 'export' });
-  return { kind: 'proposal', region, bands, frame, placement, supports };
+  return { kind: 'proposal', region, bands, diagnosticContacts: { outer, inner }, frame, placement, supports };
 }

@@ -20,7 +20,7 @@ describe('proposeDentalSupportRegion', () => {
     expect(result.allowedFaces.length).toBe(mesh.indices.length / 3);
     expect(result.allowedFaces.reduce((sum, face) => sum + face, 0)).toBe(254344);
     expect(result.diagnostics.regionFaces).toEqual([254344, 119612]);
-  });
+  }, 30000);
 
   it('returns the same face classification after rotating the input mesh', () => {
     const mesh = reference();

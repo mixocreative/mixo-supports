@@ -23,6 +23,7 @@ if (result.kind === 'inconclusive') {
   const region = review?.kind === 'proposal' ? review.region : result;
   const glb = await exportDentalRegionReview(mesh, region,
     review?.kind === 'proposal' ? { supports: review.supports, frame: review.frame, bands: review.bands,
+      diagnosticContacts: review.diagnosticContacts,
       proposedTips: review.placement.points.length, droppedTips: review.supports.dropped.length } : undefined);
   writeFileSync(output, Buffer.from(glb));
   process.stdout.write(JSON.stringify({ kind: result.kind, triangles: mesh.indices.length / 3,
@@ -30,6 +31,12 @@ if (result.kind === 'inconclusive') {
     outerEdges: region.outerEdges.length / 2, openingEdges: region.openingEdges.length / 2,
     ...(review?.kind === 'proposal' ? { proposedTips: review.placement.points.length,
       omittedTips: review.supports.dropped.length,
+      diagnosticContourContacts: {
+        outer: review.diagnosticContacts.outer.contacts.length,
+        inner: review.diagnosticContacts.inner.contacts.length,
+        skippedOuter: review.diagnosticContacts.outer.skippedSamples,
+        skippedInner: review.diagnosticContacts.inner.skippedSamples,
+      },
       diagnosticBandFaces: Object.fromEntries(Object.entries(review.bands)
         .filter(([name]) => name !== 'kind')
         .map(([name, mask]) => [name, (mask as Uint8Array).reduce((sum, face) => sum + face, 0)])),

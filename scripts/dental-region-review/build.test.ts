@@ -30,11 +30,15 @@ describe('complete dental GLB review', () => {
       .map(([key, mask]) => [key, (mask as Uint8Array).reduce((sum, enabled, face) => sum + (enabled && downward[face] ? 1 : 0), 0)]));
     expect(counts.outerOtherSide).toBeGreaterThan(100);
     expect(counts.innerOtherSide).toBeLessThan(10);
+    expect(review.diagnosticContacts.outer.contacts.length).toBeGreaterThan(20);
+    expect(review.diagnosticContacts.inner.contacts.length).toBeGreaterThan(5);
+    expect(review.diagnosticContacts.outer.contacts.every((contact) => review.bands.outerOtherSide[contact.face] === 1)).toBe(true);
+    expect(review.diagnosticContacts.inner.contacts.every((contact) => review.bands.innerOtherSide[contact.face] === 1)).toBe(true);
 
     const glb = await exportDentalRegionReview(mesh, review.region, {
       supports: review.supports, frame: review.frame,
       proposedTips: review.placement.points.length, droppedTips: review.supports.dropped.length,
-      bands: review.bands,
+      bands: review.bands, diagnosticContacts: review.diagnosticContacts,
     });
     const view = new DataView(glb);
     expect(view.getUint32(0, true)).toBe(0x46546c67);
@@ -51,6 +55,8 @@ describe('complete dental GLB review', () => {
     expect(names).toContain('AMBER diagnostic outer other-side strip');
     expect(names).toContain('CYAN diagnostic inner opening-side strip');
     expect(names).toContain('MAGENTA diagnostic inner other-side strip');
+    expect(names).toContain('LIME diagnostic outer sampled contacts NOT generated');
+    expect(names).toContain('PINK diagnostic inner sampled contacts NOT generated');
     const loaded = await new GLTFLoader().parseAsync(glb, '');
     const model = loaded.scene.getObjectByName('TEAL_legacy_broad_mask_NOT_safe');
     const supports = loaded.scene.getObjectByName('GOLD_app-generated_support_mesh');

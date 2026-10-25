@@ -40,6 +40,8 @@ Files: new `src/core/analysis/dentalContactBand.ts` and `.test.ts`; `dentalwork/
 
 Diagnostic sub-checkpoint: a pure 3D face-adjacency/geodesic function now proposes **both** sides of both contours, not yet the safe side. The standalone GLB shows the four strips in violet/amber/cyan/magenta alongside old gold supports. Reference counts at 0.2–1.2 mm are 6,450 / 10,988 / 2,543 / 2,188 faces respectively; a scrambled copy preserves the outer-other mask. This is visual evidence only. Remaining Task 3: label forbidden and permitted reference faces, choose the non-fitting side from anatomy, test support-contact positions and secondary landings, and validate against another STL when supplied.
 
+Next diagnostic checkpoint: `sampleDiagnosticContourContacts` orders each exact mesh-edge loop and proposes 2 mm-arclength samples on caller-supplied bands. The reference GLB now shows 109 lime outer / 45 pink inner provisional positions on the `otherSide` alternatives; zero samples were skipped at a 1.5 mm centroid-search limit. These are not generated contacts, and nearest-centroid selection does not prove geodesic locality, approach clearance, or layer-island safety. Rotation/source-face tests and visual renders passed. Before Task 4, replace or validate the spatial nearest-face choice with local surface connectivity, label forbidden examples, and test support-body paths. Do not infer non-fitting anatomy from `otherSide` naming.
+
 ## Task 4: switch placement and policy safely
 
 Files: `src/core/analysis/dentalPolicy.ts`, `src/supports/jobRunner.ts`, `src/workers/analysisWorker.ts`, associated tests.

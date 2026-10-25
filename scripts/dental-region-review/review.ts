@@ -6,10 +6,32 @@ import { proposeDentalOrientation, rotationToDentalPose } from '../../src/core/a
 import type { GeneratedSupportMesh } from '../../src/core/supports/mesh';
 import type { JobTransform } from '../../src/core/jobs';
 import type { DentalDiagnosticBands } from '../../src/core/analysis/dentalContactBand';
+import type { DiagnosticContourContact } from '../../src/core/analysis/dentalContourContacts';
 
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
 type ReviewLayers = { supports: GeneratedSupportMesh; frame: JobTransform; bands?: DentalDiagnosticBands;
+  diagnosticContacts?: { outer: { contacts: DiagnosticContourContact[]; skippedSamples: number };
+    inner: { contacts: DiagnosticContourContact[]; skippedSamples: number } };
   proposedTips: number; droppedTips: number };
+
+function contactMarkers(contacts: DiagnosticContourContact[], radius: number): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const directions = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+  const triangles = [[0, 2, 4], [2, 1, 4], [1, 3, 4], [3, 0, 4],
+    [2, 0, 5], [1, 2, 5], [3, 1, 5], [0, 3, 5]];
+  for (const contact of contacts) {
+    const base = positions.length / 3;
+    for (const direction of directions) for (let axis = 0; axis < 3; axis += 1) {
+      positions.push(contact.position[axis]! + contact.normal[axis]! * 0.12 + direction[axis]! * radius);
+    }
+    for (const triangle of triangles) indices.push(...triangle.map((index) => base + index));
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  return geometry;
+}
 
 function faceGeometry(mesh: TriangleMesh, mask: Uint8Array, selected: 0 | 1): THREE.BufferGeometry {
   const indices: number[] = [];
@@ -100,6 +122,12 @@ export async function exportDentalRegionReview(mesh: TriangleMesh, region: Regio
       add('AMBER diagnostic outer other-side strip', offsetFaceGeometry(mesh, bands.outerOtherSide, 0.08), 0xffa000);
       add('CYAN diagnostic inner opening-side strip', offsetFaceGeometry(mesh, bands.innerOpeningSide, 0.08), 0x00c7dd);
       add('MAGENTA diagnostic inner other-side strip', offsetFaceGeometry(mesh, bands.innerOtherSide, 0.08), 0xe33fa9);
+    }
+    if (layers.diagnosticContacts) {
+      add('LIME diagnostic outer sampled contacts NOT generated',
+        contactMarkers(layers.diagnosticContacts.outer.contacts, 0.35), 0xb8f500);
+      add('PINK diagnostic inner sampled contacts NOT generated',
+        contactMarkers(layers.diagnosticContacts.inner.contacts, 0.35), 0xff61b8);
     }
     if (layers.supports.indices.length === 0) throw new Error('Support build returned no geometry');
     const geometry = new THREE.BufferGeometry();
