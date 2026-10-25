@@ -143,10 +143,12 @@ function localCandidate(seed: number, point: Vec3, graph: LocalGraph,
  * collision-free support body, correct anatomy, or an acceptable first-layer island.
  */
 export function sampleDiagnosticContourContacts(mesh: TriangleMesh, contour: Uint32Array,
-  sideBand: Uint8Array, settings: { spacing: number; maxSearchDistance: number }): DiagnosticContactSample {
+  sideBand: Uint8Array, settings: { spacing: number; maxSearchDistance: number; phaseMm?: number }): DiagnosticContactSample {
   const { spacing, maxSearchDistance } = settings;
+  const phaseMm = settings.phaseMm ?? spacing / 2;
   if (!Number.isFinite(spacing) || spacing <= 0 || !Number.isFinite(maxSearchDistance) ||
-    maxSearchDistance <= 0 || sideBand.length !== mesh.indices.length / 3) {
+    maxSearchDistance <= 0 || !Number.isFinite(phaseMm) || phaseMm < 0 || phaseMm >= spacing ||
+    sideBand.length !== mesh.indices.length / 3) {
     return { kind: 'inconclusive', reason: 'invalid-sampling-input' };
   }
   const incidence = inspectContourIncidence(mesh, contour);
@@ -175,7 +177,7 @@ export function sampleDiagnosticContourContacts(mesh: TriangleMesh, contour: Uin
   const used = new Set<number>();
   let skippedSamples = 0;
   let segmentIndex = 0, segmentStart = 0;
-  for (let along = spacing / 2; along < perimeter; along += spacing) {
+  for (let along = phaseMm; along < perimeter; along += spacing) {
     while (segmentIndex < segments.length - 1 && segmentStart + segments[segmentIndex]!.length < along) {
       segmentStart += segments[segmentIndex]!.length;
       segmentIndex += 1;

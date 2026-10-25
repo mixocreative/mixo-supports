@@ -30,6 +30,13 @@ describe('sampleDiagnosticContourContacts', () => {
     if (result.kind !== 'proposal') return;
     expect(result.contacts.length).toBeGreaterThan(0);
     expect(result.contacts.every((contact) => contact.face < 4)).toBe(true);
+    const shifted = sampleDiagnosticContourContacts(mesh, new Uint32Array([0, 1, 1, 2, 2, 0]), band,
+      { spacing: 0.5, phaseMm: 0.1, maxSearchDistance: 1.5 });
+    expect(shifted.kind).toBe('proposal');
+    if (shifted.kind === 'proposal') {
+      expect(shifted.contacts.every((contact) => contact.face < 4)).toBe(true);
+      expect(shifted.contacts[0]?.distanceAlongContour).toBeCloseTo(0.1, 6);
+    }
   });
 
   it('samples exact source faces in a selected contour-side strip without granting production permission', () => {
@@ -74,5 +81,7 @@ describe('sampleDiagnosticContourContacts', () => {
       { spacing: 2, maxSearchDistance: 1.5 }).kind).toBe('inconclusive');
     expect(sampleDiagnosticContourContacts(mesh, region.outerEdges, band,
       { spacing: -1, maxSearchDistance: 1.5 }).kind).toBe('inconclusive');
+    expect(sampleDiagnosticContourContacts(mesh, region.outerEdges, band,
+      { spacing: 2, phaseMm: 2, maxSearchDistance: 1.5 }).kind).toBe('inconclusive');
   }, 30000);
 });
