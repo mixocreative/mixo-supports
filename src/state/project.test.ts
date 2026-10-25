@@ -135,16 +135,22 @@ describe('reduceScene', () => {
       visibilityMin: [-1, -1] as [number, number], visibilityMax: [1, 1] as [number, number],
     };
     const policy: DentalPolicy = { kind: 'two-contour', rim, stamps: [], region: {
-      kind: 'proposal', allowedFaces: new Uint8Array([1]), outerEdges: new Uint32Array([0, 1, 1, 2, 2, 0]),
+      kind: 'proposal', allowedFaces: new Uint8Array([1]), contactFaces: new Uint8Array([1]),
+      contacts: [{ face: 0, position: [0, 0, 0], normal: [0, -1, 0], distanceAlongContour: 0.5, distanceFromContour: 0.2 }],
+      outerEdges: new Uint32Array([0, 1, 1, 2, 2, 0]),
       outerRidgeEdges: new Uint32Array([0, 1, 1, 2]), outerConnectorEdges: new Uint32Array([2, 0]),
       openingEdges: new Uint32Array([0, 2, 2, 1, 1, 0]), diagnostics: { regionFaces: [1, 0], connectorLengths: [1, 1] },
     } };
     const scene = reduceScene(emptyScene, { type: 'unit/add', unit: unitA });
     const withPolicy = reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy });
     expect(withPolicy.units[0]!.dental).toEqual(policy);
+    expect(withPolicy.units[0]!.dental?.kind === 'two-contour' && withPolicy.units[0]!.dental.region.contactFaces)
+      .not.toBe(policy.region.contactFaces);
     expect(deserializeScene(serializeScene(withPolicy))).toEqual(withPolicy);
     expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
       region: { ...policy.region, allowedFaces: new Uint8Array([1, 0]) } } })).toThrow();
+    expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
+      region: { ...policy.region, contactFaces: new Uint8Array([1, 0]) } } })).toThrow();
   });
 
   it('treats empty zone adds and clearing no zones as no-ops', () => {

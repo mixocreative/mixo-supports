@@ -74,7 +74,7 @@ describe('runSupportJob: dental secondary contacts', () => {
     boundaryKind: 'projection-fallback', points: new Float32Array(), openingDirection: [0, -1, 0],
     centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1], visibilityMask: new Uint8Array(),
     visibilityResolution: 0, visibilityMin: [0, 0], visibilityMax: [0, 0],
-  }, region: { kind: 'proposal', allowedFaces: mask, outerEdges: new Uint32Array(),
+  }, region: { kind: 'proposal', allowedFaces: mask, contactFaces: mask, outerEdges: new Uint32Array(),
     outerRidgeEdges: new Uint32Array(), outerConnectorEdges: new Uint32Array(), openingEdges: new Uint32Array(),
     diagnostics: { regionFaces: [mask.reduce((a, b) => a + b, 0), 2], connectorLengths: [0, 0] } } };
   const contacts: ContactInputs = { points: [point('auto-shelf', [0, 20, 0], [0, -1, 0])], manual: [],
@@ -91,7 +91,7 @@ describe('runSupportJob: dental secondary contacts', () => {
 
   it('keeps a column when the secondary landing face is allowed', () => {
     const allowed: DentalPolicy = { ...dental, region: { ...dental.region,
-      allowedFaces: new Uint8Array(mask.length).fill(1) } };
+      contactFaces: new Uint8Array(mask.length).fill(1) } };
     expect(runSupportJob({ ...job(model, still, contacts), dental: allowed }).dropped).toEqual([]);
   });
 });
@@ -131,8 +131,12 @@ describe('filterDentalPlacement', () => {
     const empty = { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() };
     const result = filterDentalPlacement(job, empty);
     expect(result.points.length).toBeGreaterThan(0);
+    expect(result.points.length).toBeLessThan(130);
+    expect(result.points.length).toBe(region.contacts?.length);
     const forged: DentalPolicy = { ...dental, region: { ...region, allowedFaces: new Uint8Array(region.allowedFaces.length).fill(1) } };
     expect(filterDentalPlacement({ ...job, dental: forged }, empty).points).toEqual([]);
+    const forgedBand: DentalPolicy = { ...dental, region: { ...region, contactFaces: new Uint8Array(region.allowedFaces.length).fill(1) } };
+    expect(filterDentalPlacement({ ...job, dental: forgedBand }, empty).points).toEqual([]);
   }, 30000);
   const triangle: TriangleMesh = { positions: new Float32Array([-2, 0, -2, 2, 0, -2, 0, 0, 2]), indices: new Uint32Array([0, 1, 2]) };
   const policy: DentalPolicy = {

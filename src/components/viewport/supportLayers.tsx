@@ -8,7 +8,7 @@ import { warmZoneOverlay, zoneOverlay } from '../../core/supports/overlayMesh';
 import { contactRadius, withShape } from '../../core/supports/settings';
 import { buildVertexGrid, sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
 import { DentalOpeningRaycaster, type DentalRim } from '../../core/analysis/dental';
-import { dentalAllowedVertex, type DentalAllowStamp, type DentalPolicy } from '../../core/analysis/dentalPolicy';
+import { dentalAllowedVertex, dentalContactMask, type DentalAllowStamp, type DentalPolicy } from '../../core/analysis/dentalPolicy';
 import { contactToRemove } from '../../editing/removal';
 import { contactVertexRuns, selectionDelta } from '../../editing/selectionHighlight';
 import type { PrintUnit } from '../../state/project';
@@ -258,7 +258,7 @@ export function DentalFaceLayer({ mesh, policy, opacity }: { mesh: TriangleMesh;
     positions: Float32Array; normals: Float32Array; mask: Uint8Array; grid: VertexGrid | undefined;
     applied: readonly DentalAllowStamp[] }>();
   useEffect(() => {
-    const { positions, normals } = dentalFaceOverlay(mesh, policy.region.allowedFaces);
+    const { positions, normals } = dentalFaceOverlay(mesh, dentalContactMask(policy, mesh.indices.length / 3));
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));

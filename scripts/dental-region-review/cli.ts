@@ -27,7 +27,8 @@ if (result.kind === 'inconclusive') {
       proposedTips: review.placement.points.length, droppedTips: review.supports.dropped.length } : undefined);
   writeFileSync(output, Buffer.from(glb));
   process.stdout.write(JSON.stringify({ kind: result.kind, triangles: mesh.indices.length / 3,
-    allowedFaces: region.diagnostics.regionFaces[0], otherFaces: region.diagnostics.regionFaces[1],
+    contactFaces: region.contactFaces!.reduce((sum, face) => sum + face, 0),
+    broadDiagnosticFaces: region.diagnostics.regionFaces[0], otherDiagnosticFaces: region.diagnostics.regionFaces[1],
     outerEdges: region.outerEdges.length / 2, openingEdges: region.openingEdges.length / 2,
     ...(review?.kind === 'proposal' ? { proposedTips: review.placement.points.length,
       omittedTips: review.supports.dropped.length,

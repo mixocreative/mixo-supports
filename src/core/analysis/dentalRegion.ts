@@ -1,10 +1,14 @@
 import type { TriangleMesh } from './types';
 import { dot } from '../vec3';
 import { proposeDentalContours, type Edge, type MeshContext } from './dentalContours';
+import { proposeDentalContactFootprint } from './dentalContactFootprint';
+import type { DiagnosticContourContact } from './dentalContourContacts';
 
 export type DentalRegionProposal =
   | { kind: 'proposal'; allowedFaces: Uint8Array; outerEdges: Uint32Array; outerRidgeEdges: Uint32Array;
     outerConnectorEdges: Uint32Array; openingEdges: Uint32Array;
+    /** Narrow ridge-side candidate; absent in old saved policies, which must fail closed. */
+    contactFaces?: Uint8Array; contacts?: DiagnosticContourContact[];
     diagnostics: { regionFaces: [number, number]; connectorLengths: [number, number] } }
   | { kind: 'inconclusive'; reason: string };
 
@@ -46,8 +50,13 @@ export function proposeDentalSupportRegion(mesh: TriangleMesh): DentalRegionProp
   if (contours.kind !== 'proposal') return contours;
   const classified = classifyFaces(contours.context, contours.outer, contours.opening);
   if (!classified) return { kind: 'inconclusive', reason: 'surface-region-not-isolated' };
-  return { kind: 'proposal', ...classified, outerEdges: contours.outerEdges,
+  const region = { kind: 'proposal' as const, ...classified, outerEdges: contours.outerEdges,
     outerRidgeEdges: contours.outerRidgeEdges, outerConnectorEdges: contours.outerConnectorEdges,
     openingEdges: contours.openingEdges,
     diagnostics: { regionFaces: classified.regionFaces, connectorLengths: contours.connectorLengths } };
+  const footprint = proposeDentalContactFootprint(mesh, region,
+    { setback: 0.2, width: 1.2, outerSpacing: 3, innerSpacing: 5, maxSearchDistance: 1.5 });
+  if (footprint.kind !== 'proposal') return { kind: 'inconclusive', reason: `contact-footprint-${footprint.reason}` };
+  return { ...region, contactFaces: footprint.contactFaces,
+    contacts: [...footprint.outerContacts, ...footprint.innerContacts] };
 }

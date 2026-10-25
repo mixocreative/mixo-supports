@@ -17,9 +17,15 @@ export type DentalPolicy =
   | (DentalPolicyBase & { kind?: 'legacy' })
   | (DentalPolicyBase & { kind: 'two-contour'; region: Extract<DentalRegionProposal, { kind: 'proposal' }> });
 
+/** The exact preview footprint; old or malformed saved policies show no approved faces. */
+export function dentalContactMask(policy: DentalPolicy, faceCount: number): Uint8Array {
+  const mask = policy.kind === 'two-contour' ? policy.region.contactFaces : undefined;
+  return mask?.length === faceCount ? mask : new Uint8Array(faceCount);
+}
+
 /** Exact face gate. Add paint may restore an erased candidate face, never cross a contour. */
 export function dentalRegionAllowedOnFace(policy: DentalPolicy, face: number, point: Vector, normal: Vector): boolean {
-  if (policy.kind !== 'two-contour' || policy.region.allowedFaces[face] !== 1) return false;
+  if (policy.kind !== 'two-contour' || policy.region.contactFaces?.[face] !== 1) return false;
   for (let index = policy.stamps.length - 1; index >= 0; index -= 1) {
     const stamp = policy.stamps[index]!;
     const dx = point[0] - stamp.center[0], dy = point[1] - stamp.center[1], dz = point[2] - stamp.center[2];

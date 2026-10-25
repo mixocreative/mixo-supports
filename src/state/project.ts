@@ -357,11 +357,33 @@ function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPoli
       throw new TypeError('dental region does not match the mesh');
     }
     for (const value of region.allowedFaces) if (value !== 0 && value !== 1) throw new TypeError('dental region mask must be binary');
+    const { contactFaces, contacts } = region;
+    if (contactFaces !== undefined || contacts !== undefined) {
+      if (!(contactFaces instanceof Uint8Array) || contactFaces.length !== mesh.indices.length / 3 || !Array.isArray(contacts)) {
+        throw new TypeError('dental contact footprint does not match the mesh');
+      }
+      for (const value of contactFaces) if (value !== 0 && value !== 1) throw new TypeError('dental contact mask must be binary');
+      for (const contact of contacts) {
+        if (!Number.isInteger(contact.face) || contactFaces[contact.face] !== 1 ||
+          !Number.isFinite(contact.distanceAlongContour) || contact.distanceAlongContour < 0 ||
+          !Number.isFinite(contact.distanceFromContour) || contact.distanceFromContour < 0) {
+          throw new TypeError('dental contact lies outside its footprint');
+        }
+        normalizeVector(contact.position, 'dental contact position');
+        normalizeVector(contact.normal, 'dental contact normal');
+      }
+    }
     for (const value of [...region.outerEdges, ...region.outerRidgeEdges, ...region.outerConnectorEdges, ...region.openingEdges]) if (value >= mesh.positions.length / 3) throw new TypeError('dental region edge is outside the mesh');
     return { ...base, kind: 'two-contour', region: {
       kind: 'proposal', allowedFaces: new Uint8Array(region.allowedFaces), outerEdges: new Uint32Array(region.outerEdges),
       outerRidgeEdges: new Uint32Array(region.outerRidgeEdges), outerConnectorEdges: new Uint32Array(region.outerConnectorEdges),
-      openingEdges: new Uint32Array(region.openingEdges), diagnostics: {
+      openingEdges: new Uint32Array(region.openingEdges),
+      ...(contactFaces && contacts ? { contactFaces: new Uint8Array(contactFaces),
+        contacts: contacts.map((contact) => ({ face: contact.face,
+          position: normalizeVector(contact.position, 'dental contact position'),
+          normal: normalizeVector(contact.normal, 'dental contact normal'),
+          distanceAlongContour: contact.distanceAlongContour, distanceFromContour: contact.distanceFromContour })) } : {}),
+      diagnostics: {
         regionFaces: [...region.diagnostics.regionFaces], connectorLengths: [...region.diagnostics.connectorLengths],
       },
     } };

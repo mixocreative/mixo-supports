@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dentalAllowedAt, dentalAllowedVertices, dentalRegionAllowedOnFace, dentalSupportAllowedAt, type DentalPolicy } from './dentalPolicy';
+import { dentalAllowedAt, dentalAllowedVertices, dentalContactMask, dentalRegionAllowedOnFace, dentalSupportAllowedAt, type DentalPolicy } from './dentalPolicy';
 
 const policy: DentalPolicy = {
   rim: {
@@ -23,10 +23,25 @@ const policy: DentalPolicy = {
 };
 
 describe('dentalAllowedAt', () => {
+  it('uses the narrow contact mask and cannot paint the old cavity region back in', () => {
+    const detected: DentalPolicy = {
+      kind: 'two-contour', rim: policy.rim,
+      region: { kind: 'proposal', allowedFaces: new Uint8Array([1, 0]), contactFaces: new Uint8Array([0, 1]),
+        outerEdges: new Uint32Array([0, 1]), outerRidgeEdges: new Uint32Array([0, 1]),
+        outerConnectorEdges: new Uint32Array(), openingEdges: new Uint32Array([2, 3]),
+        diagnostics: { regionFaces: [1, 1], connectorLengths: [1, 1] } },
+      stamps: [{ center: [1, 0, 1], radius: 1, normal: [0, -1, 0], kind: 'allow' }],
+    };
+    expect(dentalRegionAllowedOnFace(detected, 0, [1, 0, 1], [0, -1, 0])).toBe(false);
+    expect(dentalRegionAllowedOnFace(detected, 1, [3, 0, 1], [0, -1, 0])).toBe(true);
+    expect([...dentalContactMask(detected, 2)]).toEqual([0, 1]);
+    expect([...dentalContactMask({ ...detected, region: { ...detected.region, contactFaces: undefined } }, 2)]).toEqual([0, 0]);
+  });
+
   it('lets paint refine but never expand beyond the detected mesh-face region', () => {
     const detected: DentalPolicy = {
       kind: 'two-contour', rim: policy.rim,
-      region: { kind: 'proposal', allowedFaces: new Uint8Array([1, 0]), outerEdges: new Uint32Array([0, 1]),
+      region: { kind: 'proposal', allowedFaces: new Uint8Array([1, 0]), contactFaces: new Uint8Array([1, 0]), outerEdges: new Uint32Array([0, 1]),
         outerRidgeEdges: new Uint32Array([0, 1]), outerConnectorEdges: new Uint32Array(),
         openingEdges: new Uint32Array([2, 3]), diagnostics: { regionFaces: [1, 1], connectorLengths: [1, 1] } },
       stamps: [{ center: [3, 0, 1], radius: 1, normal: [0, -1, 0], kind: 'allow' }],

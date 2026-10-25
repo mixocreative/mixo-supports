@@ -47,7 +47,7 @@ describe('complete dental GLB review', () => {
       nodes: { name?: string }[]; scenes: { name?: string }[] };
     const names = json.nodes.map((node) => node.name);
     expect(names).toContain('GOLD app-generated support mesh');
-    expect(names).toContain('TEAL legacy broad mask NOT safe');
+    expect(names).toContain('TEAL current narrow contact mask');
     expect(names).toContain('BLUE outer sharp-ridge contour');
     expect(names).toContain('GREEN outer ridge connector paths');
     expect(names).toContain('RED central opening contour');
@@ -58,7 +58,7 @@ describe('complete dental GLB review', () => {
     expect(names).toContain('LIME diagnostic outer sampled contacts NOT generated');
     expect(names).toContain('PINK diagnostic inner sampled contacts NOT generated');
     const loaded = await new GLTFLoader().parseAsync(glb, '');
-    const model = loaded.scene.getObjectByName('TEAL_legacy_broad_mask_NOT_safe');
+    const model = loaded.scene.getObjectByName('TEAL_current_narrow_contact_mask');
     const supports = loaded.scene.getObjectByName('GOLD_app-generated_support_mesh');
     expect(model).toBeDefined();
     expect(supports).toBeDefined();

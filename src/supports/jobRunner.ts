@@ -121,14 +121,21 @@ export function filterDentalPlacement(job: DentalPlacementJob, placement: Placem
     const current = proposeDentalSupportRegion(mesh);
     const same = (a: Uint8Array | Uint32Array, b: Uint8Array | Uint32Array) =>
       a.length === b.length && a.every((value, index) => value === b[index]);
-    if (current.kind !== 'proposal' || !same(current.allowedFaces, policy.region.allowedFaces) ||
+    if (current.kind !== 'proposal' || !current.contactFaces || !current.contacts || !policy.region.contactFaces ||
+      !same(current.allowedFaces, policy.region.allowedFaces) ||
+      !same(current.contactFaces, policy.region.contactFaces) ||
       !same(current.outerEdges, policy.region.outerEdges) || !same(current.openingEdges, policy.region.openingEdges)) {
       return { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() };
     }
-    // Generic overhang candidates have no source face identity. Sample the certified triangles
-    // directly, including those the opening ray cannot see, and never infer a face from proximity.
-    const points = spacedDentalPoints(mesh, orientation, policy, undefined, settings.spacing,
-      settings.overhangAngleDegrees, []);
+    // Use the recomputed exact source faces, never generic overhang points or saved contacts.
+    const turn = orientationOnly(orientation);
+    const points: SupportPoint[] = current.contacts
+      .filter((contact) => dentalRegionAllowedOnFace(policy, contact.face, contact.position, contact.normal))
+      .map((contact) => {
+        const position = transformPoint(turn, contact.position);
+        return { id: positionId(position), regionId: -1, position,
+          normal: transformDirection(turn, contact.normal), source: 'interior' };
+      });
     return { points, regions: placement.regions,
       contactPositions: new Float32Array(points.flatMap((point) => point.position)),
       contactNormals: new Float32Array(points.flatMap((point) => point.normal)) };

@@ -3,7 +3,7 @@ setlocal EnableExtensions
 set "ROOT=%~dp0..\"
 set "VITE=%ROOT%node_modules\.bin\vite-node.cmd"
 echo Dental aligner orientation, support, and region review
-echo Diagnostic only: support contacts currently use the legacy broad mask.
+echo Review only: current supports use narrow contour strips; inspect the result before printing.
 echo.
 set /p "STL=Enter the full path to an STL file: "
 set "STL=%STL:"=%"

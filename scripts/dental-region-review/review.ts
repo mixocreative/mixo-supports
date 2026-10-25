@@ -100,7 +100,7 @@ function edgeTubes(mesh: TriangleMesh, pairs: Uint32Array, radius: number): THRE
 
 /** Diagnostic GLB only. Names and metadata never include the input STL filename or patient fields. */
 export async function exportDentalRegionReview(mesh: TriangleMesh, region: Region, layers?: ReviewLayers): Promise<ArrayBuffer> {
-  if (region.allowedFaces.length !== mesh.indices.length / 3) throw new Error('Region mask does not match mesh triangles');
+  if (region.contactFaces?.length !== mesh.indices.length / 3) throw new Error('Contact mask does not match mesh triangles');
   const scene = new THREE.Group();
   scene.name = 'Unapproved dental support-region candidate';
   const root = new THREE.Group();
@@ -110,8 +110,8 @@ export async function exportDentalRegionReview(mesh: TriangleMesh, region: Regio
     visual.name = name;
     scene.add(visual);
   };
-  add('TEAL legacy broad mask NOT safe', faceGeometry(mesh, region.allowedFaces, 1), 0x1aa998);
-  add('NEUTRAL other faces', faceGeometry(mesh, region.allowedFaces, 0), 0xeceae5);
+  add('TEAL current narrow contact mask', faceGeometry(mesh, region.contactFaces, 1), 0x1aa998);
+  add('NEUTRAL faces outside contact mask', faceGeometry(mesh, region.contactFaces, 0), 0xeceae5);
   add('BLUE outer sharp-ridge contour', edgeTubes(mesh, region.outerRidgeEdges, 0.23), 0x007ed3);
   add('GREEN outer ridge connector paths', edgeTubes(mesh, region.outerConnectorEdges, 0.23), 0x16b34f);
   add('RED central opening contour', edgeTubes(mesh, region.openingEdges, 0.23), 0xee1938);
