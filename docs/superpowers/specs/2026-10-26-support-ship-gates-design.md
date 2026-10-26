@@ -1,0 +1,25 @@
+# Generic and dental support ship gates
+
+Status: owner requested a full modular, shippable generic and dental implementation on 2026-10-26. This design preserves the existing support shapes and makes safety reports explicit. It extends the approved dental rework plan; passing software gates on the single saved aligner must not be described as clinical validation.
+
+## Scope and ownership
+
+`core/analysis/placement.ts` and the `dental*` contour modules propose contacts. `core/supports/mesh.ts` builds tagged tips, shafts, trees, braces, raft, and optional generic roof/cage. A generic analysis layer inspects the **full-resolution built mesh** in the same millimetre frame as the model. Generic and dental policy modules decide what to omit, request again, warn about, or refuse; neither geometry report knows about aligner anatomy. The job runner is the one preview/export policy path. Tips-only and low-poly display are views of a full safety decision, never a substitute safety calculation.
+
+## Body-clearance report
+
+The existing `bodyIntersection.ts` is the reusable exact-triangle search. Give every intentional model-contact reach explicit tagged provenance, including both ends of a joined two-leaf tree, before exempting it. A tiny neck adjacent to an approved primary or secondary landing may intersect the intended local face; a shaft, brace, tree trunk, tree branch away from that reach, roof/cage part, or a neck crossing a different wall is a defect. Report component, owner ID if present, and hit classification. Never silently delete a manual support. Automatic generic and dental repair may drop or reroute only within their respective permission rules, rebuild, and recheck. If no safe full mesh results, present a failure and block unsafe export; do not fall back to an apparently complete support set.
+
+## Event-based island report (not per-layer slicing)
+
+The present `checkSupports` “island” is a local-minimum/near-contact heuristic, not a topology or slicer result. Keep it as a fast advisory until replaced in the UI. Build a welded, validated model-edge graph once per geometry/pose. Sweep unique vertex heights from plate upward; union active neighboring vertices and equal-height plateaus. Record a birth only when a connected sublevel component appears without a lower neighbor. Track its merge height and representative source face/point. This lower-star/0D-connectivity sweep is roughly sorting plus near-linear union-find, independent of the number of print layers. It is an efficient **screen** for new model components, not an exact physical-layer proof: topology defects, unmerged coincident faces, and sub-layer features yield `inconclusive`, never an unearned pass.
+
+An event is resolved only by a built support path to the raft/plate with a contact at or below the birth region, or by validated existing model-to-plate connectivity. Contact proximity alone is insufficient. The support path graph comes from tagged built components and actual intersections/joins; a detached tree or crossing body cannot resolve an event. Dental auto-repair may propose another contact only on the accepted non-cavity-facing aligner strip and must pass all final landing/body/path checks. If an island cannot be reached without touching the tooth-fitting cavity, keep it unresolved for manual pose/support review. Generic projects may use their own zones and placement rules. Full layer slicing remains an optional offline diagnostic for ambiguous cases, not a live-slider dependency.
+
+## Performance and lifecycle
+
+Run analysis in a cancellable worker after Step 2 acceptance or ordinary Generate. Cache mesh adjacency and body spatial index by source geometry plus pose; invalidate them on geometry/pose change. A paint/spacing/diameter edit invalidates the support-body and path result. Put a budget on automatic rebuilds and alternate contacts; a timeout returns `inconclusive`, never “passed.” Show provisional Step 2 tips separately from final-safe built supports. Export recomputes full-resolution geometry through the same policy and refuses a stale or failed safety result. Report timings and peak memory on the retained 18.7 MB STL and one generic fixture.
+
+## Software acceptance, not clinical certification
+
+Test disconnected birth, a component merging later, an equal-height plateau, a birth resolved by a true support path, a nearby but disconnected tip, intentional contact penetration, wrong-wall neck, crossing tree/brace/shaft, manual-support diagnostic, roof/cage generic clearance, no-hole dental abstention, preview/export equivalence, cancellation, and save/load. Run `npm test`, build, full browser walks in all three locales, and independent BVH/visual probes. Require zero known forbidden dental upper/cavity contacts in the labeled reference. A second with-hole and a real no-hole patient aligner plus printer/material-specific physical testing remain required before claiming general dental print reliability.
