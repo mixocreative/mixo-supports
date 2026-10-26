@@ -58,6 +58,8 @@ export interface GeneratedSupportMesh extends TriangleMesh {
   droppedByZones?: string[];
   /** Final built contacts on each dental rim; absent when the detector could not certify a contour. */
   dentalRimCoverage?: DentalRimCoverage;
+  /** Requested dental structures omitted because their built geometry crossed the model. */
+  dentalStructureFallback?: Array<'tree' | 'brace'>;
 }
 
 export interface SupportMeshOptions {

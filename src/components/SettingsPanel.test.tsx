@@ -27,4 +27,18 @@ describe('the right panel', () => {
     expect(html).toContain('Object: Part</h3><fieldset class="settings">');
     expect(html.indexOf('Object: Part')).toBeGreaterThan(html.indexOf('Contact tip'));
   });
+
+  it('does not show generic placement or roof/tree/brace controls during dental review', () => {
+    const html = renderToStaticMarkup(<SettingsPanel
+      settings={settings}
+      shape={{ selected: 0, view: shapeView(settings, {}, []), rep: settings, onChange: () => {}, run: () => {} }}
+      ui={{ ...READY, mode: 'dental' }} autoLabel="A" scope="Aligner" disabled={false} dentalMode
+      onChange={() => {}} onCancelEdit={() => {}} onPreset={() => {}} onRoofMode={() => {}} />);
+    expect(html).not.toContain('Roof / cage');
+    expect(html).not.toContain('Auto placement');
+    expect(html).not.toContain('Tree supports');
+    expect(html).not.toContain('Bracing');
+    expect(html).toContain('Contact tip');
+    expect(html).toContain('Pillar');
+  });
 });

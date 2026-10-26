@@ -199,6 +199,8 @@ export interface SettingsPanelProps {
   deferPlacement?: boolean;
   /** The object's placement settings changed since its contacts were placed: Regenerate applies them. */
   placementPending?: boolean;
+  /** Dental workflow owns its contour, tree, and brace controls in Step 2. */
+  dentalMode?: boolean;
   onChange: <K extends SettingKey>(key: K, value: LiveSupportSettings[K], edit?: string) => void;
   /** Esc in a number field: the host drops that edit's undo step. */
   onCancelEdit: (edit: string) => void;
@@ -220,7 +222,7 @@ function DeferNote() {
  * placement, structure, raft, bracing, label). Support shape holds the tip, contact, neck and foot
  * keys one support may own, which read defaults until per-support selection lands.
  */
-export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, disabled, locked = false, deferPlacement = false, placementPending = false, onChange, onCancelEdit, onPreset, onRoofMode }: SettingsPanelProps) {
+export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, disabled, locked = false, deferPlacement = false, placementPending = false, dentalMode = false, onChange, onCancelEdit, onPreset, onRoofMode }: SettingsPanelProps) {
   /** A field of the shape region is shown when its rule holds for the support or for any value a differing key could take. */
   const shown = (field: Field, region: 'shape' | undefined) => {
     if (!field.when) return true;
@@ -229,7 +231,9 @@ export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, d
     return variants.some((rep) => field.when!(rep));
   };
   const mixed = shape.selected > 0;
-  const groups = (region: 'shape' | undefined) => SETTING_GROUPS.filter((group) => group.region === region && (!group.when || group.when(region === 'shape' ? shape.rep : settings))).map((group) => <details key={group.title} open={group.open}>
+  const groups = (region: 'shape' | undefined) => SETTING_GROUPS.filter((group) => group.region === region &&
+    (!dentalMode || !['Auto placement', 'Tree supports', 'Bracing', 'Roof', 'Cage'].includes(group.title)) &&
+    (!group.when || group.when(region === 'shape' ? shape.rep : settings))).map((group) => <details key={group.title} open={group.open}>
     <summary>{t(group.title)}</summary>
     {deferPlacement && group.title === 'Auto placement' && <DeferNote />}
     {group.fields.filter((field) => shown(field, region)).map((field) => {
@@ -263,21 +267,22 @@ export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, d
       <h3>{t('Object: {scope}', { scope })}</h3>
       {placementPending && <p className="help pending-note" role="note">{t('Placement changed. Regenerate to apply.')}</p>}
       <fieldset className="settings" disabled={disabled}>
-        <div className="field-row" title={t('Support preset. Editing any value switches to Custom')}>
+        {!dentalMode && <div className="field-row" title={t('Support preset. Editing any value switches to Custom')}>
           <span>{t('Preset')}</span>
           <div className="segmented">
             {(['LIGHT', 'MIDDLE', 'HEAVY'] as const).map((preset) => <button key={preset} type="button" aria-pressed={settings.preset === preset} onClick={() => onPreset(preset)} {...hint(PRESET_HINTS[preset])}>{t(PRESET_LABELS[preset])}</button>)}
             <button type="button" disabled className={settings.preset === 'CUSTOM' ? 'custom on' : 'custom'} {...hint('Values edited by hand')}>{t('Custom')}</button>
           </div>
-        </div>
+        </div>}
         <NumberField label={t('Lift height')} unit="mm" step={0.5} limits={settingLimits.liftHeight} value={settings.liftHeight} onChange={(value, edit) => onChange('liftHeight', value, edit)} onCancel={onCancelEdit} hint={t('Lowest model point above the plate')} />
+        {dentalMode && <p className="help" role="note">{t('Dental contact area, density, trees, and braces are controlled in Step 2.')}</p>}
         {deferPlacement && <DeferNote />}
-        <div className="field-row" title={t('Structure above or around the model. Each mode gets its defaults the first time it is used')}>
+        {!dentalMode && <div className="field-row" title={t('Structure above or around the model. Each mode gets its defaults the first time it is used')}>
           <span>{t('Roof / cage')}</span>
           <div className="segmented">
             {(['OFF', 'ROOF', 'CAGE'] as const).map((mode) => <button key={mode} type="button" aria-pressed={settings.roofMode === mode} onClick={() => onRoofMode(mode)} {...hint(ROOF_HINTS[mode])}>{t(ROOF_LABELS[mode])}</button>)}
           </div>
-        </div>
+        </div>}
         {groups(undefined)}
       </fieldset>
     </section>

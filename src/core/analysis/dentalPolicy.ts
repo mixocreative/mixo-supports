@@ -7,6 +7,12 @@ import type { SurfaceStamp } from '../../editing/surfaceBrush';
 /** One unit-local brush dab that changes where automatic dental supports may attach. */
 export interface DentalAllowStamp extends SurfaceStamp<'allow' | 'erase'> {}
 
+/** Dental-only structural choices. Older projects without this field use both structures. */
+export interface DentalStructure {
+  treeEnabled: boolean;
+  bracesEnabled: boolean;
+}
+
 /** The accepted detector footprint plus user edits. This is separate from no-support zones. */
 interface DentalPolicyBase {
   rim: DentalRim;
@@ -18,7 +24,10 @@ export type DentalPolicy =
   | (DentalPolicyBase & { kind?: 'legacy' })
   | (DentalPolicyBase & { kind: 'two-contour'; region: Extract<DentalRegionProposal, { kind: 'proposal' }>;
     /** Absent on older projects: reproduce the original defaults exactly. */
-    tuning?: DentalTuning });
+    tuning?: DentalTuning;
+    structure?: DentalStructure;
+    /** Provisional exact phase-zero IDs requested by gap repair; never bypass final safety gates. */
+    gapAlternateIds?: readonly string[] });
 
 /** The exact preview footprint; old or malformed saved policies show no approved faces. */
 export function dentalContactMask(policy: DentalPolicy, faceCount: number): Uint8Array {

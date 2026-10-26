@@ -134,7 +134,8 @@ describe('reduceScene', () => {
       visibilityMask: new Uint8Array([1, 0, 1, 1]), visibilityResolution: 2,
       visibilityMin: [-1, -1] as [number, number], visibilityMax: [1, 1] as [number, number],
     };
-    const policy: DentalPolicy = { kind: 'two-contour', rim, stamps: [],
+    const policy: DentalPolicy = { kind: 'two-contour', rim, stamps: [], gapAlternateIds: ['auto-1_2_3'],
+      structure: { treeEnabled: false, bracesEnabled: true },
       tuning: { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 }, region: {
       kind: 'proposal', allowedFaces: new Uint8Array([1]), contactFaces: new Uint8Array([1]),
       contacts: [{ face: 0, rim: 'outer', position: [0, 0, 0], normal: [0, -1, 0], distanceAlongContour: 0.5, distanceFromContour: 0.2 }],
@@ -156,6 +157,10 @@ describe('reduceScene', () => {
       region: { ...policy.region, contacts: [{ ...policy.region.contacts![0]!, rim: 'sideways' as 'outer' }] } } })).toThrow('dental contact rim');
     expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
       tuning: { setbackMm: 0.2, stripWidthMm: 0, density: 1 } } })).toThrow('Invalid dental strip');
+    expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
+      gapAlternateIds: [42 as unknown as string] } })).toThrow('dental alternate IDs');
+    expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
+      structure: { treeEnabled: 1 as unknown as boolean, bracesEnabled: true } } })).toThrow('dental structure');
   });
 
   it('treats empty zone adds and clearing no zones as no-ops', () => {

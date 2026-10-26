@@ -599,7 +599,14 @@ async function walk(url, scratch, dentalFixture) {
       check('l2d support density updates the live tip preview',
         denser.dentalContacts !== widened.dentalContacts,
         `candidate tips ${widened.dentalContacts} -> ${denser.dentalContacts}`);
-      await page.locator('.dental-tuning summary').click();
+      const structure = page.locator('.dental-tuning details').filter({ hasText: 'Support structure' });
+      await structure.locator('summary').click();
+      check('l2f dental tree and braces default on with separate disable controls',
+        await structure.locator('label').filter({ hasText: 'Tree branches' }).locator('input').isChecked() &&
+        await structure.locator('label').filter({ hasText: 'Cross-braces' }).locator('input').isChecked());
+      check('l2g generic right-panel structure controls do not contradict dental Step 2',
+        !/Roof \/ cage|Tree supports|Auto placement|Bracing/.test(await page.locator('.panel.right').innerText()));
+      await page.locator('.dental-tuning details').filter({ hasText: 'Advanced position' }).locator('summary').click();
       const rimSetback = page.locator('.dental-tuning label').filter({ hasText: 'Rim setback' }).locator('input');
       await rimSetback.focus();
       await rimSetback.press('ArrowRight');
@@ -618,7 +625,7 @@ async function walk(url, scratch, dentalFixture) {
       check('l3 dental generation finishes a support mesh only after the approved-area stage',
         dentalSupports.auto > 0 && placed.dentalKind === 'two-contour' && placed.tris > 0 && placed.drawn > 0 && placed.droppedDrawn === 0 && Math.abs(placed.dentalReviewGap - 4 / 1.1) < 1e-6,
         `automatic ${dentalSupports.auto}, mesh triangles ${placed.tris}, drawn ${placed.drawn}, forbidden secondary landings dropped ${placed.dropped}, dropped still drawn ${placed.droppedDrawn}, tuned review gap ${placed.dentalReviewGap}`);
-      const rimWarning = await page.locator('.edit-bar [role="alert"]').innerText();
+      const rimWarning = await page.locator('.edit-bar [role="alert"]').filter({ hasText: 'Automatic rim gaps' }).innerText();
       check('l4 final dental rim gap is disclosed before Done',
         /Automatic rim gaps: outer [\d.]+ mm, opening [\d.]+ mm/.test(rimWarning) && /Review the rim/.test(rimWarning),
         `warning "${rimWarning}"`);

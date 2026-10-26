@@ -40,6 +40,9 @@ describe('DentalBar', () => {
       rimGap={{ outerMm: 4.2, openingMm: 8 }} send={() => {}} run={() => {}} />);
     expect(gapHtml).toContain('8.0 mm');
     expect(gapHtml).toContain('Review the rim');
+    const fallbackHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={ui} reviewReady
+      structureFallback={['tree']} send={() => {}} run={() => {}} />);
+    expect(fallbackHtml).toContain('Tree branches were omitted');
     const buildingHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={ui} reviewReady={false} send={() => {}} run={() => {}} />);
     expect(buildingHtml).not.toContain('Done');
     expect(buildingHtml).toContain('Building supports');
@@ -55,5 +58,8 @@ describe('DentalBar', () => {
     expect(html).toContain('Rim setback');
     expect(html).toContain('Updating support area');
     expect(html).toContain('type="range"');
+    expect(html).toContain('Tree branches');
+    expect(html).toContain('Cross-braces');
+    expect(html).toContain('type="checkbox"');
   });
 });

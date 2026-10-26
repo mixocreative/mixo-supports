@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TriangleMesh } from '../analysis/types';
 import type { GeneratedSupportMesh, SupportPart } from './mesh';
-import { crossingAutomaticBodyContactIds } from './dentalBodyClearance';
+import { crossingAutomaticBodyContactIds, crossingSupportStructureParts } from './dentalBodyClearance';
 
 const surface: TriangleMesh = {
   positions: new Float32Array([-2, 0, -2, 2, 0, -2, 0, 0, 2]), indices: new Uint32Array([0, 1, 2]),
@@ -28,5 +28,18 @@ describe('crossingAutomaticBodyContactIds', () => {
   it('rejects a coplanar pillar face lying on the model', () => {
     expect(crossingAutomaticBodyContactIds(surface,
       body('pillar', [-1, 0, 0, 1, 0, 0, 0, 0, 1]), new Set(['auto-1']))).toEqual(['auto-1']);
+  });
+});
+
+describe('crossingSupportStructureParts', () => {
+  const piercing = [-1, -1, 0, 1, 1, 0, 1, -1, 0];
+  it('reports a crossing tree branch, trunk, or brace without treating an intended neck as structure', () => {
+    for (const part of ['tree-branch', 'tree-trunk', 'brace'] as const) {
+      expect(crossingSupportStructureParts(surface, body(part, piercing))).toEqual([part]);
+    }
+    expect(crossingSupportStructureParts(surface, body('neck', piercing))).toEqual([]);
+  });
+  it('accepts structures that stay clear of the model', () => {
+    expect(crossingSupportStructureParts(surface, body('tree-branch', [-1, 1, 0, 1, 2, 0, 1, 1, 0]))).toEqual([]);
   });
 });

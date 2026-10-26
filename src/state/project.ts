@@ -351,6 +351,17 @@ function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPoli
   };
   if (policy.kind === 'two-contour') {
     const { region } = policy;
+    const gapAlternateIds = policy.gapAlternateIds;
+    const structure = policy.structure;
+    if (structure !== undefined && (typeof structure !== 'object' || structure === null ||
+      typeof structure.treeEnabled !== 'boolean' || typeof structure.bracesEnabled !== 'boolean')) {
+      throw new TypeError('dental structure must specify tree and braces as booleans');
+    }
+    if (gapAlternateIds !== undefined && (!Array.isArray(gapAlternateIds) || gapAlternateIds.length > 256 ||
+      gapAlternateIds.some((id) => typeof id !== 'string' || !/^auto--?\d+_-?\d+_-?\d+$/.test(id)) ||
+      new Set(gapAlternateIds).size !== gapAlternateIds.length)) {
+      throw new TypeError('dental alternate IDs must be unique automatic contact IDs');
+    }
     if (region.kind !== 'proposal' || !(region.allowedFaces instanceof Uint8Array) || region.allowedFaces.length !== mesh.indices.length / 3 ||
       !(region.outerEdges instanceof Uint32Array) || !(region.outerRidgeEdges instanceof Uint32Array) ||
       !(region.outerConnectorEdges instanceof Uint32Array) || !(region.openingEdges instanceof Uint32Array) ||
@@ -379,7 +390,8 @@ function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPoli
     }
     for (const value of [...region.outerEdges, ...region.outerRidgeEdges, ...region.outerConnectorEdges, ...region.openingEdges]) if (value >= mesh.positions.length / 3) throw new TypeError('dental region edge is outside the mesh');
     return { ...base, kind: 'two-contour',
-      ...(policy.tuning ? { tuning: parseDentalTuning(policy.tuning) } : {}), region: {
+      ...(policy.tuning ? { tuning: parseDentalTuning(policy.tuning) } : {}),
+      ...(structure ? { structure: { treeEnabled: structure.treeEnabled, bracesEnabled: structure.bracesEnabled } } : {}), region: {
       kind: 'proposal', allowedFaces: new Uint8Array(region.allowedFaces), outerEdges: new Uint32Array(region.outerEdges),
       outerRidgeEdges: new Uint32Array(region.outerRidgeEdges), outerConnectorEdges: new Uint32Array(region.outerConnectorEdges),
       openingEdges: new Uint32Array(region.openingEdges),
@@ -392,7 +404,7 @@ function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPoli
       diagnostics: {
         regionFaces: [...region.diagnostics.regionFaces], connectorLengths: [...region.diagnostics.connectorLengths],
       },
-    } };
+    }, ...(gapAlternateIds ? { gapAlternateIds: [...gapAlternateIds] } : {}) };
   }
   if (policy.kind !== undefined && policy.kind !== 'legacy') throw new TypeError('unknown dental policy kind');
   return policy.kind === 'legacy' ? { ...base, kind: 'legacy' } : base;
