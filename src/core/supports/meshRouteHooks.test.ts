@@ -6,6 +6,27 @@ const plain = { ...defaultSupportSettings, roofMode: 'OFF' as const, roofSeededM
   raftEnabled: false, trussEnabled: false, scatterAutoTree: false };
 
 describe('buildSupportMesh proposed routes', () => {
+  it('can omit a rejected automatic column before emitting even its tip', () => {
+    const contact: SupportContact = { id: 'auto-blocked', position: [0, 12, 0], normal: [0, -1, 0] };
+    const seen: string[][] = [];
+    const built = buildSupportMesh([contact], plain, { decideColumn: (proposal) => {
+      seen.push(proposal.routes.map((route) => route.part));
+      return 'omit';
+    } });
+    expect(seen).toEqual([['neck', 'pillar', 'pillar', 'foot']]);
+    expect(built.positions).toHaveLength(0);
+    expect(built.droppedByPath).toEqual(['auto-blocked']);
+    expect(built.dropped).toEqual(['auto-blocked']);
+  });
+
+  it('never silently omits a manual column even if the decision requests it', () => {
+    const contact: SupportContact = { id: 'manual-blocked', origin: 'manual', position: [0, 12, 0], normal: [0, -1, 0] };
+    const built = buildSupportMesh([contact], plain, { decideColumn: () => 'omit' });
+    expect(built.positions.length).toBeGreaterThan(0);
+    expect(built.dropped).toEqual([]);
+    expect(built.droppedByPath).toEqual([]);
+  });
+
   it('reports the complete manual column path before meshing without changing its geometry', () => {
     const contact: SupportContact = { id: 'manual-1', origin: 'manual', position: [0, 12, 0], normal: [0, -1, 0] };
     const routes: Array<{ part: string; contactId?: string; origin?: string; points: readonly [number, number, number][]; radiusMm: number }> = [];

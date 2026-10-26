@@ -49,6 +49,8 @@ A separate trial selector now has the rule for what to do with several proposed 
 
 The builder can now report the actual path of each support part while it is being made. It reports the narrow neck and shaft separately from the wider foot, plus Tree branches and braces. That matters because treating the wide foot as if the whole shaft were that wide would create false collision warnings. This reporting does not yet move or reject anything; the final built-support collision check is still required.
 
+There is now also a place to make a decision **before** a whole pillar is built. If a future collision rule rejects an automatic pillar, the builder can leave out its tip, shaft and foot together rather than leaving a broken fragment. The same rule cannot silently remove a pillar you placed by hand. This is plumbing for the safety rule; the app does not call it yet, so today’s Generate results have not changed.
+
 The support builder can now show a read-only copy of each pillar, Tree, and Brace centre-line immediately before drawing that part. This lets the next step ask the path screen about the *same route the builder intends to draw*, including a pillar's route to the plate. It does not yet reject or move anything. The copy matters: a collision checker cannot accidentally bend the generated support by changing the points it receives.
 
 Ordinary pillar necks now remember their certified contact face too, without changing their printed shape. A separate label distinguishes a Tree neck from a pillar neck; otherwise the Tree fallback could wrongly fire on a pillar. These labels prepare the next collision report but do not yet approve any pillar-neck overlap.

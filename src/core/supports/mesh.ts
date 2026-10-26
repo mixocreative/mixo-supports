@@ -68,6 +68,8 @@ export interface GeneratedSupportMesh extends TriangleMesh {
   dropped: string[];
   /** Subset of dropped contacts rejected specifically by a no-support zone. */
   droppedByZones?: string[];
+  /** Automatic columns omitted by an explicit pre-build route decision, when enabled. */
+  droppedByPath?: string[];
   /** Final built contacts on each dental rim; absent when the detector could not certify a contour. */
   dentalRimCoverage?: DentalRimCoverage;
   /** Requested dental structures omitted because their built geometry crossed the model. */
@@ -99,6 +101,8 @@ export interface SupportMeshOptions {
   landingAllowed?: (landing: Landing) => boolean;
   /** Observe actual proposed tube centre-lines before their triangles are emitted; read-only. */
   onRoute?: (route: SupportRoute) => void;
+  /** Decide an entire non-tip-only column before any tip, neck, shaft or foot is emitted. Manual columns cannot be omitted. */
+  decideColumn?: (proposal: { contactId: string; origin: 'auto' | 'manual'; routes: readonly SupportRoute[] }) => 'build' | 'omit';
 }
 
 export interface Column {
@@ -182,6 +186,7 @@ export function buildSupportMesh(
   const zoned = (landing: Landing | undefined) => zones !== undefined && landing !== undefined && zonedAt(zones, landing.point, landing.normal);
   const dropped = new Set<number>();
   const droppedByZones = new Set<number>();
+  const droppedByPath = new Set<number>();
   const blockedTrees = new Set(zones || options.landingAllowed ? layout?.trees.filter((tree) => {
     const hit = treeLanding(tree, settings, ray).hit;
     if (zoned(hit)) {
@@ -211,6 +216,39 @@ export function buildSupportMesh(
       dropped.add(index);
       return;
     }
+    const neckEnd = column.curve.findIndex((node, i) => i > 0 && node.radius === pillarRadius);
+    const neck = column.curve.slice(0, neckEnd + 1);
+    let pillar = column.curve.slice(neckEnd);
+    const shaped = shapedTip(own);
+    let secondaryNeck: CurveNode[] | undefined;
+    if (column.landing && shaped) {
+      const last = lastThick(pillar, pillarRadius);
+      if (last < pillar.length - 1) secondaryNeck = pillar.slice(last);
+      pillar = pillar.slice(0, last + 1);
+    }
+    if (!tipOnly && options.decideColumn) {
+      const origin = contact.origin ?? 'auto';
+      const routes: SupportRoute[] = [];
+      if (neckEnd >= 1) routes.push(routeFromNodes('neck', neck, contact.id, origin));
+      if (secondaryNeck) routes.push(routeFromNodes('neck', secondaryNeck, contact.id, origin));
+      routes.push(routeFromNodes('pillar', pillar, contact.id, origin));
+      if (!column.landing) {
+        const anchor = column.curve[column.curve.length - 1]!.point;
+        const [x, y, z] = anchor;
+        const footTop = own.baseHeight;
+        if (Math.abs(y - footTop) > MIN_LENGTH) routes.push(routeFromNodes('pillar', [
+          { point: anchor, radius: pillarRadius }, { point: [x, footTop, z], radius: pillarRadius },
+        ], contact.id, origin));
+        routes.push(routeFromNodes('foot', [
+          { point: [x, 0, z], radius: own.baseDiameter / 2 }, { point: [x, footTop, z], radius: pillarRadius },
+        ], contact.id, origin));
+      }
+      if (options.decideColumn({ contactId: contact.id, origin, routes }) === 'omit' && origin === 'auto') {
+        dropped.add(index);
+        droppedByPath.add(index);
+        return;
+      }
+    }
     if (own.contactShape === 'SPHERE') {
       builder.begin('tip', contact.id);
       builder.sphere(column.tip, own.touchDiameter / 2, segments);
@@ -221,27 +259,21 @@ export function buildSupportMesh(
         builder.end();
       }
     }
-    const neckEnd = column.curve.findIndex((node, i) => i > 0 && node.radius === pillarRadius);
-    if (!tipOnly && neckEnd >= 1) options.onRoute?.(routeFromNodes('neck', column.curve.slice(0, neckEnd + 1),
+    if (!tipOnly && neckEnd >= 1) options.onRoute?.(routeFromNodes('neck', neck,
       contact.id, contact.origin ?? 'auto'));
     builder.begin('neck', contact.id, undefined, contact.sourceFace === undefined ? undefined : [{
       kind: 'primary', contactId: contact.id, point: contact.position,
       normal: contact.normal, faceIndex: contact.sourceFace,
     }]);
-    addTip(builder, column.curve.slice(0, neckEnd + 1), own, segments);
+    addTip(builder, neck, own, segments);
     builder.end();
     if (tipOnly) return;
-    let pillar = column.curve.slice(neckEnd);
-    const shaped = shapedTip(own);
-    if (column.landing && shaped) {
+    if (secondaryNeck) {
       // The tip landing on the model below gets the same shape as the top one.
-      const last = lastThick(pillar, pillarRadius);
-      if (last < pillar.length - 1) options.onRoute?.(routeFromNodes('neck', pillar.slice(last),
-        contact.id, contact.origin ?? 'auto'));
+      options.onRoute?.(routeFromNodes('neck', secondaryNeck, contact.id, contact.origin ?? 'auto'));
       builder.begin('neck', contact.id);
-      addTip(builder, pillar.slice(last), own, segments);
+      addTip(builder, secondaryNeck, own, segments);
       builder.end();
-      pillar = pillar.slice(0, last + 1);
     }
     options.onRoute?.(routeFromNodes('pillar', pillar, contact.id, contact.origin ?? 'auto'));
     builder.begin('pillar', contact.id, column.landing && !shaped ? own.neckLength : undefined);
@@ -278,7 +310,9 @@ export function buildSupportMesh(
     addStructures(builder, footprints, settings, options, segments, raftTop);
   }
   const ids = (indices: Set<number>) => [...indices].sort((a, b) => a - b).map((index) => contacts[index]!.id);
-  return builder.finish(ids(dropped), ids(droppedByZones));
+  const built = builder.finish(ids(dropped), ids(droppedByZones));
+  if (options.decideColumn) built.droppedByPath = ids(droppedByPath);
+  return built;
 }
 
 /**
