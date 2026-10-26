@@ -16,10 +16,11 @@ import { crossingAutomaticBodyContactIds, crossingSupportStructureParts } from '
 import { dentalBuildSettings } from '../core/supports/dentalSettings';
 import type { Landing } from '../core/supports/landing';
 import { dentalSecondaryLandingOnApprovedSide } from './dentalLandingSide';
+import { supportMeshToUnitLocal } from './supportFrame';
 import { raftOutline } from '../core/supports/raft';
 import { RemeshTarget } from '../core/supports/remesh';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
-import { applyTransform, inverseTransformDirection, inverseTransformMesh, inverseTransformPoint, transformDirection, transformPoint } from '../state/transform';
+import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformDirection, transformPoint } from '../state/transform';
 
 /*
  * Runs support core jobs (src/core/jobs.ts) on whatever thread calls it: the workers, and the main
@@ -183,7 +184,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     ]);
   }
   onProgress?.(1, 'Done');
-  return inverseTransformMesh(mesh, frame);
+  return supportMeshToUnitLocal(mesh, frame);
 }
 
 /** Automatic contacts, in the frame of the turned model (the caller maps them back to the unit). */

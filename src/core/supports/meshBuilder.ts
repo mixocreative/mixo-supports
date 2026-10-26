@@ -1,4 +1,4 @@
-import type { CurveNode, GeneratedSupportMesh, Point2, SupportComponent, SupportPart } from './mesh';
+import type { ContactIntent, CurveNode, GeneratedSupportMesh, Point2, SupportComponent, SupportPart } from './mesh';
 import { add, cross, dot, normalizeOrDown, scale, subtract, type Vector } from '../vec3';
 
 /** Shorter than this (mm), a segment or axis counts as zero length. */
@@ -11,8 +11,10 @@ export class MeshBuilder {
   private parts: SupportPart[] = [];
   private current?: SupportComponent;
 
-  begin(part: SupportPart, contactId?: string, landingReach?: number): void {
-    this.current = { part, ...(contactId === undefined ? {} : { contactId }), start: this.indices.length, count: 0, ...(landingReach === undefined ? {} : { landingReach }) };
+  begin(part: SupportPart, contactId?: string, landingReach?: number, contactIntent?: ContactIntent[]): void {
+    this.current = { part, ...(contactId === undefined ? {} : { contactId }), start: this.indices.length, count: 0,
+      ...(landingReach === undefined ? {} : { landingReach }),
+      ...(contactIntent === undefined ? {} : { contactIntent }) };
   }
 
   end(): void {

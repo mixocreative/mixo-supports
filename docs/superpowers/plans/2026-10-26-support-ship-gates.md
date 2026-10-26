@@ -26,7 +26,7 @@
 
 - [x] Red/green tests for the pure path reducer: anchored descending links resolve births; unverified, too-high, unanchored-cycle, and invalid endpoints do not. Manual-only provenance is retained, while an all-automatic alternative wins. Seven focused tests pass. Geometry attribution remains open.
 - [ ] Red adapter tests: a nearby detached tip and a crossing body do not yield `verified` links, and a tree with no plate path does not resolve a birth. A manual path is reported without removal.
-- [ ] Construct a graph of tagged built support components using plate contact, actual tip/model reach, and geometric joins. No proximity-only edge is accepted. Attach each topology birth to a source face and a support contact at/below its height; return `resolved`, `unresolved`, or `inconclusive` with provenance.
+- [ ] Construct a graph of tagged built support components using plate contact, actual tip/model reach, and geometric joins. No proximity-only edge is accepted. Attach each topology birth to a source face and a support contact at/below its height; return `resolved`, `unresolved`, or `inconclusive` with provenance. Depends on Task 3's intentional-contact/body-clearance classifier; a bare `verified: true` passed to the pure reducer is not enough.
 - [ ] Run focused tests and the one-reference + generic golden suites; cache reusable model topology, not decisions after a settings/paint change. Commit.
 
 ## Task 3 — Classify intentional contact reach versus body collision
@@ -34,6 +34,7 @@
 **Files:** modify `src/core/supports/mesh.ts`, `meshQuery.ts`, `bodyIntersection.ts`, `src/core/supports/dentalBodyClearance.ts`; add synthetic tests.
 
 - [ ] Red tests for both ends of a two-leaf Tree: a tiny approved contact reach is exempt, a branch through an unrelated wall is not. Test default round/tapered and shaped-tip settings, secondary landing, trunk, brace, generic roof/cage, and manual support attribution.
+- [x] Record primary and secondary model-contact intent on tree curves (including both leaves of a joined two-leaf branch) and carry the metadata to built components. Preserve its points under plate-to-unit frame conversion. Focused tests were red then green; no collision exemption or geometry change yet.
 - [ ] Tag intentional reach explicitly in the generated mesh. Avoid a blanket “neck is safe” exemption. Make the generic intersection report return component/contact/face evidence; dental retains its narrow policy. Preserve mesh geometry byte-for-byte where only tags change.
 - [ ] Re-run independent BVH crossing probe; document any Tree fallback still needed. Commit.
 

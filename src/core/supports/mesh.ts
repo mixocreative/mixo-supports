@@ -35,6 +35,11 @@ export type SupportPart =
   | 'roof' | 'column' | 'roof-brace' | 'cross-bar' | 'cage-ring'
   | 'label';
 
+/** Source-model contacts a built component intentionally approaches; not a collision exemption. */
+export type ContactIntent =
+  | { kind: 'primary'; contactId: string; point: Vector; normal: Vector }
+  | { kind: 'secondary'; point: Vector; normal: Vector; faceIndex?: number };
+
 export interface SupportComponent {
   part: SupportPart;
   /** Owning contact for picking; structural parts (raft, braces, roof...) have none. */
@@ -47,6 +52,8 @@ export interface SupportComponent {
    * no sphere): its last `landingReach` mm, around the tube's end, show in the tips view.
    */
   landingReach?: number;
+  /** Requires a separate face-local, depth-bounded collision classifier before use. */
+  contactIntent?: ContactIntent[];
 }
 
 export interface GeneratedSupportMesh extends TriangleMesh {
@@ -284,18 +291,24 @@ function addTree(
       const first = nodes.findIndex((node) => node.radius >= pillarRadius - 1e-9);
       const last = lastThick(nodes, pillarRadius);
       if (first > 0 && last >= first) {
-        builder.begin('neck', curve.id);
+        const intentAt = (point: Vector): ContactIntent[] | undefined => {
+          const closest = curve.contactIntent?.reduce<ContactIntent | undefined>((best, intent) =>
+            best === undefined || Math.hypot(...subtract(intent.point, point)) < Math.hypot(...subtract(best.point, point))
+              ? intent : best, undefined);
+          return closest ? [closest] : undefined;
+        };
+        builder.begin('neck', curve.id, undefined, intentAt(nodes[0]!.point));
         addTip(builder, nodes.slice(0, first + 1), settings, segments);
         builder.end();
         if (last < nodes.length - 1) {
-          builder.begin('neck', curve.id);
+          builder.begin('neck', curve.id, undefined, intentAt(nodes[nodes.length - 1]!.point));
           addTip(builder, nodes.slice(last), settings, segments);
           builder.end();
         }
         nodes = nodes.slice(first, last + 1);
       }
     }
-    builder.begin(curve.part, curve.id);
+    builder.begin(curve.part, curve.id, undefined, curve.contactIntent);
     builder.tube(nodes, segments);
     builder.end();
   }
@@ -306,7 +319,7 @@ function addTree(
 }
 
 export interface TreeGeometry {
-  curves: { part: 'tree-branch' | 'tree-trunk'; id?: string; nodes: CurveNode[] }[];
+  curves: { part: 'tree-branch' | 'tree-trunk'; id?: string; nodes: CurveNode[]; contactIntent?: ContactIntent[] }[];
   spheres: { part: 'tip' | 'tree-trunk'; id?: string; centre: Vector; radius: number }[];
   trunk?: Column;
 }
@@ -323,7 +336,8 @@ export function treeGeometry(tree: AutoTree, contacts: readonly SupportContact[]
     const tip = subtract(contact.position, scale(normal, tipDepth(settings)));
     const neckEnd = add(contact.position, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength));
     if (spheres) out.spheres.push({ part: 'tip', id: contact.id, centre: tip, radius: settings.touchDiameter / 2 });
-    return { id: contact.id, nodes: [{ point: tip, radius: neckRadius }, { point: neckEnd, radius: pillarRadius }] as CurveNode[] };
+    return { id: contact.id, position: contact.position, normal: contact.normal,
+      nodes: [{ point: tip, radius: neckRadius }, { point: neckEnd, radius: pillarRadius }] as CurveNode[] };
   });
 
   const junction = tree.junction;
@@ -351,16 +365,23 @@ export function treeGeometry(tree: AutoTree, contacts: readonly SupportContact[]
     out.trunk = { x, z, bottom: settings.baseHeight, top: junction[1] };
   }
   const centre = end[end.length - 1]!.point;
+  const secondaryIntent: ContactIntent[] = hit
+    ? [{ kind: 'secondary', point: hit.sourcePoint ?? hit.point, normal: hit.normal,
+      ...(hit.faceIndex === undefined ? {} : { faceIndex: hit.faceIndex }) }]
+    : [];
   const degree = branches.length + (trunk ? 1 : 0);
   const fillet = settings.pillarDiameter / 2;
   if (degree === 2 && !trunk) {
     const [a, b] = branches as [typeof branches[number], typeof branches[number]];
     const through = [...a.nodes, ...end.slice(0, -1), { point: centre, radius: junctionRadius }, ...[...b.nodes].reverse()];
-    out.curves.push({ part: 'tree-branch', id: a.id, nodes: filletPolyline(through, fillet, 3) });
+    out.curves.push({ part: 'tree-branch', id: a.id, nodes: filletPolyline(through, fillet, 3),
+      contactIntent: [{ kind: 'primary', contactId: a.id, point: a.position, normal: a.normal },
+        { kind: 'primary', contactId: b.id, point: b.position, normal: b.normal }, ...secondaryIntent] });
     return out;
   }
   for (const branch of branches) {
-    out.curves.push({ part: 'tree-branch', id: branch.id, nodes: filletPolyline([...branch.nodes, ...end.slice(0, -1), { point: centre, radius: junctionRadius }], fillet, 3) });
+    out.curves.push({ part: 'tree-branch', id: branch.id, nodes: filletPolyline([...branch.nodes, ...end.slice(0, -1), { point: centre, radius: junctionRadius }], fillet, 3),
+      contactIntent: [{ kind: 'primary', contactId: branch.id, point: branch.position, normal: branch.normal }, ...secondaryIntent] });
   }
   if (trunk) out.curves.push({ part: 'tree-trunk', nodes: filletPolyline(trunk, fillet, 3) });
   if (degree > 2) out.spheres.push({ part: 'tree-trunk', centre, radius: 0.55 * 2 * junctionRadius });
