@@ -11,6 +11,8 @@ export interface DentalContactFootprintSettings {
   outerSpacing: number;
   innerSpacing: number;
   maxSearchDistance: number;
+  /** 0 samples at the contour origin; omitted keeps the usual half-spacing phase. */
+  samplePhaseFraction?: number;
 }
 
 /** Current one-reference defaults; keep widths and spacing together for future validated overrides. */
@@ -34,10 +36,12 @@ export function proposeDentalContactFootprint(mesh: TriangleMesh, region: Region
   const bands = diagnosticDentalSideBands(mesh, region, settings);
   if (bands.kind !== 'proposal') return bands;
   const outer = sampleDiagnosticContourContacts(mesh, region.outerEdges, bands.outerOtherSide,
-    { spacing: settings.outerSpacing, maxSearchDistance: settings.maxSearchDistance });
+    { spacing: settings.outerSpacing, maxSearchDistance: settings.maxSearchDistance,
+      ...(settings.samplePhaseFraction === undefined ? {} : { phaseMm: settings.outerSpacing * settings.samplePhaseFraction }) });
   if (outer.kind !== 'proposal') return outer;
   const inner = sampleDiagnosticContourContacts(mesh, region.openingEdges, bands.innerOtherSide,
-    { spacing: settings.innerSpacing, maxSearchDistance: settings.maxSearchDistance });
+    { spacing: settings.innerSpacing, maxSearchDistance: settings.maxSearchDistance,
+      ...(settings.samplePhaseFraction === undefined ? {} : { phaseMm: settings.innerSpacing * settings.samplePhaseFraction }) });
   if (inner.kind !== 'proposal') return inner;
   const contactFaces = new Uint8Array(mesh.indices.length / 3);
   for (let face = 0; face < contactFaces.length; face += 1) {
