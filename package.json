@@ -4,11 +4,15 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "npm run wasm:build",
     "dev": "vite",
+    "prebuild": "npm run wasm:build",
     "build": "tsc --noEmit && vite build",
     "postbuild": "node scripts/third-party-notices.mjs",
     "wasm:build": "node scripts/build-geometry-wasm.mjs",
     "wasm:test": "node scripts/geometry-wasm-smoke.mjs",
+    "prewalk": "npm run wasm:build",
+    "pretest": "npm run wasm:build",
     "test": "vitest run",
     "walk": "node scripts/walk.mjs"
   },

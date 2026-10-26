@@ -14,12 +14,34 @@ with sync_playwright() as playwright:
         assert response.ok, f"Vite browser package returned HTTP {response.status}: {response.text()[:200]}"
         version = page.evaluate(
             """async () => {
-              const module = await import('/mixo-supports/crates/geometry-wasm/pkg-browser/mixo_geometry_wasm.js');
-              await module.default('/mixo-supports/crates/geometry-wasm/pkg-browser/mixo_geometry_wasm_bg.wasm');
-              return module.engine_version();
+              const { geometryReady } = await import('/mixo-supports/src/workers/geometryClient.ts');
+              const engine = await geometryReady();
+              return engine.engine_version();
             }"""
         )
         assert version == 1, f"browser WASM schema version {version} != 1"
+        worker_result = page.evaluate(
+            """async () => new Promise((resolve, reject) => {
+              const worker = new Worker('/mixo-supports/src/workers/meshWorker.ts', { type: 'module' });
+              const timer = setTimeout(() => { worker.terminate(); reject(new Error('mesh worker timed out')); }, 10000);
+              worker.onmessage = ({ data }) => {
+                if (data.type !== 'done' && data.type !== 'error') return;
+                clearTimeout(timer);
+                worker.terminate();
+                if (data.type === 'error') reject(new Error(data.message));
+                else resolve(data.result.kind);
+              };
+              worker.onerror = (event) => {
+                clearTimeout(timer);
+                worker.terminate();
+                reject(new Error(event.message));
+              };
+              worker.postMessage({ id: 1, type: 'run', payload: {
+                kind: 'build', unit: { unitId: 'wasm-smoke', sourceToken: 'missing', job: {} }
+              }});
+            })"""
+        )
+        assert worker_result == 'need-source', f"unexpected mesh worker result: {worker_result}"
         print("browser WASM version handshake: PASS")
     finally:
         browser.close()

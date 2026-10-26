@@ -18,7 +18,7 @@ The current `src/core/README.md` documents pure TypeScript placement/build/check
 
 - `npx vitest run --maxWorkers=1 --reporter=dot`: exit 0, 136 files / 1,316 tests, 246.01 s. Ordinary `npm test -- --reporter=dot` ran all assertions green but exited 1 on Vitest `onTaskUpdate` timeout. Do not call the normal suite gate clean.
 - `npm run build`: exit 0; existing large Vite chunk warning. This was rerun after the first Rust bridge; the app still compiles its TypeScript engine.
-- At this checkpoint, the Rust 1.99.1 core has only a schema-version function. Native, Node WASM and browser WASM returned version 1. **No orientation, dental, generic support or brush computation has migrated.**
+- At this checkpoint, the Rust 1.99.1 core has only a schema-version function. Native, Node WASM and browser WASM returned version 1. `meshWorker.ts` now initializes that WASM package and rejects a schema mismatch before build/export work, but **no orientation, dental, generic support or brush computation has migrated**.
 - Local Rust executables existed at `C:\Users\DCT\.cargo\bin` although absent from PATH. Toolchain 1.99.1 and `wasm32-unknown-unknown` were installed side by side with the unchanged default 1.89 stable toolchain. `wasm-pack` 0.15.0 is pinned in `package-lock.json`.
 - Local SHA-256 of the installed `rustc.exe` is `BA03E3BA03A73D9FEF19AB3659140F94B43615EC1D587FE9BEFC9AED3BD5AA72`; local `wasm-pack.exe` is `CF62764A253DE34C32D5F8C5655E0503F2F7773EE3674189343E339281A9A023`. These identify the tested binaries; repository lockfiles and release manifests remain the reproducible dependency source.
 

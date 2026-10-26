@@ -2,6 +2,8 @@ import type { TriangleMesh } from '../core/analysis/types';
 import type { GeneratedSupportMesh } from '../core/supports/mesh';
 import { encodeStl, type ExportPart } from '../supports/export';
 import { runSupportJob } from '../supports/jobRunner';
+import { geometryReady } from './geometryClient';
+import { runAfterGeometryReady } from './geometryVersion';
 import type { ExportUnitPayload, MeshTask, MeshTaskResult, SupportJobPayload } from './meshProtocol';
 import { serveTask, transferable, type TaskContext } from './serveTask';
 import { SourceCache } from './sourceCache';
@@ -66,9 +68,11 @@ serveTask<MeshTask, MeshTaskResult>((task, { progress }) => {
     sources.delete(task.unitId);
     return { kind: 'forgotten' };
   }
-  const models = resolveSources(task.kind === 'build' ? [task.unit] : task.units);
-  if (Array.isArray(models)) return { kind: 'need-source', unitIds: models };
-  if (task.kind === 'export') return exportFiles(task, models, progress);
-  const mesh = runSupportJob({ ...task.unit.job, mesh: models.get(task.unit.unitId)! }, throttled(progress));
-  return transferable<MeshTaskResult>({ kind: 'mesh', mesh }, [mesh.positions.buffer, mesh.indices.buffer]);
+  return runAfterGeometryReady(geometryReady, () => {
+    const models = resolveSources(task.kind === 'build' ? [task.unit] : task.units);
+    if (Array.isArray(models)) return { kind: 'need-source', unitIds: models };
+    if (task.kind === 'export') return exportFiles(task, models, progress);
+    const mesh = runSupportJob({ ...task.unit.job, mesh: models.get(task.unit.unitId)! }, throttled(progress));
+    return transferable<MeshTaskResult>({ kind: 'mesh', mesh }, [mesh.positions.buffer, mesh.indices.buffer]);
+  });
 });
