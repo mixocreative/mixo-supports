@@ -36,10 +36,26 @@ export function isIntentionalContactReach(model: TriangleMesh, supports: Generat
   const faceNormal = normalize(faceCross);
 
   for (const intent of component.contactIntent ?? []) {
-    if (intent.faceIndex !== hit.modelFaceIndex || !intent.point.every(Number.isFinite) ||
+    if (!Number.isInteger(intent.faceIndex) || intent.faceIndex! < 0 ||
+      intent.faceIndex! * 3 + 3 > model.indices.length ||
+      !intent.point.every(Number.isFinite) ||
       !intent.normal.every(Number.isFinite) || length(intent.normal) === 0) continue;
     const normal = normalize(intent.normal);
     if (dot(faceNormal, normal) < limits.faceNormalDotMin) continue;
+    if (intent.faceIndex !== hit.modelFaceIndex) {
+      // One shared indexed edge is the narrowest useful smooth-surface neighborhood.
+      // Separate close walls with duplicate coordinates but different vertices are not connected.
+      const source = model.indices.subarray(intent.faceIndex! * 3, intent.faceIndex! * 3 + 3);
+      const target = model.indices.subarray(faceOffset, faceOffset + 3);
+      let shared = 0;
+      for (const index of source) if (target.includes(index)) shared++;
+      if (shared !== 2) continue;
+      const sourceVertices = Array.from(source, (index) => vertex(model, index));
+      if (sourceVertices.some((point) => !point)) continue;
+      const [u, v, w] = sourceVertices as Vector[];
+      const sourceCross = cross(subtract(v, u), subtract(w, u));
+      if (length(sourceCross) === 0 || dot(normalize(sourceCross), normal) < limits.faceNormalDotMin) continue;
+    }
     if (supportVertices.every((point) => distance(point!, intent.point) <= limits.radiusMm &&
       dot(subtract(point!, intent.point), normal) >= -limits.penetrationMm)) return true;
   }

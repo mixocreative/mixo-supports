@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use `executing-plans` task by task. Write a failing behavioral test before each production change, verify focused and caller tests, then commit and update both dental explanation documents and the handoff. The current branch is `codex/dental-rework`; push only tested checkpoints and do not merge/release on one patient STL.
 
-**Goal:** Make generic and dental support generation modular, performance-bounded, and honest about collisions and unsupported islands, with one preview/export safety path. “Ready to ship” means ready to push a reviewable code branch to GitHub; separate patient/print validation is required for a general clinical reliability claim.
+**Goal:** Make generic and dental support generation modular, performance-bounded, and honest about collisions and unsupported islands, with one preview/export safety path. “Ready to ship” means the software is ready for release after all code, end-to-end, performance, and safety gates pass—not merely that a branch was pushed. Separate patient/print validation is required for a general clinical reliability claim.
 
 **Architecture:** Pure geometry reports in `src/core/analysis` and `src/core/supports`; mode-specific repair policy in `src/supports`; UI only renders report status. Preserve the existing support shapes. Use an event-based mesh connectivity sweep, not a full live layer raster.
 
@@ -36,6 +36,8 @@
 - [ ] Red tests for both ends of a two-leaf Tree: a tiny approved contact reach is exempt, a branch through an unrelated wall is not. Test default round/tapered and shaped-tip settings, secondary landing, trunk, brace, generic roof/cage, and manual support attribution.
 - [x] Record primary and secondary model-contact intent on tree curves (including both leaves of a joined two-leaf branch) and carry the metadata to built components. Preserve its points under plate-to-unit frame conversion. Focused tests were red then green; no collision exemption or geometry change yet.
 - [x] Add generic exact face/triangle hit evidence, continuing after a locally approved hit; add a conservative exact-source-face/distance/depth predicate. Bind uniquely matched dental contact source faces into Tree metadata, and apply the predicate only to dental Tree branches. Synthetic harmless-tip/second-wall tests were red then green; the one-reference rim-coverage test still requires Tree fallback. No full generic policy or adjacent-face permission yet.
+- [x] Permit one indexed edge-adjacent face of the same smooth sheet, requiring both source and hit face normals to agree with the contact intent. Red/green tests distinguish it from a close separate wall and reversed source winding. Built primary-end adjacent-face acceptance is now covered on both ends of a round two-leaf Tree.
+- [x] Include tagged shaped-tip Tree necks in the structural collision gate. A red square-tip wall-crossing test exposed their previous exclusion; the bounded contact exception now applies to those necks while unrelated walls still fail and the safe secondary landing passes.
 - [ ] Validate a built two-leaf Tree (round and shaped tips, both primary ends and secondary landing) against intended same-surface adjacent faces and a nearby separate wall. Avoid a blanket “neck is safe” exemption; trunks/braces/roof/cage have no contact exception. Preserve mesh geometry byte-for-byte where only tags change.
 - [ ] Re-run independent BVH crossing probe; document any Tree fallback still needed. Commit.
 
@@ -44,6 +46,7 @@
 **Files:** extract from `src/supports/jobRunner.ts` into `genericSupportPolicy.ts` and `dentalSupportPolicy.ts`; modify `src/core/jobs.ts`, worker protocols, `src/supports/unitSupports.ts`, and export path as necessary.
 
 - [ ] Red tests that generic and dental preview/export agree on retained support IDs and safety status even when display is tips-only or low-poly. No manual support is silently deleted. Stale, timed-out, or inconclusive analysis cannot be exported as “safe.”
+- [ ] Red tests for generation-time pillar/brace/tree path preflight: a blocked automatic pillar can move only to a permitted nearby landing; a blocked brace/branch is rerouted or omitted within a bounded candidate budget. Reuse one model spatial index, avoid full mesh rebuild per trial, and retain the independent exact final-mesh check.
 - [ ] Build full-resolution geometry for the shared safety decision, then derive display meshes. Generic policy reports/repairs automatic conflicts without changing dental anatomy; dental policy only searches its accepted contact strip and keeps unresolved gaps/islands explicit. Bound repair attempts and cancellation.
 - [ ] Run direct worker/export parity tests, full `npm test`, build, and browser walks of ordinary Generate plus dental Steps 1–3. Commit.
 
@@ -68,7 +71,7 @@
 
 - [ ] Audit every requirement against current code, tests, browser output, generated STL/GLB and the owner reference screenshots. Run the generic and dental workflows from a clean branch state and verify no branch-only fixture shortcut.
 - [ ] Obtain independent anatomical/print review on at least a second with-hole model, a real no-hole model, and the target printer/material before any claim of general dental print safety. This is a separate post-code validation gate, not a condition for pushing reviewed source to GitHub.
-- [ ] When code gates are evidenced, run fresh `npm test`, build, type check, browser walks, performance probe, independent collision probe, and diff check. Commit and push the feature branch; submit a reviewable PR if ready. Do not merge/deploy without separate approval. Update the handoff and close the software goal only when the code is reviewable on GitHub with remaining real-world validation clearly flagged.
+- [ ] When code gates are evidenced, run fresh `npm test`, build, type check, browser walks, performance probe, independent collision probe, and diff check. Commit and push the feature branch; submit a reviewable PR if ready. Do not call the software release-ready until every applicable software gate passes; do not merge/deploy without separate approval. Update the handoff with remaining real-world validation explicitly flagged.
 
 ## Resume rule
 

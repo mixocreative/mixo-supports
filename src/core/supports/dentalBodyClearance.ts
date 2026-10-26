@@ -15,7 +15,9 @@ export function crossingAutomaticBodyContactIds(model: TriangleMesh, supports: G
 /** Dental policy: report crossing tree and brace components for conservative mode fallback. */
 export function crossingSupportStructureParts(model: TriangleMesh, supports: GeneratedSupportMesh,
   settings: Readonly<LiveSupportSettings> = defaultSupportSettings): Array<'tree-branch' | 'tree-trunk' | 'brace'> {
-  const part = (component: SupportComponent) => component.part === 'tree-branch' || component.part === 'tree-trunk' || component.part === 'brace';
+  const treeNeck = (component: SupportComponent) => component.part === 'neck' && !!component.contactIntent?.length;
+  const part = (component: SupportComponent) => component.part === 'tree-branch' || component.part === 'tree-trunk' ||
+    component.part === 'brace' || treeNeck(component);
   if (!supports.components.some(part)) return [];
   const limits = {
     radiusMm: settings.neckLength + settings.pillarDiameter / 2 + contactRadius(settings),
@@ -23,6 +25,7 @@ export function crossingSupportStructureParts(model: TriangleMesh, supports: Gen
     faceNormalDotMin: 0.8,
   };
   return [...new Set(supportBodyConflicts(model, supports, part, false,
-    (hit) => hit.component.part === 'tree-branch' && isIntentionalContactReach(model, supports, hit, limits))
-    .map((hit) => hit.component.part as 'tree-branch' | 'tree-trunk' | 'brace'))].sort();
+    (hit) => (hit.component.part === 'tree-branch' || treeNeck(hit.component)) &&
+      isIntentionalContactReach(model, supports, hit, limits))
+    .map((hit) => treeNeck(hit.component) ? 'tree-branch' as const : hit.component.part as 'tree-branch' | 'tree-trunk' | 'brace'))].sort();
 }

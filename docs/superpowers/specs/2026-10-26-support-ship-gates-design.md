@@ -1,6 +1,6 @@
 # Generic and dental support ship gates
 
-Status: owner requested a full modular, shippable generic and dental implementation on 2026-10-26. “Ship” means code ready to push to GitHub, not clinical release. This design preserves the existing support shapes and makes safety reports explicit. It extends the approved dental rework plan; passing software gates on the single saved aligner must not be described as clinical validation.
+Status: owner requested a full modular, shippable generic and dental implementation on 2026-10-26. The latest clarification makes “ship” mean release-ready software, not merely code pushed to GitHub. This design preserves the existing support shapes and makes safety reports explicit. It extends the approved dental rework plan; passing software gates on the single saved aligner must not be described as clinical validation.
 
 ## Scope and ownership
 
@@ -18,7 +18,7 @@ An event is resolved only by a built support path to the raft/plate with a conta
 
 ## Performance and lifecycle
 
-Run analysis in a cancellable worker after Step 2 acceptance or ordinary Generate. Cache mesh adjacency and body spatial index by source geometry plus pose; invalidate them on geometry/pose change. A paint/spacing/diameter edit invalidates the support-body and path result. Put a budget on automatic rebuilds and alternate contacts; a timeout returns `inconclusive`, never “passed.” Show provisional Step 2 tips separately from final-safe built supports. Export recomputes full-resolution geometry through the same policy and refuses a stale or failed safety result. Report timings and peak memory on the retained 18.7 MB STL and one generic fixture.
+Run analysis in a cancellable worker after Step 2 acceptance or ordinary Generate. Cache mesh adjacency and body spatial index by source geometry plus pose; invalidate them on geometry/pose change. During generation, preflight each proposed pillar route and each brace/tree segment against the cached index, moving only automatic contacts within their mode's permitted region and a bounded candidate budget. This avoids rebuilding every full support mesh for obvious failed candidates; it does not replace a final exact triangle check of tapered tips, junctions, diameters, and the complete built mesh. A paint/spacing/diameter edit invalidates the support-body and path result. A timeout returns `inconclusive`, never “passed.” Show provisional Step 2 tips separately from final-safe built supports. Export recomputes full-resolution geometry through the same policy and refuses a stale or failed safety result. Report timings and peak memory on the retained 18.7 MB STL and one generic fixture.
 
 ## Software acceptance, not clinical certification
 

@@ -39,6 +39,24 @@ describe('isIntentionalContactReach', () => {
     expect(isIntentionalContactReach(model, supports, hit, limits)).toBe(false);
   });
 
+  it('accepts a shallow hit on an edge-adjacent face of the same smooth surface', () => {
+    const sheet: TriangleMesh = {
+      positions: new Float32Array([-1, 0, -1, 1, 0, -1, -1, 0, 1, 1, 0, 1]),
+      indices: new Uint32Array([0, 1, 2, 2, 1, 3]),
+    };
+    const { supports, hit } = fixture(near, 1);
+    expect(isIntentionalContactReach(sheet, supports, hit, limits)).toBe(true);
+  });
+
+  it('does not cross a shared edge when the source face points the opposite way', () => {
+    const folded: TriangleMesh = {
+      positions: new Float32Array([-1, 0, -1, 1, 0, -1, -1, 0, 1, 1, 0, 1]),
+      indices: new Uint32Array([0, 2, 1, 2, 1, 3]),
+    };
+    const { supports, hit } = fixture(near, 1);
+    expect(isIntentionalContactReach(folded, supports, hit, limits)).toBe(false);
+  });
+
   it('rejects a distant branch span or excessive penetration on the intended face', () => {
     const far = fixture([-0.1, -0.1, 0, 2, 0.05, 0, 0.1, -0.1, 0], 0);
     const deep = fixture([-0.1, -0.1, 0, 0.1, 0.4, 0, 0.1, -0.1, 0], 0);
