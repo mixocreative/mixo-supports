@@ -56,6 +56,7 @@
   - Partial pure selector: red/green tests now cover permission, order, cap, manual immobility, ambiguous original, and cancellation. No actual path/builder caller or mode-specific alternatives yet; checkbox stays open.
 - [ ] Benchmark the generic preflight against the current final-only path on the saved aligner and a synthetic high-collision generic model. Record index build, query and total Generate time, rebuild count, memory, and retained IDs. Keep preflight only with zero false-safe final results and a measured collision-heavy benefit without material clean-case regression.
 - [ ] Build full-resolution geometry for the shared safety decision, then derive display meshes. Generic policy reports/repairs automatic conflicts without changing dental anatomy; dental policy only searches its accepted contact strip and keeps unresolved gaps/islands explicit. Bound repair attempts and cancellation.
+  - Current `runSupportJob` has dental-only exact body/structure fallbacks. The new column-decision seam is not a generic safety gate; add the generic final check and explicit unresolved status before enabling generic pre-build omission or export claims. Treat contact-adjacent neck preflight hits as ambiguous unless the built contact intent certifies them.
 - [ ] Run direct worker/export parity tests, full `npm test`, build, and browser walks of ordinary Generate plus dental Steps 1–3. Commit.
 
 ## Task 5 — Dental coverage and outer-only aligners
