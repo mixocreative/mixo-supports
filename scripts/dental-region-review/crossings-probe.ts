@@ -9,6 +9,7 @@ import { largestCircularGap } from './rimCoverage';
 import { sampleDiagnosticContourContacts } from '../../src/core/analysis/dentalContourContacts';
 import { defaultDentalContactFootprintSettings } from '../../src/core/analysis/dentalContactFootprint';
 import { unresolvedCircularArcs } from './phaseGap';
+import { selectDentalGapAlternates } from '../../src/core/analysis/dentalGapAlternates';
 
 const input = process.argv[2];
 if (!input) throw new Error('Usage: npx vite-node --script scripts/dental-region-review/crossings-probe.ts model.stl');
@@ -36,15 +37,20 @@ const contourCoverage = (edges: Uint32Array, mask: Uint8Array, spacing: number) 
   const retained = sampled.filter((contact) => builtIds.has(positionId(transformPoint(orientationOnly, contact.position))));
   const shifted = sampleDiagnosticContourContacts(model, edges, mask,
     { spacing, phaseMm: 0, maxSearchDistance: defaultDentalContactFootprintSettings.maxSearchDistance });
+  const retainedAt = retained.map((contact) => contact.distanceAlongContour);
   return { perimeterMm: perimeter, proposed: sampled.length, retained: retained.length,
     maxProposedGapMm: largestCircularGap(perimeter, sampled.map((contact) => contact.distanceAlongContour)),
-    maxRetainedGapMm: largestCircularGap(perimeter, retained.map((contact) => contact.distanceAlongContour)),
+    maxRetainedGapMm: largestCircularGap(perimeter, retainedAt),
     omittedAtMm: sampled.filter((contact) => !builtIds.has(positionId(transformPoint(orientationOnly, contact.position))))
       .map((contact) => contact.distanceAlongContour),
     alternatePhaseArcs: shifted.kind === 'proposal'
-      ? unresolvedCircularArcs(perimeter, retained.map((contact) => contact.distanceAlongContour),
+      ? unresolvedCircularArcs(perimeter, retainedAt,
         shifted.contacts.map((contact) => ({ atMm: contact.distanceAlongContour, face: contact.face })), spacing * 2)
       : { inconclusive: shifted.reason },
+    selectedGapAlternates: shifted.kind === 'proposal'
+      ? selectDentalGapAlternates(perimeter, retainedAt, shifted.contacts, spacing * 2)
+        .map((contact) => ({ atMm: contact.distanceAlongContour, face: contact.face }))
+      : [],
   };
 };
 const rimCoverage = {
