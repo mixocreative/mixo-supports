@@ -19,3 +19,5 @@ For an exact support-body intersection diagnostic, run `npx vite-node --script s
 The approved neutral [reference STL and screenshots](../docs/dental-reference/README.md) remain in `docs/dental-reference`. The application code remains in `src/core/analysis/dental.ts` and `src/core/analysis/dentalRegion.ts`.
 
 The approved next architecture is a UI-independent [Rust/WASM geometry core](wasm-geometry-design.md), with a [phased migration and ship-gate plan](../docs/superpowers/plans/2026-10-27-wasm-geometry-migration.md). **The current app and this BAT script still use TypeScript geometry** until the relevant migration and parity gates pass. The future Babylon.js host will call the same WASM core; this is not a second dental algorithm. The live algorithm explanations above remain authoritative for current behavior and will be updated whenever a port changes that behavior.
+
+The [migration inventory](wasm-geometry-inventory.md) tracks the current worker/editor call paths and the pre-port test baseline. It explicitly marks what has **not** moved to WASM yet.

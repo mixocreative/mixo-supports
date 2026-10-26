@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/geometry-core", "crates/geometry-wasm"]
+resolver = "2"

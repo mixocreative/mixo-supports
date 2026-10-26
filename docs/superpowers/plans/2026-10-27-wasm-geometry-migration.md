@@ -48,7 +48,7 @@ The Rust source must be split further by responsibility as each phase lands; thi
 
 **Files:** Create `rust-toolchain.toml`, root `Cargo.toml`, `crates/geometry-core/Cargo.toml`, `crates/geometry-core/src/lib.rs`, `crates/geometry-wasm/Cargo.toml`, `crates/geometry-wasm/src/lib.rs`; modify `package.json`, `.gitignore`, CI workflow.
 
-- [ ] Install a verified Rust 1.99.1 toolchain and `wasm32-unknown-unknown` target without changing other installed toolchains. Pin the selected wasm-bindgen/wasm-pack version from its official release and lockfile; record checksums. `rustc`, `cargo`, `wasm-pack` are absent from PATH at plan time.
+- [x] Install a verified Rust 1.99.1 toolchain and `wasm32-unknown-unknown` target without changing other installed toolchains. Pin the selected wasm-bindgen/wasm-pack version from its official release and lockfile; record checksums. Rust binaries were present at `C:\Users\DCT\.cargo\bin` but absent from PATH; the default 1.89 toolchain was not changed. `wasm-pack` 0.15.0 and `wasm-bindgen` 0.2.129 are pinned in lockfiles.
 - [ ] Red test a versioned `engine_version()` export in native Rust, browser worker and Node; make it return one shared schema version. Reject a host/core version mismatch before any mesh is loaded.
 - [ ] Build release browser and Node packages from the same Rust revision. Add `npm run wasm:build`, `npm run wasm:test`, `cargo test --workspace`, and CI steps. Production build must fail if the generated WASM package is stale or missing; no silent TS fallback.
 - [ ] Commit and push only after native/Node/browser smoke, TS tests and `npm run build` pass. Update handoff and `graphify update .`.
