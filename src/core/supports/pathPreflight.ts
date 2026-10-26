@@ -1,6 +1,6 @@
 import type { Vector } from '../vec3';
 import type { ModelCollisionIndex } from './modelCollisionIndex';
-import { segmentIntersectsTriangle3D, type Triangle3D } from './triangleIntersection';
+import { segmentTriangleHitParameter, type Triangle3D } from './triangleIntersection';
 
 export type PathPreflightResult =
   | { status: 'clear' }
@@ -9,6 +9,10 @@ export type PathPreflightResult =
 
 export interface PathPreflightOptions {
   contactFace?: number;
+  /** Starting contact span to defer to the exact built-mesh classifier, in millimetres. */
+  uncertainStartMm?: number;
+  /** Ending contact span to defer to the exact built-mesh classifier, in millimetres. */
+  uncertainEndMm?: number;
   cancelled?: () => boolean;
 }
 
@@ -18,6 +22,8 @@ export function preflightSupportPath(index: ModelCollisionIndex, points: readonl
   if (options.cancelled?.()) return { status: 'inconclusive', reason: 'cancelled' };
   if (!index.valid || !Number.isFinite(index.cellMm) || index.cellMm <= 0 ||
     !Number.isFinite(radiusMm) || radiusMm < 0 || points.length < 2 ||
+    (options.uncertainStartMm !== undefined && (!Number.isFinite(options.uncertainStartMm) || options.uncertainStartMm < 0)) ||
+    (options.uncertainEndMm !== undefined && (!Number.isFinite(options.uncertainEndMm) || options.uncertainEndMm < 0)) ||
     (options.contactFace !== undefined && (!Number.isInteger(options.contactFace) ||
       options.contactFace < 0 || options.contactFace >= index.faceBounds.length)) ||
     points.some((point) => point.length !== 3 || point.some((coordinate) => !Number.isFinite(coordinate)))) {
@@ -27,9 +33,13 @@ export function preflightSupportPath(index: ModelCollisionIndex, points: readonl
   const seen = new Set<number>();
   let nearFace = false;
   let contactFace = false;
+  let travelledMm = 0;
+  const totalMm = points.reduce((sum, point, at) => at === 0 ? 0 : sum + Math.hypot(
+    point[0] - points[at - 1]![0], point[1] - points[at - 1]![1], point[2] - points[at - 1]![2]), 0);
   for (let segment = 0; segment < points.length - 1; segment++) {
     if (options.cancelled?.()) return { status: 'inconclusive', reason: 'cancelled' };
     const from = points[segment]!, to = points[segment + 1]!;
+    const segmentMm = Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
     const minX = Math.min(from[0], to[0]) - radiusMm, maxX = Math.max(from[0], to[0]) + radiusMm;
     const minY = Math.min(from[1], to[1]) - radiusMm, maxY = Math.max(from[1], to[1]) + radiusMm;
     const minZ = Math.min(from[2], to[2]) - radiusMm, maxZ = Math.max(from[2], to[2]) + radiusMm;
@@ -52,10 +62,20 @@ export function preflightSupportPath(index: ModelCollisionIndex, points: readonl
           return [model.positions[at]!, model.positions[at + 1]!, model.positions[at + 2]!];
         }) as unknown as Triangle3D;
         if (options.contactFace === face) { contactFace = true; continue; }
-        if (segmentIntersectsTriangle3D(from, to, triangle)) return { status: 'blocked', modelFaceIndex: face };
+        const hit = segmentTriangleHitParameter(from, to, triangle);
+        if (hit !== undefined) {
+          const atMm = travelledMm + hit * segmentMm;
+          if ((options.uncertainStartMm !== undefined && atMm <= options.uncertainStartMm) ||
+            (options.uncertainEndMm !== undefined && totalMm - atMm <= options.uncertainEndMm)) {
+            contactFace = true;
+            continue;
+          }
+          return { status: 'blocked', modelFaceIndex: face };
+        }
         nearFace = true;
       }
     }
+    travelledMm += segmentMm;
   }
   if (nearFace) return { status: 'inconclusive', reason: 'radius-envelope' };
   if (contactFace) return { status: 'inconclusive', reason: 'contact-reach' };

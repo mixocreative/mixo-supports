@@ -4,17 +4,22 @@ export type Triangle3D = readonly [Vector, Vector, Vector];
 
 const EPS = 1e-8;
 
-function segmentHitsTriangle(from: Vector, to: Vector, [a, b, c]: Triangle3D): boolean {
+/** Position along a non-coplanar segment when its centre line intersects a triangle. */
+export function segmentTriangleHitParameter(from: Vector, to: Vector, [a, b, c]: Triangle3D): number | undefined {
   const normal = cross(subtract(b, a), subtract(c, a));
   const direction = subtract(to, from);
   const denominator = dot(normal, direction);
-  if (Math.abs(denominator) < EPS) return false;
+  if (Math.abs(denominator) < EPS) return undefined;
   const t = dot(normal, subtract(a, from)) / denominator;
-  if (t < -EPS || t > 1 + EPS) return false;
+  if (t < -EPS || t > 1 + EPS) return undefined;
   const point: Vector = [from[0] + t * direction[0], from[1] + t * direction[1], from[2] + t * direction[2]];
   return dot(normal, cross(subtract(b, a), subtract(point, a))) >= -EPS &&
     dot(normal, cross(subtract(c, b), subtract(point, b))) >= -EPS &&
-    dot(normal, cross(subtract(a, c), subtract(point, c))) >= -EPS;
+    dot(normal, cross(subtract(a, c), subtract(point, c))) >= -EPS ? Math.max(0, Math.min(1, t)) : undefined;
+}
+
+function segmentHitsTriangle(from: Vector, to: Vector, triangle: Triangle3D): boolean {
+  return segmentTriangleHitParameter(from, to, triangle) !== undefined;
 }
 
 /** Exact centre-line hit used by conservative, radius-aware path preflight. */

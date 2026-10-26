@@ -7,6 +7,7 @@ import { columnLanding, lineTarget, neckDirection, sinkInto, treeLanding, upDire
 import { MeshBuilder, MIN_LENGTH } from './meshBuilder';
 import { addStructures } from './raftGeometry';
 import { zonedAt, type ZoneStamp } from './zones';
+import { routeFromNodes, type SupportRoute } from './supportRoute';
 import { add, dot, normalizeOrDown, scale, subtract, type Vector } from '../vec3';
 
 export type Point2 = [number, number];
@@ -96,6 +97,8 @@ export interface SupportMeshOptions {
   zones?: readonly ZoneStamp[];
   /** Reject an automatic support if its secondary contact would land on a forbidden model face. */
   landingAllowed?: (landing: Landing) => boolean;
+  /** Observe actual proposed tube centre-lines before their triangles are emitted; read-only. */
+  onRoute?: (route: SupportRoute) => void;
 }
 
 export interface Column {
@@ -159,7 +162,7 @@ export function buildSupportMesh(
   const pillarRadius = settings.pillarDiameter / 2;
   const columns: Column[] = [];
   const footprints: Point2[] = [];
-  const anchors: { id: string; position: Vector; own: Readonly<LiveSupportSettings> }[] = [];
+  const anchors: { id: string; position: Vector; own: Readonly<LiveSupportSettings>; origin: 'auto' | 'manual' }[] = [];
   const ray = options.model ? lineTarget(options.model, settings, options.remesh, exporting) : undefined;
   const progress = options.onProgress;
   const total = Math.max(contacts.length, 1);
@@ -219,6 +222,8 @@ export function buildSupportMesh(
       }
     }
     const neckEnd = column.curve.findIndex((node, i) => i > 0 && node.radius === pillarRadius);
+    if (!tipOnly && neckEnd >= 1) options.onRoute?.(routeFromNodes('neck', column.curve.slice(0, neckEnd + 1),
+      contact.id, contact.origin ?? 'auto'));
     builder.begin('neck', contact.id, undefined, contact.sourceFace === undefined ? undefined : [{
       kind: 'primary', contactId: contact.id, point: contact.position,
       normal: contact.normal, faceIndex: contact.sourceFace,
@@ -231,24 +236,35 @@ export function buildSupportMesh(
     if (column.landing && shaped) {
       // The tip landing on the model below gets the same shape as the top one.
       const last = lastThick(pillar, pillarRadius);
+      if (last < pillar.length - 1) options.onRoute?.(routeFromNodes('neck', pillar.slice(last),
+        contact.id, contact.origin ?? 'auto'));
       builder.begin('neck', contact.id);
       addTip(builder, pillar.slice(last), own, segments);
       builder.end();
       pillar = pillar.slice(0, last + 1);
     }
+    options.onRoute?.(routeFromNodes('pillar', pillar, contact.id, contact.origin ?? 'auto'));
     builder.begin('pillar', contact.id, column.landing && !shaped ? own.neckLength : undefined);
     builder.tube(pillar, segments);
     builder.end();
-    if (!column.landing) anchors.push({ id: contact.id, position: column.curve[column.curve.length - 1]!.point, own });
+    if (!column.landing) anchors.push({ id: contact.id, position: column.curve[column.curve.length - 1]!.point, own, origin: contact.origin ?? 'auto' });
   });
 
   if (!tipOnly) {
     for (const anchor of anchors) {
       const [x, y, z] = anchor.position;
       const footTop = anchor.own.baseHeight;
+      if (Math.abs(y - footTop) > MIN_LENGTH) options.onRoute?.(routeFromNodes('pillar', [
+        { point: anchor.position, radius: pillarRadius },
+        { point: [x, footTop, z], radius: pillarRadius },
+      ], anchor.id, anchor.origin));
       builder.begin('pillar', anchor.id);
       if (Math.abs(y - footTop) > MIN_LENGTH) builder.frustum(anchor.position, [x, footTop, z], pillarRadius, pillarRadius, segments);
       builder.end();
+      options.onRoute?.(routeFromNodes('foot', [
+        { point: [x, 0, z], radius: anchor.own.baseDiameter / 2 },
+        { point: [x, footTop, z], radius: pillarRadius },
+      ], anchor.id, anchor.origin));
       builder.begin('foot', anchor.id);
       builder.frustum([x, 0, z], [x, footTop, z], anchor.own.baseDiameter / 2, pillarRadius, segments);
       builder.end();
@@ -256,9 +272,9 @@ export function buildSupportMesh(
       footprints.push([x, z]);
     }
     progress?.(0.85, 'Building trees');
-    for (const tree of trees) addTree(builder, tree, contacts, settings, ray, segments, columns, footprints);
+    for (const tree of trees) addTree(builder, tree, contacts, settings, ray, segments, columns, footprints, options.onRoute);
     progress?.(0.9, 'Building raft and bracing');
-    if (settings.trussEnabled) addBraces(builder, columns, settings, segments);
+    if (settings.trussEnabled) addBraces(builder, columns, settings, segments, options.onRoute);
     addStructures(builder, footprints, settings, options, segments, raftTop);
   }
   const ids = (indices: Set<number>) => [...indices].sort((a, b) => a - b).map((index) => contacts[index]!.id);
@@ -283,6 +299,7 @@ function addTree(
   segments: number,
   columns: Column[],
   footprints: Point2[],
+  onRoute?: (route: SupportRoute) => void,
 ): void {
   const geometry = treeGeometry(tree, contacts, settings, ray);
   for (const sphere of geometry.spheres) {
@@ -292,6 +309,7 @@ function addTree(
   }
   const pillarRadius = settings.pillarDiameter / 2;
   for (const curve of geometry.curves) {
+    onRoute?.(routeFromNodes(curve.part, curve.nodes, curve.id));
     let nodes = curve.nodes;
     if (curve.part === 'tree-branch' && shapedTip(settings)) {
       // Split off the tapered ends (contact tips, a landing on the model) and shape them.
@@ -538,9 +556,11 @@ export function trussSegments(columns: readonly Column[], settings: Readonly<Liv
   return segments;
 }
 
-function addBraces(builder: MeshBuilder, columns: readonly Column[], settings: Readonly<LiveSupportSettings>, segments: number): void {
+function addBraces(builder: MeshBuilder, columns: readonly Column[], settings: Readonly<LiveSupportSettings>, segments: number,
+  onRoute?: (route: SupportRoute) => void): void {
   const radius = settings.trussDiameter / 2;
   for (const [from, to] of trussSegments(columns, settings)) {
+    onRoute?.(routeFromNodes('brace', [{ point: from, radius }, { point: to, radius }]));
     builder.begin('brace');
     builder.frustum(from, to, radius, radius, segments);
     builder.end();

@@ -47,6 +47,10 @@ A standalone path screen now asks a narrower question before any 3D support is b
 
 A separate trial selector now has the rule for what to do with several proposed locations: keep the first unblocked allowed location, never move a manually placed support, and stop after a fixed number of trials. If the original path is merely uncertain, leave it in place for the exact final check instead of shifting it on a guess. This is still a tested building block, not the live Generate behavior: the app must supply genuine allowed locations on the trim strip and real paths before it can move a pillar.
 
+The builder can now report the actual path of each support part while it is being made. It reports the narrow neck and shaft separately from the wider foot, plus Tree branches and braces. That matters because treating the wide foot as if the whole shaft were that wide would create false collision warnings. This reporting does not yet move or reject anything; the final built-support collision check is still required.
+
+The support builder can now show a read-only copy of each pillar, Tree, and Brace centre-line immediately before drawing that part. This lets the next step ask the path screen about the *same route the builder intends to draw*, including a pillar's route to the plate. It does not yet reject or move anything. The copy matters: a collision checker cannot accidentally bend the generated support by changing the points it receives.
+
 Ordinary pillar necks now remember their certified contact face too, without changing their printed shape. A separate label distinguishes a Tree neck from a pillar neck; otherwise the Tree fallback could wrongly fire on a pillar. These labels prepare the next collision report but do not yet approve any pillar-neck overlap.
 
 On the saved example, an independent mesh check finds no pillar crossing, but it still sees many tiny neck-to-model triangle overlaps. Those overlaps need a separate review before we can say every neck is touching only where intended. The new Tree check does not erase or approve them.
