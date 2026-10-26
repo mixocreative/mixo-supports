@@ -44,6 +44,8 @@ export type ContactIntent =
 
 export interface SupportComponent {
   part: SupportPart;
+  /** Marks a neck split from an Auto Tree branch rather than an ordinary pillar. */
+  structureKind?: 'tree';
   /** Owning contact for picking; structural parts (raft, braces, roof...) have none. */
   contactId?: string;
   /** First index into `indices`, and the number of indices (a multiple of 3). */
@@ -217,7 +219,10 @@ export function buildSupportMesh(
       }
     }
     const neckEnd = column.curve.findIndex((node, i) => i > 0 && node.radius === pillarRadius);
-    builder.begin('neck', contact.id);
+    builder.begin('neck', contact.id, undefined, contact.sourceFace === undefined ? undefined : [{
+      kind: 'primary', contactId: contact.id, point: contact.position,
+      normal: contact.normal, faceIndex: contact.sourceFace,
+    }]);
     addTip(builder, column.curve.slice(0, neckEnd + 1), own, segments);
     builder.end();
     if (tipOnly) return;
@@ -299,11 +304,11 @@ function addTree(
               ? intent : best, undefined);
           return closest ? [closest] : undefined;
         };
-        builder.begin('neck', curve.id, undefined, intentAt(nodes[0]!.point));
+        builder.begin('neck', curve.id, undefined, intentAt(nodes[0]!.point), 'tree');
         addTip(builder, nodes.slice(0, first + 1), settings, segments);
         builder.end();
         if (last < nodes.length - 1) {
-          builder.begin('neck', curve.id, undefined, intentAt(nodes[nodes.length - 1]!.point));
+          builder.begin('neck', curve.id, undefined, intentAt(nodes[nodes.length - 1]!.point), 'tree');
           addTip(builder, nodes.slice(last), settings, segments);
           builder.end();
         }

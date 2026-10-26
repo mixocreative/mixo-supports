@@ -11,10 +11,11 @@ export class MeshBuilder {
   private parts: SupportPart[] = [];
   private current?: SupportComponent;
 
-  begin(part: SupportPart, contactId?: string, landingReach?: number, contactIntent?: ContactIntent[]): void {
+  begin(part: SupportPart, contactId?: string, landingReach?: number, contactIntent?: ContactIntent[], structureKind?: 'tree'): void {
     this.current = { part, ...(contactId === undefined ? {} : { contactId }), start: this.indices.length, count: 0,
       ...(landingReach === undefined ? {} : { landingReach }),
-      ...(contactIntent === undefined ? {} : { contactIntent }) };
+      ...(contactIntent === undefined ? {} : { contactIntent }),
+      ...(structureKind === undefined ? {} : { structureKind }) };
   }
 
   end(): void {

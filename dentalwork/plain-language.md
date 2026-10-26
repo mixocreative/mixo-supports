@@ -43,6 +43,8 @@ A built two-branch Tree was checked with both round and square tips: it remember
 
 The next efficiency step is to check a proposed pillar path or brace before drawing its full mesh, then try a few nearby allowed positions when blocked. One shared search index makes those trials cheaper. The finished mesh still gets a final exact check: real diameters and joints can touch where a thin path did not.
 
+Ordinary pillar necks now remember their certified contact face too, without changing their printed shape. A separate label distinguishes a Tree neck from a pillar neck; otherwise the Tree fallback could wrongly fire on a pillar. These labels prepare the next collision report but do not yet approve any pillar-neck overlap.
+
 On the saved example, an independent mesh check finds no pillar crossing, but it still sees many tiny neck-to-model triangle overlaps. Those overlaps need a separate review before we can say every neck is touching only where intended. The new Tree check does not erase or approve them.
 
 There is **not yet one generic “support came through the wrong side of a wall” rule** used by every generator. Dental currently makes two separate decisions: it checks whether a second tip lands on an allowed, outward-facing surface, and it checks whether built pillars, trees, or braces cut through the aligner. The built-part intersection search is now a standalone generic function with tests, but ordinary supports do not yet call it as a mandatory safety gate. The dental rule for rejecting parts remains separate so aligner anatomy is not imposed on arbitrary models.

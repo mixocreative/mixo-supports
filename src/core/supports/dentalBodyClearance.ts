@@ -15,7 +15,7 @@ export function crossingAutomaticBodyContactIds(model: TriangleMesh, supports: G
 /** Dental policy: report crossing tree and brace components for conservative mode fallback. */
 export function crossingSupportStructureParts(model: TriangleMesh, supports: GeneratedSupportMesh,
   settings: Readonly<LiveSupportSettings> = defaultSupportSettings): Array<'tree-branch' | 'tree-trunk' | 'brace'> {
-  const treeNeck = (component: SupportComponent) => component.part === 'neck' && !!component.contactIntent?.length;
+  const treeNeck = (component: SupportComponent) => component.part === 'neck' && component.structureKind === 'tree';
   const part = (component: SupportComponent) => component.part === 'tree-branch' || component.part === 'tree-trunk' ||
     component.part === 'brace' || treeNeck(component);
   if (!supports.components.some(part)) return [];
