@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { TriangleMesh } from '../analysis/types';
 import { buildSupportMesh, type SupportContact } from './mesh';
 import { defaultSupportSettings } from './settings';
 
@@ -6,6 +7,24 @@ const plain = { ...defaultSupportSettings, roofMode: 'OFF' as const, roofSeededM
   raftEnabled: false, trussEnabled: false, scatterAutoTree: false };
 
 describe('buildSupportMesh proposed routes', () => {
+  it('marks a pillar ending on the model as an uncertain intentional landing reach', () => {
+    const model: TriangleMesh = {
+      positions: new Float32Array([-20, 6, -20, 20, 6, -20, 0, 6, 20, 30, 0, 30]),
+      indices: new Uint32Array([0, 2, 1]),
+    };
+    const contact: SupportContact = { id: 'auto-landing', position: [0, 12, 0], normal: [0, -1, 0] };
+    let pillarReach: number | undefined;
+    let pillarEndY: number | undefined;
+    buildSupportMesh([contact], plain, { model, decideColumn: (proposal) => {
+      const pillar = proposal.routes.find((route) => route.part === 'pillar');
+      pillarReach = pillar?.uncertainEndMm;
+      pillarEndY = pillar?.points.at(-1)?.[1];
+      return 'build';
+    } });
+    expect(pillarEndY).toBeCloseTo(6 - plain.pointDepth);
+    expect(pillarReach).toBeCloseTo(plain.neckLength);
+  });
+
   it('can omit a rejected automatic column before emitting even its tip', () => {
     const contact: SupportContact = { id: 'auto-blocked', position: [0, 12, 0], normal: [0, -1, 0] };
     const seen: string[][] = [];

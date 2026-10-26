@@ -24,6 +24,7 @@ describe('dental import and preview parity', () => {
     const review = buildDentalReview(unit.source);
     expect(review.kind).toBe('proposal');
     if (review.kind !== 'proposal') return;
+    expect(review.supports.droppedByPath).toBeUndefined();
     const retained = new Set(review.supports.components.flatMap((part) => part.contactId ? [part.contactId] : []));
     expect(retained.size).toBe(100);
     const shifted = sampleDiagnosticContourContacts(unit.source, review.region.openingEdges,
@@ -51,11 +52,18 @@ describe('dental import and preview parity', () => {
     const turn = { position: [0, 0, 0] as [number, number, number], rotation: review.frame.rotation };
     const localPoints = review.placement.points.map((point) => ({ ...point,
       position: inverseTransformPoint(turn, point.position), normal: inverseTransformDirection(turn, point.normal) }));
-    const preview = runSupportJob({ mesh, dental: { kind: 'two-contour', rim: orientation.rim, region: review.region, stamps: [] },
+    const supportJob = { mesh, dental: { kind: 'two-contour' as const, rim: orientation.rim, region: review.region, stamps: [] },
       frame: review.frame, settings: { ...defaultSupportSettings, roofSeededModes: [] },
       contacts: { points: localPoints, manual: [], deleted: [], zones: [], contactSettings: {} },
-      labelText: 'A', mode: 'preview' });
+      labelText: 'A', mode: 'preview' as const };
+    const preview = runSupportJob(supportJob);
     const ids = (supports: typeof preview) => [...new Set(supports.components.flatMap((part) => part.contactId ? [part.contactId] : []))].sort();
     expect(ids(preview)).toEqual(ids(review.supports));
+    const enabled = runSupportJob({ ...supportJob, mode: 'export' }, undefined, { pathPreflight: true });
+    const baseline = runSupportJob({ ...supportJob, mode: 'export' }, undefined, { pathPreflight: false });
+    expect(baseline.droppedByPath).toBeUndefined();
+    expect(ids(enabled)).toEqual(ids(baseline));
+    expect(enabled.droppedByPath?.every((id) => baseline.dropped.includes(id))).toBe(true);
+    expect(enabled.indices.length).toBe(baseline.indices.length);
   }, 180000);
 });

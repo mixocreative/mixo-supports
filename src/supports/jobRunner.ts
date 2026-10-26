@@ -10,9 +10,10 @@ import { proposeDentalContactFootprint } from '../core/analysis/dentalContactFoo
 import { dentalRegionAllowedOnFace, dentalSupportAllowedAt, type DentalPolicy } from '../core/analysis/dentalPolicy';
 import { jobContacts, type CheckJob, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
 import { cross, normalize, subtract, type Vector } from '../core/vec3';
-import { buildSupportMesh, type GeneratedSupportMesh } from '../core/supports/mesh';
+import { buildSupportMesh, type GeneratedSupportMesh, type SupportMeshOptions } from '../core/supports/mesh';
 import { crossingAutomaticBodyContactIds, crossingSupportStructureParts } from '../core/supports/dentalBodyClearance';
 import { createModelCollisionIndex } from '../core/supports/modelCollisionIndex';
+import { screenColumnRoutes } from '../core/supports/columnPathScreen';
 import { dentalBuildSettings } from '../core/supports/dentalSettings';
 import type { Landing } from '../core/supports/landing';
 import { dentalSecondaryLandingOnApprovedSide } from './dentalLandingSide';
@@ -74,7 +75,8 @@ function cachedRemesh(source: object, frame: JobTransform, model: ReturnType<typ
  * the automatic contacts it left out for a forbidden secondary landing (`dropped`). The remesh and
  * raft caches are keyed on `job.mesh`, so passing the same mesh object again keeps them warm.
  */
-export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): GeneratedSupportMesh {
+export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback,
+  options: { pathPreflight?: boolean } = {}): GeneratedSupportMesh {
   const { frame } = job;
   if (frame === null) return buildSupportMesh([], defaultSupportSettings);
   const dental = job.dental;
@@ -114,7 +116,14 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
   const landingAllowed = dentalValid && dental?.kind === 'two-contour'
     ? (landing: Landing): boolean => dentalSecondaryLandingOnApprovedSide(job.mesh, dental, frame, landing)
     : undefined;
-  const buildOptions = {
+  const pathDropped = new Set<string>();
+  const decideColumn: SupportMeshOptions['decideColumn'] = collisionIndex && options.pathPreflight === true ? (proposal) => {
+    if (screenColumnRoutes(collisionIndex, proposal.routes).status !== 'blocked') return 'build';
+    if (proposal.origin === 'manual') return 'build';
+    pathDropped.add(proposal.contactId);
+    return 'omit';
+  } : undefined;
+  const buildOptions: SupportMeshOptions = {
     mode: job.mode,
     labelText: job.labelText,
     model,
@@ -124,6 +133,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     ...(onProgress ? { onProgress } : {}),
     zones: job.contacts.zones.map((stamp) => ({ ...stamp, center: transformPoint(frame, stamp.center), normal: transformDirection(frame, stamp.normal) })),
     ...(landingAllowed ? { landingAllowed } : {}),
+    ...(decideColumn ? { decideColumn } : {}),
   };
   let effectiveSettings = settings;
   let mesh = buildSupportMesh(contacts, effectiveSettings, buildOptions);
@@ -172,6 +182,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     if (!structureFallback.includes('brace')) structureFallback.push('brace');
   }
   if (structureFallback.length > 0) mesh.dentalStructureFallback = structureFallback;
+  if (decideColumn) mesh.droppedByPath = [...new Set([...(mesh.droppedByPath ?? []), ...pathDropped])];
   mesh.dropped = [...new Set([...mesh.dropped, ...rejectedAutoIds])];
   if (dental?.kind === 'two-contour' && currentDental?.contacts.every((candidate) => candidate.rim)) {
     const footprintSettings = dentalFootprintSettings(dental.tuning ?? defaultDentalTuning);

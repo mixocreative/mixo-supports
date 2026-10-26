@@ -231,7 +231,8 @@ export function buildSupportMesh(
       const routes: SupportRoute[] = [];
       if (neckEnd >= 1) routes.push(routeFromNodes('neck', neck, contact.id, origin));
       if (secondaryNeck) routes.push(routeFromNodes('neck', secondaryNeck, contact.id, origin));
-      routes.push(routeFromNodes('pillar', pillar, contact.id, origin));
+      routes.push(routeFromNodes('pillar', pillar, contact.id, origin,
+        column.landing && !shaped ? own.neckLength : undefined));
       if (!column.landing) {
         const anchor = column.curve[column.curve.length - 1]!.point;
         const [x, y, z] = anchor;
@@ -275,7 +276,8 @@ export function buildSupportMesh(
       addTip(builder, secondaryNeck, own, segments);
       builder.end();
     }
-    options.onRoute?.(routeFromNodes('pillar', pillar, contact.id, contact.origin ?? 'auto'));
+    options.onRoute?.(routeFromNodes('pillar', pillar, contact.id, contact.origin ?? 'auto',
+      column.landing && !shaped ? own.neckLength : undefined));
     builder.begin('pillar', contact.id, column.landing && !shaped ? own.neckLength : undefined);
     builder.tube(pillar, segments);
     builder.end();
