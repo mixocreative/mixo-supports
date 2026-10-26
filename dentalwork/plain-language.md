@@ -45,6 +45,8 @@ The collision search now builds one map of the transformed model per dental Gene
 
 A standalone path screen now asks a narrower question before any 3D support is built: is there definitely no model surface within the proposed tube's radius box, or does its centre line definitely pierce a face? It says **clear**, **blocked**, or **not sure**. A nearby face, a known intended tip, damaged model data, or an interrupted calculation produces **not sure**, never an automatic safety pass. This screen is not yet connected to Generate; it does not relocate or remove pillars. The exact finished-mesh check remains the authority.
 
+A separate trial selector now has the rule for what to do with several proposed locations: keep the first unblocked allowed location, never move a manually placed support, and stop after a fixed number of trials. If the original path is merely uncertain, leave it in place for the exact final check instead of shifting it on a guess. This is still a tested building block, not the live Generate behavior: the app must supply genuine allowed locations on the trim strip and real paths before it can move a pillar.
+
 Ordinary pillar necks now remember their certified contact face too, without changing their printed shape. A separate label distinguishes a Tree neck from a pillar neck; otherwise the Tree fallback could wrongly fire on a pillar. These labels prepare the next collision report but do not yet approve any pillar-neck overlap.
 
 On the saved example, an independent mesh check finds no pillar crossing, but it still sees many tiny neck-to-model triangle overlaps. Those overlaps need a separate review before we can say every neck is touching only where intended. The new Tree check does not erase or approve them.
