@@ -12,6 +12,7 @@ import { jobContacts, type CheckJob, type DentalPlacementJob, type JobTransform,
 import { cross, normalize, subtract, type Vector } from '../core/vec3';
 import { buildSupportMesh, type GeneratedSupportMesh } from '../core/supports/mesh';
 import { crossingAutomaticBodyContactIds, crossingSupportStructureParts } from '../core/supports/dentalBodyClearance';
+import { createModelCollisionIndex } from '../core/supports/modelCollisionIndex';
 import { dentalBuildSettings } from '../core/supports/dentalSettings';
 import type { Landing } from '../core/supports/landing';
 import { dentalSecondaryLandingOnApprovedSide } from './dentalLandingSide';
@@ -108,6 +109,8 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     };
   });
   const model = applyTransform(job.mesh, frame);
+  // One transformed-model index serves every exact clearance pass and bounded rebuild.
+  const collisionIndex = dental?.kind === 'two-contour' ? createModelCollisionIndex(model) : undefined;
   const landingAllowed = dentalValid && dental?.kind === 'two-contour'
     ? (landing: Landing): boolean => dentalSecondaryLandingOnApprovedSide(job.mesh, dental, frame, landing)
     : undefined;
@@ -128,12 +131,12 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
   if (dental?.kind === 'two-contour') {
     // Structural intersections cannot be assigned to one contact (a trunk/brace may serve many).
     // Drop only the unsafe structural mode, rebuild, and keep the approved contact candidates.
-    if (effectiveSettings.scatterAutoTree && crossingSupportStructureParts(model, mesh, effectiveSettings).some((part) => part.startsWith('tree-'))) {
+    if (effectiveSettings.scatterAutoTree && crossingSupportStructureParts(model, mesh, effectiveSettings, collisionIndex).some((part) => part.startsWith('tree-'))) {
       effectiveSettings = { ...effectiveSettings, scatterAutoTree: false };
       structureFallback.push('tree');
       mesh = buildSupportMesh(contacts, effectiveSettings, buildOptions);
     }
-    if (effectiveSettings.trussEnabled && crossingSupportStructureParts(model, mesh, effectiveSettings).includes('brace')) {
+    if (effectiveSettings.trussEnabled && crossingSupportStructureParts(model, mesh, effectiveSettings, collisionIndex).includes('brace')) {
       effectiveSettings = { ...effectiveSettings, trussEnabled: false };
       structureFallback.push('brace');
       mesh = buildSupportMesh(contacts, effectiveSettings, buildOptions);
@@ -141,7 +144,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
   }
   if (dental?.kind === 'two-contour' && hasAutomatic) {
     const automaticIds = new Set(contacts.filter((contact) => contact.origin !== 'manual').map((contact) => contact.id));
-    const crossing = crossingAutomaticBodyContactIds(model, mesh, automaticIds);
+    const crossing = crossingAutomaticBodyContactIds(model, mesh, automaticIds, collisionIndex);
     if (crossing.length > 0) {
       const blocked = new Set(crossing);
       const dropped = new Set(mesh.dropped);
@@ -150,7 +153,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
       for (const id of mesh.dropped) dropped.add(id);
       // A changed tree/brace layout can expose another shaft. Bound the rebuild cost and refuse
       // all remaining automatic supports if that happens rather than returning a crossing body.
-      const remaining = crossingAutomaticBodyContactIds(model, mesh, new Set([...automaticIds].filter((id) => !blocked.has(id))));
+      const remaining = crossingAutomaticBodyContactIds(model, mesh, new Set([...automaticIds].filter((id) => !blocked.has(id))), collisionIndex);
       if (remaining.length > 0) {
         for (const id of automaticIds) blocked.add(id);
         mesh = buildSupportMesh(safeContacts.filter((contact) => contact.origin === 'manual'), effectiveSettings, buildOptions);
@@ -158,7 +161,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
       mesh.dropped = [...new Set([...dropped, ...mesh.dropped, ...blocked])];
     }
   }
-  if (dental?.kind === 'two-contour' && crossingSupportStructureParts(model, mesh, effectiveSettings).length > 0) {
+  if (dental?.kind === 'two-contour' && crossingSupportStructureParts(model, mesh, effectiveSettings, collisionIndex).length > 0) {
     // Rebuilding after a pillar omission can rearrange a tree or brace. Do not export any
     // automatic structure if the bounded fallback still intersects the patient mesh.
     const omitted = new Set([...mesh.dropped, ...contacts.filter((contact) => contact.origin !== 'manual').map((contact) => contact.id)]);

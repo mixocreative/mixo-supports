@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TriangleMesh } from '../analysis/types';
 import type { GeneratedSupportMesh, SupportPart } from './mesh';
 import { intersectingSupportComponents, supportBodyConflicts } from './bodyIntersection';
+import { createModelCollisionIndex } from './modelCollisionIndex';
 
 const model: TriangleMesh = {
   positions: new Float32Array([-2, 0, -2, 2, 0, -2, 0, 0, 2]),
@@ -28,6 +29,14 @@ describe('intersectingSupportComponents', () => {
     expect(intersectingSupportComponents(model, mesh, () => true)).toEqual(mesh.components);
     expect(intersectingSupportComponents(model, mesh, () => true, true)).toEqual([]);
   });
+  it('passes a supplied model index through the compatibility view', () => {
+    const index = createModelCollisionIndex(model);
+    const otherModel = { ...model, positions: new Float32Array(model.positions) };
+    const mesh = support('brace', piercing);
+    expect(intersectingSupportComponents(model, mesh, () => true, false, index)).toEqual(mesh.components);
+    expect(() => intersectingSupportComponents(otherModel, mesh, () => true, false, index))
+      .toThrow('collision index belongs to another model');
+  });
 });
 
 describe('supportBodyConflicts', () => {
@@ -46,5 +55,23 @@ describe('supportBodyConflicts', () => {
     const mesh = support('tree-branch', [-1, -1, 0, 1, 3, 0, 1, -1, 0]);
     expect(supportBodyConflicts(twoWalls, mesh, () => true, false,
       (hit) => hit.modelFaceIndex === 0)).toMatchObject([{ modelFaceIndex: 1 }]);
+  });
+
+  it('reuses one model index across part checks and refuses a different model', () => {
+    const twoWalls: TriangleMesh = {
+      positions: new Float32Array([...model.positions, -2, 2, -2, 2, 2, -2, 0, 2, 2]),
+      indices: new Uint32Array([0, 1, 2, 3, 4, 5]),
+    };
+    const mesh = support('tree-branch', [-1, -1, 0, 1, 3, 0, 1, -1, 0]);
+    const index = createModelCollisionIndex(twoWalls);
+    const baseline = supportBodyConflicts(twoWalls, mesh, () => true, false,
+      (hit) => hit.modelFaceIndex === 0);
+    expect(supportBodyConflicts(twoWalls, mesh, () => true, false,
+      (hit) => hit.modelFaceIndex === 0, index)).toEqual(baseline);
+    expect(supportBodyConflicts(twoWalls, mesh, () => true, false, undefined, index)).toMatchObject([
+      { modelFaceIndex: 0 },
+    ]);
+    expect(() => supportBodyConflicts(model, mesh, () => true, false, undefined, index))
+      .toThrow('collision index belongs to another model');
   });
 });

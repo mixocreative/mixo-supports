@@ -1,10 +1,9 @@
 import type { TriangleMesh } from '../analysis/types';
 import type { GeneratedSupportMesh, SupportComponent } from './mesh';
-import { meshBounds, tipsOf } from './meshQuery';
+import { tipsOf } from './meshQuery';
+import { createModelCollisionIndex, type CollisionBounds, type ModelCollisionIndex } from './modelCollisionIndex';
 import type { Vector } from '../vec3';
 import { trianglesIntersect3D, type Triangle3D } from './triangleIntersection';
-
-type Bounds = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number };
 
 export interface SupportBodyConflict {
   componentIndex: number;
@@ -20,7 +19,7 @@ function triangle(mesh: TriangleMesh, face: number): Triangle3D {
   return [vertex(0), vertex(1), vertex(2)];
 }
 
-function bounds([a, b, c]: Triangle3D): Bounds {
+function bounds([a, b, c]: Triangle3D): CollisionBounds {
   return { minX: Math.min(a[0], b[0], c[0]), maxX: Math.max(a[0], b[0], c[0]),
     minY: Math.min(a[1], b[1], c[1]), maxY: Math.max(a[1], b[1], c[1]),
     minZ: Math.min(a[2], b[2], c[2]), maxZ: Math.max(a[2], b[2], c[2]) };
@@ -31,24 +30,14 @@ function bounds([a, b, c]: Triangle3D): Bounds {
  */
 export function supportBodyConflicts(model: TriangleMesh, supports: GeneratedSupportMesh,
   select: (component: SupportComponent) => boolean, skipLandingTips = false,
-  allowHit?: (hit: SupportBodyConflict) => boolean): SupportBodyConflict[] {
+  allowHit?: (hit: SupportBodyConflict) => boolean, collisionIndex?: ModelCollisionIndex): SupportBodyConflict[] {
   if (model.indices.length === 0 || supports.indices.length === 0) return [];
-  const extent = meshBounds(model);
-  const cell = Math.max(0.5, Math.max(extent.max[0] - extent.min[0], extent.max[2] - extent.min[2]) / 64);
-  const cells = new Map<string, number[]>();
-  const modelBounds: Bounds[] = [];
+  const index = collisionIndex ?? createModelCollisionIndex(model);
+  if (index.model !== model) throw new Error('collision index belongs to another model');
+  const cell = index.cellMm;
+  const cells = index.cells;
+  const modelBounds = index.faceBounds;
   const key = (x: number, z: number) => `${x}|${z}`;
-  for (let face = 0; face < model.indices.length / 3; face++) {
-    const box = bounds(triangle(model, face));
-    modelBounds.push(box);
-    for (let x = Math.floor(box.minX / cell); x <= Math.floor(box.maxX / cell); x++) {
-      for (let z = Math.floor(box.minZ / cell); z <= Math.floor(box.maxZ / cell); z++) {
-        const id = key(x, z);
-        const list = cells.get(id);
-        if (list) list.push(face); else cells.set(id, [face]);
-      }
-    }
-  }
   const tipView = skipLandingTips ? tipsOf(supports) : undefined;
   const triangleKey = (indices: Uint32Array, at: number) => `${indices[at]},${indices[at + 1]},${indices[at + 2]}`;
   const landingTips = new Set<string>();
@@ -90,6 +79,7 @@ export function supportBodyConflicts(model: TriangleMesh, supports: GeneratedSup
 
 /** Compatibility view for callers that only need the intersecting component identity. */
 export function intersectingSupportComponents(model: TriangleMesh, supports: GeneratedSupportMesh,
-  select: (component: SupportComponent) => boolean, skipLandingTips = false): SupportComponent[] {
-  return supportBodyConflicts(model, supports, select, skipLandingTips).map((hit) => hit.component);
+  select: (component: SupportComponent) => boolean, skipLandingTips = false,
+  collisionIndex?: ModelCollisionIndex): SupportComponent[] {
+  return supportBodyConflicts(model, supports, select, skipLandingTips, undefined, collisionIndex).map((hit) => hit.component);
 }

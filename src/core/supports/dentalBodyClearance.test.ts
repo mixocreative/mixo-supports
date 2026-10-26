@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TriangleMesh } from '../analysis/types';
 import type { GeneratedSupportMesh, SupportPart } from './mesh';
 import { crossingAutomaticBodyContactIds, crossingSupportStructureParts } from './dentalBodyClearance';
+import { createModelCollisionIndex } from './modelCollisionIndex';
 
 const surface: TriangleMesh = {
   positions: new Float32Array([-2, 0, -2, 2, 0, -2, 0, 0, 2]), indices: new Uint32Array([0, 1, 2]),
@@ -29,6 +30,13 @@ describe('crossingAutomaticBodyContactIds', () => {
     expect(crossingAutomaticBodyContactIds(surface,
       body('pillar', [-1, 0, 0, 1, 0, 0, 0, 0, 1]), new Set(['auto-1']))).toEqual(['auto-1']);
   });
+  it('reuses a supplied generic model index for pillar checks', () => {
+    const index = createModelCollisionIndex(surface);
+    const mesh = body('pillar', piercing);
+    expect(crossingAutomaticBodyContactIds(surface, mesh, new Set(['auto-1']), index)).toEqual(['auto-1']);
+    expect(() => crossingAutomaticBodyContactIds({ ...surface }, mesh, new Set(['auto-1']), index))
+      .toThrow('collision index belongs to another model');
+  });
 });
 
 describe('crossingSupportStructureParts', () => {
@@ -41,6 +49,13 @@ describe('crossingSupportStructureParts', () => {
   });
   it('accepts structures that stay clear of the model', () => {
     expect(crossingSupportStructureParts(surface, body('tree-branch', [-1, 1, 0, 1, 2, 0, 1, 1, 0]))).toEqual([]);
+  });
+  it('reuses a supplied generic model index for structural checks', () => {
+    const index = createModelCollisionIndex(surface);
+    const mesh = body('brace', piercing);
+    expect(crossingSupportStructureParts(surface, mesh, undefined, index)).toEqual(['brace']);
+    expect(() => crossingSupportStructureParts({ ...surface }, mesh, undefined, index))
+      .toThrow('collision index belongs to another model');
   });
 
   it('allows only a shallow tree reach on its known face, never a nearby second wall', () => {

@@ -41,7 +41,7 @@ Because the aligner surface is made of many small triangles, a tip may touch the
 
 A built two-branch Tree was checked with both round and square tips: it remembers both intended top contacts and its lower landing, and a separate wall crossing still fails. The first check missed a square tip's short neck because that neck is stored separately from the Tree branch; a new test caught it, and the Tree safety check now includes that tagged neck. Ordinary pillar necks still need separate classification. This is a targeted software test, not proof that all patient models or all contacts are safe.
 
-The next efficiency step is to check a proposed pillar path or brace before drawing its full mesh, then try a few nearby allowed positions when blocked. One shared search index makes those trials cheaper. The finished mesh still gets a final exact check: real diameters and joints can touch where a thin path did not.
+The collision search now builds one map of the transformed model per dental Generate and reuses it when checking pillars, trees, braces, and a rebuilt result. This removes repeated map construction; it does not yet move a blocked support. The next efficiency step is to check a proposed pillar path or brace before drawing its full mesh, then try a few nearby allowed positions when blocked. The finished mesh still needs the exact check: real diameters and joints can touch where a thin path did not.
 
 Ordinary pillar necks now remember their certified contact face too, without changing their printed shape. A separate label distinguishes a Tree neck from a pillar neck; otherwise the Tree fallback could wrongly fire on a pillar. These labels prepare the next collision report but do not yet approve any pillar-neck overlap.
 
