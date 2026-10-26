@@ -1,5 +1,5 @@
 import { filterDentalPlacement, runCheckJob, runPlacementJob } from '../supports/jobRunner';
-import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
+import { proposeDentalSupportRegion, retuneDentalSupportRegion } from '../core/analysis/dentalRegion';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
 import { serveTask, transferable } from './serveTask';
 
@@ -15,9 +15,11 @@ serveTask<AnalysisTask, AnalysisResult>((task, { progress: post }) => {
     post({ fraction, stage });
   };
   if (task.kind === 'check') return { kind: 'checked', problems: runCheckJob(task.job, progress) };
-  if (task.kind === 'dental-region') {
+  if (task.kind === 'dental-region' || task.kind === 'dental-retune') {
     progress(0, 'Detecting dental contours');
-    const region = proposeDentalSupportRegion(task.job.mesh);
+    const region = task.kind === 'dental-region'
+      ? proposeDentalSupportRegion(task.job.mesh)
+      : retuneDentalSupportRegion(task.job.mesh, task.job.region, task.job.tuning);
     progress(1, 'Dental region ready');
     return region.kind === 'proposal'
       ? transferable({ kind: 'dental-region-result', region }, [region.allowedFaces.buffer, region.outerEdges.buffer,

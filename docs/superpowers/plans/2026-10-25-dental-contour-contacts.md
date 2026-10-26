@@ -78,6 +78,8 @@ Files: `src/App.tsx`, `src/components/DentalBar.tsx`, viewport overlay and tests
 
 The standalone batch uses the live narrow-contact code for the sole available reference and reports omitted tips. Its teal overlay marks the current narrow candidate footprint, but this exporter checkpoint is not Task 5 acceptance or dental certification.
 
+Step 2 tuning checkpoint 2026-10-26: the live brush bar now has bounded strip width and support-density sliders plus advanced rim setback. The values persist in each accepted dental policy and cause a debounced worker recomputation of the exact non-cavity-side face mask and proposed tips; Step 2 hides stale tips and disables Next during retuning. The builder revalidates the tuned mask and uses tuned spacing for final rim warnings. The browser walk passed all 38 checks after exercising all three controls (13,176→13,815→10,856 mask faces; 117→130 proposed tips after density), with 112 final supports and an unresolved 9.1 mm opening-rim gap. This is one-STL UX/parity evidence, not proof that arbitrary expanded strips avoid upper tooth surfaces. The phase-0 gap candidates remain diagnostic, and broader body/island/no-hole/independent-model gates above still prevent release.
+
 ## Handoff after every checkpoint
 
 Update `docs/dental-rework-handoff.md` and the private orchestration handoff with commit, files, red/green commands, exact observations, open safety risks, and one next action. Push only tested branch checkpoints. Main model owns anatomy and release judgment; use local Ollama only for bounded mechanical work, then verify every result.

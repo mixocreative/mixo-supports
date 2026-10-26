@@ -110,6 +110,22 @@ describe('analysis client', () => {
     await expect(pending).resolves.toEqual(region);
   });
 
+  it('retunes an accepted dental region in a replaceable worker job', async () => {
+    const { workers, create } = pool();
+    const client = new AnalysisClient(create, () => {}, 1);
+    const source = mesh();
+    const region = { kind: 'proposal' } as never;
+    const tuning = { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 };
+    const pending = client.retuneDentalRegion('dental-retune:a', source, region, tuning, label);
+    const task = workers[0]!.received[0]!.payload;
+    expect(task.kind).toBe('dental-retune');
+    expect(task.job.mesh).not.toBe(source);
+    expect(task.job).toMatchObject({ region, tuning });
+    const answer = { kind: 'inconclusive' as const, reason: 'invalid-contour' };
+    workers[0]!.done(0, { kind: 'dental-region-result', region: answer });
+    await expect(pending).resolves.toEqual(answer);
+  });
+
   it('replaces a queued job and stops a running one by replacing its worker', async () => {
     const { workers, create } = pool();
     const progress: string[] = [];

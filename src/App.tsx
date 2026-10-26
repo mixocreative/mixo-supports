@@ -31,6 +31,7 @@ import { useFixSpot } from './components/useFixSpot';
 import { useExport } from './components/useExport';
 import { useRegenerate } from './components/useRegenerate';
 import { currentDentalPreview, useDentalPreview } from './components/useDentalPreview';
+import { useDentalTuning } from './components/useDentalTuning';
 import { useProjectFile } from './components/useProjectFile';
 import { isProjectFile } from './state/projectFile';
 import { hint } from './components/hint';
@@ -291,7 +292,8 @@ export default function App() {
   const { generate, generateDental, generating, regenQueued, scheduleRegenerate, forgetPlacing } = useRegenerate({
     sceneRef, mode: editMode, targets, analysis, unitName, dispatch, offerUndo, setStatus, setStatusMessage,
   });
-  const dentalPreviewState = useDentalPreview(activeUnit, editMode === 'dental' && session.dentalStage === 'area', analysis, unitName);
+  const dentalTuning = useDentalTuning(activeUnit, editMode === 'dental' && session.dentalStage === 'area', analysis, dispatch, unitName);
+  const dentalPreviewState = useDentalPreview(activeUnit, editMode === 'dental' && session.dentalStage === 'area' && !dentalTuning.busy, analysis, unitName);
   const dentalPreview = dentalPreviewState.kind === 'ready' ? currentDentalPreview(activeUnit, dentalPreviewState.preview) : undefined;
 
   const requested = useRef(new Map<string, { unit: PrintUnit; index: number }>());
@@ -1046,7 +1048,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hidden={zonesHidden} ui={ui} send={send} run={runCommand} />
-          : press.kind === 'dental-orientation' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview?.localPoints.length ?? 0} previewStatus={dentalPreviewState.kind} reviewReady={Boolean(activeUnit?.supports && built.get(activeUnit.id)?.unit === activeUnit)} rimGap={dentalRimGap} send={send} run={runCommand} />
+          : press.kind === 'dental-orientation' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview?.localPoints.length ?? 0} previewStatus={dentalPreviewState.kind} reviewReady={Boolean(activeUnit?.supports && built.get(activeUnit.id)?.unit === activeUnit)} rimGap={dentalRimGap} tuning={dentalTuning.tuning} tuningBusy={dentalTuning.busy} tuningError={dentalTuning.error} onTuningChange={dentalTuning.change} send={send} run={runCommand} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>

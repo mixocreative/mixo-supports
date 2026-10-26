@@ -3,6 +3,7 @@ import { contactsHiddenByMarkers, rekeyPoints, remapDeleted } from '../core/anal
 import { defaultSupportSettings, parseShapeOverride, type ShapeOverride } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { DentalAllowStamp, DentalPolicy } from '../core/analysis/dentalPolicy';
+import { parseDentalTuning } from '../core/analysis/dentalTuning';
 import type { ModelTransform } from './transform';
 
 export { identityTransform } from './transform';
@@ -377,7 +378,8 @@ function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPoli
       }
     }
     for (const value of [...region.outerEdges, ...region.outerRidgeEdges, ...region.outerConnectorEdges, ...region.openingEdges]) if (value >= mesh.positions.length / 3) throw new TypeError('dental region edge is outside the mesh');
-    return { ...base, kind: 'two-contour', region: {
+    return { ...base, kind: 'two-contour',
+      ...(policy.tuning ? { tuning: parseDentalTuning(policy.tuning) } : {}), region: {
       kind: 'proposal', allowedFaces: new Uint8Array(region.allowedFaces), outerEdges: new Uint32Array(region.outerEdges),
       outerRidgeEdges: new Uint32Array(region.outerRidgeEdges), outerConnectorEdges: new Uint32Array(region.outerConnectorEdges),
       openingEdges: new Uint32Array(region.openingEdges),

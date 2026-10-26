@@ -451,6 +451,20 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 /* Viewport tools keep the app's button sizes; segments get room for their words. */
 .edit-bar .segmented button { padding: 6px 10px; }
 .dental-brush .segmented button { min-width: 92px; min-height: 36px; font-weight: 500; }
+.dental-tuning { width: 100%; padding: 4px 0; border-top: 1px solid var(--line); }
+.dental-tuning details { position: relative; }
+.dental-tuning summary {
+  display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 0 8px;
+  background: var(--sunken); border-radius: var(--radius); color: var(--ink);
+  font-size: 11.5px; font-weight: 700; letter-spacing: .06em; cursor: pointer; list-style: none;
+}
+.dental-tuning summary::-webkit-details-marker { display: none; }
+.dental-tuning summary::before {
+  content: ''; width: 5px; height: 5px; border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform var(--dur);
+}
+.dental-tuning details[open] > summary::before { transform: rotate(45deg); }
+.dental-tuning details[open] > .edit-size { margin-top: 6px; }
 /* Tips only forced on while painting zones: it does nothing, yet it still reads as on; its title says why. */
 .viewport-view button[aria-pressed='true'][aria-disabled='true'] { opacity: 1; color: var(--paper); cursor: default; }
 .edit-size { display: flex; gap: 8px; align-items: center; }

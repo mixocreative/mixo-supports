@@ -134,7 +134,8 @@ describe('reduceScene', () => {
       visibilityMask: new Uint8Array([1, 0, 1, 1]), visibilityResolution: 2,
       visibilityMin: [-1, -1] as [number, number], visibilityMax: [1, 1] as [number, number],
     };
-    const policy: DentalPolicy = { kind: 'two-contour', rim, stamps: [], region: {
+    const policy: DentalPolicy = { kind: 'two-contour', rim, stamps: [],
+      tuning: { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 }, region: {
       kind: 'proposal', allowedFaces: new Uint8Array([1]), contactFaces: new Uint8Array([1]),
       contacts: [{ face: 0, rim: 'outer', position: [0, 0, 0], normal: [0, -1, 0], distanceAlongContour: 0.5, distanceFromContour: 0.2 }],
       outerEdges: new Uint32Array([0, 1, 1, 2, 2, 0]),
@@ -153,6 +154,8 @@ describe('reduceScene', () => {
       region: { ...policy.region, contactFaces: new Uint8Array([1, 0]) } } })).toThrow();
     expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
       region: { ...policy.region, contacts: [{ ...policy.region.contacts![0]!, rim: 'sideways' as 'outer' }] } } })).toThrow('dental contact rim');
+    expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
+      tuning: { setbackMm: 0.2, stripWidthMm: 0, density: 1 } } })).toThrow('Invalid dental strip');
   });
 
   it('treats empty zone adds and clearing no zones as no-ops', () => {

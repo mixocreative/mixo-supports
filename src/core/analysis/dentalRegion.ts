@@ -1,7 +1,8 @@
 import type { TriangleMesh } from './types';
 import { dot } from '../vec3';
 import { proposeDentalContours, type Edge, type MeshContext } from './dentalContours';
-import { defaultDentalContactFootprintSettings, proposeDentalContactFootprint } from './dentalContactFootprint';
+import { proposeDentalContactFootprint } from './dentalContactFootprint';
+import { defaultDentalTuning, dentalFootprintSettings, type DentalTuning } from './dentalTuning';
 import type { DiagnosticContourContact } from './dentalContourContacts';
 
 export type DentalRegionProposal =
@@ -45,7 +46,7 @@ function classifyFaces(context: MeshContext, outer: Set<Edge>, opening: Set<Edge
 }
 
 /** Historical two-contour face proposal, retained for diagnostics and current policy compatibility. */
-export function proposeDentalSupportRegion(mesh: TriangleMesh): DentalRegionProposal {
+export function proposeDentalSupportRegion(mesh: TriangleMesh, tuning: DentalTuning = defaultDentalTuning): DentalRegionProposal {
   const contours = proposeDentalContours(mesh);
   if (contours.kind !== 'proposal') return contours;
   const classified = classifyFaces(contours.context, contours.outer, contours.opening);
@@ -54,7 +55,13 @@ export function proposeDentalSupportRegion(mesh: TriangleMesh): DentalRegionProp
     outerRidgeEdges: contours.outerRidgeEdges, outerConnectorEdges: contours.outerConnectorEdges,
     openingEdges: contours.openingEdges,
     diagnostics: { regionFaces: classified.regionFaces, connectorLengths: contours.connectorLengths } };
-  const footprint = proposeDentalContactFootprint(mesh, region, defaultDentalContactFootprintSettings);
+  return retuneDentalSupportRegion(mesh, region, tuning);
+}
+
+/** Recomputes only the narrow strip and exact contacts after operator tuning. */
+export function retuneDentalSupportRegion(mesh: TriangleMesh,
+  region: Extract<DentalRegionProposal, { kind: 'proposal' }>, tuning: DentalTuning): DentalRegionProposal {
+  const footprint = proposeDentalContactFootprint(mesh, region, dentalFootprintSettings(tuning));
   if (footprint.kind !== 'proposal') return { kind: 'inconclusive', reason: `contact-footprint-${footprint.reason}` };
   return { ...region, contactFaces: footprint.contactFaces,
     contacts: [...footprint.outerContacts.map((contact) => ({ ...contact, rim: 'outer' as const })),

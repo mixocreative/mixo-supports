@@ -1,5 +1,6 @@
 import { rimContainsPoint, type DentalRim } from './dental';
 import type { DentalRegionProposal } from './dentalRegion';
+import type { DentalTuning } from './dentalTuning';
 import type { Vector } from '../vec3';
 import type { SurfaceStamp } from '../../editing/surfaceBrush';
 
@@ -15,7 +16,9 @@ interface DentalPolicyBase {
 /** Old saved policies stay readable but cannot inherit the two-contour permission implicitly. */
 export type DentalPolicy =
   | (DentalPolicyBase & { kind?: 'legacy' })
-  | (DentalPolicyBase & { kind: 'two-contour'; region: Extract<DentalRegionProposal, { kind: 'proposal' }> });
+  | (DentalPolicyBase & { kind: 'two-contour'; region: Extract<DentalRegionProposal, { kind: 'proposal' }>;
+    /** Absent on older projects: reproduce the original defaults exactly. */
+    tuning?: DentalTuning });
 
 /** The exact preview footprint; old or malformed saved policies show no approved faces. */
 export function dentalContactMask(policy: DentalPolicy, faceCount: number): Uint8Array {

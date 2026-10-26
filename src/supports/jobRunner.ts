@@ -5,7 +5,7 @@ import type { PlacementResult, ProgressCallback, SupportPoint } from '../core/an
 import { DentalOpeningRaycaster } from '../core/analysis/dental';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
 import { contourPerimeter, measureDentalRimCoverage } from '../core/analysis/dentalRimCoverage';
-import { defaultDentalContactFootprintSettings } from '../core/analysis/dentalContactFootprint';
+import { defaultDentalTuning, dentalFootprintSettings } from '../core/analysis/dentalTuning';
 import type { DiagnosticContourContact } from '../core/analysis/dentalContourContacts';
 import { dentalRegionAllowedOnFace, dentalSupportAllowedAt, type DentalPolicy } from '../core/analysis/dentalPolicy';
 import { jobContacts, type CheckJob, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
@@ -140,6 +140,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
   }
   mesh.dropped = [...new Set([...mesh.dropped, ...rejectedAutoIds])];
   if (dental?.kind === 'two-contour' && currentDental?.contacts.every((candidate) => candidate.rim)) {
+    const footprintSettings = dentalFootprintSettings(dental.tuning ?? defaultDentalTuning);
     const builtIds = new Set(mesh.components.flatMap((component) => component.contactId ? [component.contactId] : []));
     const retainedAt = (rim: 'outer' | 'opening') => currentDental.contacts
       .filter((candidate) => candidate.rim === rim && permittedContacts.some((contact) =>
@@ -147,9 +148,9 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
       .map((candidate) => candidate.distanceAlongContour);
     mesh.dentalRimCoverage = measureDentalRimCoverage([
       { rim: 'outer', perimeterMm: contourPerimeter(job.mesh, currentDental.outerEdges),
-        spacingMm: defaultDentalContactFootprintSettings.outerSpacing, retainedAtMm: retainedAt('outer') },
+        spacingMm: footprintSettings.outerSpacing, retainedAtMm: retainedAt('outer') },
       { rim: 'opening', perimeterMm: contourPerimeter(job.mesh, currentDental.openingEdges),
-        spacingMm: defaultDentalContactFootprintSettings.innerSpacing, retainedAtMm: retainedAt('opening') },
+        spacingMm: footprintSettings.innerSpacing, retainedAtMm: retainedAt('opening') },
     ]);
   }
   onProgress?.(1, 'Done');
@@ -203,7 +204,7 @@ export function filterDentalPlacement(job: DentalPlacementJob, placement: Placem
 }
 
 function matchingDentalRegion(mesh: PlacementJob['mesh'], policy: Extract<DentalPolicy, { kind: 'two-contour' }>) {
-  const current = proposeDentalSupportRegion(mesh);
+  const current = proposeDentalSupportRegion(mesh, policy.tuning ?? defaultDentalTuning);
   const same = (a: Uint8Array | Uint32Array, b: Uint8Array | Uint32Array) =>
     a.length === b.length && a.every((value, index) => value === b[index]);
   if (current.kind !== 'proposal' || !current.contactFaces || !current.contacts || !policy.region.contactFaces ||

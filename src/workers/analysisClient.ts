@@ -1,5 +1,6 @@
 import type { SupportProblem } from '../core/analysis/supportCheck';
 import type { DentalRegionProposal } from '../core/analysis/dentalRegion';
+import type { DentalTuning } from '../core/analysis/dentalTuning';
 import type { PlacementResult, TriangleMesh } from '../core/analysis/types';
 import type { CheckJob, DentalPlacementJob, PlacementJob } from '../core/jobs';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
@@ -66,6 +67,13 @@ export class AnalysisClient {
       result?.kind === 'dental-region-result' ? result.region : undefined);
   }
 
+  retuneDentalRegion(key: string, mesh: TriangleMesh,
+    region: Extract<DentalRegionProposal, { kind: 'proposal' }>, tuning: DentalTuning,
+    label: JobLabel): Promise<DentalRegionProposal | undefined> {
+    return this.submit(key, { kind: 'dental-retune', job: { mesh, region, tuning } }, label).then((result) =>
+      result?.kind === 'dental-region-result' ? result.region : undefined);
+  }
+
   check(key: string, job: CheckJob, label: JobLabel): Promise<SupportProblem[] | undefined> {
     return this.submit(key, { kind: 'check', job }, label).then((result) => (result?.kind === 'checked' ? result.problems : undefined));
   }
@@ -118,7 +126,7 @@ export class AnalysisClient {
       signal: job.controller.signal,
       label: job.label,
       context: job.task.kind,
-      ...(this.gate && (job.task.kind === 'place' || job.task.kind === 'dental-place' || job.task.kind === 'dental-region') ? { admit: (signal: AbortSignal) => this.gate!.acquire(mesh.indices.length / 3, signal) } : {}),
+      ...(this.gate && (job.task.kind === 'place' || job.task.kind === 'dental-place' || job.task.kind === 'dental-region' || job.task.kind === 'dental-retune') ? { admit: (signal: AbortSignal) => this.gate!.acquire(mesh.indices.length / 3, signal) } : {}),
       onProgress: (fields) => {
         if (typeof fields.fraction === 'number' && typeof fields.stage === 'string') this.onProgress(job.key, fields.fraction, fields.stage);
       },

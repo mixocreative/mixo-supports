@@ -139,6 +139,7 @@ function readProps() {
     drawn: drawn.size,
     dropped: mesh ? mesh.dropped.length : -1,
     droppedDrawn: mesh ? mesh.dropped.filter((id) => drawn.has(id)).length : -1,
+    dentalReviewGap: mesh?.dentalRimCoverage?.opening.reviewGapMm ?? -1,
     customised: unit ? Object.keys(unit.contactSettings).length : -1,
     active: out.scene?.activeUnitId,
     first: unit?.id,
@@ -147,6 +148,9 @@ function readProps() {
     dentalBoundary: unit?.dental?.rim.boundaryKind ?? '',
     dentalKind: unit?.dental?.kind ?? '',
     dentalStamps: unit?.dental?.stamps.length ?? -1,
+    dentalFaces: unit?.dental?.kind === 'two-contour' ? unit.dental.region.contactFaces?.reduce((sum, face) => sum + face, 0) ?? -1 : -1,
+    dentalContacts: unit?.dental?.kind === 'two-contour' ? unit.dental.region.contacts?.length ?? -1 : -1,
+    dentalTuning: unit?.dental?.kind === 'two-contour' ? unit.dental.tuning : undefined,
     ids: out.selection ?? [],
   };
 }
@@ -572,6 +576,37 @@ async function walk(url, scratch, dentalFixture) {
       await page.screenshot({ path: path.join(scratch, 'dental-area.png') });
       check('l2b Step 2 offers paint and Next without premature Done',
         await d.button('Add area').isVisible() && await d.button('Remove area').isVisible() && await d.button('Next').isVisible() && await d.button('Done', false).count() === 0);
+      const baseline = await d.props();
+      const waitForTuning = async (key, value) => {
+        for (let attempt = 0; attempt < 300; attempt += 1) {
+          const props = await d.props();
+          if (props.dentalTuning?.[key] === value) return props;
+          await d.idle(200);
+        }
+        throw new Error(`Dental ${key} did not update to ${value}`);
+      };
+      const stripWidth = page.locator('.dental-tuning label').filter({ hasText: 'Strip width' }).locator('input');
+      await stripWidth.focus();
+      await stripWidth.press('ArrowRight');
+      const widened = await waitForTuning('stripWidthMm', 1.1);
+      check('l2c strip width updates the live painted face mask',
+        widened.dentalFaces !== baseline.dentalFaces, `faces ${baseline.dentalFaces} -> ${widened.dentalFaces}`);
+      const density = page.locator('.dental-tuning label').filter({ hasText: 'Support density' }).locator('input');
+      await density.focus();
+      await density.press('ArrowRight');
+      const denser = await waitForTuning('density', 1.1);
+      await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /Proposed support tips: [1-9]/.test(note.innerText)), null, { timeout: 180000 });
+      check('l2d support density updates the live tip preview',
+        denser.dentalContacts !== widened.dentalContacts,
+        `candidate tips ${widened.dentalContacts} -> ${denser.dentalContacts}`);
+      await page.locator('.dental-tuning summary').click();
+      const rimSetback = page.locator('.dental-tuning label').filter({ hasText: 'Rim setback' }).locator('input');
+      await rimSetback.focus();
+      await rimSetback.press('ArrowRight');
+      const shifted = await waitForTuning('setbackMm', 0.3);
+      check('l2e rim setback moves the live permitted strip',
+        shifted.dentalFaces !== denser.dentalFaces,
+        `faces ${denser.dentalFaces} -> ${shifted.dentalFaces}`);
       await d.button('Next').click();
       await page.waitForFunction(() => document.body.innerText.includes('Step 3 · Review supports'), null, { timeout: 240000 });
       await page.waitForFunction(() => /[1-9][\d,]* automatic/.test(document.querySelector('footer')?.innerText ?? '') && ![...document.querySelectorAll('button')].some((b) => /Generating dental supports/.test(b.innerText)), null, { timeout: 240000 });
@@ -581,8 +616,8 @@ async function walk(url, scratch, dentalFixture) {
       const dentalSupports = await d.counts();
       const placed = await d.props();
       check('l3 dental generation finishes a support mesh only after the approved-area stage',
-        dentalSupports.auto > 0 && placed.dentalKind === 'two-contour' && placed.tris > 0 && placed.drawn > 0 && placed.droppedDrawn === 0,
-        `automatic ${dentalSupports.auto}, mesh triangles ${placed.tris}, drawn ${placed.drawn}, forbidden secondary landings dropped ${placed.dropped}, dropped still drawn ${placed.droppedDrawn}`);
+        dentalSupports.auto > 0 && placed.dentalKind === 'two-contour' && placed.tris > 0 && placed.drawn > 0 && placed.droppedDrawn === 0 && Math.abs(placed.dentalReviewGap - 4 / 1.1) < 1e-6,
+        `automatic ${dentalSupports.auto}, mesh triangles ${placed.tris}, drawn ${placed.drawn}, forbidden secondary landings dropped ${placed.dropped}, dropped still drawn ${placed.droppedDrawn}, tuned review gap ${placed.dentalReviewGap}`);
       const rimWarning = await page.locator('.edit-bar [role="alert"]').innerText();
       check('l4 final dental rim gap is disclosed before Done',
         /Automatic rim gaps: outer [\d.]+ mm, opening [\d.]+ mm/.test(rimWarning) && /Review the rim/.test(rimWarning),
