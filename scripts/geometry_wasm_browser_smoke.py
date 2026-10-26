@@ -12,14 +12,23 @@ with sync_playwright() as playwright:
         package_url = "http://127.0.0.1:5173/mixo-supports/crates/geometry-wasm/pkg-browser/mixo_geometry_wasm.js"
         response = page.request.get(package_url)
         assert response.ok, f"Vite browser package returned HTTP {response.status}: {response.text()[:200]}"
-        version = page.evaluate(
+        result = page.evaluate(
             """async () => {
               const { geometryReady } = await import('/mixo-supports/src/workers/geometryClient.ts');
               const engine = await geometryReady();
-              return engine.engine_version();
+              const session = new engine.GeometrySession(48);
+              const handle = session.load_mesh(
+                new Float32Array([0, 0, 0, 2, 0, 0, 0, 3, 0]),
+                new Uint32Array([0, 1, 2]),
+              );
+              const bounds = Array.from(session.mesh_bounds(handle));
+              session.release_mesh(handle);
+              const used = session.used_bytes();
+              session.free();
+              return { version: engine.engine_version(), bounds, used };
             }"""
         )
-        assert version == 1, f"browser WASM schema version {version} != 1"
+        assert result == {"version": 1, "bounds": [0, 0, 0, 2, 3, 0], "used": 0}, result
         worker_result = page.evaluate(
             """async () => new Promise((resolve, reject) => {
               const worker = new Worker('/mixo-supports/src/workers/meshWorker.ts', { type: 'module' });
@@ -42,6 +51,6 @@ with sync_playwright() as playwright:
             })"""
         )
         assert worker_result == 'need-source', f"unexpected mesh worker result: {worker_result}"
-        print("browser WASM version handshake: PASS")
+        print("browser WASM version and mesh session: PASS")
     finally:
         browser.close()
