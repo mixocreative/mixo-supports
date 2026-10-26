@@ -17,6 +17,11 @@ function segmentHitsTriangle(from: Vector, to: Vector, [a, b, c]: Triangle3D): b
     dot(normal, cross(subtract(a, c), subtract(point, c))) >= -EPS;
 }
 
+/** Exact centre-line hit used by conservative, radius-aware path preflight. */
+export function segmentIntersectsTriangle3D(from: Vector, to: Vector, triangle: Triangle3D): boolean {
+  return segmentHitsTriangle(from, to, triangle);
+}
+
 function coplanarOverlap(a: Triangle3D, b: Triangle3D): boolean {
   const normal = cross(subtract(a[1], a[0]), subtract(a[2], a[0]));
   const length = Math.hypot(...normal);

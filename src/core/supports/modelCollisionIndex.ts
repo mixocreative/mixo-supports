@@ -7,6 +7,7 @@ export interface CollisionBounds {
 
 export interface ModelCollisionIndex {
   readonly model: TriangleMesh;
+  readonly valid: boolean;
   readonly cellMm: number;
   readonly cells: ReadonlyMap<string, readonly number[]>;
   readonly faceBounds: readonly CollisionBounds[];
@@ -18,6 +19,7 @@ export function createModelCollisionIndex(model: TriangleMesh): ModelCollisionIn
   const cellMm = Math.max(0.5, Math.max(extent.max[0] - extent.min[0], extent.max[2] - extent.min[2]) / 64);
   const cells = new Map<string, number[]>();
   const faceBounds: CollisionBounds[] = [];
+  let valid = model.indices.length > 0 && model.indices.length % 3 === 0 && model.positions.length % 3 === 0;
   for (let face = 0; face < model.indices.length / 3; face++) {
     const indices = model.indices.subarray(face * 3, face * 3 + 3);
     const points = Array.from(indices, (index) => model.positions.subarray(index * 3, index * 3 + 3));
@@ -26,6 +28,12 @@ export function createModelCollisionIndex(model: TriangleMesh): ModelCollisionIn
       minY: Math.min(...points.map((point) => point[1]!)), maxY: Math.max(...points.map((point) => point[1]!)),
       minZ: Math.min(...points.map((point) => point[2]!)), maxZ: Math.max(...points.map((point) => point[2]!)),
     };
+    if (!Number.isFinite(box.minX) || !Number.isFinite(box.maxX) ||
+      !Number.isFinite(box.minY) || !Number.isFinite(box.maxY) ||
+      !Number.isFinite(box.minZ) || !Number.isFinite(box.maxZ)) {
+      valid = false;
+      break;
+    }
     faceBounds.push(box);
     for (let x = Math.floor(box.minX / cellMm); x <= Math.floor(box.maxX / cellMm); x++) {
       for (let z = Math.floor(box.minZ / cellMm); z <= Math.floor(box.maxZ / cellMm); z++) {
@@ -35,5 +43,5 @@ export function createModelCollisionIndex(model: TriangleMesh): ModelCollisionIn
       }
     }
   }
-  return { model, cellMm, cells, faceBounds };
+  return { model, valid, cellMm, cells, faceBounds };
 }

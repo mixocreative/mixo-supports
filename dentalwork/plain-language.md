@@ -43,6 +43,8 @@ A built two-branch Tree was checked with both round and square tips: it remember
 
 The collision search now builds one map of the transformed model per dental Generate and reuses it when checking pillars, trees, braces, and a rebuilt result. This removes repeated map construction; it does not yet move a blocked support. The next efficiency step is to check a proposed pillar path or brace before drawing its full mesh, then try a few nearby allowed positions when blocked. The finished mesh still needs the exact check: real diameters and joints can touch where a thin path did not.
 
+A standalone path screen now asks a narrower question before any 3D support is built: is there definitely no model surface within the proposed tube's radius box, or does its centre line definitely pierce a face? It says **clear**, **blocked**, or **not sure**. A nearby face, a known intended tip, damaged model data, or an interrupted calculation produces **not sure**, never an automatic safety pass. This screen is not yet connected to Generate; it does not relocate or remove pillars. The exact finished-mesh check remains the authority.
+
 Ordinary pillar necks now remember their certified contact face too, without changing their printed shape. A separate label distinguishes a Tree neck from a pillar neck; otherwise the Tree fallback could wrongly fire on a pillar. These labels prepare the next collision report but do not yet approve any pillar-neck overlap.
 
 On the saved example, an independent mesh check finds no pillar crossing, but it still sees many tiny neck-to-model triangle overlaps. Those overlaps need a separate review before we can say every neck is touching only where intended. The new Tree check does not erase or approve them.
