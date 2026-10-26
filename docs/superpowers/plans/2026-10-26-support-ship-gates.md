@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Use `executing-plans` task by task. Write a failing behavioral test before each production change, verify focused and caller tests, then commit and update both dental explanation documents and the handoff. The current branch is `codex/dental-rework`; push only tested checkpoints and do not merge/release on one patient STL.
 
-**Goal:** Make generic and dental support generation modular, performance-bounded, and honest about collisions and unsupported islands, with one preview/export safety path.
+**Goal:** Make generic and dental support generation modular, performance-bounded, and honest about collisions and unsupported islands, with one preview/export safety path. “Ready to ship” means ready to push a reviewable code branch to GitHub; separate patient/print validation is required for a general clinical reliability claim.
 
 **Architecture:** Pure geometry reports in `src/core/analysis` and `src/core/supports`; mode-specific repair policy in `src/supports`; UI only renders report status. Preserve the existing support shapes. Use an event-based mesh connectivity sweep, not a full live layer raster.
 
@@ -18,13 +18,14 @@
 - [x] Run `npx vitest run src/core/analysis/topologyBirths.test.ts`; verify assertion failures from the initial stub.
 - [x] Build indexed vertex-edge CSR adjacency from triangle indices. Sweep sorted used vertices by Y; activate an equal-height bucket, union edges within it, and report each plateau root with no strictly lower active neighbor as a birth. Return `inconclusive` for non-finite coordinates, invalid indices, an empty mesh, duplicate faces, or an edge used more than twice. Complexity target: O(V log V + E α(V)), memory O(V+E). Focused red/green tests include malformed topology.
 - [x] Re-run focused tests and a reference timing/memory probe. Compare with the current minima heuristic but do not delete it yet. Three validated runs observed 202–214 ms / 56 births for 186,976 vertices. The legacy no-contact check emitted one clustered island warning in 145 ms; its cap/cluster/normal rules make this a diagnostic contrast, not a count discrepancy to “fix.”
-- [ ] Commit the pure primitive once green.
+- [x] Commit the pure primitive once green (`30e52db`, pushed to `codex/dental-rework`).
 
 ## Task 2 — Built-support path report
 
 **Files:** create `src/core/supports/supportPath.ts` and `.test.ts`; modify `mesh.ts`/`meshBuilder.ts` tagging only where attribution is missing.
 
-- [ ] Red tests: anchored column resolves a birth, nearby detached tip does not, crossing body does not, a tree with no plate path does not. A manual path is reported without being removed.
+- [x] Red/green tests for the pure path reducer: anchored descending links resolve births; unverified, too-high, unanchored-cycle, and invalid endpoints do not. Manual-only provenance is retained, while an all-automatic alternative wins. Seven focused tests pass. Geometry attribution remains open.
+- [ ] Red adapter tests: a nearby detached tip and a crossing body do not yield `verified` links, and a tree with no plate path does not resolve a birth. A manual path is reported without removal.
 - [ ] Construct a graph of tagged built support components using plate contact, actual tip/model reach, and geometric joins. No proximity-only edge is accepted. Attach each topology birth to a source face and a support contact at/below its height; return `resolved`, `unresolved`, or `inconclusive` with provenance.
 - [ ] Run focused tests and the one-reference + generic golden suites; cache reusable model topology, not decisions after a settings/paint change. Commit.
 
@@ -59,13 +60,13 @@
 
 - [ ] Show topology-birth/path status distinctly from the old local-minimum/overhang advisory. Dental unresolved events outside the strip require manual review; no cavity-side auto tips. Explain tree/brace fallback and manual collision diagnostics without implying clinical certainty.
 - [ ] On the 18.7 MB saved STL, measure topology, body check, repair, and full build separately; add a budget/cancellation regression. Verify all three locales, paint edits, orientation edits, undo/redo, save/load, export and zero forbidden labeled contacts. Run `npm test`, `npm run build`, `git diff --check`, browser walk, and independent BVH/GLB review.
-- [ ] Request a second with-hole and real no-hole patient mesh and physical print review before a general dental release claim. If unavailable, push the verified feature branch with these gates explicitly open; do not merge or market as clinically validated.
+- [ ] Request a second with-hole and real no-hole patient mesh and physical print review before a general dental reliability claim. If unavailable, push the verified code branch with these validation gates explicitly open; do not market as clinically validated.
 
 ## Task 7 — Submission gate
 
 - [ ] Audit every requirement against current code, tests, browser output, generated STL/GLB and the owner reference screenshots. Run the generic and dental workflows from a clean branch state and verify no branch-only fixture shortcut.
-- [ ] Obtain independent anatomical/print review on at least a second with-hole model, a real no-hole model, and the target printer/material. If a required sample or clinical review is unavailable, report the missing evidence and keep release blocked rather than equating green unit tests with dental safety.
-- [ ] Once all gates are evidenced, run fresh `npm test`, build, type check, browser walks, performance probe, independent collision probe, and diff check. Commit, push the feature branch, submit a reviewable PR, attach it to this task, and merge/deploy only if the user’s intended “submit” includes that action and review is approved. Update the handoff and close the active goal only then.
+- [ ] Obtain independent anatomical/print review on at least a second with-hole model, a real no-hole model, and the target printer/material before any claim of general dental print safety. This is a separate post-code validation gate, not a condition for pushing reviewed source to GitHub.
+- [ ] When code gates are evidenced, run fresh `npm test`, build, type check, browser walks, performance probe, independent collision probe, and diff check. Commit and push the feature branch; submit a reviewable PR if ready. Do not merge/deploy without separate approval. Update the handoff and close the software goal only when the code is reviewable on GitHub with remaining real-world validation clearly flagged.
 
 ## Resume rule
 
