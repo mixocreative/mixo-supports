@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TriangleMesh } from '../analysis/types';
 import type { GeneratedSupportMesh, SupportPart } from './mesh';
-import { intersectingSupportComponents } from './bodyIntersection';
+import { intersectingSupportComponents, supportBodyConflicts } from './bodyIntersection';
 
 const model: TriangleMesh = {
   positions: new Float32Array([-2, 0, -2, 2, 0, -2, 0, 0, 2]),
@@ -27,5 +27,24 @@ describe('intersectingSupportComponents', () => {
     const mesh = support('pillar', piercing, 5);
     expect(intersectingSupportComponents(model, mesh, () => true)).toEqual(mesh.components);
     expect(intersectingSupportComponents(model, mesh, () => true, true)).toEqual([]);
+  });
+});
+
+describe('supportBodyConflicts', () => {
+  it('reports the exact model face and support triangle that intersect', () => {
+    const mesh = support('tree-branch', [-1, -1, 0, 1, 1, 0, 1, -1, 0]);
+    expect(supportBodyConflicts(model, mesh, () => true)).toEqual([
+      { componentIndex: 0, component: mesh.components[0], supportTriangleIndex: 0, modelFaceIndex: 0 },
+    ]);
+  });
+
+  it('continues past an approved local contact and reports a second wall hit', () => {
+    const twoWalls: TriangleMesh = {
+      positions: new Float32Array([...model.positions, -2, 2, -2, 2, 2, -2, 0, 2, 2]),
+      indices: new Uint32Array([0, 1, 2, 3, 4, 5]),
+    };
+    const mesh = support('tree-branch', [-1, -1, 0, 1, 3, 0, 1, -1, 0]);
+    expect(supportBodyConflicts(twoWalls, mesh, () => true, false,
+      (hit) => hit.modelFaceIndex === 0)).toMatchObject([{ modelFaceIndex: 1 }]);
   });
 });

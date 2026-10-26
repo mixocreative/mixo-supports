@@ -1,6 +1,8 @@
 import type { TriangleMesh } from '../analysis/types';
 import type { GeneratedSupportMesh, SupportComponent } from './mesh';
-import { intersectingSupportComponents } from './bodyIntersection';
+import { intersectingSupportComponents, supportBodyConflicts } from './bodyIntersection';
+import { isIntentionalContactReach } from './contactReach';
+import { contactRadius, defaultSupportSettings, tipDepth, type LiveSupportSettings } from './settings';
 
 /** Dental policy: reject automatic pillar bodies, exempting only their marked landing-tip reach. */
 export function crossingAutomaticBodyContactIds(model: TriangleMesh, supports: GeneratedSupportMesh, automaticIds: ReadonlySet<string>): string[] {
@@ -11,9 +13,16 @@ export function crossingAutomaticBodyContactIds(model: TriangleMesh, supports: G
 }
 
 /** Dental policy: report crossing tree and brace components for conservative mode fallback. */
-export function crossingSupportStructureParts(model: TriangleMesh, supports: GeneratedSupportMesh): Array<'tree-branch' | 'tree-trunk' | 'brace'> {
+export function crossingSupportStructureParts(model: TriangleMesh, supports: GeneratedSupportMesh,
+  settings: Readonly<LiveSupportSettings> = defaultSupportSettings): Array<'tree-branch' | 'tree-trunk' | 'brace'> {
   const part = (component: SupportComponent) => component.part === 'tree-branch' || component.part === 'tree-trunk' || component.part === 'brace';
   if (!supports.components.some(part)) return [];
-  return [...new Set(intersectingSupportComponents(model, supports, part)
-    .map((component) => component.part as 'tree-branch' | 'tree-trunk' | 'brace'))].sort();
+  const limits = {
+    radiusMm: settings.neckLength + settings.pillarDiameter / 2 + contactRadius(settings),
+    penetrationMm: Math.max(0, tipDepth(settings)) + contactRadius(settings) + 0.05,
+    faceNormalDotMin: 0.8,
+  };
+  return [...new Set(supportBodyConflicts(model, supports, part, false,
+    (hit) => hit.component.part === 'tree-branch' && isIntentionalContactReach(model, supports, hit, limits))
+    .map((hit) => hit.component.part as 'tree-branch' | 'tree-trunk' | 'brace'))].sort();
 }

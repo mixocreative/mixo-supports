@@ -7,15 +7,15 @@ import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
 import { contourPerimeter, measureDentalRimCoverage } from '../core/analysis/dentalRimCoverage';
 import { defaultDentalTuning, dentalFootprintSettings } from '../core/analysis/dentalTuning';
 import { proposeDentalContactFootprint } from '../core/analysis/dentalContactFootprint';
-import type { DiagnosticContourContact } from '../core/analysis/dentalContourContacts';
 import { dentalRegionAllowedOnFace, dentalSupportAllowedAt, type DentalPolicy } from '../core/analysis/dentalPolicy';
 import { jobContacts, type CheckJob, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
-import { cross, dot, normalize, subtract, type Vector } from '../core/vec3';
+import { cross, normalize, subtract, type Vector } from '../core/vec3';
 import { buildSupportMesh, type GeneratedSupportMesh } from '../core/supports/mesh';
 import { crossingAutomaticBodyContactIds, crossingSupportStructureParts } from '../core/supports/dentalBodyClearance';
 import { dentalBuildSettings } from '../core/supports/dentalSettings';
 import type { Landing } from '../core/supports/landing';
 import { dentalSecondaryLandingOnApprovedSide } from './dentalLandingSide';
+import { dentalPrimarySourceFace, sameDentalPrimary } from './dentalPrimaryFace';
 import { supportMeshToUnitLocal } from './supportFrame';
 import { raftOutline } from '../core/supports/raft';
 import { RemeshTarget } from '../core/supports/remesh';
@@ -30,8 +30,6 @@ import { applyTransform, inverseTransformDirection, inverseTransformPoint, trans
  */
 
 type Outline = ReturnType<typeof raftOutline>;
-const DENTAL_PRIMARY_POSITION_TOLERANCE = 0.03;
-const DENTAL_PRIMARY_NORMAL_DOT_MINIMUM = 0.95;
 const outlineCache = new WeakMap<object, Map<string, Outline>>();
 
 /** The raft outline depends only on the model, its frame, Expand Width and voxels; cache it per model. */
@@ -95,14 +93,20 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     })));
   const permittedIds = new Set(permittedContacts.map((contact) => contact.id));
   const rejectedAutoIds = allContacts.filter((contact) => contact.origin !== 'manual' && !permittedIds.has(contact.id)).map((contact) => contact.id);
-  const contacts = permittedContacts.map((contact) => ({
-    id: contact.id,
-    position: transformPoint(frame, contact.position),
-    normal: transformDirection(frame, contact.normal),
-    ...(contact.kind ? { kind: contact.kind } : {}),
-    ...(contact.origin === 'manual' ? { origin: 'manual' as const } : {}),
-    ...(contact.shape ? { shape: contact.shape } : {}),
-  }));
+  const dentalCandidates = currentDental ? [...currentDental.contacts, ...currentDental.alternateContacts] : [];
+  const contacts = permittedContacts.map((contact) => {
+    const sourceFace = dental?.kind === 'two-contour' && contact.origin !== 'manual'
+      ? dentalPrimarySourceFace(contact, dentalCandidates) : undefined;
+    return {
+      id: contact.id,
+      position: transformPoint(frame, contact.position),
+      normal: transformDirection(frame, contact.normal),
+      ...(contact.kind ? { kind: contact.kind } : {}),
+      ...(contact.origin === 'manual' ? { origin: 'manual' as const } : {}),
+      ...(contact.shape ? { shape: contact.shape } : {}),
+      ...(sourceFace === undefined ? {} : { sourceFace }),
+    };
+  });
   const model = applyTransform(job.mesh, frame);
   const landingAllowed = dentalValid && dental?.kind === 'two-contour'
     ? (landing: Landing): boolean => dentalSecondaryLandingOnApprovedSide(job.mesh, dental, frame, landing)
@@ -124,12 +128,12 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
   if (dental?.kind === 'two-contour') {
     // Structural intersections cannot be assigned to one contact (a trunk/brace may serve many).
     // Drop only the unsafe structural mode, rebuild, and keep the approved contact candidates.
-    if (effectiveSettings.scatterAutoTree && crossingSupportStructureParts(model, mesh).some((part) => part.startsWith('tree-'))) {
+    if (effectiveSettings.scatterAutoTree && crossingSupportStructureParts(model, mesh, effectiveSettings).some((part) => part.startsWith('tree-'))) {
       effectiveSettings = { ...effectiveSettings, scatterAutoTree: false };
       structureFallback.push('tree');
       mesh = buildSupportMesh(contacts, effectiveSettings, buildOptions);
     }
-    if (effectiveSettings.trussEnabled && crossingSupportStructureParts(model, mesh).includes('brace')) {
+    if (effectiveSettings.trussEnabled && crossingSupportStructureParts(model, mesh, effectiveSettings).includes('brace')) {
       effectiveSettings = { ...effectiveSettings, trussEnabled: false };
       structureFallback.push('brace');
       mesh = buildSupportMesh(contacts, effectiveSettings, buildOptions);
@@ -154,7 +158,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
       mesh.dropped = [...new Set([...dropped, ...mesh.dropped, ...blocked])];
     }
   }
-  if (dental?.kind === 'two-contour' && crossingSupportStructureParts(model, mesh).length > 0) {
+  if (dental?.kind === 'two-contour' && crossingSupportStructureParts(model, mesh, effectiveSettings).length > 0) {
     // Rebuilding after a pillar omission can rearrange a tree or brace. Do not export any
     // automatic structure if the bounded fallback still intersects the patient mesh.
     const omitted = new Set([...mesh.dropped, ...contacts.filter((contact) => contact.origin !== 'manual').map((contact) => contact.id)]);
@@ -253,14 +257,6 @@ function matchingDentalRegion(mesh: PlacementJob['mesh'], policy: Extract<Dental
       ...phase.innerContacts.map((contact) => ({ ...contact, rim: 'opening' as const }))]
     : [];
   return { ...current, contactFaces: current.contactFaces, contacts: current.contacts, alternateContacts };
-}
-
-function sameDentalPrimary(contact: { position: Vector; normal: Vector }, candidate: DiagnosticContourContact): boolean {
-  const dx = candidate.position[0] - contact.position[0];
-  const dy = candidate.position[1] - contact.position[1];
-  const dz = candidate.position[2] - contact.position[2];
-  return dx * dx + dy * dy + dz * dz < DENTAL_PRIMARY_POSITION_TOLERANCE ** 2 &&
-    dot(candidate.normal, contact.normal) > DENTAL_PRIMARY_NORMAL_DOT_MINIMUM;
 }
 
 /**

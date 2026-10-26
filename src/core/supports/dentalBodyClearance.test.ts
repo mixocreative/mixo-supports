@@ -42,4 +42,17 @@ describe('crossingSupportStructureParts', () => {
   it('accepts structures that stay clear of the model', () => {
     expect(crossingSupportStructureParts(surface, body('tree-branch', [-1, 1, 0, 1, 2, 0, 1, 1, 0]))).toEqual([]);
   });
+
+  it('allows only a shallow tree reach on its known face, never a nearby second wall', () => {
+    const near = body('tree-branch', [-0.1, -0.1, 0, 0.1, 0.05, 0, 0.1, -0.1, 0]);
+    near.components[0]!.contactIntent = [
+      { kind: 'primary', contactId: 'auto-1', point: [0, 0, 0], normal: [0, -1, 0], faceIndex: 0 },
+    ];
+    expect(crossingSupportStructureParts(surface, near)).toEqual([]);
+    const secondWall: TriangleMesh = {
+      positions: new Float32Array([...surface.positions, -2, 0.02, -2, 2, 0.02, -2, 0, 0.02, 2]),
+      indices: new Uint32Array([0, 1, 2, 3, 4, 5]),
+    };
+    expect(crossingSupportStructureParts(secondWall, near)).toEqual(['tree-branch']);
+  });
 });

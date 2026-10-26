@@ -21,6 +21,18 @@ describe('tree contact intent provenance', () => {
     ]);
   });
 
+  it('retains an exact primary source-face identity when the contact supplies one', () => {
+    const tagged = contacts.map((contact, index) => ({ ...contact, sourceFace: index + 6 }));
+    const geometry = treeGeometry({ junction: [0, 8, 0], members: [0, 1] }, tagged,
+      { ...defaultSupportSettings, contactShape: 'NONE' }, undefined);
+    expect(geometry.curves.filter((curve) => curve.part === 'tree-branch')
+      .flatMap((curve) => curve.contactIntent?.filter((intent) => intent.kind === 'primary') ?? []))
+      .toEqual(expect.arrayContaining([
+        { kind: 'primary', contactId: 'left', point: [-1, 12, 0], normal: [0, -1, 0], faceIndex: 6 },
+        { kind: 'primary', contactId: 'right', point: [1, 12, 0], normal: [0, -1, 0], faceIndex: 7 },
+      ]));
+  });
+
   it('carries primary intent to built tree components without calling it clearance', () => {
     const built = buildSupportMesh(contacts, { ...defaultSupportSettings, scatterAutoTree: true });
     const branches = built.components.filter((component) => component.part === 'tree-branch');

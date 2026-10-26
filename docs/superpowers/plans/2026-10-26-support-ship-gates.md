@@ -35,7 +35,8 @@
 
 - [ ] Red tests for both ends of a two-leaf Tree: a tiny approved contact reach is exempt, a branch through an unrelated wall is not. Test default round/tapered and shaped-tip settings, secondary landing, trunk, brace, generic roof/cage, and manual support attribution.
 - [x] Record primary and secondary model-contact intent on tree curves (including both leaves of a joined two-leaf branch) and carry the metadata to built components. Preserve its points under plate-to-unit frame conversion. Focused tests were red then green; no collision exemption or geometry change yet.
-- [ ] Tag intentional reach explicitly in the generated mesh. Avoid a blanket “neck is safe” exemption. Make the generic intersection report return component/contact/face evidence; dental retains its narrow policy. Preserve mesh geometry byte-for-byte where only tags change.
+- [x] Add generic exact face/triangle hit evidence, continuing after a locally approved hit; add a conservative exact-source-face/distance/depth predicate. Bind uniquely matched dental contact source faces into Tree metadata, and apply the predicate only to dental Tree branches. Synthetic harmless-tip/second-wall tests were red then green; the one-reference rim-coverage test still requires Tree fallback. No full generic policy or adjacent-face permission yet.
+- [ ] Validate a built two-leaf Tree (round and shaped tips, both primary ends and secondary landing) against intended same-surface adjacent faces and a nearby separate wall. Avoid a blanket “neck is safe” exemption; trunks/braces/roof/cage have no contact exception. Preserve mesh geometry byte-for-byte where only tags change.
 - [ ] Re-run independent BVH crossing probe; document any Tree fallback still needed. Commit.
 
 ## Task 4 — Shared full-build safety runner and mode policies

@@ -19,6 +19,8 @@ export interface SupportContact {
   position: Vector;
   /** Model surface normal at the contact, pointing out of the model. */
   normal: Vector;
+  /** Exact indexed model face at the primary tip, when placement can certify it. */
+  sourceFace?: number;
   /**
    * SLASG point class. With a model, `face` and `edge` contacts take their neck normal from
    * the voxel remesh (nearest face / nearest edge) and `vertical` ones point straight down;
@@ -37,7 +39,7 @@ export type SupportPart =
 
 /** Source-model contacts a built component intentionally approaches; not a collision exemption. */
 export type ContactIntent =
-  | { kind: 'primary'; contactId: string; point: Vector; normal: Vector }
+  | { kind: 'primary'; contactId: string; point: Vector; normal: Vector; faceIndex?: number }
   | { kind: 'secondary'; point: Vector; normal: Vector; faceIndex?: number };
 
 export interface SupportComponent {
@@ -336,7 +338,7 @@ export function treeGeometry(tree: AutoTree, contacts: readonly SupportContact[]
     const tip = subtract(contact.position, scale(normal, tipDepth(settings)));
     const neckEnd = add(contact.position, scale(neckDirection(normal, settings.maxNeckAngle), settings.neckLength));
     if (spheres) out.spheres.push({ part: 'tip', id: contact.id, centre: tip, radius: settings.touchDiameter / 2 });
-    return { id: contact.id, position: contact.position, normal: contact.normal,
+    return { id: contact.id, position: contact.position, normal: contact.normal, sourceFace: contact.sourceFace,
       nodes: [{ point: tip, radius: neckRadius }, { point: neckEnd, radius: pillarRadius }] as CurveNode[] };
   });
 
@@ -375,13 +377,16 @@ export function treeGeometry(tree: AutoTree, contacts: readonly SupportContact[]
     const [a, b] = branches as [typeof branches[number], typeof branches[number]];
     const through = [...a.nodes, ...end.slice(0, -1), { point: centre, radius: junctionRadius }, ...[...b.nodes].reverse()];
     out.curves.push({ part: 'tree-branch', id: a.id, nodes: filletPolyline(through, fillet, 3),
-      contactIntent: [{ kind: 'primary', contactId: a.id, point: a.position, normal: a.normal },
-        { kind: 'primary', contactId: b.id, point: b.position, normal: b.normal }, ...secondaryIntent] });
+      contactIntent: [{ kind: 'primary', contactId: a.id, point: a.position, normal: a.normal,
+        ...(a.sourceFace === undefined ? {} : { faceIndex: a.sourceFace }) },
+        { kind: 'primary', contactId: b.id, point: b.position, normal: b.normal,
+          ...(b.sourceFace === undefined ? {} : { faceIndex: b.sourceFace }) }, ...secondaryIntent] });
     return out;
   }
   for (const branch of branches) {
     out.curves.push({ part: 'tree-branch', id: branch.id, nodes: filletPolyline([...branch.nodes, ...end.slice(0, -1), { point: centre, radius: junctionRadius }], fillet, 3),
-      contactIntent: [{ kind: 'primary', contactId: branch.id, point: branch.position, normal: branch.normal }, ...secondaryIntent] });
+      contactIntent: [{ kind: 'primary', contactId: branch.id, point: branch.position, normal: branch.normal,
+        ...(branch.sourceFace === undefined ? {} : { faceIndex: branch.sourceFace }) }, ...secondaryIntent] });
   }
   if (trunk) out.curves.push({ part: 'tree-trunk', nodes: filletPolyline(trunk, fillet, 3) });
   if (degree > 2) out.spheres.push({ part: 'tree-trunk', centre, radius: 0.55 * 2 * junctionRadius });

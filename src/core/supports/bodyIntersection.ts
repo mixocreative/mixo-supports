@@ -6,6 +6,12 @@ import { trianglesIntersect3D, type Triangle3D } from './triangleIntersection';
 
 type Bounds = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number };
 
+export interface SupportBodyConflict {
+  componentIndex: number;
+  component: SupportComponent;
+  supportTriangleIndex: number;
+  modelFaceIndex: number;
+}
 function triangle(mesh: TriangleMesh, face: number): Triangle3D {
   const vertex = (corner: number): Vector => {
     const offset = mesh.indices[face * 3 + corner]! * 3;
@@ -20,9 +26,12 @@ function bounds([a, b, c]: Triangle3D): Bounds {
     minZ: Math.min(a[2], b[2], c[2]), maxZ: Math.max(a[2], b[2], c[2]) };
 }
 
-/** Exact triangle crossings of selected built parts; both meshes must share millimetre coordinates. */
-export function intersectingSupportComponents(model: TriangleMesh, supports: GeneratedSupportMesh,
-  select: (component: SupportComponent) => boolean, skipLandingTips = false): SupportComponent[] {
+/** First non-exempt exact hit per selected built component; both meshes share millimetre coordinates.
+ * `allowHit` must prove each intentional contact locally; approving one hit never hides a later wall.
+ */
+export function supportBodyConflicts(model: TriangleMesh, supports: GeneratedSupportMesh,
+  select: (component: SupportComponent) => boolean, skipLandingTips = false,
+  allowHit?: (hit: SupportBodyConflict) => boolean): SupportBodyConflict[] {
   if (model.indices.length === 0 || supports.indices.length === 0) return [];
   const extent = meshBounds(model);
   const cell = Math.max(0.5, Math.max(extent.max[0] - extent.min[0], extent.max[2] - extent.min[2]) / 64);
@@ -44,10 +53,10 @@ export function intersectingSupportComponents(model: TriangleMesh, supports: Gen
   const triangleKey = (indices: Uint32Array, at: number) => `${indices[at]},${indices[at + 1]},${indices[at + 2]}`;
   const landingTips = new Set<string>();
   if (tipView) for (let at = 0; at < tipView.indices.length; at += 3) landingTips.add(triangleKey(tipView.indices, at));
-  const crossing: SupportComponent[] = [];
+  const crossing: SupportBodyConflict[] = [];
   const seen = new Uint32Array(model.indices.length / 3);
   let stamp = 0;
-  for (const component of supports.components) {
+  for (const [componentIndex, component] of supports.components.entries()) {
     if (!select(component)) continue;
     let hit = false;
     for (let at = component.start; at < component.start + component.count && !hit; at += 3) {
@@ -64,12 +73,23 @@ export function intersectingSupportComponents(model: TriangleMesh, supports: Gen
             if (candidate.maxY < box.minY || candidate.minY > box.maxY ||
               candidate.maxX < box.minX || candidate.minX > box.maxX ||
               candidate.maxZ < box.minZ || candidate.minZ > box.maxZ) continue;
-            if (trianglesIntersect3D(supportTriangle, triangle(model, face))) { hit = true; break; }
+            if (trianglesIntersect3D(supportTriangle, triangle(model, face))) {
+              const conflict = { componentIndex, component, supportTriangleIndex: at / 3, modelFaceIndex: face };
+              if (allowHit?.(conflict)) continue;
+              crossing.push(conflict);
+              hit = true;
+              break;
+            }
           }
         }
       }
     }
-    if (hit) crossing.push(component);
   }
   return crossing;
+}
+
+/** Compatibility view for callers that only need the intersecting component identity. */
+export function intersectingSupportComponents(model: TriangleMesh, supports: GeneratedSupportMesh,
+  select: (component: SupportComponent) => boolean, skipLandingTips = false): SupportComponent[] {
+  return supportBodyConflicts(model, supports, select, skipLandingTips).map((hit) => hit.component);
 }
