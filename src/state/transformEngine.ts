@@ -7,6 +7,7 @@ export interface TransformEngine {
   placement_matrix(position: Float64Array, rotation: Float64Array): Float64Array;
   invert_matrix(matrix: Float64Array): Float64Array;
   transform_positions(positions: Float32Array, matrix: Float64Array, handedness: number): Float32Array;
+  transformed_min_y(positions: Float32Array, matrix: Float64Array): number;
   transform_vectors(values: Float64Array, matrix: Float64Array, direction: boolean): Float64Array;
 }
 

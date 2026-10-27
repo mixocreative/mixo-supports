@@ -32,6 +32,7 @@ export interface SupportEngine {
   PolicyData: new (repairBudget: number, automatic: number, landingRule: number) => PolicyDataHandle;
   check_support_problems(positions: Float32Array, indices: Uint32Array, contacts: Float64Array, overhangAngleDegrees: number, spacing: number): SupportProblemsHandle;
   contour_perimeter(positions: Float32Array, edges: Uint32Array): number;
+  refine_for_overlay(positions: Float32Array, indices: Uint32Array, maxEdge: number, maxTriangles: number): { take_positions(): Float32Array; take_indices(): Uint32Array; free(): void };
 }
 
 let current: SupportEngine | undefined;

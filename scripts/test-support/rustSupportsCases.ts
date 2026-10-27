@@ -6,7 +6,7 @@ import type { ZoneStamp } from '../../src/core/supports/zones';
 /*
  * The cases of src/supports/rustSupports.test.ts: zones, landing rules (as a per-face predicate here, a mask in
  * production), tips-only previews, Auto Trees and Safe Distance. Shared by the test and by the one-off recorder
- * (scripts/golden/record-builder.ts) that stored the TS builder's results in scripts/fixtures/golden/rustSupports/.
+ * (git history, 13aef9a) that stored the TS builder's results in scripts/fixtures/golden/rustSupports/.
  */
 
 type V = [number, number, number];

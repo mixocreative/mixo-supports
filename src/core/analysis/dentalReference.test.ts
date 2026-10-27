@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { dot, subtract, type Vector } from '../vec3';
-import { applyToPoint, placementMatrix, transformPositions } from '../transform';
+import { applyToPoint, placementMatrix, transformPositions } from '../../../scripts/test-support/matrix';
 import { proposeDentalOrientation, rotationToDentalPose } from './dental';
 import { parseStl } from '../../../scripts/test-support/rustImport';
 

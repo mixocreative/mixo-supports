@@ -430,6 +430,15 @@ pub fn transform_positions(positions: &[f32], matrix: &[f64], handedness: u32) -
     Ok(matrix::transform_positions(positions, &matrix4(matrix)?, handedness_of(handedness)?))
 }
 
+/// Lowest y of the positions through a matrix (float32 like `transform_positions`), without the copy.
+#[wasm_bindgen]
+pub fn transformed_min_y(positions: &[f32], matrix: &[f64]) -> Result<f32, JsValue> {
+    if positions.len() % 3 != 0 {
+        return Err(coded_error("INVALID_LENGTH"));
+    }
+    Ok(matrix::transformed_min_y(positions, &matrix4(matrix)?))
+}
+
 /// A batch of f64 xyz triples through a matrix as points (with divide) or normalised directions.
 #[wasm_bindgen]
 pub fn transform_vectors(values: &[f64], matrix: &[f64], direction: bool) -> Result<Vec<f64>, JsValue> {

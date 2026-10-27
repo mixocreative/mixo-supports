@@ -3,7 +3,7 @@ import { defaultSupportSettings, toPlacementSettings, updateSetting, type LiveSu
 import { approxArray } from './golden';
 
 /*
- * Inputs of src/supports/genericParity.test.ts, shared with the one-off recorder (scripts/golden/record-builder.ts)
+ * Inputs of src/supports/genericParity.test.ts, shared with the one-off oracle recorder (git history, 13aef9a)
  * that stored the TS placement's results in scripts/fixtures/golden/generic/.
  */
 

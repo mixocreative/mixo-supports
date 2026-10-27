@@ -4,7 +4,7 @@ import { FULL_TIER_MAX } from '../../core/budget';
 import type { SupportProblem } from '../../core/analysis/supportCheck';
 import type { SupportPoint, TriangleMesh } from '../../core/analysis/types';
 import type { GeneratedSupportMesh, SupportContact } from '../../core/supports/mesh';
-import { warmZoneOverlay, zoneOverlay } from '../../core/supports/overlayMesh';
+import { warmZoneOverlay, zoneOverlay } from './overlayMesh';
 import { contactRadius, withShape } from '../../core/supports/settings';
 import { buildVertexGrid, sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
 import type { DentalRim } from '../../core/analysis/dental';
@@ -109,15 +109,12 @@ const ZONE_GRID_CELL = 2;
 /** The zone layer's refined mesh and vertex grid for a model (cached per mesh, see `zoneOverlay`). */
 const overlayOf = (mesh: TriangleMesh) => zoneOverlay(mesh, mesh.indices.length / 3 >= FULL_TIER_MAX ? Infinity : OVERLAY_MAX_EDGE, OVERLAY_MAX_TRIANGLES, ZONE_GRID_CELL);
 
-/** Main-thread work per idle slice while warming the overlay (ms), well under a long task. */
-const WARM_SLICE_MS = 12;
-
 /** Works the zone layer's overlay out in idle slices once `ready` (the supports are built), so the first zone stroke finds it cached and no long task blocks the page. */
 export function useWarmZoneOverlay(mesh: TriangleMesh | undefined, ready: boolean): void {
   useEffect(() => {
     if (!mesh || !ready) return;
     const infinite = mesh.indices.length / 3 >= FULL_TIER_MAX;
-    const step = warmZoneOverlay(mesh, infinite ? Infinity : OVERLAY_MAX_EDGE, OVERLAY_MAX_TRIANGLES, ZONE_GRID_CELL, WARM_SLICE_MS);
+    const step = warmZoneOverlay(mesh, infinite ? Infinity : OVERLAY_MAX_EDGE, OVERLAY_MAX_TRIANGLES, ZONE_GRID_CELL);
     let cancel = () => {};
     const next = () => {
       const idle = typeof requestIdleCallback === 'function';

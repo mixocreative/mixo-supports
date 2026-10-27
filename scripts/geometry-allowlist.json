@@ -1,91 +1,117 @@
 {
- "scripts/dental-region-review/build.ts": "host-adapter",
- "scripts/dental-region-review/cli.ts": "host-adapter",
- "scripts/dental-region-review/crossings-probe.ts": "retire",
- "scripts/dental-region-review/crossings.ts": "frozen-reference",
- "scripts/dental-region-review/path-preflight-bench.ts": "retire",
- "scripts/dental-region-review/phaseGap.ts": "frozen-reference",
- "scripts/dental-region-review/review.ts": "host-adapter",
- "scripts/dental-region-review/rimCoverage.ts": "retire",
- "scripts/dental-region-review/topologyBirthProbe.ts": "retire",
- "src/components/viewport/UnitObject.tsx": "host-adapter",
- "src/components/viewport/cameras.tsx": "host-adapter",
- "src/components/viewport/dentalFaceOverlay.ts": "port",
- "src/components/viewport/geometry.ts": "host-adapter",
- "src/components/viewport/supportLayers.tsx": "host-adapter",
- "src/components/viewport/useScreenBrush.ts": "host-adapter",
- "src/core/acosf.ts": "port",
- "src/core/analysis/dental.ts": "port",
- "src/core/analysis/dentalContactBand.ts": "port",
- "src/core/analysis/dentalContactFootprint.ts": "port",
- "src/core/analysis/dentalContourContacts.ts": "port",
- "src/core/analysis/dentalContourEvidence.ts": "port",
- "src/core/analysis/dentalContours.ts": "port",
- "src/core/analysis/dentalPolicy.ts": "port",
- "src/core/analysis/dentalRegion.ts": "port",
- "src/core/analysis/dentalTuning.ts": "host-adapter",
- "src/core/analysis/edgeAnchors.ts": "port",
- "src/core/analysis/legacyRidges.ts": "port",
- "src/core/analysis/mergeByDistance.ts": "port",
- "src/core/analysis/mesh.ts": "port",
- "src/core/analysis/nearestPoint.ts": "port",
- "src/core/analysis/placement.ts": "port",
- "src/core/analysis/random.ts": "port",
- "src/core/analysis/supportCheck.ts": "host-adapter",
- "src/core/analysis/types.ts": "host-adapter",
- "src/core/analysis/vertexNormals.ts": "port",
- "src/core/budget.ts": "host-adapter",
- "src/core/conventions.ts": "host-adapter",
- "src/core/handedness.ts": "port",
- "src/core/import/estimate.ts": "host-adapter",
- "src/core/import/stl.ts": "port",
- "src/core/import/weld.ts": "port",
- "src/core/jobGate.ts": "host-adapter",
- "src/core/jobs.ts": "host-adapter",
- "src/core/plateLedger.ts": "host-adapter",
- "src/core/supports/autotree.ts": "port",
- "src/core/supports/dentalSettings.ts": "host-adapter",
- "src/core/supports/labelFont.ts": "port",
- "src/core/supports/landing.ts": "port",
- "src/core/supports/mesh.ts": "port",
- "src/core/supports/meshBuilder.ts": "port",
- "src/core/supports/meshQuery.ts": "port",
- "src/core/supports/openvdbTables.ts": "port",
- "src/core/supports/overlayMesh.ts": "port",
- "src/core/supports/raft.ts": "port",
- "src/core/supports/raftGeometry.ts": "port",
- "src/core/supports/remesh.ts": "port",
- "src/core/supports/roof.ts": "port",
- "src/core/supports/settings.ts": "host-adapter",
- "src/core/supports/zones.ts": "port",
- "src/core/transform.ts": "port",
- "src/core/vec3.ts": "host-adapter",
- "src/editing/brushScheduler.ts": "host-adapter",
- "src/editing/dragOver.ts": "host-adapter",
- "src/editing/hoverProbe.ts": "host-adapter",
- "src/editing/pick.ts": "host-adapter",
- "src/editing/screenBrush.ts": "port",
- "src/editing/selectionHighlight.ts": "host-adapter",
- "src/editing/stroke.ts": "host-adapter",
- "src/editing/strokeQueue.ts": "host-adapter",
- "src/editing/surfaceBrush.ts": "host-adapter",
- "src/editing/view.ts": "host-adapter",
- "src/state/import.ts": "port",
- "src/state/transform.ts": "port",
- "src/supports/checkSupports.ts": "host-adapter",
- "src/supports/export.ts": "port",
- "src/supports/generateSupports.ts": "host-adapter",
- "src/supports/jobRunner.ts": "host-adapter",
- "src/supports/landing.ts": "host-adapter",
- "src/supports/selection.ts": "host-adapter",
- "src/supports/supportFrame.ts": "port",
- "src/supports/unitSupports.ts": "host-adapter",
- "src/workers/analysisWorker.ts": "host-adapter",
- "src/workers/geometryClient.ts": "host-adapter",
- "src/workers/geometryVersion.ts": "host-adapter",
- "src/workers/importWorker.ts": "host-adapter",
- "src/workers/meshWorker.ts": "host-adapter",
- "src/workers/prepareImport.ts": "host-adapter",
- "src/workers/projectWorker.ts": "host-adapter",
- "src/workers/sourceCache.ts": "host-adapter"
+ "src/App.tsx": {
+  "label": "host-adapter"
+ },
+ "src/components/ObjectViewport.tsx": {
+  "label": "host-adapter"
+ },
+ "src/components/useFixSpot.ts": {
+  "label": "host-adapter"
+ },
+ "src/components/viewport/AddFlash.tsx": {
+  "label": "host-adapter"
+ },
+ "src/components/viewport/cameras.tsx": {
+  "label": "host-adapter"
+ },
+ "src/components/viewport/types.ts": {
+  "label": "host-adapter"
+ },
+ "src/components/viewport/UnitObject.tsx": {
+  "label": "host-math",
+  "maxMath": 3,
+  "why": "three.js raycast/hover normals for the viewport (render only)"
+ },
+ "src/components/viewport/useScreenBrush.ts": {
+  "label": "host-adapter"
+ },
+ "src/core/analysis/dental.ts": {
+  "label": "host-adapter"
+ },
+ "src/core/analysis/dentalOrient.ts": {
+  "label": "host-adapter"
+ },
+ "src/core/analysis/dentalPolicy.ts": {
+  "label": "host-adapter"
+ },
+ "src/core/analysis/supportCheck.ts": {
+  "label": "host-adapter"
+ },
+ "src/core/handedness.ts": {
+  "label": "host-adapter"
+ },
+ "src/core/jobs.ts": {
+  "label": "host-adapter"
+ },
+ "src/core/supports/mesh.ts": {
+  "label": "host-adapter"
+ },
+ "src/core/supports/meshQuery.ts": {
+  "label": "host-adapter"
+ },
+ "src/core/supports/zones.ts": {
+  "label": "host-math",
+  "maxMath": 5,
+  "why": "U5 decision: stamp spacing along a stroke and the vertex-grid paint of the zone layer display mesh stay host (UI); the zone decision for generation is Rust supports/zones.rs"
+ },
+ "src/core/transform.ts": {
+  "label": "host-adapter"
+ },
+ "src/core/vec3.ts": {
+  "label": "host-math",
+  "maxMath": 10,
+  "why": "D4: the small vec3 helper set used by render, camera and UI glue; shrinks as callers move to Rust, may not grow"
+ },
+ "src/dental/arrange.ts": {
+  "label": "host-adapter"
+ },
+ "src/dental/placement.ts": {
+  "label": "host-adapter"
+ },
+ "src/editing/check.ts": {
+  "label": "host-math",
+  "maxMath": 3,
+  "why": "UI proximity of a problem-list spot to a support/finding (hover and fix-spot matching), no mesh geometry"
+ },
+ "src/editing/stroke.ts": {
+  "label": "host-adapter"
+ },
+ "src/editing/surfaceBrush.ts": {
+  "label": "host-adapter"
+ },
+ "src/editing/view.ts": {
+  "label": "host-math",
+  "maxMath": 7,
+  "why": "camera framing (fit/spot view distance from a bounding sphere and the field of view): render/camera, not model geometry"
+ },
+ "src/state/transform.ts": {
+  "label": "host-adapter"
+ },
+ "src/supports/checkSupports.ts": {
+  "label": "host-adapter"
+ },
+ "src/supports/contactEdits.ts": {
+  "label": "host-adapter"
+ },
+ "src/supports/export.ts": {
+  "label": "host-adapter"
+ },
+ "src/supports/generateSupports.ts": {
+  "label": "host-adapter"
+ },
+ "src/supports/jobRunner.ts": {
+  "label": "host-adapter"
+ },
+ "src/supports/supportBuildWasm.ts": {
+  "label": "host-adapter"
+ },
+ "src/supports/supportFrame.ts": {
+  "label": "host-adapter"
+ },
+ "src/supports/unitSupports.ts": {
+  "label": "host-adapter"
+ },
+ "scripts/dental-region-review/build.ts": {
+  "label": "host-adapter"
+ }
 }

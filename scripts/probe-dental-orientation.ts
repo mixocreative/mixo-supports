@@ -8,7 +8,7 @@ import { runPlacementJob } from '../src/supports/jobRunner';
 import { filterDentalPlacement } from '../src/dental/placement';
 import { defaultSupportSettings, toPlacementSettings } from '../src/core/supports/settings';
 import { inverseTransformPoint } from '../src/state/transform';
-import { applyToDirection, applyToPoint, placementMatrix, transformPositions } from '../src/core/transform';
+import { applyToDirection, applyToPoint, placementMatrix, transformPositions } from './test-support/matrix';
 import type { Vector } from '../src/core/vec3';
 import { parseStl } from './test-support/rustImport';
 

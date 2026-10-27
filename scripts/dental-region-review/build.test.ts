@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { readGolden } from '../test-support/golden';
-import { placementMatrix, transformPositions } from '../../src/core/transform';
+import { placementMatrix, transformPositions } from '../test-support/matrix';
 import { buildDentalReview } from './build';
 import { exportDentalRegionReview } from './review';
 import { parseStl } from '../test-support/rustImport';

@@ -27,6 +27,11 @@ export function inverseTransformMesh<T extends TriangleMesh>(mesh: T, transform:
   return { ...mesh, positions: transformEngine().transform_positions(mesh.positions, inverse(transform), 0) };
 }
 
+/** Lowest plate-space y of positions placed by `transform` (Rust; no copy of the transformed mesh). */
+export function transformedMinY(positions: Float32Array, transform: ModelTransform): number {
+  return transformEngine().transformed_min_y(positions, placement(transform));
+}
+
 /** Unit-local point to world (plate) space. */
 export function transformPoint(transform: ModelTransform, point: readonly number[]): Vector {
   return through(placement(transform), point, false);

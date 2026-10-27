@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fromLeftHanded, fromLeftHandedMatrix, toLeftHanded, toLeftHandedMatrix } from '../core/handedness';
-import { placementMatrix, transformPositions } from '../core/transform';
+import { placementMatrix, transformPositions } from '../../scripts/test-support/matrix';
 import { GOLDEN_FIXTURES } from '../goldens/fixtures';
 import { supportedUnit } from '../goldens/pipeline';
 import { runSupportJob } from '../supports/jobRunner';

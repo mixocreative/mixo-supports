@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TriangleMesh } from './analysis/types';
 import { fromLeftHanded, fromLeftHandedMatrix, fromLeftHandedVector, toLeftHanded, toLeftHandedMatrix, toLeftHandedVector } from './handedness';
-import { applyToDirection, applyToPoint, placementMatrix } from './transform';
+import { applyToDirection, applyToPoint, placementMatrix } from '../../scripts/test-support/matrix';
 import { cross, dot, normalize, subtract, type Vector } from './vec3';
 
 /** Unit cube [0, 1]³, counter-clockwise outward (the core's winding). */

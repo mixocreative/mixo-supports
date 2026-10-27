@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { placementMatrix, transformPositions } from '../../src/core/transform';
+import { placementMatrix, transformPositions } from '../test-support/matrix';
 import { proposeDentalOrientation } from '../../src/core/analysis/dental';
 import { proposeDentalSupportRegion } from '../../src/core/analysis/dentalRegion';
 import { diagnose } from '../../src/dental/diagnose';

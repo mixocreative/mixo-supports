@@ -2,7 +2,7 @@ import './test-support/useNodeEngine';
 /** Edge-network diagnosis for a neutral dental STL; optional SVG/GLB debug exports never alter the source mesh. */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { proposeDentalOrientation } from '../src/core/analysis/dental';
-import { placementMatrix, transformPositions } from '../src/core/transform';
+import { placementMatrix, transformPositions } from './test-support/matrix';
 import { cross, dot, normalize, subtract, type Vector } from '../src/core/vec3';
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../../core/analysis/types';
 import { refineForOverlay, warmZoneOverlay, zoneOverlay } from './overlayMesh';
 import { parseStl } from '../../../scripts/test-support/rustImport';
 
@@ -150,22 +150,12 @@ describe('overlay refinement on the knot fixture', () => {
     expect(digest(refineForOverlay(knot, edge, budget))).toEqual(expected);
   });
 
-  it('worked out in slices gives the same overlay, and a slice stays short', () => {
+  it('warming does all the work in one step and the overlay is shared afterwards', () => {
     const copy: TriangleMesh = { positions: knot.positions.slice(), indices: knot.indices.slice() };
-    const step = warmZoneOverlay(copy, 1, 1_500_000, 2, 0);
-    let slices = 0;
-    while (step()) slices++;
-    expect(slices).toBeGreaterThan(20);
-    const sliced = zoneOverlay(copy, 1, 1_500_000, 2);
-    expect(digest(sliced.mesh)).toEqual([416092, 206809, 'e25d3f49', '1552dfbb']);
-    expect(zoneOverlay(copy, 1, 1_500_000, 2)).toBe(sliced);
-  });
-
-  it('a call part-way through the slices finishes the same work', () => {
-    const copy: TriangleMesh = { positions: knot.positions.slice(), indices: knot.indices.slice() };
-    const step = warmZoneOverlay(copy, 1, 1_500_000, 2, 0);
-    step();
-    step();
-    expect(digest(zoneOverlay(copy, 1, 1_500_000, 2).mesh)).toEqual([416092, 206809, 'e25d3f49', '1552dfbb']);
+    const step = warmZoneOverlay(copy, 1, 1_500_000, 2);
+    expect(step()).toBe(false);
+    const warmed = zoneOverlay(copy, 1, 1_500_000, 2);
+    expect(digest(warmed.mesh)).toEqual([416092, 206809, 'e25d3f49', '1552dfbb']);
+    expect(zoneOverlay(copy, 1, 1_500_000, 2)).toBe(warmed);
   });
 });

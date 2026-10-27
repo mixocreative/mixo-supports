@@ -3,7 +3,7 @@ import type { DentalRegionProposal } from '../../src/core/analysis/dentalRegion'
 import type { PlacementResult } from '../../src/core/analysis/types';
 
 /*
- * Snapshot shapes shared by the dental golden recorder (scripts/golden/record-dental.ts, ran the TS oracle once)
+ * Snapshot shapes shared by the dental golden recorder (a one-off recorder that ran the TS oracle; in git history at 13aef9a)
  * and the Rust parity tests. Rule 7: ids, faces, edges, masks exact (hashes); positions within 1e-5 mm.
  */
 

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { placementMatrix, transformPositions } from '../transform';
+import { placementMatrix, transformPositions } from '../../../scripts/test-support/matrix';
 import { proposeDentalSupportRegion } from './dentalRegion';
 import { diagnosticDentalSideBands } from './dentalContactBand';
 import { parseStl } from '../../../scripts/test-support/rustImport';

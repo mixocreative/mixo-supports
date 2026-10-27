@@ -125,6 +125,15 @@ pub fn transform_positions(positions: &[f32], matrix: &Matrix4, handedness: Hand
     out
 }
 
+/// Lowest transformed y over all vertices, in single precision exactly like `transform_positions` rounds
+/// it (infinity for no vertex): the model's resting height without copying the transformed mesh.
+pub fn transformed_min_y(positions: &[f32], matrix: &Matrix4) -> f32 {
+    positions
+        .chunks_exact(3)
+        .map(|p| apply_to_point(matrix, f64::from(p[0]), f64::from(p[1]), f64::from(p[2]))[1] as f32)
+        .fold(f32::INFINITY, f32::min)
+}
+
 /// A batch of f64 xyz triples through `matrix`: points (with divide) or directions (normalised).
 pub fn transform_vectors(values: &[f64], matrix: &Matrix4, direction: bool) -> Vec<f64> {
     let mut out = Vec::with_capacity(values.len());
@@ -141,6 +150,16 @@ pub fn transform_vectors(values: &[f64], matrix: &Matrix4, direction: bool) -> V
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transformed_min_y_is_the_lowest_rounded_y_of_the_transformed_positions() {
+        let m = placement_matrix([3.0, -2.0, 5.0], [0.4, -1.1, 2.0]);
+        let positions = [1.0f32, 2.5, -3.0, -4.0, 0.25, 7.0, 0.5, 9.0, 1.5];
+        let moved = transform_positions(&positions, &m, Handedness::Right);
+        let lowest = moved.chunks_exact(3).map(|p| p[1]).fold(f32::INFINITY, f32::min);
+        assert_eq!(transformed_min_y(&positions, &m), lowest);
+        assert_eq!(transformed_min_y(&[], &m), f32::INFINITY);
+    }
 
     #[test]
     fn placement_inverse_round_trips_a_point() {

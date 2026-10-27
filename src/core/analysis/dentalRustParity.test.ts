@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { applyToPoint, placementMatrix, transformPositions } from '../transform';
+import { applyToPoint, placementMatrix, transformPositions } from '../../../scripts/test-support/matrix';
 import type { Vector } from '../vec3';
 import { parseStl } from '../../../scripts/test-support/rustImport';
 import { approxArray, exactArray, expectGolden } from '../../../scripts/test-support/golden';

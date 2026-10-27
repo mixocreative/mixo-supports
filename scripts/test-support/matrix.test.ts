@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyToDirection, applyToPoint, invertMatrix, placementMatrix, quaternionFromEuler, transformPositions } from './transform';
+import { applyToDirection, applyToPoint, invertMatrix, placementMatrix, quaternionFromEuler, transformPositions } from './matrix';
 
 const closeTo = (actual: number[], expected: number[]) => actual.forEach((value, i) => expect(value).toBeCloseTo(expected[i]!, 12));
 

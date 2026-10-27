@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyToDirection, applyToPoint, placementMatrix } from '../transform';
+import { applyToDirection, applyToPoint, placementMatrix } from '../../../scripts/test-support/matrix';
 import { dot, type Vector } from '../vec3';
 import { proposeDentalOrientation, rotationToDentalPose } from './dental';
 import { rimContainsPoint, rotationToPlateDown } from '../../../scripts/test-support/dentalExpect';

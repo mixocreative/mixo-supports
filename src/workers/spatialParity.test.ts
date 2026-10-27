@@ -1,12 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { BrushFixture } from '../../scripts/fixtures/brush/types';
-import { approxArray, expectGolden, readGolden } from '../../scripts/test-support/golden';
+import { approxArray, exactArray, expectGolden, readGolden } from '../../scripts/test-support/golden';
 import { seededRays } from '../../scripts/test-support/knotRays';
 import { nodeEngine, parseStl } from '../../scripts/test-support/rustImport';
-import { refineForOverlay } from '../core/supports/overlayMesh';
 import { fromLeftHandedMatrix, toLeftHanded, toLeftHandedMatrix } from '../core/handedness';
-import { applyToDirection, applyToPoint, invertMatrix, placementMatrix, transformPositions } from '../core/transform';
+import { applyToDirection, applyToPoint, invertMatrix, placementMatrix, transformPositions } from '../../scripts/test-support/matrix';
 
 /*
  * U2 parity: the Rust core (pkg-node build) against the TS implementations it replaces. Rule 7:
@@ -159,17 +158,15 @@ describe('transform, handedness, normals, overlay vertices', () => {
     expectGolden('knot-vertex-normals', approxArray(engine.vertex_normals(knot.positions, knot.indices) as Float32Array, 31));
   });
 
-  it('refineForOverlay matches the TS refine; dentalFaceOverlay and contour segments match the recorded TS result', () => {
+  it('refineForOverlay matches the recorded TS refine; dentalFaceOverlay and contour segments match the recorded TS result', () => {
     const faces = knot.indices.length / 3;
-    for (const [maxEdge, maxTriangles] of [[1e9, faces * 2], [4, faces * 3], [1.5, faces * 3]] as const) {
-      const ts = refineForOverlay(knot, maxEdge, maxTriangles);
+    const refined = ([[1e9, faces * 2], [4, faces * 3], [1.5, faces * 3]] as const).map(([maxEdge, maxTriangles]) => {
       const rust = engine.refine_for_overlay(knot.positions, knot.indices, maxEdge, maxTriangles);
-      const positions = rust.take_positions() as Float32Array;
-      const indices = rust.take_indices() as Uint32Array;
+      const result = { indices: exactArray(rust.take_indices() as Uint32Array), positions: approxArray(rust.take_positions() as Float32Array, 211) };
       rust.free();
-      expect(Array.from(indices)).toEqual(Array.from(ts.indices));
-      expect(maxDiff(positions, ts.positions)).toBeLessThan(1e-5);
-    }
+      return result;
+    });
+    expectGolden('knot-refine-overlay', refined);
     const allowed = Uint8Array.from({ length: faces }, (_, f) => (f % 3 === 0 ? 1 : 0));
     const rustFaces = engine.dental_face_overlay(knot.positions, knot.indices, allowed);
     const overlayPositions = rustFaces.take_positions() as Float32Array;

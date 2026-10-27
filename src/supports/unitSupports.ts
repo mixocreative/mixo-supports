@@ -7,8 +7,7 @@ import { type CheckJob, type ContactInputs, type DentalPlacementJob, type JobTra
 import type { GeneratedSupportMesh, SupportContact } from '../core/supports/mesh';
 import { defaultSupportSettings, toPlacementSettings, type LiveSupportSettings, type SettingKey } from '../core/supports/settings';
 import type { ContactSettings, JSONObject, PrintUnit, SceneCommand, SupportSettings } from '../state/project';
-import { inverseTransformDirection, inverseTransformPoint, type ModelTransform } from '../state/transform';
-import { placementMatrix } from '../core/transform';
+import { inverseTransformDirection, inverseTransformPoint, transformedMinY, type ModelTransform } from '../state/transform';
 import { runSupportJob } from './jobRunner';
 
 /*
@@ -197,18 +196,7 @@ export function unitSupportMesh(unit: PrintUnit, unitIndex: number, mode: 'previ
  * Generate costs no full-mesh copy on the main thread.
  */
 export function unitLowestY(unit: PrintUnit): number {
-  const e = placementMatrix(unit.transform);
-  const positions = unit.source.positions;
-  let lowest = Infinity;
-  for (let o = 0; o < positions.length; o += 3) {
-    const x = positions[o]!;
-    const y = positions[o + 1]!;
-    const z = positions[o + 2]!;
-    const w = 1 / (e[3]! * x + e[7]! * y + e[11]! * z + e[15]!);
-    const value = Math.fround((e[1]! * x + e[5]! * y + e[9]! * z + e[13]!) * w);
-    if (value < lowest) lowest = value;
-  }
-  return lowest;
+  return transformedMinY(unit.source.positions, unit.transform);
 }
 
 /**

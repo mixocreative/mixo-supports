@@ -15,7 +15,7 @@
  * REGEN (only after an INTENDED output change; review the diff of scripts/fixtures/golden/ in the commit):
  *   UPDATE_GOLDENS=1 npx vitest run <the parity test file>
  * rewrites that test's golden files from the current Rust output (the original recordings came from the TS
- * oracle, see the U9 commit). Without the variable a missing golden is an error and a mismatch fails.
+ * oracle (recorders and the oracle: git history, commit 13aef9a and its parent's tree)). Without the variable a missing golden is an error and a mismatch fails.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

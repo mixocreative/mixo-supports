@@ -309,3 +309,11 @@ Checkpoint `e692677` was pushed to `origin/codex/dental-rework`. The old `src/co
 - Risk: cancel is only observable between `generate` calls in tests (the call is synchronous in the worker); a replaced running build restarts the worker only after 800 ms; Babylon is not loaded, the contract is the arithmetic and winding.
 - Next action: U9 (guard converts oracle comparisons to goldens, deletes `ts-oracle/`, `core/analysis/mesh.ts` test-only), then U10 (problem list shows blocked/island verdicts, degenerate-triangle fix, docs rewrite).
 
+
+## 2026-10-28 U9 cleanup + guard on
+
+- Files: `scripts/test-support/golden.ts` + `scripts/fixtures/golden/**` (1.9 MB), converted `*Parity.test.ts`, `ts-oracle/` deleted, `scripts/geometry-guard.mjs` + `scripts/geometry-allowlist.json` + `src/geometryGuard.test.ts`, `src/components/viewport/overlayMesh.ts` (Rust refine), Rust `core/matrix.rs::transformed_min_y`, `safety/births.rs`.
+- Evidence: `cargo test --workspace` (176 core), `npm run wasm:build && wasm:test`, `npx tsc --noEmit`, `npm run build`, full `npx vitest run` (125 files, 1,177 tests), `npm run walk` ALL PASS (66 checks, 359 s).
+- Finding: `knot.stl` welds to 282 repeated-vertex triangles (now skipped) and 4,011 edges shared by four triangles (tube touches itself): its island verdict is now `inconclusive: non-manifold edge`, a real mesh property; the manifold guard in `births` was not loosened (safety judgment for the owner).
+- Risk: goldens re-recorded with `UPDATE_GOLDENS=1` come from Rust, so only record after an intended change; `scripts/test-support/matrix.ts` is still a TS reference compared with Rust in `spatialParity`; dragOver test uses a local fake hit test.
+- Next action: U10 (docs rewrite incl. stale `ts-oracle` pointers in dentalwork docs; problem list shows island/blocked verdicts); `three-mesh-bvh` devDependency can be removed.
