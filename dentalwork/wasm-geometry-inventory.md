@@ -26,16 +26,16 @@ Row count: 103 (port 42, port-into-shared-safety 10, frozen-reference 6, host-ad
 | `src/core/analysis/legacyRidges.ts` | meshEdges, signedEdgeAngles, legacyRidgeMidpoints | placement | generic/policy | port | U5 |
 | `src/core/analysis/mergeByDistance.ts` | mergeByDistance | placement | generic/policy | port | U5 |
 | `src/core/analysis/mesh.ts` | classifyDownwardFaces, partitionRegions, faceOverhangLimit | App, ObjectList, placement, supportCheck, jobRunner, unitSupports | generic/policy | port | U5; downward faces, regions, labels |
-| `src/core/analysis/nearestPoint.ts` | NearestPoint | placement | core/spatial | port | U2; nearest-point-on-mesh queries |
+| `src/core/analysis/nearestPoint.ts` | NearestPoint | placement | core/spatial | port | U2; nearest-point-on-mesh queries; U2 status: Rust `core/nearest.rs` done (native-tested; no WASM call in the ABI); TS caller switch pending |
 | `src/core/analysis/placement.ts` | generatePlacement, composeContacts, hidingRemovals, remapDeleted | jobs, regenerate, project, jobRunner, unitSupports | generic/policy + supports/edits | port | U5 (placement) and U4 (manual-edit rekeying); deterministic IDs |
 | `src/core/analysis/random.ts` | hashPair, Drand48 | placement | generic/policy | port | U5; deterministic RNG, exact parity |
 | `src/core/analysis/supportCheck.ts` | checkSupports, SupportProblem | App, jobRunner (runCheckJob), goldens pipeline, topologyBirthProbe | supports/islands + supports/verdict (U7) | retire | Decision D1: old island/overhang heuristic replaced by the built-path island verdict; removed in U10 |
 | `src/core/analysis/topologyBirths.ts` | topologyBirths | review probe script only | supports/islands | frozen-reference | U7 port source; no production caller; not finished in TS |
 | `src/core/analysis/types.ts` | TriangleMesh, SupportPoint, PlacementSettings | ~58 files | ABI mirror types in host | host-adapter | Types only; mirror Rust ABI structs |
-| `src/core/analysis/vertexNormals.ts` | vertexNormals, faceNormal | placement | core/mesh | port | U2 (normals) |
+| `src/core/analysis/vertexNormals.ts` | vertexNormals, faceNormal | placement | core/mesh | port | U2 (normals); U2 status: Rust `core/normals.rs` + `vertex_normals` done, parity <=1e-5; caller switch pending |
 | `src/core/budget.ts` | TRIANGLE_BUDGET, Tier, Runtime | App, openProject, useRegenerate, supportLayers, status, +6 | host tier policy; Rust returns `OVER_CAPACITY` | host-adapter | Budget numbers; capacity message in U10 |
 | `src/core/conventions.ts` | UP, UNITS, HANDEDNESS | none | host constants | host-adapter | Constants/doc; no callers |
-| `src/core/handedness.ts` | toLeftHanded, fromLeftHanded, ...Matrix | none in production (tests, core/README) | core/transform (handedness arg) | port | U2 `handedness` input; U8 Babylon smoke |
+| `src/core/handedness.ts` | toLeftHanded, fromLeftHanded, ...Matrix | none in production (tests, core/README) | core/transform (handedness arg) | port | U2 `handedness` input; U8 Babylon smoke; U2 status: Rust `Handedness` + `transform` done, parity ok; caller switch pending |
 | `src/core/import/estimate.ts` | estimateTriangles | App | host (header estimate) | host-adapter | Reads header bytes, no geometry |
 | `src/core/import/stlHeader.ts` | stlKind, binaryStlTriangles, StlFormatError/StlEmptyError | importWorker, stlSession, estimate | host header classifier in front of the Rust sessions | host-adapter | U1: TS parser/welder (`StlWelder`, `parseStl`) moved to `scripts/test-support/ts-oracle/stl.ts` |
 | `scripts/test-support/ts-oracle/weld.ts` | weldPositions, VertexWelder, transformInto | oracle parity tests only | core/import (Rust `weld_positions_in_place`) | frozen-reference | U1: moved out of production; deleted in U9 |
@@ -57,7 +57,7 @@ Row count: 103 (port 42, port-into-shared-safety 10, frozen-reference 6, host-ad
 | `src/core/supports/meshQuery.ts` | meshBounds, tipsOf, contactAtTriangle | App, UnitObject, bodyIntersection, landing, +4 | core/mesh | port | U2/U4 |
 | `src/core/supports/modelCollisionIndex.ts` | createModelCollisionIndex | bodyIntersection, columnPathScreen, dentalBodyClearance, pathPreflight, jobRunner, +1 | supports/clearance (collision index) | port-into-shared-safety | U7; one index for both policies |
 | `src/core/supports/openvdbTables.ts` | ADAPTABLE, EDGE_GROUPS | remesh | generic/remesh (data tables) | port | U5; table data |
-| `src/core/supports/overlayMesh.ts` | refineForOverlay, zoneOverlay, warmZoneOverlay | supportLayers | core/brush (overlay vertices) | port | U2 |
+| `src/core/supports/overlayMesh.ts` | refineForOverlay, zoneOverlay, warmZoneOverlay | supportLayers | core/brush (overlay vertices) | port | U2; U2 status: `refine_for_overlay` done, parity exact; `zoneOverlay`/vertex grid not ported; caller switch pending |
 | `src/core/supports/pathPreflight.ts` | preflightSupportPath | candidateSelection, columnPathScreen, bench script | supports/clearance | port-into-shared-safety | U7; keep only with zero false-safe plus measured benefit |
 | `src/core/supports/raft.ts` | raftPerimeter, raftOutline | raftGeometry, roof, jobRunner | supports/parts (raft) | port | U4 |
 | `src/core/supports/raftGeometry.ts` | addStructures | mesh | supports/parts | port | U4 |
@@ -68,35 +68,35 @@ Row count: 103 (port 42, port-into-shared-safety 10, frozen-reference 6, host-ad
 | `src/core/supports/supportRoute.ts` | routeFromNodes | columnPathScreen, mesh | supports/parts | port | U4/U7 |
 | `src/core/supports/triangleIntersection.ts` | trianglesIntersect3D, segmentIntersectsTriangle3D | bodyIntersection, pathPreflight | core/spatial | port | U2/U7 |
 | `src/core/supports/zones.ts` | stampsAlong, VertexGrid, zonedAt, problemInZone | App, supportLayers, UnitObject, jobs, mesh, +3 | supports/edits + generic/policy zones | port | U5; zone data stays serializable host data |
-| `src/core/transform.ts` | placementMatrix, applyToPoint, invertMatrix | handedness, state/transform, unitSupports, probe scripts | core/transform (`transform`) | port | U2 |
+| `src/core/transform.ts` | placementMatrix, applyToPoint, invertMatrix | handedness, state/transform, unitSupports, probe scripts | core/transform (`transform`) | port | U2; U2 status: Rust `core/matrix.rs` + `placement_matrix`/`invert_matrix`/`transform_*` done, parity ok; caller switch pending |
 | `src/core/vec3.ts` | add, subtract, dot, cross, ... | about 45 files | none; residual render/camera helper only | host-adapter | Shrinks as callers migrate; guard flags use outside render/camera (U9) |
 | `src/editing/brushScheduler.ts` | createBrushScheduler | useScreenBrush, dragOver, gesture | host scheduling | host-adapter | Frame budget, no geometry |
 | `src/editing/dragOver.ts` | createDragOver | useScreenBrush | host | host-adapter | Pointer state |
 | `src/editing/hoverProbe.ts` | createHoverProbe | useScreenBrush | host | host-adapter | Throttle |
 | `src/editing/pick.ts` | pickAction, clickTool | ObjectViewport, UnitObject | host | host-adapter | Click policy; face pick itself is raycast in useScreenBrush |
-| `src/editing/screenBrush.ts` | projectPoint, bodySegments, HIDE_TOLERANCE, +8 | useScreenBrush | core/brush (`project_brush`) | port | U2; recorded camera + strokes fixture |
+| `src/editing/screenBrush.ts` | projectPoint, bodySegments, HIDE_TOLERANCE, +8 | useScreenBrush | core/brush (`project_brush`) | port | U2; recorded camera + strokes fixture; U2 status: Rust `core/brush.rs` + `project_brush` done, recorded-fixture parity ok; caller switch pending |
 | `src/editing/selectionHighlight.ts` | contactVertexRuns, selectionDelta | supportLayers | host (render index runs) | host-adapter | Vertex-run bookkeeping for highlights |
 | `src/editing/stroke.ts` | createStroke, zoneFill | UnitObject, useScreenBrush, dragOver | host | host-adapter | Stroke state |
 | `src/editing/strokeQueue.ts` | createStrokeQueue | brushScheduler, dragOver | host | host-adapter | Queue |
 | `src/editing/surfaceBrush.ts` | appendSurfaceStamps | UnitObject, dentalPolicy, zones | host data copy | host-adapter | Copies hits into stamps, no math |
 | `src/editing/view.ts` | frameView, spotView, boundsSphere, fitDirection | App, cameras | host camera | host-adapter | Camera framing, allowed host math |
 | `src/state/import.ts` | gltfRawMeshes, placeImportedUnits, ImportedMesh | App, importClient, importWorker, prepareImport | glTF scene walk + plate placement stay host; weld/centre are Rust | host-adapter | U1: TS geometryToMesh/weldRawMesh/importStl/centreInPlace moved to `ts-oracle/import.ts` |
-| `src/state/transform.ts` | applyTransform, inverseTransformMesh, transformPoint | App, ObjectViewport, import, project, dentalLandingSide, +7 | core/transform (`transform`) | port | U2; host keeps gizmo state |
+| `src/state/transform.ts` | applyTransform, inverseTransformMesh, transformPoint | App, ObjectViewport, import, project, dentalLandingSide, +7 | core/transform (`transform`) | port | U2; host keeps gizmo state; U2 status: Rust calls ready (`transform_positions`/`transform_vectors`); caller switch pending |
 | `src/supports/dentalLandingSide.ts` | dentalSecondaryLandingOnApprovedSide | jobRunner | supports/clearance (landing-side check) + allowed-face data | port-into-shared-safety | U7; approved side becomes the face mask in `PolicyResult` |
 | `src/supports/dentalPrimaryFace.ts` | dentalPrimarySourceFace, sameDentalPrimary | jobRunner | supports/repair (source-face attribution) + policy data | port-into-shared-safety | U7; candidates already carry `source_face` |
 | `src/supports/export.ts` | exportUnits, planExport | useExport, meshClient, meshWorker | supports/ export transform; JS encodes STL bytes | port | U8; export refuses stale/failed results |
 | `src/supports/jobRunner.ts` | runSupportJob, runPlacementJob, runCheckJob, filterDentalPlacement | unitSupports, analysisWorker, meshWorker, review build | `generate` / `diagnose` host call | host-adapter | U8 shrinks to lifecycle; today it computes geometry and runs retry loops (rule 4 violation to remove) |
 | `src/supports/landing.ts` | landPlacements | useDentalPreview, useRegenerate | host command builder | host-adapter | Builds scene commands from results |
 | `src/supports/selection.ts` | deleteCommands | App | host | host-adapter | Command builder |
-| `src/supports/supportFrame.ts` | supportMeshToUnitLocal | jobRunner | core/transform | port | U2/U8 |
+| `src/supports/supportFrame.ts` | supportMeshToUnitLocal | jobRunner | core/transform | port | U2/U8; U2 status: Rust call ready (`transform_positions`); caller switch pending |
 | `src/supports/unitSupports.ts` | resolveSettings, placementSignature, +15 | App, useExport, useRegenerate, ObjectList, +6 | host orchestration; applies transforms via core/transform | host-adapter | Placement signature stays host |
-| `src/components/viewport/dentalFaceOverlay.ts` | dentalFaceOverlay, dentalContourSegments | supportLayers | core/brush (overlay vertices) | port | U2 |
+| `src/components/viewport/dentalFaceOverlay.ts` | dentalFaceOverlay, dentalContourSegments | supportLayers | core/brush (overlay vertices) | port | U2; U2 status: `dental_face_overlay`/`dental_contour_segments` done, parity ok; caller switch pending |
 | `src/components/viewport/geometry.ts` | toGeometry, useGeometry | supportLayers, UnitObject | host (Three.js buffer copy) | host-adapter | Render only |
 | `src/components/viewport/supportLayers.tsx` | SupportBodies, ZoneLayer, +13 | UnitObject | host render | host-adapter | Render; consumes overlay arrays from Rust |
 | `src/components/viewport/UnitObject.tsx` | UnitObject | ObjectViewport | host render | host-adapter | Render, raycast, gizmo |
-| `src/components/viewport/useScreenBrush.ts` | useScreenBrush | UnitObject | host event adapter -> `pick` / `project_brush` | host-adapter | Camera/lifecycle; math moves via U2 |
+| `src/components/viewport/useScreenBrush.ts` | useScreenBrush | UnitObject | host event adapter -> `pick` / `project_brush` | host-adapter | Camera/lifecycle; math moves via U2; U2 status: Rust `pick`/`project_brush` ready; host switch pending |
 | `src/components/viewport/cameras.tsx` | ViewCamera, FocusCamera | ObjectViewport | host camera | host-adapter | Render/camera |
-| `src/workers/prepareImport.ts` | weldRawWithWasm, centerImportedWithWasm, decimateWithWasm, buildPickIndex | importWorker, projectWorker | host glue; pick index -> core/spatial (BVH) | host-adapter | buildPickIndex moves to Rust in U2, glue stays |
+| `src/workers/prepareImport.ts` | weldRawWithWasm, centerImportedWithWasm, decimateWithWasm, buildPickIndex | importWorker, projectWorker | host glue; pick index -> core/spatial (BVH) | host-adapter | buildPickIndex moves to Rust in U2, glue stays; U2 status: Rust BVH (`core/spatial.rs`, built lazily per session mesh) done; viewport still uses three-mesh-bvh until Phase B |
 | `src/workers/importWorker.ts` | (worker entry) | importClient via factories | host glue | host-adapter | WASM caller |
 | `src/workers/meshWorker.ts` | (worker entry) | meshClient via factories | host glue | host-adapter | U8 calls `generate` |
 | `src/workers/analysisWorker.ts` | (worker entry) | analysisClient via factories | host glue | host-adapter | U6a/U8 call Rust |
@@ -136,7 +136,7 @@ Files in the scoped folders not listed above do no 3D computation and stay TypeS
 | `src/workers/analysisWorker.ts` | `src/supports/jobRunner.ts` placement/check; `src/core/analysis/dentalRegion.ts` proposal/retuning | Generic analysis and dental orientation/region/contact operations |
 | `src/workers/meshWorker.ts` | `runSupportJob` and `src/supports/export.ts` | Placement, all support parts, exact safety and export transforms; JS may encode STL bytes |
 | `src/workers/importWorker.ts`, `projectWorker.ts` | `src/core/import/*`, `src/state/import.ts`, `src/workers/prepareImport.ts` | STL mesh parse/weld/center/decimate, pick index; JS may decode glTF container |
-| `src/components/viewport/useScreenBrush.ts` | `src/editing/screenBrush.ts`, Three.js BVH/raycast, `dentalFaceOverlay.ts` | Batched projection, hit/visibility, face paint and overlay geometry; host retains camera/render lifecycle |
+| `src/components/viewport/useScreenBrush.ts` | `src/editing/screenBrush.ts`, Three.js BVH/raycast, `dentalFaceOverlay.ts` | Batched projection, hit/visibility, face paint and overlay geometry; host retains camera/render lifecycle; U2 status: Rust `pick`/`project_brush` ready; host switch pending |
 | `scripts/dental-region-review/*` | Direct imports of the current TypeScript detector, placement and builder | Same Rust core as browser; script retains GLB serialization and color assignment |
 
 The current `src/core/README.md` documents pure TypeScript placement/build/check/zone APIs and their +Y-up millimetre frame. `src/supports/jobRunner.ts` also calculates geometry directly, so migrating `src/core` alone would leave a parallel TypeScript path. `src/state/transform.ts`, `src/supports/supportFrame.ts`, `src/supports/landing.ts` and `src/supports/export.ts` are further app-side geometric work to move or narrow.
