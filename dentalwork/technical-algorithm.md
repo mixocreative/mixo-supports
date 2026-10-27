@@ -91,7 +91,7 @@ Island status:
 
 ### Dental islands outside the policy area
 
-The reference aligner at default settings lists 48 of 54 islands as `unresolved` (6 resolved). Most of them lie on faces outside the permitted strip, where the dental landing rule forbids a support. A change in progress on the working tree (not committed when this document was written) marks an unresolved island whose lowest point is on no permitted face as a separate status, `OutsidePolicy`, and the host groups all of them into **one informational problem-list entry** (kind `outside`, no Fix, not counted as an unsupported spot). Only islands on permitted faces stay `unresolved` entries with Show and Fix. Treat the entry's exact wording and the counts as unverified until that change lands. Whether dental interior low points should count at all remains an owner decision (policy, not wiring).
+The reference aligner at default settings has 54 islands: 6 resolved, 5 `unresolved` on permitted faces, and 43 `OutsidePolicy`. An unresolved island is `OutsidePolicy` when none of the faces around its lowest point is permitted; this applies only when the policy has an approved-area landing rule, so the generic policy never produces it (`supports/generate/islands.rs`, wasm status code 3). The host groups all of them into **one informational problem-list entry** (kind `outside`, Show only, no Fix, not counted as an unsupported spot): "43 low points lie outside the dental support area and are left to the aligner shape." Islands on permitted faces stay `unresolved` entries with Show and Fix. The status bar on the reference aligner reads 6 spots (5 islands + 1 uncovered overhang).
 
 ## Problem list (host)
 
@@ -235,13 +235,13 @@ Not validated:
 - **U6b (external validation) is pending**: a second aligner with an opening and a real aligner with no opening. Until then, dental mode ships labeled preview / not clinically validated.
 - **No-opening aligners**: `absent` is inconclusive for automatic supports. Only a synthetic no-opening mesh exists.
 - **No physical print or fit review** on a printer and resin.
-- **Island check is geometric**, not a print simulation. 48 of 54 reference islands are listed unresolved; whether interior low points should count is an open policy decision (see above).
+- **Island check is geometric**, not a print simulation. Dental low points outside the support area are reported for information only; this is a policy choice (lead decision 2026-10-28, reversible) that has not been checked against real prints.
 - **`knot.stl`**: the island verdict is `inconclusive` because the mesh is non-manifold. The generic Generate itself works.
 - **Route preflight** is ported but unwired (see above).
 - **Alternates**: no policy supplies them, so a crossing automatic pillar is left out rather than moved. Rim-gap reports can therefore remain.
 - **Neck penetration**: intentional-reach exemptions are bounded engineering limits, not proof that every neck touch is intended. The earlier TypeScript measurements counted thousands of neck-to-model triangle pairs that were not classified by depth; whether the Rust classifier changes that was not re-measured here.
 - **Blocked body verdicts** are not individually listed in the problem list.
-- **Unverified in this document**: the exact wording and counts of the "outside the support area" entry (change in progress); the numeric reach limits in `clearance.rs` (not re-read for this document).
+- **Unverified in this document**: the numeric reach limits in `clearance.rs` (not re-read for this document).
 - Left-handed hosts (a future Babylon.js host): `src/workers/babylonContract.test.ts` checks the left-handed contract without loading Babylon itself.
 
 ## Pose of the diagnostic GLB
