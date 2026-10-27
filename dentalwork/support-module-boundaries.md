@@ -2,6 +2,8 @@
 
 This is the intended boundary for the ongoing refactor, not a claim that every module below exists or is validated. Preserve the current output while extracting one behavior at a time, and test the caller after each extraction. A dental-specific file or exported function starts with `dental`; generic files do not use that prefix. Short code comments should explain input units, coordinate frame, invariants, and why a failure rejects output—not narrate obvious statements.
 
+> **U7 status (2026-10-28).** Body clearance, landing-side permission, source-face attribution, the bounded repair, rim coverage and the island verdict are one shared Rust engine (`supports/safety`, `supports/generate`) used by both policies. A policy is data (`PolicyResult`: candidates, alternates, approved faces + paint, structure flags, rings, repair budget); there is no dental safety pipeline and no callback. The TypeScript names used below are historical; the only TS left is the host adapter (`src/supports/{generateSupports,checkSupports,jobRunner}.ts`) and the test oracle in `scripts/test-support/ts-oracle/safety/`.
+
 ## Plain-language map
 
 - **Dental edge detection** finds the aligner's outer trim ridge and, when present, its central opening. The oddly rising rear trim is part of the detected 3D curve. This is anatomy-specific, so it belongs in `dentalContours` and other `dental*` files. A generic sharp-edge detector may supply candidate edges, but it cannot decide that a ridge is an aligner trim.
