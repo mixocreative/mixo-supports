@@ -1,3 +1,4 @@
+import '../test-support/useNodeEngine';
 import { proposeDentalOrientation, rotationToDentalPose } from '../../src/core/analysis/dental';
 import { proposeDentalSupportRegion, type DentalRegionProposal } from '../../src/core/analysis/dentalRegion';
 import { diagnosticDentalSideBands, type DentalDiagnosticBands } from '../../src/core/analysis/dentalContactBand';

@@ -1,3 +1,4 @@
+import '../test-support/useNodeEngine';
 import { readFileSync } from 'node:fs';
 import { crossingAutomaticBodyContactIds } from '../../src/core/supports/dentalBodyClearance';
 import { buildDentalReview } from './build';

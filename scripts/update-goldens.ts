@@ -1,3 +1,4 @@
+import './test-support/useNodeEngine';
 /**
  * Rewrites the golden snapshots in src/goldens/__snapshots__ from the current code.
  * Run by hand only (never in CI), and only when a change of output is intended:

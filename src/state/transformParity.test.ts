@@ -5,7 +5,7 @@ import type { Vector } from '../core/vec3';
 import { applyTransform, inverseTransformDirection, inverseTransformMesh, inverseTransformPoint, transformDirection, transformPoint, type ModelTransform } from './transform';
 
 // The three.js code state/transform.ts used before core/transform.ts replaced it, kept as the
-// reference: the replacement must give the same numbers (to 1e-9; in practice bit for bit).
+// reference: the replacement must give the same numbers (to 1e-9; the Rust calls may differ in the last bit).
 function threeMatrix(transform: ModelTransform): Matrix4 {
   return new Matrix4().compose(new Vector3(...transform.position), new Quaternion().setFromEuler(new Euler(...transform.rotation)), new Vector3(1, 1, 1));
 }
@@ -61,8 +61,5 @@ describe('state/transform matches the three.js transforms', () => {
     close(inverseTransformDirection(transform, direction), reference.inverseDirection(transform, direction));
     close(applyTransform(mesh, transform).positions, reference.mesh(mesh.positions, transform, false));
     close(inverseTransformMesh(mesh, transform).positions, reference.mesh(mesh.positions, transform, true));
-    // Bit for bit, in fact.
-    expect(transformPoint(transform, point)).toEqual(reference.point(transform, point));
-    expect(Array.from(applyTransform(mesh, transform).positions)).toEqual(Array.from(reference.mesh(mesh.positions, transform, false)));
   });
 });

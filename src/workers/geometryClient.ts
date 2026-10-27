@@ -1,5 +1,6 @@
 import initWasm, { AsciiStlSession, BinaryStlSession, body_segments, center_positions_in_place, decimate_display, dental_contour_segments, dental_face_overlay, engine_version, GeometrySession, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, vertex_normals, weld_positions_in_place } from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm.js';
 import wasmUrl from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm_bg.wasm?url';
+import { setTransformEngine } from '../state/transformEngine';
 import { assertGeometryVersion } from './geometryVersion';
 
 export interface GeometryEngine {
@@ -23,12 +24,24 @@ export interface GeometryEngine {
 }
 
 let ready: Promise<GeometryEngine> | undefined;
+let loaded: GeometryEngine | undefined;
 
-/** One WASM instance per worker; reject a mismatched package before geometry is used. */
+/**
+ * The engine once `geometryReady()` has resolved in this realm, else undefined. For synchronous
+ * interactive code (brush, pick, gizmo maths) that cannot await; the app entry awaits
+ * `geometryReady()` before it renders, and each worker awaits it before its first task.
+ */
+export function geometryNow(): GeometryEngine | undefined {
+  return loaded;
+}
+
+/** One WASM instance per realm (each worker and the main thread); reject a mismatched package before geometry is used. */
 export function geometryReady(): Promise<GeometryEngine> {
-  ready ??= initWasm(wasmUrl).then(() => {
+  ready ??= initWasm({ module_or_path: wasmUrl }).then(() => {
     assertGeometryVersion(engine_version());
-    return { engine_version, GeometrySession, center_positions_in_place, weld_positions_in_place, decimate_display, BinaryStlSession, AsciiStlSession, body_segments, dental_contour_segments, dental_face_overlay, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, vertex_normals };
+    loaded = { engine_version, GeometrySession, center_positions_in_place, weld_positions_in_place, decimate_display, BinaryStlSession, AsciiStlSession, body_segments, dental_contour_segments, dental_face_overlay, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, vertex_normals };
+    setTransformEngine(loaded);
+    return loaded;
   });
   return ready;
 }

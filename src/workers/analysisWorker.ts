@@ -2,12 +2,14 @@ import { filterDentalPlacement, runCheckJob, runPlacementJob } from '../supports
 import { orientDentalAligner } from '../core/analysis/dentalOrient';
 import { proposeDentalSupportRegion, retuneDentalSupportRegion } from '../core/analysis/dentalRegion';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
+import { geometryReady } from './geometryClient';
 import { serveTask, transferable } from './serveTask';
+import { runAfterGeometryReady } from './geometryVersion';
 
 const PROGRESS_INTERVAL_MS = 60;
 
 /** Placement and support checks, one job at a time (the client never sends a second before the first answers). */
-serveTask<AnalysisTask, AnalysisResult>((task, { progress: post }) => {
+serveTask<AnalysisTask, AnalysisResult>((task, { progress: post }) => runAfterGeometryReady(geometryReady, () => {
   let last = 0;
   const progress = (fraction: number, stage: string) => {
     const now = performance.now();
@@ -46,4 +48,4 @@ serveTask<AnalysisTask, AnalysisResult>((task, { progress: post }) => {
     return transferable({ kind: 'dental-placed', result: filtered }, [filtered.contactPositions.buffer, filtered.contactNormals.buffer]);
   }
   return transferable({ kind: 'placed', result }, [result.contactPositions.buffer, result.contactNormals.buffer]);
-});
+}));
