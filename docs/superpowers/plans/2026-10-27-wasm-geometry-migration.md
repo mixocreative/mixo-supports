@@ -4,6 +4,8 @@
 
 **Goal:** Move every product-controlled 3D calculation for generic and dental support generation and automatic orientation into one Rust/WASM core reusable by this editor and Babylon.js, then finish the existing ship gates and push a verified result.
 
+Owner scope confirmation, 2026-10-27: both automatic contact placement and final support-mesh generation must run in Rust/WASM for generic and dental modes. TypeScript may orchestrate requests but may not retain either geometry algorithm in production.
+
 **Architecture:** A pure Rust core is wrapped by a small WASM ABI. Browser workers and Node diagnostics call coarse geometry operations with versioned settings and typed arrays. TypeScript remains a thin host/UI/render adapter, and old TS geometry is deleted after each parity gate.
 
 **Tech Stack:** Rust 1.99.1 with `wasm32-unknown-unknown`, Cargo, wasm-bindgen/wasm-pack, TypeScript 5.7, Vite 6, Vitest 3, Playwright browser walk. Rust version is pinned after [official 1.99.1 release](https://blog.rust-lang.org/releases/); verify wasm-bindgen/wasm-pack versions and hashes at installation.
@@ -67,7 +69,7 @@ The Rust source must be split further by responsibility as each phase lands; thi
 
 **Files:** Rust mesh/import/weld/decimate modules; narrow `src/workers/{importWorker,projectWorker,prepareImport}.ts`, `src/state/import.ts`.
 
-Progress: the import worker's bounding-box centering, glTF raw-mesh transform/weld, chunk-fed binary STL decode/rotation/weld, and heavy-tier display decimation are now Rust/WASM calls. Decimation has synthetic and saved-STL byte parity plus direct browser WASM smoke; its production heavy-tier worker branch still needs a >1.5M-triangle fixture. ASCII STL, non-worker import helpers and pick BVH remain TypeScript; the old decimator is a test oracle, not a production caller. The task is not complete. The saved-STL centering copy-cost probe is a Node microbenchmark, not an end-to-end performance gate.
+Progress: the import worker's bounding-box centering, glTF raw-mesh transform/weld, chunk-fed binary STL decode/rotation/weld, and heavy-tier display decimation are now Rust/WASM calls. Decimation has synthetic and saved-STL byte parity, direct browser WASM smoke, and a real heavy-tier browser-worker job on a 1,506,848-triangle synthetic grid. ASCII STL, non-worker import helpers and pick BVH remain TypeScript; the old decimator is a test oracle, not a production caller. The task is not complete. The saved-STL centering copy-cost probe is a Node microbenchmark, not an end-to-end performance gate.
 
 - [ ] Port binary/ASCII STL parse, vertex weld, finite validation, centering and display decimation. Match existing unit placement and original mesh IDs; keep GLTF container decoding in JS but pass raw arrays to Rust for geometry processing.
 - [ ] Native, Node and browser parity tests cover malformed STL, handedness, high triangle counts, imported GLTF and saved-project reload. Delete production TS geometry only after these pass.

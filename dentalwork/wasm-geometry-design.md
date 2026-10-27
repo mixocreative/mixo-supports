@@ -6,6 +6,8 @@ Status: approved architecture boundary (owner, 2026-10-27); implementation in pr
 
 One Rust geometry engine must serve this Three.js editor, a future Babylon.js host, the Node review/GLB scripts, and tests. The engine owns **every product-controlled 3D calculation**, not merely the slow support builder: mesh import/weld/centering/decimation; coordinate and handedness transforms; normals/topology/spatial indices/raycast and brush projection; dental orientation/trim rims/region/contact strip; generic placement; contact/route selection; all tip, pillar, tree, brace, roof, cage and raft geometry; collision, early-layer island analysis, bounded repair, and final clearance checks. No parallel TypeScript detector or mesh builder may remain as a production fallback after cutover.
 
+The owner confirmed on 2026-10-27 that this scope includes **both automatic contact placement and final support-mesh generation** for generic and dental modes. A Rust-only mesh builder fed by TypeScript placement would not satisfy the goal.
+
 TypeScript retains UI state, camera and gizmo controls, file selection, browser/worker lifecycle, serialization, and calling the rendering API. Three.js/Babylon.js necessarily create GPU buffers and draw them; those thin host adapters may copy returned positions/indices or pass camera matrices into WASM, but must not decide support placement, perform a geometric collision test, or calculate the dental mask. The existing settings and project-file format remain host-owned; validated numerical settings are passed to Rust as a versioned request. UI-independent means the core does not import React, Three.js, Babylon.js, DOM, Vite or browser-only services.
 
 ## Technology choice
