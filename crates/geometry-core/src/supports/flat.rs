@@ -1,0 +1,125 @@
+//! Typed-array encoding of the support build (the ABI both Rust tests and WASM use).
+//!
+//! In, per contact, `CONTACT_STRIDE` f64: point xyz, normal xyz, source face (-1 none), origin
+//! (0 auto, 1 manual), has landing (0/1), landing point xyz, landing normal xyz, landing face (-1 none).
+//! Optional `shapes`: `SHAPE_LAYOUT.len()` f64 per contact (NaN = follows the object).
+//!
+//! Out, per component, `COMPONENT_STRIDE` u32: part, structure kind (0 none), contact index
+//! (`NO_CONTACT` none), origin (0 none, 1 auto, 2 manual), first index, index count, first intent,
+//! intent count; one f64 landing reach (NaN none); per intent `INTENT_STRIDE` f64: kind (1 primary,
+//! 2 secondary), contact (-1 none), face (-1 none), point xyz, normal xyz.
+
+use super::build::BuiltSupports;
+use super::error::BuildError;
+use super::parts::column::ColumnContact;
+use super::parts::landing::Landing;
+use super::parts::tags::Component;
+use super::policy::{Candidate, CandidateId, Origin};
+use super::settings::{SHAPE_LAYOUT, ShapeSettings};
+
+pub const CONTACT_STRIDE: usize = 16;
+pub const COMPONENT_STRIDE: usize = 8;
+pub const INTENT_STRIDE: usize = 9;
+pub const NO_CONTACT: u32 = u32::MAX;
+
+pub fn decode_contacts(ids: &[String], values: &[f64], shapes: &[f64], base: &ShapeSettings) -> Result<Vec<ColumnContact>, BuildError> {
+    if values.len() != ids.len() * CONTACT_STRIDE {
+        return Err(BuildError::BadInput("contacts length"));
+    }
+    if !shapes.is_empty() && shapes.len() != ids.len() * SHAPE_LAYOUT.len() {
+        return Err(BuildError::BadInput("shapes length"));
+    }
+    let face = |v: f64| (v >= 0.0).then_some(v as u32);
+    ids.iter()
+        .enumerate()
+        .map(|(k, id)| {
+            let v = &values[k * CONTACT_STRIDE..(k + 1) * CONTACT_STRIDE];
+            if v[..9].iter().any(|x| !x.is_finite()) || (v[8] != 0.0 && v[9..].iter().any(|x| !x.is_finite())) {
+                return Err(BuildError::BadInput("contact value not finite"));
+            }
+            let shape = if shapes.is_empty() {
+                None
+            } else {
+                let own = &shapes[k * SHAPE_LAYOUT.len()..(k + 1) * SHAPE_LAYOUT.len()];
+                (!own.iter().all(|x| x.is_nan())).then(|| ShapeSettings::overridden(base, own)).transpose()?
+            };
+            Ok(ColumnContact {
+                candidate: Candidate {
+                    id: CandidateId(id.clone()),
+                    source_face: face(v[6]),
+                    point: [v[0], v[1], v[2]],
+                    normal: [v[3], v[4], v[5]],
+                    origin: if v[7] == 1.0 { Origin::Manual } else { Origin::Auto },
+                },
+                shape,
+                landing: (v[8] != 0.0).then(|| Landing { point: [v[9], v[10], v[11]], normal: [v[12], v[13], v[14]], face: face(v[15]), source_point: None }),
+            })
+        })
+        .collect()
+}
+
+/// Flat per-component tables of a build.
+pub struct ComponentTable {
+    pub tags: Vec<u32>,
+    pub reach: Vec<f64>,
+    pub intents: Vec<f64>,
+}
+
+pub fn encode_components(built: &BuiltSupports) -> ComponentTable {
+    encode(&built.components)
+}
+
+fn encode(components: &[Component]) -> ComponentTable {
+    let mut table = ComponentTable { tags: Vec::new(), reach: Vec::new(), intents: Vec::new() };
+    let mut intent_count = 0u32;
+    for component in components {
+        let tag = &component.tag;
+        table.tags.extend([
+            tag.part as u32,
+            tag.structure_kind.map_or(0, |k| k as u32),
+            tag.contact.unwrap_or(NO_CONTACT),
+            match tag.origin {
+                None => 0,
+                Some(Origin::Auto) => 1,
+                Some(Origin::Manual) => 2,
+            },
+            component.start,
+            component.count,
+            intent_count,
+            tag.intents.len() as u32,
+        ]);
+        table.reach.push(tag.landing_reach.unwrap_or(f64::NAN));
+        for intent in &tag.intents {
+            table.intents.extend([
+                f64::from(intent.kind as u8),
+                intent.contact.map_or(-1.0, f64::from),
+                intent.face.map_or(-1.0, f64::from),
+                intent.point[0], intent.point[1], intent.point[2],
+                intent.normal[0], intent.normal[1], intent.normal[2],
+            ]);
+        }
+        intent_count += tag.intents.len() as u32;
+    }
+    table
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::supports::settings::{SupportSettings, default_values};
+
+    #[test]
+    fn decodes_contacts_and_encodes_components() {
+        let base = SupportSettings::from_slice(&default_values()).unwrap().shape;
+        let mut v = vec![0.0; CONTACT_STRIDE];
+        v[1] = 8.0;
+        v[4] = -1.0;
+        v[6] = 5.0;
+        v[7] = 1.0;
+        let contacts = decode_contacts(&["a".into()], &v, &[], &base).unwrap();
+        assert_eq!(contacts[0].candidate.source_face, Some(5));
+        assert_eq!(contacts[0].candidate.origin, Origin::Manual);
+        assert!(contacts[0].landing.is_none() && contacts[0].shape.is_none());
+        assert_eq!(decode_contacts(&["a".into()], &v[..3], &[], &base).err(), Some(BuildError::BadInput("contacts length")));
+    }
+}

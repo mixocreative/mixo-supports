@@ -6,6 +6,7 @@ use mixo_geometry_core::core::brush::{self, BodySegments, Occluder};
 use mixo_geometry_core::core::matrix::{self, Handedness, Matrix4};
 use mixo_geometry_core::core::spatial::Side;
 use mixo_geometry_core::core::{normals, overlay, pick};
+use mixo_geometry_core::supports::{build as support_build, error as support_error, flat as support_flat, settings as support_settings};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
 #[wasm_bindgen]
@@ -418,6 +419,79 @@ fn stl_error(error: StlError) -> JsValue {
         StlError::NonFinite => "NON_FINITE",
         StlError::Capacity => "CAPACITY",
     })
+}
+
+/// Support mesh arrays and per-component tables (layout in `supports::flat`).
+#[wasm_bindgen]
+pub struct SupportBuild {
+    positions: Vec<f32>,
+    indices: Vec<u32>,
+    tags: Vec<u32>,
+    reach: Vec<f64>,
+    intents: Vec<f64>,
+    dropped: Vec<u32>,
+}
+
+#[wasm_bindgen]
+impl SupportBuild {
+    pub fn take_positions(&mut self) -> Vec<f32> {
+        std::mem::take(&mut self.positions)
+    }
+    pub fn take_indices(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.indices)
+    }
+    pub fn take_tags(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.tags)
+    }
+    pub fn take_reach(&mut self) -> Vec<f64> {
+        std::mem::take(&mut self.reach)
+    }
+    pub fn take_intents(&mut self) -> Vec<f64> {
+        std::mem::take(&mut self.intents)
+    }
+    pub fn take_dropped(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.dropped)
+    }
+}
+
+/// Flat order of the settings array (`SETTINGS_LAYOUT`), for the host packer to check against.
+#[wasm_bindgen]
+pub fn support_settings_layout() -> Vec<String> {
+    support_settings::SETTINGS_LAYOUT.iter().map(|name| (*name).to_string()).collect()
+}
+
+/// Builds the support mesh from caller-supplied placement. U4a builds columns only; a request
+/// for Tree, Brace, Roof, Cage, Raft or Label fails with code NOT_YET_PORTED (`structure` names it).
+/// `mode`: 0 preview, 1 export. Never returns a partial result.
+#[wasm_bindgen]
+pub fn build_supports(ids: Vec<String>, contacts: &[f64], shapes: &[f64], settings: &[f64], mode: u32) -> Result<SupportBuild, JsValue> {
+    let settings = support_settings::SupportSettings::from_slice(settings).map_err(build_error)?;
+    let contacts = support_flat::decode_contacts(&ids, contacts, shapes, &settings.shape).map_err(build_error)?;
+    let mode = match mode {
+        0 => support_build::BuildMode::Preview,
+        1 => support_build::BuildMode::Export,
+        _ => return Err(coded_error("BAD_INPUT")),
+    };
+    let built = support_build::build_supports(&contacts, &settings, mode).map_err(build_error)?;
+    let table = support_flat::encode_components(&built);
+    Ok(SupportBuild {
+        positions: built.positions,
+        indices: built.indices,
+        tags: table.tags,
+        reach: table.reach,
+        intents: table.intents,
+        dropped: built.dropped,
+    })
+}
+
+fn build_error(error: mixo_geometry_core::supports::error::BuildError) -> JsValue {
+    let exception = coded_error(error.code());
+    let detail = match error {
+        support_error::BuildError::BadInput(what) | support_error::BuildError::SettingOutOfRange(what) => what.to_string(),
+        support_error::BuildError::NotYetPorted(structure) => format!("{structure:?}"),
+    };
+    let _ = js_sys::Reflect::set(&exception, &JsValue::from_str("detail"), &JsValue::from_str(&detail));
+    exception
 }
 
 fn coded_error(code: &str) -> JsValue {
