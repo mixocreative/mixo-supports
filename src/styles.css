@@ -669,15 +669,18 @@ dialog.terms .terms-item > span { flex: none; }
   gap: 10px;
   width: 300px;
   max-width: calc(100% - 28px);
-  padding: 10px 12px;
-  overflow-y: auto;
+  padding: 0;
+  overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   font-size: 12px;
   color: var(--ink);
-  scrollbar-width: thin;
 }
+/* The settings, tools and problems scroll; the label and the finish buttons stay in view below them. */
+.dental-scroll { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: 0; padding: 10px 12px; overflow-y: auto; scrollbar-width: thin; }
+.dental-footer { display: grid; gap: 8px; flex: none; padding: 8px 12px 10px; background: var(--surface); border-top: 1px solid var(--line-strong); }
+.dental-footer .dental-block { padding-bottom: 0; border-bottom: 0; }
 .dental-block { display: grid; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .dental-block:last-child { border-bottom: 0; padding-bottom: 0; }
 .dental-block h3 { margin: 0; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; }
@@ -696,24 +699,26 @@ dialog.terms .terms-item > span { flex: none; }
   border-bottom: 1px solid var(--line);
   list-style: none;
 }
-.dental-finish { margin-top: auto; }
+.dental-finish { margin-top: 0; }
 .dental-finish .edit-row { justify-content: space-between; }
-.dental-confirm { margin-top: auto; }
+/* Sits in the toast region (centred, bottom of the viewport) at its own width, like the undo toast. */
 .dental-done {
-  position: absolute;
-  left: 16px;
-  bottom: 14px;
-  z-index: 4;
   display: flex;
   gap: 12px;
   align-items: center;
-  max-width: min(520px, calc(100% - 32px));
+  width: max-content;
+  max-width: min(520px, calc(100vw - 60px));
+  margin: 6px auto 0;
+  pointer-events: auto;
   padding: 8px 12px;
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   font-size: 12px;
 }
+/* Step 3's panel covers the bottom right: the view buttons sit just left of it (above it when it docks at the bottom). */
+.viewport--step3 .viewport-view { right: 342px; }
 @media (max-width: 1100px) {
+  .viewport--step3 .viewport-view { right: 14px; top: 56px; bottom: auto; }
   .dental-side { top: auto; left: 14px; right: 14px; bottom: 12px; width: auto; max-height: 55%; max-width: none; }
 }

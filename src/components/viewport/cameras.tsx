@@ -15,6 +15,7 @@ export function ViewCamera({ view, unitIds }: { view?: ViewRequest; unitIds: rea
   const controls = useThree((state) => state.controls) as unknown as { target: THREE.Vector3; update(): void } | null;
   const camera = useThree((state) => state.camera) as THREE.PerspectiveCamera;
   const scene = useThree((state) => state.scene);
+  const size = useThree((state) => state.size);
   useEffect(() => {
     if (!view || !controls) return;
     const box = new THREE.Box3();
@@ -23,10 +24,23 @@ export function ViewCamera({ view, unitIds }: { view?: ViewRequest; unitIds: rea
       if (group) box.expandByObject(group);
     }
     if (box.isEmpty()) return;
-    const framed = frameView(boundsSphere({ min: box.min.toArray(), max: box.max.toArray() }), camera.fov, view.kind, { position: camera.position.toArray(), target: controls.target.toArray() });
+    // A panel over the right edge: the model is fitted into the width left of it, and sits in its middle.
+    const inset = view.kind === 'fit' ? Math.min(Math.max(view.rightInset ?? 0, 0), size.width * 0.6) : 0;
+    const sphere = boundsSphere({ min: box.min.toArray(), max: box.max.toArray() });
+    const free = Math.max(size.width - inset, 1);
+    const framed = frameView({ ...sphere, radius: sphere.radius * Math.max(1, size.height / free) }, camera.fov, view.kind, { position: camera.position.toArray(), target: controls.target.toArray() });
     camera.position.set(...framed.position);
     controls.target.set(...framed.target);
     controls.update();
+    if (inset > 0) {
+      camera.updateMatrixWorld();
+      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+      const perPixel = (2 * camera.position.distanceTo(controls.target) * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / size.height;
+      right.multiplyScalar((inset / 2) * perPixel);
+      camera.position.add(right);
+      controls.target.add(right);
+      controls.update();
+    }
   }, [view?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }

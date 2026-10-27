@@ -62,4 +62,5 @@ export interface ObjectViewportProps {
 }
 
 /** `bottom` looks straight up at the selection; `fit` frames it from the current angle. */
-export interface ViewRequest { kind: 'bottom' | 'fit'; seq: number }
+/** `rightInset`: px of the canvas a panel covers on the right; a fit frames the model in the rest. */
+export interface ViewRequest { kind: 'bottom' | 'fit'; seq: number; rightInset?: number }

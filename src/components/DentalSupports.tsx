@@ -80,6 +80,7 @@ export function DentalSupportsStep({ gesture, ui, review, ready, send, run }: {
   ];
   const finishing = resolve('dental.finish', ui);
   return <aside className="dental-side" aria-label={t('Step 3 · Supports')}>
+    <div className="dental-scroll">
     {!ready && <p className="edit-note" role="status">{t('Building supports…')}</p>}
     <section className="dental-block" aria-label={t('Support settings')}>
       <h3>{t('Support settings')}</h3>
@@ -116,6 +117,8 @@ export function DentalSupportsStep({ gesture, ui, review, ready, send, run }: {
       <ProblemList problems={review.problems} outOfDate={review.outOfDate} rechecking={review.rechecking} unitName={review.unitName} onShow={review.onShow} onFix={review.onFix} />
       {notes.length === 0 && review.problems.length === 0 && <p className="help">{t('No problems listed. Press Check supports to look for islands and overhangs.')}</p>}
     </section>
+    </div>
+    <div className="dental-footer">
     <section className="dental-block" aria-label={t('Label')}>
       <label className="field-row" {...hint('Letters, digits and "-" only, up to 8. Embossed on the raft so printed aligners can be told apart')}>
         <span>{t('Label')}</span>
@@ -142,5 +145,6 @@ export function DentalSupportsStep({ gesture, ui, review, ready, send, run }: {
         <CommandButton command={finishing} run={run} />
       </div>
     </section>}
+    </div>
   </aside>;
 }
