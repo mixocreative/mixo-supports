@@ -116,7 +116,8 @@ Dental mode is a visible feature. Entering it dims the rest of the editor.
 | U0 | done | see git log | toolchain, version gate, mesh session; inventory (103 rows), `dentalwork/perf-baseline.json`, report-only `scripts/geometry-guard.mjs` + `src/geometryGuard.test.ts` |
 | U1 | done | see git log | all import callers use Rust (worker + Node test/dev helper `scripts/test-support/rustImport.ts`); TS parser/welder/centre moved to `scripts/test-support/ts-oracle/`; 24-file odd-STL corpus in `scripts/fixtures/stl-corpus/` with parity test (one Rust fix: non-ASCII whitespace); `src/importOracleBoundary.test.ts` guards production |
 | U2 | Phase A done; Phase B (caller switch, TS to oracle, browser p95) pending | see git log | crate folders `core/ supports/ generic/ dental/`; Rust matrix/normals/BVH/pick/brush/overlay + WASM `transform`, `pick`, `pick_pixels`, `project_brush`, `body_segments`, overlay calls; parity `src/workers/spatialParity.test.ts` + `scripts/fixtures/brush/`; ASCII STL keywords case-insensitive (task 0). Remaining: switch state/transform, editing/screenBrush, useScreenBrush, geometry.ts, dentalFaceOverlay to Rust, move TS to oracle, measure brush p95 |
-| U4–U10 | not started | — | |
+| U4 | U4a: columns ported (U4b Tree/Brace, U4c roof/cage/raft/label pending) | see git log | `PolicyResult`/settings types in `crates/geometry-core/src/supports/{policy,settings}.rs`; column parts in `supports/parts/` (tip, neck, pillar, foot, tags, fillet, builder); WASM `build_supports` (other structures return typed `NOT_YET_PORTED`); parity harness `src/workers/supportParityHarness.ts` + `supportBuildParity.test.ts` (all golden variants preview+export, aligner contacts: indices/tags identical, positions bit-identical). Production still on TS; TS builder not yet oracle |
+| U5–U10 | not started | — | |
 
 ## Reference material (detail only; do not track progress there)
 
