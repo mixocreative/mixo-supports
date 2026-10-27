@@ -1,1 +1,19 @@
-//! Policy: dental support policy data and aligner profiles (added in U6a).
+//! Policy: dental support policy data and aligner profiles (U6a). Detection here produces data
+//! (orientation, contours, the permitted strip, primary candidates) as a `PolicyResult`; no
+//! collision, landing, repair or mesh-building code lives in this folder (docs/SHIP-PLAN.md rule 1).
+
+pub mod bands;
+pub mod contour;
+pub mod footprint;
+pub mod incidence;
+pub mod mesh;
+pub mod opening;
+pub mod orient;
+pub mod orientation;
+pub mod policy;
+pub mod pose;
+pub mod profiles;
+pub mod region;
+pub mod rim;
+pub mod sampling;
+pub mod topology;
