@@ -229,6 +229,7 @@ mod tests {
             candidate: Candidate { id: CandidateId("c".into()), source_face: Some(1), point: [x, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto },
             shape: None,
             landing: None,
+            kind: crate::supports::parts::column::ContactKind::default(),
         }
     }
 

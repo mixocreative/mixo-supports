@@ -138,8 +138,10 @@ fn length_of(v: V3) -> f64 {
     length(v)
 }
 
+/// `Math.hypot(x, y, z)` as V8 computes it (scaled, Kahan-summed), so distance comparisons that break
+/// ties between faces agree with the TS oracle to the last bit.
 pub fn hypot3(v: V3) -> f64 {
-    v[0].hypot(v[1]).hypot(v[2])
+    crate::supports::remesh::hypot3(v)
 }
 
 /// Ericson, Real-Time Collision Detection 5.1.5.

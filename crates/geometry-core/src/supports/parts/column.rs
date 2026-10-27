@@ -19,6 +19,18 @@ pub struct ColumnContact {
     pub candidate: Candidate,
     pub shape: Option<ShapeSettings>,
     pub landing: Option<Landing>,
+    /// SLASG point class of the contact; decides where the neck normal is sampled on the remesh.
+    pub kind: ContactKind,
+}
+
+/// SLASG point class of a placement contact (manual points are untagged).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ContactKind {
+    #[default]
+    Unspecified,
+    Face,
+    Edge,
+    Vertical,
 }
 
 /// A column that reaches the plate: its pillar end, where the foot is added once every column is built.
@@ -211,6 +223,7 @@ mod tests {
             candidate: Candidate { id: CandidateId("c".into()), source_face: Some(3), point, normal: [0.0, -1.0, 0.0], origin: Origin::Auto },
             shape: None,
             landing: None,
+            kind: ContactKind::default(),
         }
     }
 

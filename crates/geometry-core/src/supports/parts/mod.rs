@@ -2,6 +2,7 @@
 //! closed, outward-facing solid carrying attribution tags.
 
 pub mod autotree;
+pub mod autotree_safe;
 pub mod brace;
 pub mod builder;
 pub mod column;

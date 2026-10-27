@@ -26,7 +26,7 @@ pub fn neck_direction(normal: V3, max_angle: f64) -> V3 {
     if angle <= limit {
         return normal;
     }
-    let horizontal = normal[0].hypot(normal[2]);
+    let horizontal = crate::supports::remesh::hypot(&[normal[0], normal[2]]);
     if horizontal < 1e-9 {
         return [0.0, -1.0, 0.0];
     }

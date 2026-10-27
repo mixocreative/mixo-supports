@@ -3,10 +3,12 @@
 //! cluster of two or more gets a junction below its members, snapped onto the model.
 //! With a model and Safe Distance != 0 TS scans a voxel remesh (U5): that is a typed error here.
 
+use super::autotree_safe::{SafeScatter, hits_below};
 use super::column::ColumnContact;
 use super::model::{Model, hypot3};
 use super::vec::{V3, add, sub};
-use crate::supports::error::{BuildError, Structure};
+use crate::supports::error::BuildError;
+use crate::supports::remesh::Remesh;
 use crate::supports::policy::Origin;
 use crate::supports::settings::SupportSettings;
 
@@ -32,21 +34,33 @@ fn mean(points: &[V3]) -> V3 {
 pub fn auto_tree_layout(contacts: &[ColumnContact], model: Option<&Model>, s: &SupportSettings) -> Result<AutoTreeLayout, BuildError> {
     let spacing = s.scatter_spacing;
     let has_faces = model.is_some_and(|m| m.face_count() > 0);
-    if model.is_some() && s.scatter_safe_distance != 0.0 {
-        return Err(BuildError::NotYetPorted(Structure::Tree));
-    }
     let limit = s.scatter_angle * std::f64::consts::PI / 180.0;
     let position = |k: usize| contacts[k].candidate.point;
     let mut removed = vec![false; contacts.len()];
+    let mut scatter_remesh = match model {
+        Some(m) if s.scatter_safe_distance != 0.0 => Some(Remesh::new(m.positions(), m.indices(), 0.0, Some(spacing / 4.0), 0.1)),
+        _ => None,
+    };
+    let mut scatter = scatter_remesh.as_mut().map(|remesh| SafeScatter::new(remesh, limit, s.scatter_safe_distance));
     let eligible: Vec<bool> = contacts
         .iter()
-        .map(|contact| {
+        .enumerate()
+        .map(|(index, contact)| {
             let p = contact.candidate.point;
             let from = [p[0], p[1] - spacing / 32.0, p[2]];
-            contact.candidate.origin != Origin::Manual && contact.shape.is_none() && !model.is_some_and(|m| m.hits_blocker_below(from, p[1], limit))
+            let free = contact.candidate.origin != Origin::Manual && contact.shape.is_none();
+            if let Some(scatter) = scatter.as_mut() {
+                let (outward, inward) = scatter.blockers(from, p[1]);
+                let blocked = hits_below(&outward, from, p[1]);
+                if blocked && !hits_below(&inward, from, p[1]) {
+                    removed[index] = true;
+                }
+                return free && !blocked;
+            }
+            free && !model.is_some_and(|m| m.hits_blocker_below(from, p[1], limit))
         })
         .collect();
-    let mut assigned: Vec<bool> = (0..contacts.len()).map(|k| !eligible[k]).collect();
+    let mut assigned: Vec<bool> = (0..contacts.len()).map(|k| !eligible[k] || removed[k]).collect();
     let mut clusters: Vec<(Vec<usize>, V3)> = Vec::new();
     for seed in 0..contacts.len() {
         if assigned[seed] {
@@ -84,7 +98,7 @@ pub fn auto_tree_layout(contacts: &[ColumnContact], model: Option<&Model>, s: &S
         if members.is_empty() {
             continue;
         }
-        let reach = members.iter().map(|&k| (position(k)[0] - average[0]).hypot(position(k)[2] - average[2])).fold(f64::NEG_INFINITY, f64::max);
+        let reach = members.iter().map(|&k| crate::supports::remesh::hypot(&[position(k)[0] - average[0], position(k)[2] - average[2]])).fold(f64::NEG_INFINITY, f64::max);
         let y = average[1] - s.scatter_branch_descent - 2.0 * reach;
         if y < spacing {
             continue;
@@ -102,7 +116,7 @@ mod tests {
     use crate::supports::settings::default_values;
 
     fn contact(x: f64, y: f64, origin: Origin) -> ColumnContact {
-        ColumnContact { candidate: Candidate { id: CandidateId("c".into()), source_face: None, point: [x, y, 0.0], normal: [0.0, -1.0, 0.0], origin }, shape: None, landing: None }
+        ColumnContact { candidate: Candidate { id: CandidateId("c".into()), source_face: None, point: [x, y, 0.0], normal: [0.0, -1.0, 0.0], origin }, shape: None, landing: None, kind: crate::supports::parts::column::ContactKind::default() }
     }
 
     #[test]

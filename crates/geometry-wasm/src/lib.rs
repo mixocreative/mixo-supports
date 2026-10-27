@@ -7,10 +7,11 @@ use mixo_geometry_core::core::matrix::{self, Handedness, Matrix4};
 use mixo_geometry_core::core::spatial::Side;
 use mixo_geometry_core::core::{normals, overlay, pick};
 use mixo_geometry_core::supports::parts::model as support_model;
-use mixo_geometry_core::supports::{build as support_build, error as support_error, flat as support_flat, settings as support_settings};
+use mixo_geometry_core::supports::{error as support_error, settings as support_settings};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
 mod dental;
+mod generic;
 
 #[wasm_bindgen]
 pub fn engine_version() -> u32 {
@@ -207,66 +208,6 @@ impl GeometrySession {
             }
         }
         Ok(out)
-    }
-
-    /// Builds the support mesh for contacts over a loaded plate-space model (`model` = u32::MAX for
-    /// none). `mode`: 0 preview, 1 export. `landings`: 0 casts them against the model, 1 takes them
-    /// from the contacts and `tree_landings` (the voxel-remeshed surface, until U5). The host also
-    /// passes the label text, the contact / tree indices it omitted (zones, landing rules: U7) and an
-    /// Auto Tree layout it computed (empty = Rust computes it; Safe Distance needs the remesh, U5, and
-    /// fails with NOT_YET_PORTED without one). Never returns a partial result.
-    pub fn build_supports(
-        &mut self,
-        model: u32,
-        ids: Vec<String>,
-        contacts: &[f64],
-        shapes: &[f64],
-        settings: &[f64],
-        mode: u32,
-        landings: u32,
-        tree_landings: &[f64],
-        label_text: &str,
-        omit_contacts: &[u32],
-        omit_trees: &[u32],
-        layout: &[f64],
-    ) -> Result<SupportBuild, JsValue> {
-        let settings = support_settings::SupportSettings::from_slice(settings).map_err(build_error)?;
-        let contacts = support_flat::decode_contacts(&ids, contacts, shapes, &settings.shape).map_err(build_error)?;
-        let mode = match mode {
-            0 => support_build::BuildMode::Preview,
-            1 => support_build::BuildMode::Export,
-            _ => return Err(coded_error("BAD_INPUT")),
-        };
-        let trees = support_flat::decode_tree_landings(tree_landings).map_err(build_error)?;
-        let source = match landings {
-            0 => support_build::LandingSource::Model,
-            1 => support_build::LandingSource::Supplied { trees: &trees },
-            _ => return Err(coded_error("BAD_INPUT")),
-        };
-        let host = support_build::HostChoices {
-            label_text,
-            omit_contacts,
-            omit_trees,
-            layout: support_flat::decode_layout(layout, contacts.len()).map_err(build_error)?,
-        };
-        let built = if model == u32::MAX {
-            support_build::build_supports(&contacts, &settings, mode, None, source, &host)
-        } else {
-            self.store.ensure_pick_index(model).map_err(mesh_error)?;
-            let (positions, indices, bvh) = self.store.pick_view(model).map_err(mesh_error)?;
-            let view = support_model::Model::new(positions, indices, bvh);
-            support_build::build_supports(&contacts, &settings, mode, Some(&view), source, &host)
-        }
-        .map_err(build_error)?;
-        let table = support_flat::encode_components(&built);
-        Ok(SupportBuild {
-            positions: built.positions,
-            indices: built.indices,
-            tags: table.tags,
-            reach: table.reach,
-            intents: table.intents,
-            dropped: built.dropped,
-        })
     }
 
     /// First hit of each ray (origin xyz, direction xyz, mesh-local): 5 floats per ray
@@ -532,39 +473,6 @@ fn stl_error(error: StlError) -> JsValue {
         StlError::NonFinite => "NON_FINITE",
         StlError::Capacity => "CAPACITY",
     })
-}
-
-/// Support mesh arrays and per-component tables (layout in `supports::flat`).
-#[wasm_bindgen]
-pub struct SupportBuild {
-    positions: Vec<f32>,
-    indices: Vec<u32>,
-    tags: Vec<u32>,
-    reach: Vec<f64>,
-    intents: Vec<f64>,
-    dropped: Vec<u32>,
-}
-
-#[wasm_bindgen]
-impl SupportBuild {
-    pub fn take_positions(&mut self) -> Vec<f32> {
-        std::mem::take(&mut self.positions)
-    }
-    pub fn take_indices(&mut self) -> Vec<u32> {
-        std::mem::take(&mut self.indices)
-    }
-    pub fn take_tags(&mut self) -> Vec<u32> {
-        std::mem::take(&mut self.tags)
-    }
-    pub fn take_reach(&mut self) -> Vec<f64> {
-        std::mem::take(&mut self.reach)
-    }
-    pub fn take_intents(&mut self) -> Vec<f64> {
-        std::mem::take(&mut self.intents)
-    }
-    pub fn take_dropped(&mut self) -> Vec<u32> {
-        std::mem::take(&mut self.dropped)
-    }
 }
 
 /// Flat order of the settings array (`SETTINGS_LAYOUT`), for the host packer to check against.

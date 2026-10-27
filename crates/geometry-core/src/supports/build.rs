@@ -1,12 +1,13 @@
-//! `build_supports`: the support mesh from placement input (contacts with sampled normals), the
-//! model and the settings. Builds columns (tip, neck, pillar, foot), Auto Trees, Braces, the raft
-//! with its letter label, and Roof / Cage. The host (TypeScript placement and safety policy, until
-//! U5/U7) may supply landings, the Auto Tree layout, the contacts and trees it omitted and the label
-//! text (`HostChoices`). Landings (where a column or tree meets the model below) are cast here against the model's exact
-//! surface; `LandingSource::Supplied` takes them from the caller instead, for the voxel-remeshed
-//! surface the TS builder uses outside Low Poly previews (the remesh is U5).
+//! `build_supports`: the support mesh from placement input (contacts), the model and the settings.
+//! Builds columns (tip, neck, pillar, foot), Auto Trees, Braces, the raft with its letter label, and
+//! Roof / Cage. Landings (where a column or tree meets the model below) and neck normals come from
+//! the line target (`LandingSource::Target`: exact surface, then the voxel remesh unless it is a Low
+//! Poly preview), from the exact surface alone (`Model`), or from the caller (`Supplied`, parity
+//! harness only). Zones and the landing rule leave contacts and trees out (`omit`).
 
 use super::error::BuildError;
+use super::line_target::LineTarget;
+use super::omit::{OmitInput, Omissions, omissions, policy_active};
 use super::parts::autotree::{AutoTreeLayout, auto_tree_layout};
 use super::parts::brace::{Column, emit_braces};
 use super::parts::builder::MeshBuilder;
@@ -17,6 +18,7 @@ use super::parts::tags::Component;
 use super::parts::tree::{emit_tree, landing_source};
 use super::parts::structures::emit_structures;
 use super::settings::{PreviewMode, SupportSettings};
+use super::zones::ZoneStamp;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BuildMode {
@@ -24,10 +26,12 @@ pub enum BuildMode {
     Export,
 }
 
-/// Where landings come from.
+/// Where landings and neck normals come from.
 pub enum LandingSource<'a> {
-    /// Cast against the model (none without a model).
+    /// Cast against the model's exact surface (none without a model); normals as given.
     Model,
+    /// The line target: exact surface, then the voxel remesh (production).
+    Target,
     /// Per-contact landings from `ColumnContact::landing`, and one per Auto Tree in layout order.
     Supplied { trees: &'a [Option<Landing>] },
 }
@@ -36,21 +40,94 @@ pub struct BuiltSupports {
     pub positions: Vec<f32>,
     pub indices: Vec<u32>,
     pub components: Vec<Component>,
-    /// Indices of automatic contacts left out (zones, landing rules, path decisions): U7. Empty until then.
+    /// Indices of automatic contacts left out (zones, landing rules): ascending.
     pub dropped: Vec<u32>,
+    /// The subset of `dropped` a no-support zone caused.
+    pub dropped_by_zones: Vec<u32>,
 }
 
-/// What the host decided or computed that this core does not yet (placement and safety policy are
-/// U5/U7): the label text, the contacts and Auto Trees it omitted (zones, landing rules), and an Auto
-/// Tree layout it computed (the Safe Distance scatter reads the voxel remesh, U5).
+/// What the host decided that this core does not compute: the label text, the no-support zones and
+/// the landing rule as flags per column / per tree (the host evaluates it on `probe_landings`).
 #[derive(Default)]
 pub struct HostChoices<'a> {
     pub label_text: &'a str,
-    /// Contact indices left out (never built, reported in `dropped`, ascending after dedup).
-    pub omit_contacts: &'a [u32],
-    /// Layout tree indices left out (the host omits their members as contacts as well).
-    pub omit_trees: &'a [u32],
+    pub zones: &'a [ZoneStamp],
+    pub rejected_columns: &'a [bool],
+    pub rejected_trees: &'a [bool],
+}
+
+/// Where the columns and trees land, for a host landing rule.
+pub struct LandingProbe {
     pub layout: Option<AutoTreeLayout>,
+    pub columns: Vec<Option<Landing>>,
+    pub trees: Vec<Option<Landing>>,
+}
+
+struct Prepared<'m, 'a> {
+    contacts: Vec<ColumnContact>,
+    settings: &'a SupportSettings,
+    exporting: bool,
+    tip_only: bool,
+    model: Option<&'m Model<'m>>,
+    target: Option<LineTarget<'m>>,
+    layout: Option<AutoTreeLayout>,
+    source: &'a LandingSource<'a>,
+}
+
+impl<'m, 'a> Prepared<'m, 'a> {
+    fn new(contacts: &[ColumnContact], settings: &'a SupportSettings, mode: BuildMode, model: Option<&'m Model<'m>>, source: &'a LandingSource<'a>) -> Result<Self, BuildError> {
+        let exporting = mode == BuildMode::Export;
+        let tip_only = !exporting && settings.preview_mode == PreviewMode::OnlyTip;
+        let target = match (source, model) {
+            (LandingSource::Target, Some(m)) => Some(LineTarget::new(m, settings, exporting)),
+            _ => None,
+        };
+        let mut contacts = contacts.to_vec();
+        if let Some(target) = &target {
+            for contact in &mut contacts {
+                contact.candidate.normal = target.normal(contact);
+            }
+        }
+        let layout = if settings.scatter_auto_tree { Some(auto_tree_layout(&contacts, model, settings)?) } else { None };
+        if let (Some(layout), LandingSource::Supplied { trees }) = (&layout, source) {
+            if !tip_only && layout.trees.len() != trees.len() {
+                return Err(BuildError::BadInput("tree landings length"));
+            }
+        }
+        Ok(Self { contacts, settings, exporting, tip_only, model, target, layout, source })
+    }
+
+    fn cast(&self, from: [f64; 3]) -> Option<Landing> {
+        match (&self.target, self.model) {
+            (Some(target), _) => target.cast(from, target.height()),
+            (None, Some(m)) => m.cast_down(from, m.height),
+            _ => None,
+        }
+    }
+
+    /// Where the column of contact `index` lands (its own shape applied), whether or not it is built.
+    fn column_landing(&self, index: usize) -> Option<Landing> {
+        let contact = &self.contacts[index];
+        match self.source {
+            LandingSource::Supplied { .. } => contact.landing,
+            _ => self.cast(neck_bend(contact, &self.settings.with_shape(contact.shape.as_ref()))),
+        }
+    }
+
+    fn tree_landing(&self, t: usize) -> Option<Landing> {
+        let tree = &self.layout.as_ref()?.trees[t];
+        match self.source {
+            LandingSource::Supplied { trees } => trees.get(t).copied().flatten(),
+            _ => self.cast(landing_source(tree, self.settings)),
+        }
+    }
+}
+
+pub fn probe_landings(contacts: &[ColumnContact], settings: &SupportSettings, mode: BuildMode, model: Option<&Model>, source: LandingSource) -> Result<LandingProbe, BuildError> {
+    let prepared = Prepared::new(contacts, settings, mode, model, &source)?;
+    let columns = (0..prepared.contacts.len()).map(|k| prepared.column_landing(k)).collect();
+    let trees = (0..prepared.layout.as_ref().map_or(0, |l| l.trees.len())).map(|t| prepared.tree_landing(t)).collect();
+    Ok(LandingProbe { layout: prepared.layout, columns, trees })
 }
 
 pub fn build_supports(
@@ -61,41 +138,33 @@ pub fn build_supports(
     source: LandingSource,
     host: &HostChoices,
 ) -> Result<BuiltSupports, BuildError> {
-    let exporting = mode == BuildMode::Export;
-    let tip_only = !exporting && settings.preview_mode == PreviewMode::OnlyTip;
-    if host.omit_contacts.iter().any(|&k| k as usize >= contacts.len()) {
-        return Err(BuildError::BadInput("omitted contact index"));
+    let prepared = Prepared::new(contacts, settings, mode, model, &source)?;
+    let Prepared { exporting, tip_only, .. } = prepared;
+    let contacts = &prepared.contacts;
+    let layout = &prepared.layout;
+    if [host.rejected_columns.len(), host.rejected_trees.len()].iter().any(|&n| n != 0) && (host.rejected_columns.len() != contacts.len() || host.rejected_trees.len() != layout.as_ref().map_or(0, |l| l.trees.len())) {
+        return Err(BuildError::BadInput("landing rule flags length"));
     }
-    let mut omit = vec![false; contacts.len()];
-    for &k in host.omit_contacts {
-        omit[k as usize] = true;
-    }
-    let omitted = |index: usize| omit[index];
-    let layout = if settings.scatter_auto_tree {
-        Some(match &host.layout {
-            Some(layout) => {
-                if layout.removed.len() != contacts.len() || layout.trees.iter().any(|t| t.members.iter().any(|&m| m >= contacts.len())) {
-                    return Err(BuildError::BadInput("layout"));
-                }
-                layout.clone()
-            }
-            None => auto_tree_layout(contacts, model, settings)?,
+    let omitted = if policy_active(host.zones, host.rejected_columns, host.rejected_trees) {
+        let mut column_cache: Vec<Option<Option<Landing>>> = vec![None; contacts.len()];
+        let mut tree_cache: Vec<Option<Option<Landing>>> = vec![None; layout.as_ref().map_or(0, |l| l.trees.len())];
+        let mut column_hit = |k: usize| *column_cache[k].get_or_insert_with(|| prepared.column_landing(k));
+        let mut tree_hit = |t: usize| *tree_cache[t].get_or_insert_with(|| prepared.tree_landing(t));
+        omissions(OmitInput {
+            contacts, settings, tip_only, layout: layout.as_ref(), zones: host.zones,
+            rejected_columns: host.rejected_columns, rejected_trees: host.rejected_trees,
+            column_hit: &mut column_hit, tree_hit: &mut tree_hit,
         })
     } else {
-        None
+        Omissions::default()
     };
-    let tree_count = layout.as_ref().map_or(0, |l| l.trees.len());
-    if host.omit_trees.iter().any(|&t| t as usize >= tree_count) {
-        return Err(BuildError::BadInput("omitted tree index"));
+    let mut omit = vec![false; contacts.len()];
+    for &k in &omitted.contacts {
+        omit[k as usize] = true;
     }
-    let mut omit_tree = vec![false; tree_count];
-    for &t in host.omit_trees {
+    let mut omit_tree = vec![false; layout.as_ref().map_or(0, |l| l.trees.len())];
+    for &t in &omitted.trees {
         omit_tree[t as usize] = true;
-    }
-    if let (Some(layout), LandingSource::Supplied { trees }) = (&layout, &source) {
-        if !tip_only && layout.trees.len() != trees.len() {
-            return Err(BuildError::BadInput("tree landings length"));
-        }
     }
     let mut builder = MeshBuilder::new();
     let segments = if !exporting && settings.low_poly_mode {
@@ -104,13 +173,13 @@ pub fn build_supports(
         settings.resolution as usize
     };
     let raft_top = if settings.raft_enabled { settings.raft_floor_thickness } else { 0.0 };
-    // Indices into the layout of the trees that are built (all trees but the host's omissions; none in a tips-only preview).
-    let built_trees: Vec<usize> = match &layout {
+    // Indices into the layout of the trees that are built (all trees but the omitted ones; none in a tips-only preview).
+    let built_trees: Vec<usize> = match layout {
         Some(layout) if !tip_only => (0..layout.trees.len()).filter(|&t| !omit_tree[t]).collect(),
         _ => Vec::new(),
     };
     let mut in_tree = vec![false; contacts.len()];
-    if let Some(layout) = &layout {
+    if let Some(layout) = layout {
         for &t in &built_trees {
             for &member in &layout.trees[t].members {
                 in_tree[member] = true;
@@ -119,14 +188,10 @@ pub fn build_supports(
     }
     let mut anchors = Vec::new();
     for (index, contact) in contacts.iter().enumerate() {
-        if in_tree[index] || layout.as_ref().is_some_and(|l| l.removed[index]) || omitted(index) {
+        if in_tree[index] || layout.as_ref().is_some_and(|l| l.removed[index]) || omit[index] {
             continue;
         }
-        let landing = match &source {
-            LandingSource::Supplied { .. } => contact.landing,
-            LandingSource::Model if tip_only => None,
-            LandingSource::Model => model.and_then(|m| m.cast_down(neck_bend(contact, &settings.with_shape(contact.shape.as_ref())), m.height)),
-        };
+        let landing = if tip_only { None } else { prepared.column_landing(index) };
         if let Some(anchor) = emit_column(&mut builder, index as u32, contact, settings, raft_top, segments, tip_only, landing) {
             anchors.push(anchor);
         }
@@ -139,136 +204,18 @@ pub fn build_supports(
             .collect();
         for &t in &built_trees {
             let tree = &layout.as_ref().expect("built trees need a layout").trees[t];
-            let hit = match &source {
-                LandingSource::Supplied { trees } => trees[t],
-                LandingSource::Model => {
-                    let from = landing_source(tree, settings);
-                    model.and_then(|m| m.cast_down(from, m.height))
-                }
-            };
+            let hit = prepared.tree_landing(t);
             columns.extend(emit_tree(&mut builder, tree, contacts, settings, hit, segments));
         }
         if settings.truss_enabled {
             emit_braces(&mut builder, &columns, settings, segments);
         }
         let footprints: Vec<[f64; 2]> = columns.iter().map(|c| [c.x, c.z]).collect();
-        emit_structures(&mut builder, &footprints, settings, model, host.label_text);
+        emit_structures(&mut builder, &footprints, settings, prepared.model, host.label_text);
     }
     let mesh = builder.finish();
-    let dropped = (0..contacts.len()).filter(|&k| omitted(k)).map(|k| k as u32).collect();
-    Ok(BuiltSupports { positions: mesh.positions, indices: mesh.indices, components: mesh.components, dropped })
+    Ok(BuiltSupports { positions: mesh.positions, indices: mesh.indices, components: mesh.components, dropped: omitted.contacts, dropped_by_zones: omitted.by_zones })
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::supports::parts::tags::Part;
-    use crate::supports::policy::{Candidate, CandidateId, Origin};
-    use crate::supports::settings::{SETTINGS_LAYOUT, default_values};
-
-    fn set(values: &mut [f64], name: &str, value: f64) {
-        values[SETTINGS_LAYOUT.iter().position(|n| *n == name).unwrap()] = value;
-    }
-
-    fn contacts() -> Vec<ColumnContact> {
-        (0..3)
-            .map(|k| ColumnContact {
-                candidate: Candidate {
-                    id: CandidateId(format!("c{k}")),
-                    source_face: None,
-                    point: [f64::from(k) * 3.0, 8.0, 0.0],
-                    normal: [0.0, -1.0, 0.0],
-                    origin: Origin::Auto,
-                },
-                shape: None,
-                landing: None,
-            })
-            .collect()
-    }
-
-    fn columns_only() -> SupportSettings {
-        let mut values = default_values();
-        set(&mut values, "trussEnabled", 0.0);
-        set(&mut values, "raftEnabled", 0.0);
-        SupportSettings::from_slice(&values).unwrap()
-    }
-
-    #[test]
-    fn builds_columns_and_orders_components_per_contact_then_feet() {
-        let built = build_supports(&contacts(), &columns_only(), BuildMode::Export, None, LandingSource::Model, &HostChoices::default()).unwrap();
-        let parts: Vec<Part> = built.components.iter().map(|c| c.tag.part).collect();
-        assert_eq!(&parts[..2], [Part::Neck, Part::Pillar]);
-        assert_eq!(parts.iter().filter(|p| **p == Part::Foot).count(), 3);
-        assert_eq!(built.indices.len() % 3, 0);
-        assert!(built.dropped.is_empty());
-    }
-
-    #[test]
-    fn raft_label_roof_and_cage_build_from_the_column_feet_without_a_model() {
-        let mut values = default_values();
-        let build = |values: &[f64], text: &str| {
-            let host = HostChoices { label_text: text, ..HostChoices::default() };
-            build_supports(&contacts(), &SupportSettings::from_slice(values).unwrap(), BuildMode::Export, None, LandingSource::Model, &host).unwrap()
-        };
-        let parts = |built: &BuiltSupports| built.components.iter().map(|c| c.tag.part).collect::<Vec<_>>();
-        assert!(parts(&build(&values, "A1")).contains(&Part::Raft));
-        assert!(parts(&build(&values, "A1")).contains(&Part::Label));
-        assert!(!parts(&build(&values, "")).contains(&Part::Label));
-        set(&mut values, "raftEnabled", 0.0);
-        assert!(!parts(&build(&values, "A")).contains(&Part::Raft));
-        set(&mut values, "roofMode", 2.0);
-        // Roof and Cage stand on the raft outline, which needs a model.
-        assert!(!parts(&build(&values, "A")).contains(&Part::CageRing));
-    }
-
-    #[test]
-    fn omitted_contacts_are_not_built_and_are_reported_dropped() {
-        let host = HostChoices { omit_contacts: &[1], ..HostChoices::default() };
-        let built = build_supports(&contacts(), &columns_only(), BuildMode::Export, None, LandingSource::Model, &host).unwrap();
-        assert_eq!(built.dropped, vec![1]);
-        assert_eq!(built.components.iter().filter(|c| c.tag.part == Part::Foot).count(), 2);
-        let wrong = HostChoices { omit_contacts: &[3], ..HostChoices::default() };
-        assert_eq!(build_supports(&contacts(), &columns_only(), BuildMode::Export, None, LandingSource::Model, &wrong).err(), Some(BuildError::BadInput("omitted contact index")));
-    }
-
-    #[test]
-    fn braces_join_neighbouring_columns_and_trees_replace_their_members() {
-        let mut values = default_values();
-        set(&mut values, "raftEnabled", 0.0);
-        let near: Vec<ColumnContact> = (0..3).map(|k| ColumnContact { candidate: Candidate { point: [f64::from(k) * 4.0, 20.0, 0.0], ..contacts()[0].candidate.clone() }, ..contacts()[0].clone() }).collect();
-        let settings = SupportSettings::from_slice(&values).unwrap();
-        let built = build_supports(&near, &settings, BuildMode::Export, None, LandingSource::Model, &HostChoices::default()).unwrap();
-        assert!(built.components.iter().any(|c| c.tag.part == Part::Brace));
-        assert!(built.components.iter().all(|c| c.tag.part != Part::Brace || c.tag.contact.is_none()));
-        set(&mut values, "scatterAutoTree", 1.0);
-        set(&mut values, "scatterMergeDistance", 9.0);
-        set(&mut values, "scatterBranchDescent", 1.0);
-        let settings = SupportSettings::from_slice(&values).unwrap();
-        let treed = build_supports(&near, &settings, BuildMode::Export, None, LandingSource::Model, &HostChoices::default()).unwrap();
-        assert!(treed.components.iter().any(|c| c.tag.part == Part::TreeTrunk));
-        assert!(treed.components.iter().all(|c| c.tag.part != Part::Pillar));
-    }
-
-    #[test]
-    fn supplied_tree_landings_must_match_the_layout() {
-        let mut values = default_values();
-        set(&mut values, "raftEnabled", 0.0);
-        set(&mut values, "scatterAutoTree", 1.0);
-        set(&mut values, "scatterMergeDistance", 5.0);
-        set(&mut values, "scatterBranchDescent", 1.0);
-        let near: Vec<ColumnContact> = (0..2).map(|k| ColumnContact { candidate: Candidate { point: [f64::from(k) * 2.0, 20.0, 0.0], ..contacts()[0].candidate.clone() }, ..contacts()[0].clone() }).collect();
-        let settings = SupportSettings::from_slice(&values).unwrap();
-        let err = build_supports(&near, &settings, BuildMode::Export, None, LandingSource::Supplied { trees: &[] }, &HostChoices::default()).err();
-        assert_eq!(err, Some(BuildError::BadInput("tree landings length")));
-        assert!(build_supports(&near, &settings, BuildMode::Export, None, LandingSource::Supplied { trees: &[None] }, &HostChoices::default()).is_ok());
-    }
-
-    #[test]
-    fn tips_only_preview_builds_necks_only() {
-        let mut values = default_values();
-        set(&mut values, "previewMode", 1.0);
-        let settings = SupportSettings::from_slice(&values).unwrap();
-        let built = build_supports(&contacts(), &settings, BuildMode::Preview, None, LandingSource::Model, &HostChoices::default()).unwrap();
-        assert!(built.components.iter().all(|c| c.tag.part == Part::Neck));
-    }
-}
+mod tests;

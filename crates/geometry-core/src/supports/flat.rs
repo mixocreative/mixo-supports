@@ -1,7 +1,8 @@
 //! Typed-array encoding of the support build (the ABI both Rust tests and WASM use).
 //!
 //! In, per contact, `CONTACT_STRIDE` f64: point xyz, normal xyz, source face (-1 none), origin
-//! (0 auto, 1 manual), has landing (0/1), landing point xyz, landing normal xyz, landing face (-1 none).
+//! (0 auto, 1 manual), has landing (0/1), landing point xyz, landing normal xyz, landing face (-1 none),
+//! point kind (0 none, 1 face, 2 edge, 3 vertical).
 //! The landing fields are read only with supplied landings (see `build::LandingSource`); otherwise
 //! the build casts them against the model. Tree landings (supplied mode) are `TREE_LANDING_STRIDE`
 //! f64 each: has landing, point xyz, normal xyz, face (-1 none), has source point, source xyz.
@@ -14,14 +15,13 @@
 
 use super::build::BuiltSupports;
 use super::error::BuildError;
-use super::parts::autotree::{AutoTree, AutoTreeLayout};
-use super::parts::column::ColumnContact;
+use super::parts::column::{ColumnContact, ContactKind};
 use super::parts::landing::Landing;
 use super::parts::tags::Component;
 use super::policy::{Candidate, CandidateId, Origin};
 use super::settings::{SHAPE_LAYOUT, ShapeSettings};
 
-pub const CONTACT_STRIDE: usize = 16;
+pub const CONTACT_STRIDE: usize = 17;
 pub const TREE_LANDING_STRIDE: usize = 12;
 pub const COMPONENT_STRIDE: usize = 8;
 pub const INTENT_STRIDE: usize = 9;
@@ -57,6 +57,12 @@ pub fn decode_contacts(ids: &[String], values: &[f64], shapes: &[f64], base: &Sh
                     origin: if v[7] == 1.0 { Origin::Manual } else { Origin::Auto },
                 },
                 shape,
+                kind: match v[16] as u8 {
+                    1 => ContactKind::Face,
+                    2 => ContactKind::Edge,
+                    3 => ContactKind::Vertical,
+                    _ => ContactKind::Unspecified,
+                },
                 landing: (v[8] != 0.0).then(|| Landing { point: [v[9], v[10], v[11]], normal: [v[12], v[13], v[14]], face: face(v[15]), source_point: None }),
             })
         })
@@ -150,50 +156,4 @@ mod tests {
         assert!(contacts[0].landing.is_none() && contacts[0].shape.is_none());
         assert_eq!(decode_contacts(&["a".into()], &v[..3], &[], &base).err(), Some(BuildError::BadInput("contacts length")));
     }
-
-    #[test]
-    fn decodes_a_host_layout_and_rejects_a_malformed_one() {
-        assert_eq!(decode_layout(&[], 3).unwrap(), None);
-        // One tree of members 0 and 2 at (1, 2, 3); contact 1 removed.
-        let layout = decode_layout(&[1.0, 1.0, 2.0, 3.0, 2.0, 0.0, 2.0, 1.0, 1.0], 3).unwrap().unwrap();
-        assert_eq!(layout.trees[0].members, vec![0, 2]);
-        assert_eq!(layout.trees[0].junction, [1.0, 2.0, 3.0]);
-        assert_eq!(layout.removed, vec![false, true, false]);
-        assert!(decode_layout(&[1.0, 1.0, 2.0, 3.0, 2.0, 0.0], 3).is_err(), "truncated");
-        assert!(decode_layout(&[0.0, 1.0, 7.0], 3).is_err(), "removed index out of range");
-        assert!(decode_layout(&[0.0, 0.0, 9.0], 3).is_err(), "trailing values");
-    }
-}
-
-/// A host-computed Auto Tree layout: empty = none supplied; else `[n_trees, (junction xyz, n_members,
-/// members...) per tree, n_removed, removed contact indices...]`.
-pub fn decode_layout(values: &[f64], contacts: usize) -> Result<Option<AutoTreeLayout>, BuildError> {
-    if values.is_empty() {
-        return Ok(None);
-    }
-    let bad = BuildError::BadInput("layout");
-    let mut at = 0;
-    let mut next = || -> Result<f64, BuildError> {
-        let v = *values.get(at).ok_or(BuildError::BadInput("layout"))?;
-        at += 1;
-        if v.is_finite() { Ok(v) } else { Err(BuildError::BadInput("layout")) }
-    };
-    let count = |v: f64| if v >= 0.0 && v.fract() == 0.0 { Ok(v as usize) } else { Err(BuildError::BadInput("layout")) };
-    let mut trees = Vec::new();
-    for _ in 0..count(next()?)? {
-        let junction = [next()?, next()?, next()?];
-        let mut members = Vec::new();
-        for _ in 0..count(next()?)? {
-            members.push(count(next()?)?);
-        }
-        trees.push(AutoTree { junction, members });
-    }
-    let mut removed = vec![false; contacts];
-    for _ in 0..count(next()?)? {
-        *removed.get_mut(count(next()?)?).ok_or(BuildError::BadInput("layout"))? = true;
-    }
-    if at != values.len() {
-        return Err(bad);
-    }
-    Ok(Some(AutoTreeLayout { trees, removed }))
 }
