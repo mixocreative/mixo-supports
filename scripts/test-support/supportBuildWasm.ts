@@ -6,7 +6,7 @@ import type { Vector } from '../../src/core/vec3';
  * Host adapter for the Rust `build_supports` call (U4): packs validated settings and contacts into
  * the flat typed arrays the ABI takes, and unpacks the arrays and component tags it returns. Layouts
  * are defined in crates/geometry-core/src/supports/{settings,flat}.rs and checked against the engine.
- * Not wired into production callers until the whole builder cuts over (U4b/U4c).
+ * Not wired into production callers until the whole builder cuts over (after U4c).
  */
 
 /** Order of the flat settings array (Rust `SETTINGS_LAYOUT`). */
@@ -65,6 +65,27 @@ export interface ColumnInput {
   landing?: { point: Vector; normal: Vector; faceIndex?: number };
 }
 
+/** A landing the TS voxel-remeshed ray cast produced (supplied mode only, until the remesh is ported in U5). */
+export interface SuppliedLanding { point: Vector; normal: Vector; faceIndex?: number; sourcePoint?: Vector }
+
+export const TREE_LANDING_STRIDE = 12;
+
+export function packTreeLandings(landings: readonly (SuppliedLanding | undefined)[]): Float64Array {
+  const flat = new Float64Array(landings.length * TREE_LANDING_STRIDE);
+  landings.forEach((hit, k) => {
+    if (hit) flat.set([1, ...hit.point, ...hit.normal, hit.faceIndex ?? -1, hit.sourcePoint ? 1 : 0, ...(hit.sourcePoint ?? [0, 0, 0])], k * TREE_LANDING_STRIDE);
+  });
+  return flat;
+}
+
+export interface BuildOptions {
+  /** Handle of the plate-space model loaded in the session; none builds without a model. */
+  model?: number;
+  /** `model` casts landings against the model (default); `supplied` takes contact landings and `treeLandings` from the caller. */
+  landings?: 'model' | 'supplied';
+  treeLandings?: readonly (SuppliedLanding | undefined)[];
+}
+
 export const CONTACT_STRIDE = 16;
 
 export function packContacts(contacts: readonly ColumnInput[]): { contacts: Float64Array; shapes: Float64Array } {
@@ -89,6 +110,7 @@ const PARTS: readonly SupportPart[] = [
   'tip', 'neck', 'pillar', 'foot', 'brace', 'raft', 'tree-branch', 'tree-trunk', 'roof', 'column', 'roof-brace', 'cross-bar', 'cage-ring', 'label',
 ];
 const NO_CONTACT = 0xffffffff;
+const NO_MODEL = 0xffffffff;
 
 export interface TaggedComponent {
   part: SupportPart;
@@ -110,19 +132,24 @@ export interface WasmSupportBuild {
   dropped: number[];
 }
 
-interface Engine {
-  build_supports(ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number): {
+interface Session {
+  build_supports(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number, landings: number, treeLandings: Float64Array): {
     take_positions(): Float32Array; take_indices(): Uint32Array; take_tags(): Uint32Array;
     take_reach(): Float64Array; take_intents(): Float64Array; take_dropped(): Uint32Array; free(): void;
   };
+  cast_down(model: number, from: Float64Array, length: number): Float64Array;
+}
+
+interface Engine {
   support_settings_layout(): string[];
 }
 
 /** Throws (code `NOT_YET_PORTED`, `detail` the structure) for a request the Rust core cannot build yet. */
-export function buildSupportsWasm(engine: unknown, contacts: readonly ColumnInput[], settings: Readonly<LiveSupportSettings>, mode: 'preview' | 'export'): WasmSupportBuild {
-  const wasm = engine as Engine;
+export function buildSupportsWasm(session: unknown, contacts: readonly ColumnInput[], settings: Readonly<LiveSupportSettings>, mode: 'preview' | 'export', options: BuildOptions = {}): WasmSupportBuild {
+  const wasm = session as Session;
   const packed = packContacts(contacts);
-  const result = wasm.build_supports(contacts.map((c) => c.id), packed.contacts, packed.shapes, packSettings(settings), mode === 'export' ? 1 : 0);
+  const result = wasm.build_supports(options.model ?? NO_MODEL, contacts.map((c) => c.id), packed.contacts, packed.shapes, packSettings(settings), mode === 'export' ? 1 : 0,
+    options.landings === 'supplied' ? 1 : 0, packTreeLandings(options.treeLandings ?? []));
   try {
     const tags = result.take_tags();
     const reach = result.take_reach();
@@ -136,7 +163,6 @@ export function buildSupportsWasm(engine: unknown, contacts: readonly ColumnInpu
       const intentCount = tags[t + 7]!;
       components.push({
         part: PARTS[tags[t]!]!,
-        ...(tags[t + 1] === 1 ? { structureKind: 'tree' as const } : {}),
         ...(contact === NO_CONTACT ? {} : { contactId: contacts[contact]!.id }),
         ...(origin === 0 ? {} : { origin: origin === 2 ? 'manual' as const : 'auto' as const }),
         start: tags[t + 4]!,
@@ -153,6 +179,8 @@ export function buildSupportsWasm(engine: unknown, contacts: readonly ColumnInpu
               : { kind: 'secondary', point, normal, ...(face < 0 ? {} : { faceIndex: face }) };
           }),
         }),
+        // Key order follows the TS builder so serialised tags compare equal.
+        ...(tags[t + 1] === 1 ? { structureKind: 'tree' as const } : {}),
       });
     }
     return { positions: result.take_positions(), indices: result.take_indices(), components, dropped: Array.from(result.take_dropped()) };
@@ -164,4 +192,10 @@ export function buildSupportsWasm(engine: unknown, contacts: readonly ColumnInpu
 /** The engine's settings layout, for a test that the packer above matches it. */
 export function engineSettingsLayout(engine: unknown): string[] {
   return (engine as Engine).support_settings_layout();
+}
+
+/** Rust exact-surface landing casts straight down from each point; `undefined` where nothing is below within `length`. */
+export function castDownWasm(session: unknown, model: number, from: readonly Vector[], length: number): ({ faceIndex: number; y: number; normal: Vector } | undefined)[] {
+  const out = (session as Session).cast_down(model, Float64Array.from(from.flat()), length);
+  return from.map((_, k) => out[k * 5]! < 0 ? undefined : { faceIndex: out[k * 5]!, y: out[k * 5 + 1]!, normal: [out[k * 5 + 2]!, out[k * 5 + 3]!, out[k * 5 + 4]!] });
 }
