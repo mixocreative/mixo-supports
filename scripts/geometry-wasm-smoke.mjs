@@ -9,7 +9,7 @@ assert.ok(existsSync(packageFile), 'Node WASM package must be built before its s
 
 const require = createRequire(import.meta.url);
 const { engine_version: engineVersion, GeometrySession, center_positions_in_place: centerPositionsInPlace,
-  weld_positions_in_place: weldPositionsInPlace, BinaryStlSession } = require(packageFile);
+  weld_positions_in_place: weldPositionsInPlace, decimate_display: decimateDisplay, BinaryStlSession } = require(packageFile);
 assert.equal(engineVersion(), 1, 'Node WASM and host must agree on the geometry schema');
 
 const shifted = new Float32Array([8, -2, 4, 12, 4, 6]);
@@ -31,6 +31,12 @@ assert.throws(() => weldPositionsInPlace(new Float32Array([0, 0, 0]), new Uint32
   new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])), { code: 'INVALID_INDEX' });
 assert.throws(() => weldPositionsInPlace(new Float32Array([1, 0, 0]), new Uint32Array(),
   new Float64Array([1e40, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])), { code: 'NON_FINITE' });
+
+const display = decimateDisplay(new Float32Array([0, 0, 0, 0.01, 0, 0, 1, 0, 0, 0, 1, 0]),
+  new Uint32Array([0, 1, 2, 0, 2, 3]), 1);
+assert.ok(display.take_indices().length <= 3);
+display.free();
+assert.throws(() => decimateDisplay(new Float32Array([NaN, 0, 0]), new Uint32Array([0, 0, 0]), 1), { code: 'NON_FINITE' });
 
 const binaryStl = new Uint8Array(134);
 const stlView = new DataView(binaryStl.buffer);

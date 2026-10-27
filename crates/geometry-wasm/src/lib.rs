@@ -90,6 +90,22 @@ pub fn weld_positions_in_place(
     })
 }
 
+/// Returns a simplified display copy; the caller keeps the full mesh for support and export.
+#[wasm_bindgen]
+pub fn decimate_display(
+    positions: &[f32],
+    indices: &[u32],
+    max_triangles: u32,
+) -> Result<WeldResult, JsValue> {
+    let mesh =
+        mixo_geometry_core::decimate::decimate_display(positions, indices, max_triangles as usize)
+            .map_err(mesh_error)?;
+    Ok(WeldResult {
+        positions: mesh.positions,
+        indices: mesh.indices,
+    })
+}
+
 #[wasm_bindgen]
 pub struct GeometrySession {
     store: MeshStore,

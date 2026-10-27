@@ -3,6 +3,7 @@ import { BufferAttribute, BufferGeometry, Mesh, MeshBasicMaterial, Raycaster, To
 import { acceleratedRaycast, computeBoundsTree, MeshBVH } from 'three-mesh-bvh';
 import { centreInPlace, geometryToMesh } from '../state/import';
 import { buffers, prepare } from './prepareImport';
+import { decimate } from '../core/decimate';
 
 /** A pickable mesh on `geometry` (accelerated raycast, first hit only, as the viewport picks). */
 function pickable(geometry: BufferGeometry): Mesh {
@@ -14,7 +15,7 @@ function pickable(geometry: BufferGeometry): Mesh {
 describe('import worker pick index (serialise → transfer → deserialise)', () => {
   it('raycasts exactly like an index built on the main thread, and leaves the index buffer as it was', () => {
     const imported = geometryToMesh(new TorusKnotGeometry(10, 3, 600, 60)); // 72,000 triangles: a Uint32 indirect buffer
-    const prepared = prepare({ name: 'knot', mesh: imported }, 'web', () => {}, 0, 1, centreInPlace);
+    const prepared = prepare({ name: 'knot', mesh: imported }, 'web', () => {}, 0, 1, centreInPlace, decimate);
     const indicesBefore = prepared.mesh.indices.slice();
     // What the transfer does to the buffers: the main thread gets copies it owns.
     const sent = structuredClone({ mesh: prepared.mesh, bvh: prepared.bvh }, { transfer: buffers([prepared]) as Transferable[] });
@@ -51,7 +52,7 @@ describe('import worker pick index (serialise → transfer → deserialise)', ()
 
   it('a full-tier mesh gets no display copy and its own pick index', () => {
     const imported = geometryToMesh(new TorusKnotGeometry(10, 3, 400, 40)); // 32,000 triangles
-    const prepared = prepare({ name: 'knot', mesh: imported }, 'web', () => {}, 0, 1, centreInPlace);
+    const prepared = prepare({ name: 'knot', mesh: imported }, 'web', () => {}, 0, 1, centreInPlace, decimate);
     expect(prepared.display).toBeUndefined();
     expect(prepared.bvh.indirectBuffer.length).toBe(prepared.mesh.indices.length / 3);
   });

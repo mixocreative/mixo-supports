@@ -27,10 +27,15 @@ with sync_playwright() as playwright:
               try { session.mesh_bounds(handle); } catch (error) { staleCode = error.code; }
               const used = session.used_bytes();
               session.free();
-              return { version: engine.engine_version(), bounds, used, staleCode };
+              const display = engine.decimate_display(
+                new Float32Array([0, 0, 0, 0.01, 0, 0, 1, 0, 0, 0, 1, 0]),
+                new Uint32Array([0, 1, 2, 0, 2, 3]), 1);
+              const displayTriangles = display.take_indices().length / 3;
+              display.free();
+              return { version: engine.engine_version(), bounds, used, staleCode, displayTriangles };
             }"""
         )
-        assert result == {"version": 1, "bounds": [0, 0, 0, 2, 3, 0], "used": 0, "staleCode": "INVALID_HANDLE"}, result
+        assert result == {"version": 1, "bounds": [0, 0, 0, 2, 3, 0], "used": 0, "staleCode": "INVALID_HANDLE", "displayTriangles": 1}, result
         worker_result = page.evaluate(
             """async () => new Promise((resolve, reject) => {
               const worker = new Worker('/mixo-supports/src/workers/meshWorker.ts', { type: 'module' });

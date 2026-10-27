@@ -4,7 +4,7 @@ import { CodedError } from '../editing/errors';
 import { named } from '../state/import';
 import { geometryReady, type GeometryEngine } from './geometryClient';
 import type { ImportTask, PreparedMesh } from './importProtocol';
-import { buffers, centerImportedWithWasm, prepare, weldRawWithWasm, type Progress } from './prepareImport';
+import { buffers, centerImportedWithWasm, decimateWithWasm, prepare, weldRawWithWasm, type Progress } from './prepareImport';
 import { serveTask, transferable } from './serveTask';
 
 /** A File is read in slices this big, so the whole file never sits in memory at once. */
@@ -54,6 +54,7 @@ async function readStl(file: Blob, name: string, progress: Progress, engine: Geo
 serveTask<ImportTask, PreparedMesh[]>(async (task, { progress: post }) => {
   const engine = await geometryReady();
   const center = (item: Parameters<typeof prepare>[0]) => centerImportedWithWasm(item, engine);
+  const simplify = (mesh: TriangleMesh, maxTriangles: number) => decimateWithWasm(mesh, engine, maxTriangles);
   let last = 0;
   const progress: Progress = (fraction, stage) => {
     const now = performance.now();
@@ -65,12 +66,12 @@ serveTask<ImportTask, PreparedMesh[]>(async (task, { progress: post }) => {
   if (task.kind === 'stl') {
     const name = task.name.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
     const mesh = await readStl(task.file, name, progress, engine);
-    prepared = [prepare({ name, mesh }, task.runtime, progress, 0.75, 1, center)];
+    prepared = [prepare({ name, mesh }, task.runtime, progress, 0.75, 1, center, simplify)];
   } else {
     const share = 1 / task.meshes.length;
     prepared = task.meshes.map((raw, k) => {
       progress(k * share, 'Welding vertices');
-      return prepare(weldRawWithWasm(raw, engine), task.runtime, progress, (k + 0.5) * share, (k + 1) * share, center);
+      return prepare(weldRawWithWasm(raw, engine), task.runtime, progress, (k + 0.5) * share, (k + 1) * share, center, simplify);
     });
   }
   progress(1, 'Done');

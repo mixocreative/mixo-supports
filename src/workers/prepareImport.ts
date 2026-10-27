@@ -2,7 +2,6 @@ import { BufferAttribute, BufferGeometry } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import type { TriangleMesh } from '../core/analysis/types';
 import { assertTriangleCapacity, meshTier, TRIANGLE_BUDGET, type Runtime } from '../core/budget';
-import { decimate } from '../core/decimate';
 import type { ImportedMesh, RawMesh } from '../state/import';
 import { CodedError } from '../editing/errors';
 import type { SerializedBvh } from '../state/meshExtras';
@@ -35,6 +34,16 @@ export function centerImportedWithWasm(item: ImportedMesh, engine: GeometryEngin
   return { ...item, centred: { center: triplet(0), bounds: { min: triplet(3), max: triplet(6) } } };
 }
 
+/** Keep only one Rust result copy; the full-resolution input remains the support/export source. */
+export function decimateWithWasm(mesh: TriangleMesh, engine: Pick<GeometryEngine, 'decimate_display'>, maxTriangles: number): TriangleMesh {
+  const result = engine.decimate_display(mesh.positions, mesh.indices, maxTriangles);
+  try {
+    return { positions: result.take_positions(), indices: result.take_indices() };
+  } finally {
+    result.free();
+  }
+}
+
 /** The pick index of a mesh as the viewport reads it (three-mesh-bvh, indirect: the mesh's own index array is never reordered). */
 export function buildPickIndex(mesh: TriangleMesh, onProgress?: (fraction: number) => void): SerializedBvh {
   const geometry = new BufferGeometry();
@@ -47,7 +56,7 @@ export function buildPickIndex(mesh: TriangleMesh, onProgress?: (fraction: numbe
 }
 
 /** Centre, check the size, simplify a heavy mesh for display, build the pick index of what is drawn. */
-export function prepare(item: ImportedMesh, runtime: Runtime, progress: Progress, from: number, to: number, center: (item: ImportedMesh) => ImportedMesh): PreparedMesh {
+export function prepare(item: ImportedMesh, runtime: Runtime, progress: Progress, from: number, to: number, center: (item: ImportedMesh) => ImportedMesh, simplify: (mesh: TriangleMesh, maxTriangles: number) => TriangleMesh): PreparedMesh {
   const triangles = item.mesh.indices.length / 3;
   // Backstop for formats estimated (or not counted) before parsing.
   assertTriangleCapacity(item.name, triangles, runtime, true);
@@ -55,7 +64,7 @@ export function prepare(item: ImportedMesh, runtime: Runtime, progress: Progress
   let display: TriangleMesh | undefined;
   if (meshTier(triangles, runtime) === 'heavy') {
     progress(from, 'Simplifying display copy');
-    display = decimate(centred.mesh, Math.floor(TRIANGLE_BUDGET[runtime] / 2));
+    display = simplify(centred.mesh, Math.floor(TRIANGLE_BUDGET[runtime] / 2));
   }
   const drawn = display ?? centred.mesh;
   const span = to - from;
