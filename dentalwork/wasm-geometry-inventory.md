@@ -4,7 +4,7 @@ Status: U0 complete (2026-10-27). One row per production TypeScript file that do
 
 Labels: **port** = rewrite in Rust against the TS oracle; **port-into-shared-safety** = shared `supports/` safety engine (U7), never a dental pipeline; **frozen-reference** = no production caller or unfinished, kept as read-only reference, written once in Rust; **host-adapter** = TypeScript keeps it (UI, camera, files, settings, serialization, worker lifecycle); **retire** = deleted at cutover.
 
-Row count: 103 (port 42, port-into-shared-safety 10, frozen-reference 6, host-adapter 40, retire 5).
+Row count: 103 (port 41, port-into-shared-safety 10, frozen-reference 6, host-adapter 41, retire 5); `src/core/supports/mesh.ts` moved from port to host-adapter when U4 cut over.
 
 ## Inventory
 
@@ -42,7 +42,7 @@ Row count: 103 (port 42, port-into-shared-safety 10, frozen-reference 6, host-ad
 | `src/core/jobGate.ts` | TriangleGate | App, analysisClient, meshClient | host | host-adapter | Job admission gate |
 | `src/core/jobs.ts` | SupportJob, PlacementJob, JobTransform | jobRunner, unitSupports, analysisClient/Protocol, +4 | ABI request shape (host) | host-adapter | Becomes `generate` request builder in U8 |
 | `src/core/plateLedger.ts` | PlateLedger, PlateReservation | App | host | host-adapter | Triangle-count reservation, not geometry |
-| `src/core/supports/autotree.ts` | autoTreeLayout, closestOnMesh | landing, mesh | supports/parts (Tree) | port | U4 |
+| `src/core/supports/autotree.ts` | autoTreeLayout, closestOnMesh | landing, mesh | supports/parts (Tree) | port | U4 done: Rust `parts/autotree.rs` builds the layout; TS stays production only to supply the layout when Safe Distance != 0 (scatter remesh) or a host policy needs it, TODO(U5) |
 | `src/core/supports/bodyIntersection.ts` | supportBodyConflicts, intersectingSupportComponents | contactReach, dentalBodyClearance, genericBodyClearance | supports/clearance | port-into-shared-safety | U7 |
 | `src/core/supports/candidateSelection.ts` | chooseSupportCandidate | none (tests only) | supports/repair | frozen-reference | U7 port source; no production caller |
 | `src/core/supports/columnPathScreen.ts` | screenColumnRoutes | jobRunner | supports/clearance | port-into-shared-safety | U7; preflight kept only if the U7 evidence rule is met |
@@ -50,19 +50,19 @@ Row count: 103 (port 42, port-into-shared-safety 10, frozen-reference 6, host-ad
 | `src/core/supports/dentalBodyClearance.ts` | crossingAutomaticBodyContactIds, crossingSupportStructureParts | jobRunner, crossings-probe | supports/clearance + repair; dental data only for thresholds | port-into-shared-safety | U7; never a dental pipeline |
 | `src/core/supports/dentalSettings.ts` | defaultDentalStructure, dentalBuildSettings | DentalBar, jobRunner | dental profile data -> `PolicyResult.structures` | host-adapter | Flags only (roof/cage off); no math |
 | `src/core/supports/genericBodyClearance.ts (untracked)` | reviewGenericBodyClearance | none (new, test only) | supports/clearance | frozen-reference | U7; uncommitted, never finished in TS (see D3) |
-| `src/core/supports/labelFont.ts` | layoutLabel, PlacedGlyph | raftGeometry | supports/parts (label) | port | U4; glyph data stays data; add digits and `-` glyphs if missing |
-| `src/core/supports/landing.ts` | columnLanding, treeLanding, sinkInto, lineTarget | mesh, dentalLandingSide, jobRunner | supports/placement | port | U4 |
-| `src/core/supports/mesh.ts` | buildSupportMesh, SupportComponent, GeneratedSupportMesh, +11 | App, supportLayers, UnitObject, useScreenBrush, +22 | supports/parts + `generate` | port | U4/U7; 605 lines, split in Rust |
-| `src/core/supports/meshBuilder.ts` | MeshBuilder | mesh, raftGeometry | supports/parts | port | U4 |
+| `src/core/supports/labelFont.ts` | layoutLabel, PlacedGlyph | raftGeometry | supports/parts (label) | port | U4 done: Rust `parts/{font,label}.rs` (glyph data `labelFont.json` shared, digits and `-` present); TS moved to `scripts/test-support/ts-oracle/support-builder/` |
+| `src/core/supports/landing.ts` | columnLanding, treeLanding, sinkInto, lineTarget | mesh, dentalLandingSide, jobRunner | supports/placement | port | U4: Rust casts exact-surface landings (`parts/model.rs`); this file still supplies the voxel-remeshed landings and normals to the Rust build (`Lander`), TODO(U5) |
+| `src/core/supports/mesh.ts` | SupportComponent, GeneratedSupportMesh, SupportContact, SupportPart, ContactIntent | App, supportLayers, UnitObject, useScreenBrush, +22 | supports/parts + `generate` | host-adapter | U4 done: types only; the builder is Rust `build_supports` called by `src/supports/rustSupports.ts`; the TS builder moved to `scripts/test-support/ts-oracle/support-builder/mesh.ts` |
+| `src/core/supports/meshBuilder.ts` | MeshBuilder | mesh, raftGeometry | supports/parts | port | U4 done: Rust `parts/{builder,solids}.rs`; TS moved to `scripts/test-support/ts-oracle/support-builder/` |
 | `src/core/supports/meshQuery.ts` | meshBounds, tipsOf, contactAtTriangle | App, UnitObject, bodyIntersection, landing, +4 | core/mesh | port | U2/U4 |
 | `src/core/supports/modelCollisionIndex.ts` | createModelCollisionIndex | bodyIntersection, columnPathScreen, dentalBodyClearance, pathPreflight, jobRunner, +1 | supports/clearance (collision index) | port-into-shared-safety | U7; one index for both policies |
 | `src/core/supports/openvdbTables.ts` | ADAPTABLE, EDGE_GROUPS | remesh | generic/remesh (data tables) | port | U5; table data |
 | `src/core/supports/overlayMesh.ts` | refineForOverlay, zoneOverlay, warmZoneOverlay | supportLayers | core/brush (overlay vertices) | port | U2; U2 status: `refine_for_overlay` done, parity exact; `zoneOverlay`/vertex grid not ported; caller switch pending |
 | `src/core/supports/pathPreflight.ts` | preflightSupportPath | candidateSelection, columnPathScreen, bench script | supports/clearance | port-into-shared-safety | U7; keep only with zero false-safe plus measured benefit |
-| `src/core/supports/raft.ts` | raftPerimeter, raftOutline | raftGeometry, roof, jobRunner | supports/parts (raft) | port | U4 |
-| `src/core/supports/raftGeometry.ts` | addStructures | mesh | supports/parts | port | U4 |
+| `src/core/supports/raft.ts` | raftPerimeter, raftOutline | raftGeometry, roof, jobRunner | supports/parts (raft) | port | U4 done: Rust `parts/{raft_outline,raft,plan}.rs`; TS moved to `scripts/test-support/ts-oracle/support-builder/` |
+| `src/core/supports/raftGeometry.ts` | addStructures | mesh | supports/parts | port | U4 done: Rust `parts/{structures,label,raft,roof}.rs`; TS moved to `scripts/test-support/ts-oracle/support-builder/` |
 | `src/core/supports/remesh.ts` | SurfaceQuery, RemeshTarget | placement, autotree, landing, mesh, jobRunner | generic/remesh | port | U5; 1,013 lines, split into Rust files of 400 lines or fewer |
-| `src/core/supports/roof.ts` | buildRoofCage | raftGeometry | supports/parts (roof/cage) | port | U4 |
+| `src/core/supports/roof.ts` | buildRoofCage | raftGeometry | supports/parts (roof/cage) | port | U4 done: Rust `parts/roof.rs`; TS moved to `scripts/test-support/ts-oracle/support-builder/` |
 | `src/core/supports/settings.ts` | presets, LiveSupportSettings, +24 | about 21 files | host presets; validated numbers sent to Rust | host-adapter | Settings/presets/serialization stay TS |
 | `src/core/supports/supportPath.ts` | resolveBirthPaths | none (tests only) | supports/islands (built-path graph) | frozen-reference | U7 port source |
 | `src/core/supports/supportRoute.ts` | routeFromNodes | columnPathScreen, mesh | supports/parts | port | U4/U7 |
