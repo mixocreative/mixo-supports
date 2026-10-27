@@ -21,7 +21,7 @@ conventions converts at its boundary: a left-handed host (Babylon.js by default)
 | `conventions.ts` | Coordinate convention constants |
 | `jobs.ts` | `SupportJob`, `PlacementJob`, `CheckJob`: plain job inputs (unit-local mesh, transform, settings, contact edits, label), and `jobContacts` (final contacts from the edits) |
 | `budget.ts` | Heavy-mesh budgets (warn 1x, refuse 4x per runtime), tiers (full / large / heavy), `assertTriangleCapacity`, memory estimate and cap |
-| `decimate.ts` | Deterministic vertex-clustering simplification, for the display copy of a heavy mesh only |
+| `crates/geometry-core/src/decimate.rs` | Rust vertex clustering for a heavy mesh's display copy. `scripts/test-support/legacyDecimate.ts` is the test-only parity reference. |
 | `jobGate.ts` | `TriangleGate`: heavy jobs start only while running triangles plus their own fit the limit |
 | `import/stl.ts` | Chunked binary/ASCII STL straight into a welded Y-up mesh (identical to three's STLLoader + rotateX + mergeVertices) |
 | `import/weld.ts` | Typed-array vertex weld (open addressing, no string keys), bit-identical to `mergeVertices(geometry, 1e-4)` |
@@ -139,7 +139,7 @@ placement stopped the tab at 6.5 GB, so the limit follows generation. A desktop 
 Chromium renderer. (mixomesh, import and editing only, measured 2.5M / 10M web.)
 
 **Tiers** (`meshTier`): *full* (< 300k) everything; *large* (≤ 1.5M) Tips only at import, no zone
-overlay refinement; *heavy* (> 1.5M) a decimated display copy (`decimate.ts`, ≤ budget / 2), Edit
+overlay refinement; *heavy* (> 1.5M) a Rust/WASM decimated display copy (≤ budget / 2), Edit
 Mode and zones off with a plain message; supports and export always use the full mesh in workers.
 
 **Refusals**, all as shared error codes (`src/editing/errors.ts`, translated, with the next step):

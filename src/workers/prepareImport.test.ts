@@ -3,7 +3,7 @@ import { BufferAttribute, BufferGeometry, Mesh, MeshBasicMaterial, Raycaster, To
 import { acceleratedRaycast, computeBoundsTree, MeshBVH } from 'three-mesh-bvh';
 import { centreInPlace, geometryToMesh } from '../state/import';
 import { buffers, prepare } from './prepareImport';
-import { decimate } from '../core/decimate';
+import { decimate } from '../../scripts/test-support/legacyDecimate';
 
 /** A pickable mesh on `geometry` (accelerated raycast, first hit only, as the viewport picks). */
 function pickable(geometry: BufferGeometry): Mesh {
