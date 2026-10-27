@@ -533,3 +533,100 @@ pub fn manual_dental_area_from_stamps(positions: &[f32], indices: &[u32], stamps
         Err(ManualAreaError::FaceOutOfRange(_)) => Err(error("INVALID_INDEX")),
     }
 }
+
+/// A rim with its visibility footprint: the 18 `rim_scalars` plus the footprint's byte mask.
+fn footprint_rim(values: &[f64], mask: &[u8]) -> Result<Rim, JsValue> {
+    if values.len() != 18 {
+        return Err(error("INVALID_LENGTH"));
+    }
+    let mut rim = rim_from_scalars(values)?;
+    let resolution = values[13];
+    if !(resolution >= 0.0) || resolution.fract() != 0.0 || mask.len() != (resolution * resolution) as usize {
+        return Err(error("INVALID_LENGTH"));
+    }
+    rim.visibility_resolution = resolution as usize;
+    rim.visibility_min = [values[14], values[15]];
+    rim.visibility_max = [values[16], values[17]];
+    rim.visibility_mask = mask.to_vec();
+    Ok(rim)
+}
+
+fn area_stamps(stamps: &[f64]) -> Result<Vec<mixo_geometry_core::supports::policy::AreaStamp>, JsValue> {
+    if stamps.len() % 8 != 0 {
+        return Err(error("INVALID_LENGTH"));
+    }
+    Ok(stamps
+        .chunks_exact(8)
+        .map(|s| mixo_geometry_core::supports::policy::AreaStamp { center: [s[0], s[1], s[2]], radius: s[3], normal: [s[4], s[5], s[6]], allow: s[7] == 1.0 })
+        .collect())
+}
+
+/// The legacy dental placement (a painted-from-scratch area or an older saved policy), see
+/// `dental::legacy`: the generic contacts the area permits plus the downward faces filled at
+/// `spacing`. Positions and normals are in the turned frame (`rotation`, Euler XYZ radians).
+#[wasm_bindgen]
+pub struct LegacyFill {
+    kept: Vec<u32>,
+    positions: Vec<f64>,
+    normals: Vec<f64>,
+    ids: Vec<String>,
+}
+
+#[wasm_bindgen]
+impl LegacyFill {
+    /// Indices (into the generic contacts passed in) that were kept, in order.
+    pub fn take_kept(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.kept)
+    }
+    /// Contacts the face fill added.
+    pub fn take_positions(&mut self) -> Vec<f64> {
+        std::mem::take(&mut self.positions)
+    }
+    pub fn take_normals(&mut self) -> Vec<f64> {
+        std::mem::take(&mut self.normals)
+    }
+    pub fn take_ids(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.ids)
+    }
+}
+
+#[wasm_bindgen]
+pub fn dental_legacy_fill(
+    positions: &[f32],
+    indices: &[u32],
+    rim: &[f64],
+    visibility_mask: &[u8],
+    manual_area: bool,
+    stamps: &[f64],
+    rotation: &[f64],
+    spacing: f64,
+    overhang_angle_degrees: f64,
+    initial_positions: &[f64],
+    initial_normals: &[f64],
+) -> Result<LegacyFill, JsValue> {
+    use mixo_geometry_core::dental::legacy::{FillInput, LegacyArea, fill_legacy_dental};
+    let mesh = mesh_of(positions, indices)?;
+    let rim = footprint_rim(rim, visibility_mask)?;
+    let stamps = area_stamps(stamps)?;
+    if rotation.len() != 3 || initial_positions.len() % 3 != 0 || initial_positions.len() != initial_normals.len() || !(spacing > 0.0) || !spacing.is_finite() {
+        return Err(error("INVALID_LENGTH"));
+    }
+    let area = LegacyArea { rim: &rim, manual_area, stamps: &stamps };
+    let input = FillInput { mesh, rotation: [rotation[0], rotation[1], rotation[2]], spacing, overhang_angle_degrees, initial_positions, initial_normals };
+    let fill = fill_legacy_dental(&area, &input);
+    Ok(LegacyFill { kept: fill.kept_initial, positions: fill.positions, normals: fill.normals, ids: fill.ids })
+}
+
+/// One byte per mesh vertex: the legacy allowed-area overlay (the footprint or the paint, and
+/// seen first from the opening). `normals` is one unit-frame normal per vertex, or empty.
+#[wasm_bindgen]
+pub fn dental_allowed_vertices(positions: &[f32], indices: &[u32], normals: &[f32], rim: &[f64], visibility_mask: &[u8], manual_area: bool, stamps: &[f64]) -> Result<Vec<u8>, JsValue> {
+    use mixo_geometry_core::dental::legacy::LegacyArea;
+    let mesh = mesh_of(positions, indices)?;
+    let rim = footprint_rim(rim, visibility_mask)?;
+    let stamps = area_stamps(stamps)?;
+    if !normals.is_empty() && normals.len() != positions.len() {
+        return Err(error("INVALID_LENGTH"));
+    }
+    Ok(LegacyArea { rim: &rim, manual_area, stamps: &stamps }.allowed_vertices(mesh, normals))
+}

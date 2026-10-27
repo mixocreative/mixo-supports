@@ -1,4 +1,5 @@
-import { filterDentalPlacement, runCheckJob, runPlacementJob } from '../supports/jobRunner';
+import { runCheckJob, runPlacementJob } from '../supports/jobRunner';
+import { filterDentalPlacement } from '../dental/placement';
 import { orientDentalAligner } from '../core/analysis/dentalOrient';
 import { proposeDentalSupportRegion, retuneDentalSupportRegion } from '../core/analysis/dentalRegion';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';

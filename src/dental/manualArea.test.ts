@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DentalRim } from '../core/analysis/dental';
-import { dentalAllowedAt, dentalRegionAllowedOnFace, dentalSupportAllowedAt, isManualArea, type DentalPolicy } from '../core/analysis/dentalPolicy';
+import { dentalRegionAllowedOnFace, isManualArea, type DentalPolicy } from '../core/analysis/dentalPolicy';
 import type { TriangleMesh } from '../core/analysis/types';
 import { deserializeScene, emptyScene, identityTransform, reduceScene, serializeScene, type PrintUnit } from '../state/project';
 import { DetectedAreaExistsError, manualAreaFaces, manualAreaPolicy } from './manualArea';
@@ -20,22 +20,13 @@ const down: [number, number, number] = [0, -1, 0];
 
 describe('a painted-from-scratch support area (no area detected)', () => {
   const policy = manualAreaPolicy(rim, false);
-  const visible = { visible: () => true };
 
-  it('is marked manual-area and permits nothing until painted', () => {
+  it('is marked manual-area', () => {
     expect(isManualArea(policy)).toBe(true);
-    expect(dentalAllowedAt(policy, [0.3, 0, 0.3], down)).toBe(false);
-    expect(dentalSupportAllowedAt(policy, visible, [0.3, 0, 0.3], down)).toBe(false);
   });
 
-  it('permits only where paint lands, even without a certified lower trim, and still needs opening visibility', () => {
-    const painted: DentalPolicy = { ...policy, stamps: [{ center: [0.3, 0, 0.3], radius: 1, normal: down, kind: 'allow' }] };
-    expect(dentalSupportAllowedAt(painted, visible, [0.3, 0, 0.3], down)).toBe(true);
-    expect(dentalSupportAllowedAt(painted, visible, [10.3, 0, 0.3], down)).toBe(false);
-    expect(dentalSupportAllowedAt(painted, { visible: () => false }, [0.3, 0, 0.3], down)).toBe(false);
-    const erased: DentalPolicy = { ...painted, stamps: [...painted.stamps, { center: [0.3, 0, 0.3], radius: 1, normal: down, kind: 'erase' }] };
-    expect(dentalSupportAllowedAt(erased, visible, [0.3, 0, 0.3], down)).toBe(false);
-  });
+  // What the area permits (paint only, opening visibility, erase) is checked in Rust against the
+  // oracle in `legacyArea.test.ts`.
 
   it('is refused when detection found an area: paint never replaces a detected area', () => {
     expect(() => manualAreaPolicy(rim, true)).toThrow(DetectedAreaExistsError);

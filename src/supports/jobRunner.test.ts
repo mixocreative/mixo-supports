@@ -8,7 +8,8 @@ import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import { dentalRegionAllowedOnFace } from '../core/analysis/dentalPolicy';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
 import { readFileSync } from 'node:fs';
-import { filterDentalPlacement, runSupportJob } from './jobRunner';
+import { runSupportJob } from './jobRunner';
+import { filterDentalPlacement } from '../dental/placement';
 import { parseStl } from '../../scripts/test-support/rustImport';
 
 type V = [number, number, number];

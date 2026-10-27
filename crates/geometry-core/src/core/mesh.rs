@@ -143,6 +143,11 @@ impl MeshStore {
         Ok((&mesh.positions, &mesh.indices, bvh))
     }
 
+    /// Meshes this store holds right now.
+    pub fn handle_count(&self) -> usize {
+        self.meshes.len()
+    }
+
     pub fn release_mesh(&mut self, handle: u32) -> Result<(), MeshError> {
         let mesh = self
             .meshes

@@ -6,6 +6,7 @@ pub mod bands;
 pub mod contour;
 pub mod footprint;
 pub mod incidence;
+pub mod legacy;
 pub mod mesh;
 pub mod opening;
 pub mod orient;

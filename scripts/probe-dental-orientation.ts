@@ -3,9 +3,9 @@ import './test-support/useNodeEngine';
 import { readFileSync } from 'node:fs';
 import { proposeDentalOrientation, rotationToDentalPose } from '../src/core/analysis/dental';
 import { rotationToPlateDown } from './test-support/ts-oracle/dental/dental';
-import { DentalOpeningRaycaster } from '../src/core/analysis/dental';
-import { dentalAllowedVertices } from '../src/core/analysis/dentalPolicy';
-import { runPlacementJob, filterDentalPlacement } from '../src/supports/jobRunner';
+import { legacyBaselineVertices } from '../src/dental/legacyArea';
+import { runPlacementJob } from '../src/supports/jobRunner';
+import { filterDentalPlacement } from '../src/dental/placement';
 import { defaultSupportSettings, toPlacementSettings } from '../src/core/supports/settings';
 import { inverseTransformPoint } from '../src/state/transform';
 import { applyToDirection, applyToPoint, placementMatrix, transformPositions } from '../src/core/transform';
@@ -44,8 +44,7 @@ if (process.env.DENTAL_PROBE_MODE === 'rim') {
   process.exit(0);
 }
 if (process.env.DENTAL_PROBE_MODE === 'mask') {
-  const opening=new DentalOpeningRaycaster(mesh,base.rim);
-  const mask=dentalAllowedVertices({rim:base.rim,stamps:[]},opening,mesh.positions,new Float32Array(mesh.positions.length));
+  const mask=legacyBaselineVertices(mesh,{rim:base.rim,stamps:[]});
   let count=0,minU=Infinity,maxU=-Infinity,minV=Infinity,maxV=-Infinity,minD=Infinity,maxD=-Infinity;
   for(let vertex=0;vertex<mask.length;vertex++)if(mask[vertex]){
     count++;

@@ -8,6 +8,7 @@ use mixo_geometry_core::core::spatial::{Bvh, FlatBvh, Side};
 use mixo_geometry_core::core::{normals, overlay, pick};
 use mixo_geometry_core::supports::parts::model as support_model;
 use mixo_geometry_core::supports::{error as support_error, settings as support_settings};
+use std::sync::atomic::{AtomicU32, Ordering};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
 mod dental;
@@ -183,6 +184,21 @@ pub fn build_pick_index(positions: &[f32], indices: &[u32]) -> Result<PickIndex,
     Ok(PickIndex { bounds: flat.bounds, links: flat.links, order: flat.order })
 }
 
+/// Mesh handles alive across every session of this module instance. A cancelled or finished job
+/// must leave it at 0: the lifecycle tests read it.
+static LIVE_HANDLES: AtomicU32 = AtomicU32::new(0);
+
+#[wasm_bindgen]
+pub fn live_mesh_handles() -> u32 {
+    LIVE_HANDLES.load(Ordering::Relaxed)
+}
+
+impl Drop for GeometrySession {
+    fn drop(&mut self) {
+        LIVE_HANDLES.fetch_sub(self.store.handle_count() as u32, Ordering::Relaxed);
+    }
+}
+
 #[wasm_bindgen]
 pub struct GeometrySession {
     store: MeshStore,
@@ -200,13 +216,17 @@ impl GeometrySession {
     }
 
     pub fn load_mesh(&mut self, positions: Vec<f32>, indices: Vec<u32>) -> Result<u32, JsValue> {
-        self.store.load_mesh(positions, indices).map_err(mesh_error)
+        let handle = self.store.load_mesh(positions, indices).map_err(mesh_error)?;
+        LIVE_HANDLES.fetch_add(1, Ordering::Relaxed);
+        Ok(handle)
     }
 
     /// `load_mesh` with a pick index built elsewhere (`build_pick_index`, in a worker): used as is,
     /// not rebuilt on the first pick. An index that does not fit the mesh is `INVALID_INDEX`.
     pub fn load_mesh_indexed(&mut self, positions: Vec<f32>, indices: Vec<u32>, bounds: Vec<f32>, links: Vec<u32>, order: Vec<u32>) -> Result<u32, JsValue> {
-        self.store.load_mesh_indexed(positions, indices, FlatBvh { bounds, links, order }).map_err(mesh_error)
+        let handle = self.store.load_mesh_indexed(positions, indices, FlatBvh { bounds, links, order }).map_err(mesh_error)?;
+        LIVE_HANDLES.fetch_add(1, Ordering::Relaxed);
+        Ok(handle)
     }
 
     /// The mesh's pick index as flat arrays (built now if it has none), to hand to another session.
@@ -223,7 +243,9 @@ impl GeometrySession {
     pub fn release_mesh(&mut self, handle: u32) -> Result<(), JsValue> {
         // The voxel remesh cache (keyed on mesh bits) may hold this model's state: free it with the mesh.
         mixo_geometry_core::supports::remesh::clear_cache();
-        self.store.release_mesh(handle).map_err(mesh_error)
+        self.store.release_mesh(handle).map_err(mesh_error)?;
+        LIVE_HANDLES.fetch_sub(1, Ordering::Relaxed);
+        Ok(())
     }
 
     pub fn used_bytes(&self) -> u32 {

@@ -7,7 +7,8 @@ import type { PlacementResult, TriangleMesh } from '../../src/core/analysis/type
 import type { JobTransform } from '../../src/core/jobs';
 import type { GeneratedSupportMesh } from '../../src/core/supports/mesh';
 import { defaultSupportSettings, toPlacementSettings } from '../../src/core/supports/settings';
-import { filterDentalPlacement, runSupportJob } from '../../src/supports/jobRunner';
+import { runSupportJob } from '../../src/supports/jobRunner';
+import { filterDentalPlacement } from '../../src/dental/placement';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint } from '../../src/state/transform';
 
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;

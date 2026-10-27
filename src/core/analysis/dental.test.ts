@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyToDirection, applyToPoint, placementMatrix } from '../transform';
 import { dot, type Vector } from '../vec3';
-import { DentalOpeningRaycaster, proposeDentalOrientation, rimContainsPoint, rotationToDentalPose } from './dental';
+import { proposeDentalOrientation, rotationToDentalPose } from './dental';
+import { rimContainsPoint } from '../../../scripts/test-support/ts-oracle/dental/dental';
 import { rotationToPlateDown } from '../../../scripts/test-support/ts-oracle/dental/dental';
 import type { TriangleMesh } from './types';
 
@@ -56,16 +57,6 @@ describe('proposeDentalOrientation', () => {
     const result = proposeDentalOrientation(mesh);
     expect(result.kind).toBe('proposal');
     if (result.kind === 'proposal') expect(rotationToDentalPose(mesh, result.rim)).toBeUndefined();
-  });
-
-  it('permits only the first surface visible through the cavity opening', () => {
-    const result = proposeDentalOrientation(watertightCup());
-    expect(result.kind).toBe('proposal');
-    if (result.kind !== 'proposal') return;
-    const raycaster = new DentalOpeningRaycaster(watertightCup(), result.rim);
-
-    expect(raycaster.visible([0, -4, 0])).toBe(true);
-    expect(raycaster.visible([9, -4, 0])).toBe(false);
   });
 });
 

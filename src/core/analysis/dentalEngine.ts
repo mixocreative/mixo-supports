@@ -59,6 +59,12 @@ export interface DentalEngine {
     perimeter(): number; faces(): Uint32Array; points(): Float64Array; distances(): Float64Array };
   manual_dental_area(faceCount: number, painted: Uint32Array, detected: boolean, profile: string): Uint8Array;
   manual_dental_area_from_stamps(positions: Float32Array, indices: Uint32Array, stamps: Float64Array, detected: boolean, profile: string): Uint8Array;
+  dental_legacy_fill(positions: Float32Array, indices: Uint32Array, rim: Float64Array, visibilityMask: Uint8Array, manualArea: boolean,
+    stamps: Float64Array, rotation: Float64Array, spacing: number, overhangAngleDegrees: number,
+    initialPositions: Float64Array, initialNormals: Float64Array): {
+    free(): void; take_kept(): Uint32Array; take_positions(): Float64Array; take_normals(): Float64Array; take_ids(): string[] };
+  dental_allowed_vertices(positions: Float32Array, indices: Uint32Array, normals: Float32Array, rim: Float64Array, visibilityMask: Uint8Array,
+    manualArea: boolean, stamps: Float64Array): Uint8Array;
   dental_profile_ids(): string[];
 }
 

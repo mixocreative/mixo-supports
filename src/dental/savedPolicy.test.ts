@@ -5,7 +5,7 @@ import type { DentalPlacementJob } from '../core/jobs';
 import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
 import type { PlacementResult } from '../core/analysis/types';
-import { filterDentalPlacement } from '../supports/jobRunner';
+import { filterDentalPlacement } from './placement';
 import { parseStl } from '../../scripts/test-support/rustImport';
 
 /** A saved two-contour policy is recomputed from the mesh when it is used; it is never trusted as saved. */

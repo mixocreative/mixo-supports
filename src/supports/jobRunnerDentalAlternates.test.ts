@@ -7,7 +7,8 @@ import { positionId } from '../../scripts/test-support/ts-oracle/placement/place
 import type { SupportPoint } from '../core/analysis/types';
 import type { DentalPlacementJob, JobTransform, SupportJob } from '../core/jobs';
 import { defaultSupportSettings } from '../core/supports/settings';
-import { filterDentalPlacement, runSupportJob } from './jobRunner';
+import { runSupportJob } from './jobRunner';
+import { filterDentalPlacement } from '../dental/placement';
 import { parseStl } from '../../scripts/test-support/rustImport';
 
 const still: JobTransform = { position: [0, 0, 0], rotation: [0, 0, 0] };

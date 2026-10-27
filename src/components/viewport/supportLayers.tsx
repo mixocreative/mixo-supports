@@ -7,8 +7,9 @@ import type { GeneratedSupportMesh, SupportContact } from '../../core/supports/m
 import { warmZoneOverlay, zoneOverlay } from '../../core/supports/overlayMesh';
 import { contactRadius, withShape } from '../../core/supports/settings';
 import { buildVertexGrid, sameStamp, stampVertices, zonedVertices, type VertexGrid, type ZoneStamp } from '../../core/supports/zones';
-import { DentalOpeningRaycaster, type DentalRim } from '../../core/analysis/dental';
-import { dentalAllowedVertex, dentalContactMask, type DentalAllowStamp, type DentalPolicy } from '../../core/analysis/dentalPolicy';
+import type { DentalRim } from '../../core/analysis/dental';
+import { legacyBaselineVertices } from '../../dental/legacyArea';
+import { dentalContactMask, isManualArea, type DentalAllowStamp, type DentalPolicy } from '../../core/analysis/dentalPolicy';
 import { contactToRemove } from '../../editing/removal';
 import { contactVertexRuns, selectionDelta } from '../../editing/selectionHighlight';
 import type { PrintUnit } from '../../state/project';
@@ -208,47 +209,18 @@ export function ZoneLayer({ mesh, geometry, zones, opacity }: { mesh: TriangleMe
 }
 
 export function DentalStampLayer({ mesh, geometry, policy, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; policy: DentalPolicy; opacity: number }) {
-  // The baseline is exact but large models must never lock the viewport while it is painted.
-  // Brush edits remain visible immediately; when this mask arrives the generic layer composes it
-  // with the same ordered allow/erase stamps.
+  // The baseline (the footprint the opening sees, from Rust) is computed off the render pass;
+  // brush edits stay visible immediately and the generic layer composes them with this mask when it arrives.
   const [baseline, setBaseline] = useState<Uint8Array>();
   useEffect(() => {
-    const policyBaseline: DentalPolicy = { ...policy, stamps: [] };
-    const positions = mesh.positions;
-    const normals = new Float32Array(positions.length);
-    const output = new Uint8Array(positions.length / 3);
-    let opening: DentalOpeningRaycaster | undefined;
-    let vertex = 0;
     let cancelled = false;
-    let cancel = () => {};
     setBaseline(undefined);
-    const schedule = () => {
-      const idle = typeof requestIdleCallback === 'function';
-      const handle = idle ? requestIdleCallback(step, { timeout: 1000 }) : setTimeout(() => step(), 16);
-      cancel = () => (idle ? cancelIdleCallback(handle as number) : clearTimeout(handle as ReturnType<typeof setTimeout>));
-    };
-    const step = () => {
-      if (cancelled) return;
-      // The ray index is built at an idle boundary too; individual vertex tests then stay within a small slice.
-      if (!opening) {
-        opening = new DentalOpeningRaycaster(mesh, policyBaseline.rim);
-        schedule();
-        return;
-      }
-      const deadline = performance.now() + WARM_SLICE_MS;
-      while (vertex < output.length && performance.now() < deadline) {
-        if (dentalAllowedVertex(policyBaseline, opening, positions, normals, vertex)) output[vertex] = 1;
-        vertex += 1;
-      }
-      if (vertex < output.length) return schedule();
-      if (!cancelled) setBaseline(output);
-    };
-    schedule();
+    const timer = setTimeout(() => { if (!cancelled) setBaseline(legacyBaselineVertices(mesh, policy)); }, 0);
     return () => {
       cancelled = true;
-      cancel();
+      clearTimeout(timer);
     };
-  }, [mesh, policy.rim]);
+  }, [mesh, policy.rim, isManualArea(policy)]);
   return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={policy.stamps} filledKind="allow" color={PREVIEW.dental} opacity={opacity} baseline={baseline} />;
 }
 
