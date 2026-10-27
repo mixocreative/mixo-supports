@@ -10,7 +10,6 @@
 //! streams run on the voxel remesh at Spacing / 4 (`supports::remesh`) and are snapped onto the model.
 
 mod anchors;
-mod downward;
 
 mod merge;
 mod minima;
@@ -19,7 +18,7 @@ mod random;
 mod ridges;
 mod vnormals;
 
-pub use downward::{OVERHANG_TOLERANCE_DEGREES, classify_downward_faces, face_overhang_limit, partition_regions};
+use crate::supports::overhang::{classify_downward_faces, face_overhang_limit, partition_regions};
 pub use crate::supports::contact_id::{position_from_id, position_id};
 
 use crate::supports::remesh::{Remesh, SignedDistance, V3, js_round};

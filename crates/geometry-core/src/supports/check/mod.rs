@@ -7,7 +7,7 @@
 //! Spots are clustered (2 x spacing) and slivers below a quarter spacing squared are ignored.
 
 use super::parts::vec::V3;
-use crate::generic::placement::face_overhang_limit;
+use super::overhang::face_overhang_limit;
 use crate::supports::remesh::hypot3;
 use std::collections::HashMap;
 

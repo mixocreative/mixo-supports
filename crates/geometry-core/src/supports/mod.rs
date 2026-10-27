@@ -10,6 +10,7 @@ pub mod flat;
 pub mod generate;
 pub mod line_target;
 pub mod omit;
+pub mod overhang;
 pub mod parts;
 pub mod policy;
 pub mod remesh;

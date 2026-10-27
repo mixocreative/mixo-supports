@@ -8,7 +8,7 @@
 use super::mesh::{Mesh, V3, cross, dot, length, normalize, sub};
 use super::rim::{BoundaryKind, Rim};
 use crate::core::matrix::{Handedness, apply_to_direction, apply_to_point, invert_matrix, placement_matrix, transform_positions};
-use crate::generic::placement::{classify_downward_faces, face_overhang_limit};
+use crate::supports::overhang::{classify_downward_faces, face_overhang_limit};
 use crate::supports::contact_id::position_id;
 use crate::supports::policy::AreaStamp;
 use std::collections::HashMap;

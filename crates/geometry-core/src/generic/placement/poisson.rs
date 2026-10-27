@@ -3,7 +3,7 @@
 //! each triangle seeded with hash(triangle index, 0), Density Max = (1/Spacing)^4; then every point
 //! within Spacing of an earlier kept point is eliminated.
 
-use super::downward::face_overhang_limit;
+use crate::supports::overhang::face_overhang_limit;
 use super::random::{Drand48, hash_pair};
 use super::{Candidate, PlacementSettings, Source};
 use crate::supports::remesh::{V3, hypot3};
