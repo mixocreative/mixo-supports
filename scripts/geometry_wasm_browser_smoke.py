@@ -32,10 +32,17 @@ with sync_playwright() as playwright:
                 new Uint32Array([0, 1, 2, 0, 2, 3]), 1);
               const displayTriangles = display.take_indices().length / 3;
               display.free();
-              return { version: engine.engine_version(), bounds, used, staleCode, displayTriangles };
+              const spatial = new engine.GeometrySession(4096);
+              const tri = spatial.load_mesh(new Float32Array([-1, -1, 0, 1, -1, 0, 0, 1, 0]), new Uint32Array([0, 1, 2]));
+              const hit = Array.from(spatial.pick(tri, new Float64Array([0, 0, 5, 0, 0, -1]), 0, 100, 0));
+              const moved = Array.from(spatial.transform(tri, engine.placement_matrix(new Float64Array([1, 2, 3]), new Float64Array([0, 0, 0])), 1));
+              spatial.release_mesh(tri);
+              spatial.free();
+              return { version: engine.engine_version(), bounds, used, staleCode, displayTriangles, hit, moved };
             }"""
         )
-        assert result == {"version": 1, "bounds": [0, 0, 0, 2, 3, 0], "used": 0, "staleCode": "INVALID_HANDLE", "displayTriangles": 1}, result
+        assert result == {"version": 1, "bounds": [0, 0, 0, 2, 3, 0], "used": 0, "staleCode": "INVALID_HANDLE", "displayTriangles": 1,
+    "hit": [0, 5, 0, 0, 0], "moved": [0, 1, -3, 2, 1, -3, 1, 3, -3]}, result
         worker_result = page.evaluate(
             """async () => new Promise((resolve, reject) => {
               const worker = new Worker('/mixo-supports/src/workers/meshWorker.ts', { type: 'module' });
