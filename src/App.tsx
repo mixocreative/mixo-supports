@@ -37,7 +37,7 @@ import { isProjectFile } from './state/projectFile';
 import { hint } from './components/hint';
 import { cancelSceneEdit, canUndo as historyCanUndo, createSceneHistory, redoScene, replaceScene, undoScene, withSceneCommand, type SceneHistory } from './state/history';
 import { gltfRawMeshes, placeImportedUnits } from './state/import';
-import { setDisplayMesh, setPrebuiltBvh } from './state/meshExtras';
+import { setDisplayMesh } from './state/meshExtras';
 import { memoryInfo } from './state/runtime';
 import { assertMemoryCapacity, assertPlateCapacity, assertTriangleCapacity, memoryCapBytes, meshTier, refusalLimit } from './core/budget';
 import { TriangleGate } from './core/jobGate';
@@ -139,6 +139,12 @@ async function estimateHeadBytes(file: File): Promise<number> {
 }
 
 
+/** Px of the viewport Step 3's side panel covers (300 wide plus its margins); none when it docks at the bottom of a narrow window. */
+function stepPanelInset(session: { mode: string; dentalStage?: string | undefined }): number {
+  if (session.mode !== 'dental' || session.dentalStage !== 'review') return 0;
+  return typeof window !== 'undefined' && window.matchMedia('(max-width: 1100px)').matches ? 0 : 328;
+}
+
 export default function App() {
   const [history, dispatchHistory] = useReducer(historyReducer, emptyScene, createSceneHistory);
   const scene = history.present;
@@ -213,7 +219,7 @@ export default function App() {
   /** The support just added (its object, tip and a counter): the viewport flashes a ring there. */
   const [added, setAdded] = useState<{ unitId: string; point: Vector; normal: Vector; seq: number }>();
   const [viewRequest, setViewRequest] = useState<ViewRequest>();
-  const requestView = useCallback((kind: ViewRequest['kind']) => setViewRequest((current) => ({ kind, seq: (current?.seq ?? 0) + 1 })), []);
+  const requestView = useCallback((kind: ViewRequest['kind'], rightInset?: number) => setViewRequest((current) => ({ kind, seq: (current?.seq ?? 0) + 1, ...(rightInset ? { rightInset } : {}) })), []);
   // Contact tips view (Blender: Only Tip + Ctrl+Numpad 7): view only, settings and export untouched.
   /** Tips only: the user's choice, else on by itself below the plate (editing/view). */
   const [tips, setTips] = useState(TIPS_START);
@@ -553,7 +559,6 @@ export default function App() {
         reservation.hold(adding, plateNow(), (plate) => assertPlateCapacity(file.name, plate, RUNTIME));
       }
       for (const item of imported.flat()) {
-        setPrebuiltBvh(item.display ?? item.mesh, item.bvh);
         if (item.display) setDisplayMesh(item.mesh, item.display);
       }
       let units = [...sceneRef.current.units];
@@ -924,7 +929,9 @@ export default function App() {
         if (!generateDental(reviewed)) return setStatus('The model changed while dental tips were reviewed. Wait for the new preview.');
         // The label starts as X (the field's default) and is stored with the aligner's settings.
         dispatch({ type: 'settings/set', unitId: unit.id, settings: { ...resolveSettings(unit.settings), labelText: dentalLabelOf(resolveSettings(unit.settings).labelText) } as SupportSettings });
-        return send({ type: 'acceptDentalArea' });
+        send({ type: 'acceptDentalArea' });
+        // Step 3's panel covers the right of the viewport: the aligner is framed in what is left.
+        return requestView('fit', stepPanelInset({ mode: 'dental', dentalStage: 'review' }));
       }
       case 'dental.back': {
         // Going back from Step 3 throws its hand work away: ask first.
@@ -989,7 +996,7 @@ export default function App() {
       case 'check.run': return checkSupports();
       case 'project.open': return chooseProject();
       case 'project.save': return void saveProject();
-      case 'view.fit': return requestView('fit');
+      case 'view.fit': return requestView('fit', stepPanelInset(sessionRef.current));
       case 'view.bottom': return requestView('bottom');
       case 'zones.clearAll': return clearActiveZones();
       case 'export.active-printable': case 'export.active-supports': case 'export.separate-printable': case 'export.separate-supports': case 'export.whole-printable': return void runExport(exportKindOf(id));
@@ -1139,7 +1146,7 @@ export default function App() {
         </section>
       </aside>
       <section
-        className={`viewport${isDraggingOver ? ' viewport--dropping' : ''}${VIEWPORT_CLASS[press.kind]}`}
+        className={`viewport${isDraggingOver ? ' viewport--dropping' : ''}${VIEWPORT_CLASS[press.kind]}${editMode === 'dental' && session.dentalStage === 'review' ? ' viewport--step3' : ''}`}
         onDragOver={(event) => { event.preventDefault(); setIsDraggingOver(sessionRef.current.mode === 'off' || acceptsDentalDrop(sessionRef.current)); }}
         onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDraggingOver(false); }}
         onDrop={dropImport}

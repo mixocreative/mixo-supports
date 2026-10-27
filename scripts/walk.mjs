@@ -588,6 +588,8 @@ async function walk(url, scratch, dentalFixture) {
     await d.button('Open project').click();
     await (await chooser2).setFiles(projectFile);
     await page.waitForFunction(() => document.querySelector('.undo-toast'), null, { timeout: 120000 });
+    // The toast counts down 6 s; hold it with the pointer while the plate settles (a slow machine outlasts it).
+    await page.locator('.undo-toast').hover();
     await d.settled();
     const over = await projectStats();
     await page.locator('.undo-toast button').click();
@@ -742,7 +744,26 @@ async function walk(url, scratch, dentalFixture) {
 
       await toStep3(true);
       await d.measureCanvas();
-      await page.screenshot({ path: path.join(scratch, 'ux-b-step3.png') });
+      await page.screenshot({ path: path.join(scratch, 'ux-c-step3-1440x900.png') });
+      // The finish controls stay in view without scrolling, at the walk size and at 1280x720.
+      const finishInView = () => page.evaluate(() => {
+        const side = document.querySelector('.dental-side');
+        const names = ['Back', 'Exit', 'OK', 'Add another aligner'];
+        const boxes = names.map((name) => [...side.querySelectorAll('button')].find((b) => b.innerText.trim() === name)?.getBoundingClientRect());
+        const label = side.querySelector('input.dental-label')?.getBoundingClientRect();
+        return [...boxes, label].every((r) => r && r.top >= 0 && r.bottom <= window.innerHeight && r.height > 0);
+      });
+      const at1440 = await finishInView();
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await d.idle(600);
+      await page.getByRole('button', { name: 'Fit view', exact: true }).click({ timeout: 5000 });
+      await d.idle(1200);
+      await page.screenshot({ path: path.join(scratch, 'ux-c-step3-1280x720.png') });
+      const at1280 = await finishInView();
+      await page.setViewportSize(VIEWPORT);
+      await d.idle(600);
+      await d.measureCanvas();
+      check('x1b Step 3 finish controls (Label, Back, Exit, OK, Add another aligner) are in view without scrolling at 1440x900 and 1280x720', at1440 && at1280, `1440x900 ${at1440}, 1280x720 ${at1280}`);
       const side = await page.locator('.dental-side').innerText();
       check('x1 Step 3 lists tip size, density, lift height, raft, Tree, Brace, the support tools, problems, Label, OK and Add another aligner',
         ['Tip size', 'Support density', 'Lift height', 'Raft', 'Tree branches', 'Cross-braces', 'Add supports', 'Problems', 'Label', 'OK', 'Add another aligner'].every((word) => side.includes(word)), side.replace(/\s+/g, ' ').slice(0, 200));
@@ -811,9 +832,14 @@ async function walk(url, scratch, dentalFixture) {
       const listed = await page.locator('.dental-side .problems li').count();
       check('x10 Check supports inside Step 3 reports into the problem list (each finding has Show me and Fix)', listed === 0 || (await page.locator('.dental-side .problems li button').count()) >= 2 * listed, `${listed} listed`);
       if (listed > 0) {
+        const addButton = page.locator('.dental-side').getByRole('button', { name: 'Add supports' });
+        await page.locator('.dental-side').getByRole('button', { name: 'Select supports', exact: true }).click();
+        await d.idle(300);
+        const addBefore = await addButton.getAttribute('aria-pressed');
         await page.locator('.dental-side .problems li').first().getByRole('button', { name: 'Fix' }).click();
         await d.idle(400);
-        check('x11 Fix opens Add supports at the spot', (await page.locator('.dental-side').getByRole('button', { name: 'Add supports' }).getAttribute('aria-pressed')) !== 'false' || /Click the framed spot/.test(await d.status()), `status "${await d.status()}"`);
+        const addAfter = await addButton.getAttribute('aria-pressed');
+        check('x11 Fix opens Add supports at the spot', addBefore === 'false' && addAfter === 'true', `Add supports pressed ${addBefore} -> ${addAfter}, status "${await d.status()}"`);
       }
 
       // Back asks first because hand work would be lost; Stay keeps it.
@@ -839,12 +865,13 @@ async function walk(url, scratch, dentalFixture) {
       await d.quiet();
       await page.getByRole('button', { name: 'Fit', exact: false }).first().click().catch(() => {});
       await d.idle(1200);
-      await page.screenshot({ path: path.join(scratch, 'ux-b-plate.png') });
+      await page.screenshot({ path: path.join(scratch, 'ux-c-plate.png') });
       const finished = await d.props();
       check('x15 OK ends the flow with both aligners on the plate as normal objects, each with supports',
         (await objects()) === '2' && finished.units.length === 2 && finished.units.every((unit) => unit.supports && unit.dental) && (await page.locator('.panel.left [inert]').count()) === 0, `objects ${await objects()}`);
       check('x16 both aligners carry their own label', finished.units[0].label === 'L-1' && finished.units[1].label === 'R-2', `labels ${finished.units.map((unit) => unit.label).join(', ')}`);
-      check('x17 OK points to Export STL and Save project', await page.locator('.dental-done').isVisible() && /Export STL/.test(await page.locator('.dental-done').innerText()));
+      const doneBox = await page.locator('.dental-done').boundingBox();
+      check('x17 OK points to Export STL and Save project in a note of normal width (not a one-word column)', await page.locator('.dental-done').isVisible() && /Export STL/.test(await page.locator('.dental-done').innerText()) && Boolean(doneBox) && doneBox.width >= 320 && doneBox.height < 120, `note ${Math.round(doneBox?.width ?? 0)} x ${Math.round(doneBox?.height ?? 0)} px`);
 
       // The whole-plate export holds both, with free space between them.
       const download = page.waitForEvent('download', { timeout: 600000 });
