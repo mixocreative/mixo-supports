@@ -6,7 +6,7 @@ use super::footprint::RimSide;
 use super::mesh::{Mesh, add, cross, dot, normalize, scale, sub};
 use super::profiles::AlignerProfile;
 use super::region::Region;
-use crate::supports::policy::{AllowedStructures, Candidate, CandidateId, FaceMask, Origin, PolicyResult};
+use crate::supports::policy::{AllowedStructures, AreaStamp, AutomaticRule, Candidate, CandidateId, FaceMask, LandingRule, Origin, PolicyResult};
 
 /// Where the permitted area came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,6 +27,16 @@ pub struct DentalPolicy {
 /// Dental allows pillars, Tree, Brace and raft; Roof and Cage stay off.
 pub fn dental_structures() -> AllowedStructures {
     AllowedStructures { pillar: true, tree: true, brace: true, roof: false, cage: false, raft: true }
+}
+
+/// The shared result shape of both dental areas: only a contact that reproduces a candidate is built,
+/// secondary landings stay on the approved faces, and the engine repairs within the profile budget.
+fn dental_result(permitted: FaceMask, candidates: Vec<Candidate>, profile: &AlignerProfile) -> PolicyResult {
+    PolicyResult {
+        landing_rule: LandingRule::ApprovedFaces { stamps: Vec::new() },
+        automatic: AutomaticRule::MatchCandidates,
+        ..PolicyResult::plain(permitted, candidates, dental_structures(), profile.defaults.repair_budget)
+    }
 }
 
 /// Candidate id for the n-th contact of a rim, stable for a given mesh and tuning.
@@ -52,7 +62,7 @@ pub fn policy_from_region(region: &Region, profile: &AlignerProfile) -> DentalPo
         })
         .collect();
     DentalPolicy {
-        result: PolicyResult { permitted_faces: permitted, candidates, alternates: Vec::new(), structures: dental_structures(), repair_budget: profile.defaults.repair_budget },
+        result: dental_result(permitted, candidates, profile),
         area_origin: AreaOrigin::Detected,
     }
 }
@@ -79,20 +89,13 @@ pub fn manual_area_policy(face_count: usize, painted_faces: &[u32], detected: Op
         }
     }
     Ok(DentalPolicy {
-        result: PolicyResult { permitted_faces: permitted, candidates: Vec::new(), alternates: Vec::new(), structures: dental_structures(), repair_budget: profile.defaults.repair_budget },
+        result: dental_result(permitted, Vec::new(), profile),
         area_origin: AreaOrigin::ManualArea,
     })
 }
 
-/// One brush dab: a sphere on the surface, the surface normal it was painted on, and whether it
-/// adds (`allow`) or removes the area. Stamps apply in order; the last one that reaches a face wins.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Stamp {
-    pub center: [f64; 3],
-    pub radius: f64,
-    pub normal: [f64; 3],
-    pub allow: bool,
-}
+/// One brush dab (shared with the engine's landing rule); see `AreaStamp`.
+pub type Stamp = AreaStamp;
 
 /// Faces an ordered stroke list paints: a stamp reaches a face when its centroid is inside the
 /// sphere and the face normal points the same way as the stamp normal (a thin wall never paints

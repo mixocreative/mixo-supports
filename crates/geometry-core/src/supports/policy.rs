@@ -71,6 +71,47 @@ pub struct AllowedStructures {
     pub raft: bool,
 }
 
+/// One brush dab of a policy's area edit: a sphere on the surface, the normal it was painted on, and
+/// whether it adds (`allow`) or removes the area. Stamps apply in order; the last one that reaches a
+/// point wins.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AreaStamp {
+    pub center: [f64; 3],
+    pub radius: f64,
+    pub normal: [f64; 3],
+    pub allow: bool,
+}
+
+/// Where a support's secondary contact (a column or tree landing on the model) may land.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub enum LandingRule {
+    #[default]
+    Unrestricted,
+    /// Only on an upward-facing source face inside `permitted_faces` (a later `stamps` dab at the
+    /// landing point can erase or restore it); an automatic support landing anywhere else is left out.
+    ApprovedFaces { stamps: Vec<AreaStamp> },
+}
+
+/// Which automatic contacts the engine may build.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum AutomaticRule {
+    /// Every contact the host passes (the generic policy: the candidates are the contacts).
+    #[default]
+    AsGiven,
+    /// Only a contact that reproduces one of `candidates` (same spot within 0.03 mm, same side); it
+    /// takes the candidate's source face. Anything else is left out, not built.
+    MatchCandidates,
+}
+
+/// A closed contour that wants a contact at about every `spacing_mm`; `arcs` give the arclength of
+/// each candidate on it (dental: the outer and the opening rim; spacing is profile data).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Ring {
+    pub perimeter_mm: f64,
+    pub spacing_mm: f64,
+    pub arcs: Vec<(CandidateId, f64)>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PolicyResult {
     /// Painting may only narrow or extend inside what the geometry gates allow.
@@ -79,8 +120,20 @@ pub struct PolicyResult {
     /// Ordered repair options per contact.
     pub alternates: Vec<(CandidateId, Vec<Candidate>)>,
     pub structures: AllowedStructures,
-    /// Maximum repair trials; manual contacts are never moved or deleted.
+    /// Maximum repair trials (rebuilds); 0 reports without repairing. Manual contacts are never
+    /// moved or deleted.
     pub repair_budget: u32,
+    pub landing_rule: LandingRule,
+    pub automatic: AutomaticRule,
+    /// Contact rings whose coverage the verdict reports (none for a policy without rings).
+    pub rings: Vec<Ring>,
+}
+
+impl PolicyResult {
+    /// A result with no landing rule, every contact as given and no rings.
+    pub fn plain(permitted_faces: FaceMask, candidates: Vec<Candidate>, structures: AllowedStructures, repair_budget: u32) -> Self {
+        Self { permitted_faces, candidates, alternates: Vec::new(), structures, repair_budget, landing_rule: LandingRule::Unrestricted, automatic: AutomaticRule::AsGiven, rings: Vec::new() }
+    }
 }
 
 /// Safety verdict per component or contact. A timeout is `Inconclusive`, never `Clear`.
@@ -115,6 +168,9 @@ mod tests {
             alternates: vec![(candidate.id.clone(), vec![candidate])],
             structures: AllowedStructures { pillar: true, tree: false, brace: false, roof: false, cage: false, raft: true },
             repair_budget: 4,
+            landing_rule: LandingRule::Unrestricted,
+            automatic: AutomaticRule::AsGiven,
+            rings: Vec::new(),
         };
         assert_eq!(result.alternates[0].1.len(), 1);
         assert_eq!(Verdict::Inconclusive { reason: "timeout".into() }, Verdict::Inconclusive { reason: "timeout".into() });

@@ -15,6 +15,7 @@ use super::parts::column::{ColumnContact, emit_column, emit_feet, neck_bend};
 use super::parts::landing::Landing;
 use super::parts::model::Model;
 use super::parts::tags::Component;
+use super::parts::vec::{V3, normalize_or_down, scale, sub};
 use super::parts::tree::{emit_tree, landing_source};
 use super::parts::structures::emit_structures;
 use super::settings::{PreviewMode, SupportSettings};
@@ -36,6 +37,16 @@ pub enum LandingSource<'a> {
     Supplied { trees: &'a [Option<Landing>] },
 }
 
+/// How the support of one contact reaches the ground: the plate (through its foot or trunk), the model
+/// below it (a landing; the face is the exact source face), or not built at all.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Ground {
+    None,
+    Plate,
+    /// `point` is the exact landing on the source face, `normal` its upward surface normal.
+    Model { face: Option<u32>, point: V3, normal: V3 },
+}
+
 pub struct BuiltSupports {
     pub positions: Vec<f32>,
     pub indices: Vec<u32>,
@@ -44,23 +55,18 @@ pub struct BuiltSupports {
     pub dropped: Vec<u32>,
     /// The subset of `dropped` a no-support zone caused.
     pub dropped_by_zones: Vec<u32>,
+    /// Per contact: where its built support meets the ground (`Ground::None` when nothing was built).
+    pub grounds: Vec<Ground>,
 }
 
-/// What the host decided that this core does not compute: the label text, the no-support zones and
-/// the landing rule as flags per column / per tree (the host evaluates it on `probe_landings`).
+/// What the host chose that this core does not compute: the label text, the no-support zones, and the
+/// landing rule (`PolicyResult::landing_rule` made callable by `generate`).
 #[derive(Default)]
 pub struct HostChoices<'a> {
     pub label_text: &'a str,
     pub zones: &'a [ZoneStamp],
-    pub rejected_columns: &'a [bool],
-    pub rejected_trees: &'a [bool],
-}
-
-/// Where the columns and trees land, for a host landing rule.
-pub struct LandingProbe {
-    pub layout: Option<AutoTreeLayout>,
-    pub columns: Vec<Option<Landing>>,
-    pub trees: Vec<Option<Landing>>,
+    /// True where a support may land; an automatic support landing elsewhere is left out.
+    pub landing_allowed: Option<&'a dyn Fn(&Landing) -> bool>,
 }
 
 struct Prepared<'m, 'a> {
@@ -123,13 +129,6 @@ impl<'m, 'a> Prepared<'m, 'a> {
     }
 }
 
-pub fn probe_landings(contacts: &[ColumnContact], settings: &SupportSettings, mode: BuildMode, model: Option<&Model>, source: LandingSource) -> Result<LandingProbe, BuildError> {
-    let prepared = Prepared::new(contacts, settings, mode, model, &source)?;
-    let columns = (0..prepared.contacts.len()).map(|k| prepared.column_landing(k)).collect();
-    let trees = (0..prepared.layout.as_ref().map_or(0, |l| l.trees.len())).map(|t| prepared.tree_landing(t)).collect();
-    Ok(LandingProbe { layout: prepared.layout, columns, trees })
-}
-
 pub fn build_supports(
     contacts: &[ColumnContact],
     settings: &SupportSettings,
@@ -142,17 +141,14 @@ pub fn build_supports(
     let Prepared { exporting, tip_only, .. } = prepared;
     let contacts = &prepared.contacts;
     let layout = &prepared.layout;
-    if [host.rejected_columns.len(), host.rejected_trees.len()].iter().any(|&n| n != 0) && (host.rejected_columns.len() != contacts.len() || host.rejected_trees.len() != layout.as_ref().map_or(0, |l| l.trees.len())) {
-        return Err(BuildError::BadInput("landing rule flags length"));
-    }
-    let omitted = if policy_active(host.zones, host.rejected_columns, host.rejected_trees) {
+    let omitted = if policy_active(host.zones, host.landing_allowed) {
         let mut column_cache: Vec<Option<Option<Landing>>> = vec![None; contacts.len()];
         let mut tree_cache: Vec<Option<Option<Landing>>> = vec![None; layout.as_ref().map_or(0, |l| l.trees.len())];
         let mut column_hit = |k: usize| *column_cache[k].get_or_insert_with(|| prepared.column_landing(k));
         let mut tree_hit = |t: usize| *tree_cache[t].get_or_insert_with(|| prepared.tree_landing(t));
         omissions(OmitInput {
             contacts, settings, tip_only, layout: layout.as_ref(), zones: host.zones,
-            rejected_columns: host.rejected_columns, rejected_trees: host.rejected_trees,
+            landing_allowed: host.landing_allowed,
             column_hit: &mut column_hit, tree_hit: &mut tree_hit,
         })
     } else {
@@ -187,13 +183,21 @@ pub fn build_supports(
         }
     }
     let mut anchors = Vec::new();
+    let mut grounds = vec![Ground::None; contacts.len()];
     for (index, contact) in contacts.iter().enumerate() {
         if in_tree[index] || layout.as_ref().is_some_and(|l| l.removed[index]) || omit[index] {
             continue;
         }
         let landing = if tip_only { None } else { prepared.column_landing(index) };
+        let own = settings.with_shape(contact.shape.as_ref());
+        let tip = sub(contact.candidate.point, scale(normalize_or_down(contact.candidate.normal), own.shape.tip_depth()));
         if let Some(anchor) = emit_column(&mut builder, index as u32, contact, settings, raft_top, segments, tip_only, landing) {
+            grounds[index] = Ground::Plate;
             anchors.push(anchor);
+        } else if !tip_only && tip[1] > raft_top {
+            if let Some(hit) = landing {
+                grounds[index] = Ground::Model { face: hit.face, point: hit.source_point.unwrap_or(hit.point), normal: hit.normal };
+            }
         }
     }
     if !tip_only {
@@ -205,6 +209,10 @@ pub fn build_supports(
         for &t in &built_trees {
             let tree = &layout.as_ref().expect("built trees need a layout").trees[t];
             let hit = prepared.tree_landing(t);
+            let ground = hit.map_or(Ground::Plate, |h| Ground::Model { face: h.face, point: h.source_point.unwrap_or(h.point), normal: h.normal });
+            for &member in &tree.members {
+                grounds[member] = ground;
+            }
             columns.extend(emit_tree(&mut builder, tree, contacts, settings, hit, segments));
         }
         if settings.truss_enabled {
@@ -214,7 +222,7 @@ pub fn build_supports(
         emit_structures(&mut builder, &footprints, settings, prepared.model, host.label_text);
     }
     let mesh = builder.finish();
-    Ok(BuiltSupports { positions: mesh.positions, indices: mesh.indices, components: mesh.components, dropped: omitted.contacts, dropped_by_zones: omitted.by_zones })
+    Ok(BuiltSupports { positions: mesh.positions, indices: mesh.indices, components: mesh.components, dropped: omitted.contacts, dropped_by_zones: omitted.by_zones, grounds })
 }
 
 #[cfg(test)]

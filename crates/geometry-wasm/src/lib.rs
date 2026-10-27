@@ -12,6 +12,7 @@ use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
 mod dental;
 mod generic;
+mod safety;
 
 #[wasm_bindgen]
 pub fn engine_version() -> u32 {

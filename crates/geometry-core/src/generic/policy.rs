@@ -71,7 +71,7 @@ pub fn generic_policy(input: &GenericInput, settings: &SupportSettings) -> Gener
         cage: settings.roof_mode == RoofMode::Cage,
         raft: settings.raft_enabled,
     };
-    GenericPolicy { result: PolicyResult { permitted_faces, candidates, alternates: Vec::new(), structures, repair_budget: 0 }, kinds }
+    GenericPolicy { result: PolicyResult::plain(permitted_faces, candidates, structures, 0), kinds }
 }
 
 #[cfg(test)]

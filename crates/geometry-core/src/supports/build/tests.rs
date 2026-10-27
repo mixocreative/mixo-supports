@@ -67,8 +67,10 @@ fn zones_leave_out_the_columns_that_land_in_them_and_report_them() {
     let plate = |host: &HostChoices| build_supports(&contacts(), &columns_only(), BuildMode::Export, None, LandingSource::Model, host).unwrap();
     // Without a model nothing lands on it, so nothing is zoned.
     assert!(plate(&host).dropped.is_empty());
-    let wrong = HostChoices { rejected_columns: &[true], ..HostChoices::default() };
-    assert_eq!(build_supports(&contacts(), &columns_only(), BuildMode::Export, None, LandingSource::Model, &wrong).err(), Some(BuildError::BadInput("landing rule flags length")));
+    // A landing rule needs a landing to judge: without a model nothing is rejected.
+    let deny = |_: &Landing| false;
+    let strict = HostChoices { landing_allowed: Some(&deny), ..HostChoices::default() };
+    assert!(plate(&strict).dropped.is_empty());
 }
 
 #[test]

@@ -145,7 +145,7 @@ pub fn hypot3(v: V3) -> f64 {
 }
 
 /// Ericson, Real-Time Collision Detection 5.1.5.
-fn closest_on_triangle(p: V3, a: V3, b: V3, c: V3) -> V3 {
+pub(crate) fn closest_on_triangle(p: V3, a: V3, b: V3, c: V3) -> V3 {
     let ab = sub(b, a);
     let ac = sub(c, a);
     let ap = sub(p, a);

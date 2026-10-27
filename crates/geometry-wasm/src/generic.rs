@@ -9,7 +9,9 @@ use mixo_geometry_core::supports::contact_id::position_id;
 use mixo_geometry_core::supports::edits::{self, EditPoint};
 use mixo_geometry_core::supports::parts::column::ContactKind;
 use mixo_geometry_core::supports::parts::model as support_model;
-use mixo_geometry_core::supports::policy::Origin;
+use mixo_geometry_core::supports::generate::landing_allowed;
+use mixo_geometry_core::supports::parts::landing::Landing;
+use mixo_geometry_core::supports::policy::{AllowedStructures, FaceMask, LandingRule, Origin, PolicyResult};
 use mixo_geometry_core::supports::zones::decode_zones;
 use mixo_geometry_core::supports::{build as support_build, flat as support_flat, settings as support_settings};
 use std::collections::HashSet;
@@ -148,24 +150,6 @@ impl SupportBuild {
     }
 }
 
-/// Where each column and Auto Tree lands: per contact, then per tree, 5 f64: has landing, face (-1
-/// none), point xyz (the exact source point when the visible landing is remeshed).
-#[wasm_bindgen]
-pub struct LandingProbe {
-    landings: Vec<f64>,
-    trees: u32,
-}
-
-#[wasm_bindgen]
-impl LandingProbe {
-    pub fn take_landings(&mut self) -> Vec<f64> {
-        std::mem::take(&mut self.landings)
-    }
-    pub fn tree_count(&self) -> u32 {
-        self.trees
-    }
-}
-
 fn landing_mode(code: u32) -> Result<support_build::LandingSource<'static>, JsValue> {
     match code {
         0 => Ok(support_build::LandingSource::Model),
@@ -218,9 +202,9 @@ impl GeometrySession {
     /// Builds the support mesh for contacts over a loaded plate-space model (`model` = u32::MAX for
     /// none). `mode`: 0 preview, 1 export. `landings`: 0 exact surface, 2 the line target (exact, then
     /// the voxel remesh unless a Low Poly preview): neck normals and landings are computed here.
-    /// `zones` are no-support stamps (`zones::ZONE_STRIDE` f64 each, plate space) and
-    /// `rejected_columns` / `rejected_trees` the host landing rule's flags per contact / per tree
-    /// (both empty = no rule). Never returns a partial result.
+    /// `zones` are no-support stamps (`zones::ZONE_STRIDE` f64 each, plate space) and `landing_faces`
+    /// a per-face 0/1 mask of where a support may land (empty = no rule; the policy form of this
+    /// rule is `generate`'s `PolicyData`). Never returns a partial result.
     pub fn build_supports(
         &mut self,
         model: u32,
@@ -232,22 +216,31 @@ impl GeometrySession {
         landings: u32,
         label_text: &str,
         zones: &[f64],
-        rejected_columns: &[u8],
-        rejected_trees: &[u8],
+        landing_faces: &[u8],
     ) -> Result<SupportBuild, JsValue> {
         let settings = support_settings::SupportSettings::from_slice(settings).map_err(build_error)?;
         let contacts = support_flat::decode_contacts(&ids, contacts, shapes, &settings.shape).map_err(build_error)?;
         let (mode, source) = (build_mode(mode)?, landing_mode(landings)?);
         let zones = decode_zones(zones).ok_or_else(|| coded_error("BAD_INPUT"))?;
-        let columns: Vec<bool> = rejected_columns.iter().map(|&f| f != 0).collect();
-        let trees: Vec<bool> = rejected_trees.iter().map(|&f| f != 0).collect();
-        let host = support_build::HostChoices { label_text, zones: &zones, rejected_columns: &columns, rejected_trees: &trees };
         let built = if model == u32::MAX {
+            let host = support_build::HostChoices { label_text, zones: &zones, landing_allowed: None };
             support_build::build_supports(&contacts, &settings, mode, None, source, &host)
         } else {
             self.store.ensure_pick_index(model).map_err(mesh_error)?;
             let (positions, indices, bvh) = self.store.pick_view(model).map_err(mesh_error)?;
             let view = support_model::Model::new(positions, indices, bvh);
+            let mut policy = PolicyResult::plain(FaceMask::new(view.face_count()), Vec::new(), AllowedStructures { pillar: true, tree: true, brace: true, roof: true, cage: true, raft: true }, 0);
+            if !landing_faces.is_empty() {
+                if landing_faces.len() != view.face_count() {
+                    return Err(coded_error("BAD_INPUT"));
+                }
+                for (face, &flag) in landing_faces.iter().enumerate() {
+                    policy.permitted_faces.set(face, flag != 0);
+                }
+                policy.landing_rule = LandingRule::ApprovedFaces { stamps: Vec::new() };
+            }
+            let allowed = landing_allowed(&view, &policy);
+            let host = support_build::HostChoices { label_text, zones: &zones, landing_allowed: allowed.as_ref().map(|f| f as &dyn Fn(&Landing) -> bool) };
             support_build::build_supports(&contacts, &settings, mode, Some(&view), source, &host)
         }
         .map_err(build_error)?;
@@ -261,41 +254,6 @@ impl GeometrySession {
             dropped: built.dropped,
             dropped_by_zones: built.dropped_by_zones,
         })
-    }
-
-    /// Where the columns and Auto Trees of these contacts land (for a host landing rule); same
-    /// leading arguments as `build_supports`.
-    pub fn probe_landings(
-        &mut self,
-        model: u32,
-        ids: Vec<String>,
-        contacts: &[f64],
-        shapes: &[f64],
-        settings: &[f64],
-        mode: u32,
-        landings: u32,
-    ) -> Result<LandingProbe, JsValue> {
-        let settings = support_settings::SupportSettings::from_slice(settings).map_err(build_error)?;
-        let contacts = support_flat::decode_contacts(&ids, contacts, shapes, &settings.shape).map_err(build_error)?;
-        let (mode, source) = (build_mode(mode)?, landing_mode(landings)?);
-        if model == u32::MAX {
-            return Err(coded_error("BAD_INPUT"));
-        }
-        self.store.ensure_pick_index(model).map_err(mesh_error)?;
-        let (positions, indices, bvh) = self.store.pick_view(model).map_err(mesh_error)?;
-        let view = support_model::Model::new(positions, indices, bvh);
-        let probe = support_build::probe_landings(&contacts, &settings, mode, Some(&view), source).map_err(build_error)?;
-        let mut landings = Vec::new();
-        for hit in probe.columns.iter().chain(probe.trees.iter()) {
-            match hit {
-                Some(l) => {
-                    let p = l.source_point.unwrap_or(l.point);
-                    landings.extend([1.0, l.face.map_or(-1.0, f64::from), p[0], p[1], p[2]]);
-                }
-                None => landings.extend([0.0, -1.0, 0.0, 0.0, 0.0]),
-            }
-        }
-        Ok(LandingProbe { landings, trees: probe.trees.len() as u32 })
     }
 }
 

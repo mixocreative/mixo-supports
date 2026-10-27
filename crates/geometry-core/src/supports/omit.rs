@@ -1,7 +1,6 @@
 //! Which automatic supports a no-support zone or a landing rule (dental: the secondary contact must
-//! land on an approved side) leaves out. The decisions use the same landings the build uses. The
-//! host supplies zones as data and a landing rule as flags per column and per tree (`rejected_*`).
-//! TODO(U7): the verdict becomes part of the `generate` call.
+//! land on an approved side) leaves out. The decisions use the same landings the build uses. Zones and
+//! the landing rule are data (`PolicyResult::landing_rule`, evaluated by `generate::permit`); no host callback.
 
 use super::parts::autotree::AutoTreeLayout;
 use super::parts::column::ColumnContact;
@@ -17,9 +16,9 @@ pub struct OmitInput<'a, 'f> {
     pub tip_only: bool,
     pub layout: Option<&'a AutoTreeLayout>,
     pub zones: &'a [ZoneStamp],
-    /// Landing rule: the column of contact `k` / the tree `t` lands where the rule rejects.
-    pub rejected_columns: &'a [bool],
-    pub rejected_trees: &'a [bool],
+    /// Landing rule (`PolicyResult::landing_rule`): true when a support may land there. An automatic
+    /// column or tree whose landing it rejects is left out.
+    pub landing_allowed: Option<&'a dyn Fn(&Landing) -> bool>,
     /// Where the column of contact `index` lands on the model (its own shape settings applied).
     pub column_hit: &'f mut dyn FnMut(usize) -> Option<Landing>,
     pub tree_hit: &'f mut dyn FnMut(usize) -> Option<Landing>,
@@ -35,12 +34,13 @@ pub struct Omissions {
     pub by_zones: Vec<u32>,
 }
 
-pub fn policy_active(zones: &[ZoneStamp], rejected_columns: &[bool], rejected_trees: &[bool]) -> bool {
-    zones.iter().any(|z| z.paint) || rejected_columns.iter().any(|&r| r) || rejected_trees.iter().any(|&r| r)
+pub fn policy_active(zones: &[ZoneStamp], landing_allowed: Option<&dyn Fn(&Landing) -> bool>) -> bool {
+    zones.iter().any(|z| z.paint) || landing_allowed.is_some()
 }
 
 pub fn omissions(input: OmitInput) -> Omissions {
-    let OmitInput { contacts, settings, tip_only, layout, zones, rejected_columns, rejected_trees, column_hit, tree_hit } = input;
+    let OmitInput { contacts, settings, tip_only, layout, zones, landing_allowed, column_hit, tree_hit } = input;
+    let rejected = |landing: &Option<Landing>| landing.as_ref().is_some_and(|l| landing_allowed.is_some_and(|allowed| !allowed(l)));
     let zones_on = zones.iter().any(|z| z.paint);
     let zoned = |landing: &Option<Landing>| zones_on && landing.as_ref().is_some_and(|l| zoned_at(zones, l.point, Some(l.normal)));
     let n = contacts.len();
@@ -56,7 +56,7 @@ pub fn omissions(input: OmitInput) -> Omissions {
                     by_zones[member] = true;
                 }
                 blocked[t] = true;
-            } else if hit.is_some() && rejected_trees.get(t).copied().unwrap_or(false) {
+            } else if rejected(&hit) {
                 blocked[t] = true;
             }
         }
@@ -94,7 +94,7 @@ pub fn omissions(input: OmitInput) -> Omissions {
         let landing = column_hit(index);
         if contact.candidate.origin != Origin::Manual && !in_tree[index] {
             let is_zoned = zoned(&landing);
-            if is_zoned || (landing.is_some() && rejected_columns.get(index).copied().unwrap_or(false)) {
+            if is_zoned || rejected(&landing) {
                 if is_zoned {
                     by_zones[index] = true;
                 }
