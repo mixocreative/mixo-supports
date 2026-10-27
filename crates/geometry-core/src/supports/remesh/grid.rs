@@ -35,12 +35,22 @@ pub struct Remesh {
     pub(super) polygon_cache: HashMap<usize, Option<Rc<Polygon>>>,
     empty_leaves: HashMap<Idx, bool>,
     pub(super) leaf_polygon_cache: HashMap<Idx, Rc<Vec<Rc<Polygon>>>>,
+    /// Set while this remesh came from or will return to the cross-build cache (see `cache.rs`).
+    cache_key: Option<super::cache::Key>,
 }
 
 impl Remesh {
     /// `voxel` overrides SLASG_Line's size (the scatter remeshes at Spacing / 4); `adaptivity` is
     /// Grid to Mesh's (0.1 in SLASG).
     pub fn new(positions: &[f32], indices: &[u32], pillar_diameter: f64, voxel: Option<f64>, adaptivity: f64) -> Self {
+        let (min, max, h) = Self::frame(positions, pillar_diameter, voxel);
+        let key = super::cache::Key::of(positions, indices, h, fr(adaptivity));
+        let mut remesh = super::cache::take(&key).unwrap_or_else(|| Self::build(positions, indices, min, max, h, adaptivity));
+        remesh.cache_key = Some(key);
+        remesh
+    }
+
+    fn frame(positions: &[f32], pillar_diameter: f64, voxel: Option<f64>) -> (V3, V3, f64) {
         let mut min = [f64::INFINITY; 3];
         let mut max = [f64::NEG_INFINITY; 3];
         for p in positions.chunks_exact(3) {
@@ -52,6 +62,10 @@ impl Remesh {
         let diagonal = hypot(&[max[0] - min[0], max[1] - min[1], max[2] - min[2]]);
         // Geometry Nodes evaluates the voxel size in single precision.
         let h = fr(voxel.unwrap_or_else(|| (diagonal / 2000.0).max(pillar_diameter)));
+        (min, max, h)
+    }
+
+    fn build(positions: &[f32], indices: &[u32], min: V3, max: V3, h: f64, adaptivity: f64) -> Self {
         // meshToVolume measures distance in index space from single-precision index points.
         let index_positions: Vec<f32> = positions.iter().map(|&v| (f64::from(v) / h) as f32).collect();
         Self {
@@ -71,6 +85,7 @@ impl Remesh {
             polygon_cache: HashMap::new(),
             empty_leaves: HashMap::new(),
             leaf_polygon_cache: HashMap::new(),
+            cache_key: None,
         }
     }
 
@@ -291,4 +306,32 @@ impl Remesh {
 
 pub(super) fn leaf_of(c: Idx) -> Idx {
     [c[0].div_euclid(LEAF) * LEAF, c[1].div_euclid(LEAF) * LEAF, c[2].div_euclid(LEAF) * LEAF]
+}
+
+impl Drop for Remesh {
+    /// A remesh that came from `new` hands its filled caches to the cross-build cache, so the next
+    /// build over the same model, frame and voxel size starts warm.
+    fn drop(&mut self) {
+        let Some(key) = self.cache_key.take() else { return };
+        let warm = Self {
+            voxel: self.voxel,
+            bottom: self.bottom,
+            bounds: self.bounds,
+            adaptivity: self.adaptivity,
+            sdf: std::mem::take(&mut self.sdf),
+            values: std::mem::take(&mut self.values),
+            exact_values: std::mem::take(&mut self.exact_values),
+            sign_cache: std::mem::take(&mut self.sign_cache),
+            leaves: std::mem::take(&mut self.leaves),
+            prims: std::mem::take(&mut self.prims),
+            prim_cache: std::mem::take(&mut self.prim_cache),
+            raw: std::mem::take(&mut self.raw),
+            final_points: std::mem::take(&mut self.final_points),
+            polygon_cache: std::mem::take(&mut self.polygon_cache),
+            empty_leaves: std::mem::take(&mut self.empty_leaves),
+            leaf_polygon_cache: std::mem::take(&mut self.leaf_polygon_cache),
+            cache_key: None,
+        };
+        super::cache::put(key, warm);
+    }
 }

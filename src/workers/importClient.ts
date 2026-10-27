@@ -2,6 +2,7 @@ import type { Runtime } from '../core/budget';
 import type { RawMesh } from '../state/import';
 import type { JobLabel } from './jobActivity';
 import type { ImportTask, PreparedMesh } from './importProtocol';
+import { setPickIndex } from './pickIndexes';
 import { WorkerTask, type WorkerLike } from './WorkerTask';
 
 /** An import that runs longer than this is stopped (worker terminated) and fails with a timeout. */
@@ -21,11 +22,19 @@ export class ImportClient {
   }
 
   readStl(file: Blob, name: string, runtime: Runtime, label: JobLabel, signal: AbortSignal): Promise<PreparedMesh[]> {
-    return this.runner.run({ kind: 'stl', name, file, runtime }, { label, signal, blocking: true, context: 'import' });
+    return this.runner.run({ kind: 'stl', name, file, runtime }, { label, signal, blocking: true, context: 'import' }).then(keepPickIndexes);
   }
 
   weld(meshes: RawMesh[], runtime: Runtime, label: JobLabel, signal: AbortSignal): Promise<PreparedMesh[]> {
     const transfer = meshes.flatMap((mesh) => [mesh.positions.buffer, ...(mesh.indices ? [mesh.indices.buffer] : [])]);
-    return this.runner.run({ kind: 'weld', meshes, runtime }, { transfer, label, signal, blocking: true, context: 'import' });
+    return this.runner.run({ kind: 'weld', meshes, runtime }, { transfer, label, signal, blocking: true, context: 'import' }).then(keepPickIndexes);
   }
+}
+
+/** Files each mesh's pick index under the arrays the viewport will draw, for the session to load. */
+function keepPickIndexes(prepared: PreparedMesh[]): PreparedMesh[] {
+  for (const { mesh, display, pickIndex } of prepared) {
+    if (pickIndex) setPickIndex((display ?? mesh).positions, pickIndex);
+  }
+  return prepared;
 }

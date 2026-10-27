@@ -3,6 +3,7 @@ import { geometryReady, type GeometryEngine } from './geometryClient';
 import type { ImportTask, PreparedMesh } from './importProtocol';
 import { buffers, centerImportedWithWasm, decimateWithWasm, prepare, weldRawWithWasm, type Progress } from './prepareImport';
 import { serveTask, transferable } from './serveTask';
+import { buildPickIndexData } from './pickIndexes';
 import { finishStl, openStlSession, pushStl } from './stlSession';
 
 /** A File is read in slices this big, so the whole file never sits in memory at once. */
@@ -48,6 +49,7 @@ serveTask<ImportTask, PreparedMesh[]>(async (task, { progress: post }) => {
       return prepare(weldRawWithWasm(raw, engine), task.runtime, progress, center, simplify);
     });
   }
+  for (const item of prepared) item.pickIndex = buildPickIndexData(engine, item.display ?? item.mesh);
   progress(1, 'Done');
   return transferable(prepared, buffers(prepared));
 });

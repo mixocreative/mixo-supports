@@ -42,6 +42,14 @@ struct Node {
     count: u32,
 }
 
+/// A pick index as flat arrays (see `Bvh::to_flat`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlatBvh {
+    pub bounds: Vec<f32>,
+    pub links: Vec<u32>,
+    pub order: Vec<u32>,
+}
+
 pub struct Bvh {
     nodes: Vec<Node>,
     order: Vec<u32>,
@@ -117,6 +125,52 @@ impl Bvh {
         self.nodes[node].count = 0;
         self.fill(left, start, middle, boxes, centroids);
         self.fill(left + 1, middle, end, boxes, centroids);
+    }
+
+    /// The index as flat arrays for transfer: per node `min xyz, max xyz` (6 f32) and `start, count`
+    /// (2 u32), then the triangle permutation.
+    pub fn to_flat(&self) -> FlatBvh {
+        let mut bounds = Vec::with_capacity(self.nodes.len() * 6);
+        let mut links = Vec::with_capacity(self.nodes.len() * 2);
+        for node in &self.nodes {
+            bounds.extend_from_slice(&node.min);
+            bounds.extend_from_slice(&node.max);
+            links.extend_from_slice(&[node.start, node.count]);
+        }
+        FlatBvh { bounds, links, order: self.order.clone() }
+    }
+
+    /// Rebuilds an index from `to_flat` arrays for a mesh of `faces` triangles. Everything a query
+    /// would index with is checked (never trusted), so a damaged or foreign index is refused, not
+    /// walked: the permutation covers every face once, leaves lie inside it, children come after
+    /// their parent (no cycles) and inside the node list, boxes are not NaN.
+    pub fn from_flat(flat: FlatBvh, faces: usize) -> Option<Self> {
+        let FlatBvh { bounds, links, order } = flat;
+        let count = links.len() / 2;
+        if links.len() % 2 != 0 || bounds.len() != count * 6 || order.len() != faces || (faces > 0) != (count > 0) {
+            return None;
+        }
+        let mut seen = vec![false; faces];
+        for &face in &order {
+            let slot = seen.get_mut(face as usize)?;
+            if std::mem::replace(slot, true) {
+                return None;
+            }
+        }
+        if bounds.iter().any(|v| v.is_nan()) {
+            return None;
+        }
+        let mut nodes = Vec::with_capacity(count);
+        for (k, pair) in links.chunks_exact(2).enumerate() {
+            let (start, leaf_size) = (pair[0] as usize, pair[1] as usize);
+            let valid = if leaf_size == 0 { start > k && start + 1 < count } else { start.checked_add(leaf_size)? <= faces };
+            if !valid {
+                return None;
+            }
+            let b = &bounds[k * 6..k * 6 + 6];
+            nodes.push(Node { min: [b[0], b[1], b[2]], max: [b[3], b[4], b[5]], start: pair[0], count: pair[1] });
+        }
+        Some(Self { nodes, order })
     }
 
     pub fn triangle_count(&self) -> usize {
@@ -307,6 +361,44 @@ mod tests {
         let mut none = Vec::new();
         bvh.column_faces(50.0, 0.0, &mut none);
         assert!(none.is_empty());
+    }
+
+    #[test]
+    fn flat_round_trip_gives_identical_picks_and_refuses_damaged_indexes() {
+        // A ribbon of 200 triangles so the tree has internal nodes.
+        let mut positions = Vec::new();
+        let mut indices = Vec::new();
+        for k in 0..100u32 {
+            let x = k as f32;
+            positions.extend_from_slice(&[x, 0.0, 0.0, x + 1.0, 0.0, 0.0, x, 1.0, 0.0, x + 1.0, 1.0, 0.0]);
+            indices.extend_from_slice(&[k * 4, k * 4 + 1, k * 4 + 2, k * 4 + 1, k * 4 + 3, k * 4 + 2]);
+        }
+        let built = Bvh::build(&positions, &indices);
+        let flat = built.to_flat();
+        let loaded = Bvh::from_flat(flat.clone(), indices.len() / 3).expect("a valid index loads");
+        assert_eq!(loaded.to_flat(), flat);
+        for k in 0..300 {
+            let origin = [(k as f64) * 0.37 % 101.0, (k as f64) * 0.13 % 1.2, 5.0];
+            for side in [Side::Front, Side::Back, Side::Double] {
+                let a = built.raycast_first(&positions, &indices, origin, [0.0, 0.0, -1.0], 0.0, f64::INFINITY, side);
+                let b = loaded.raycast_first(&positions, &indices, origin, [0.0, 0.0, -1.0], 0.0, f64::INFINITY, side);
+                assert_eq!(a, b);
+            }
+        }
+        let faces = indices.len() / 3;
+        assert!(Bvh::from_flat(flat.clone(), faces + 1).is_none(), "wrong triangle count");
+        let mut repeated = flat.clone();
+        repeated.order[1] = repeated.order[0];
+        assert!(Bvh::from_flat(repeated, faces).is_none(), "not a permutation");
+        let mut cyclic = flat.clone();
+        cyclic.links[0] = 0;
+        assert!(Bvh::from_flat(cyclic, faces).is_none(), "child before parent");
+        let mut past_end = flat.clone();
+        let last = past_end.links.len() - 2;
+        past_end.links[last] = faces as u32;
+        past_end.links[last + 1] = 5;
+        assert!(Bvh::from_flat(past_end, faces).is_none(), "leaf outside the order");
+        assert!(Bvh::from_flat(FlatBvh { bounds: vec![], links: vec![], order: vec![] }, 0).is_some());
     }
 
     #[test]

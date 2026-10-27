@@ -4,6 +4,7 @@
 
 use super::num::{V3, add, dot, scale, sub};
 
+#[derive(Default)]
 pub struct SignedDistance {
     tris: Vec<f64>,
     order: Vec<u32>,

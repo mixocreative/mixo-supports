@@ -1,4 +1,4 @@
-use super::spatial::Bvh;
+use super::spatial::{Bvh, FlatBvh};
 use std::collections::BTreeMap;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -57,6 +57,16 @@ impl MeshStore {
     }
 
     pub fn load_mesh(&mut self, positions: Vec<f32>, indices: Vec<u32>) -> Result<u32, MeshError> {
+        self.load(positions, indices, None)
+    }
+
+    /// `load_mesh` with a pick index built elsewhere (`Bvh::to_flat`), used as is instead of being
+    /// built on first pick. An index that does not fit this mesh is `InvalidIndex`.
+    pub fn load_mesh_indexed(&mut self, positions: Vec<f32>, indices: Vec<u32>, flat: FlatBvh) -> Result<u32, MeshError> {
+        self.load(positions, indices, Some(flat))
+    }
+
+    fn load(&mut self, positions: Vec<f32>, indices: Vec<u32>, flat: Option<FlatBvh>) -> Result<u32, MeshError> {
         if positions.is_empty()
             || indices.is_empty()
             || positions.len() % 3 != 0
@@ -81,10 +91,14 @@ impl MeshStore {
         if bytes > self.max_bytes.saturating_sub(self.used_bytes) {
             return Err(MeshError::Capacity);
         }
+        let bvh = match flat {
+            Some(flat) => Some(Bvh::from_flat(flat, indices.len() / 3).ok_or(MeshError::InvalidIndex)?),
+            None => None,
+        };
         let handle = self.next_id;
         self.next_id = self.next_id.checked_add(1).ok_or(MeshError::Capacity)?;
         self.used_bytes += bytes;
-        self.meshes.insert(handle, Mesh { positions, indices, bvh: None });
+        self.meshes.insert(handle, Mesh { positions, indices, bvh });
         Ok(handle)
     }
 
@@ -114,6 +128,12 @@ impl MeshStore {
             mesh.bvh = Some(Bvh::build(&mesh.positions, &mesh.indices));
         }
         Ok(())
+    }
+
+    /// The mesh's pick index as flat arrays, built if it has none yet.
+    pub fn pick_index_flat(&mut self, handle: u32) -> Result<FlatBvh, MeshError> {
+        self.ensure_pick_index(handle)?;
+        Ok(self.pick_view(handle)?.2.to_flat())
     }
 
     /// The mesh's arrays and its pick index (call `ensure_pick_index` first).
@@ -187,6 +207,31 @@ mod tests {
             Err(MeshError::InvalidIndex)
         );
         assert_eq!(store.used_bytes(), 0);
+    }
+
+    #[test]
+    fn a_transferred_pick_index_picks_like_a_built_one_and_a_foreign_one_is_refused() {
+        use crate::core::spatial::Side;
+        let positions = vec![-1.0f32, -1., 0., 1., -1., 0., 0., 1., 0., 3., 0., 0., 5., 0., 0., 4., 2., 0.];
+        let indices = vec![0u32, 1, 2, 3, 4, 5];
+        let mut built = MeshStore::new(1000);
+        let a = built.load_mesh(positions.clone(), indices.clone()).unwrap();
+        let flat = built.pick_index_flat(a).unwrap();
+        let mut loaded = MeshStore::new(1000);
+        let b = loaded.load_mesh_indexed(positions.clone(), indices.clone(), flat.clone()).unwrap();
+        assert_eq!(loaded.pick_index_flat(b).unwrap(), flat);
+        for x in [-0.5, 0.0, 3.8, 4.0, 9.0] {
+            let pick = |store: &MeshStore, handle| {
+                let (p, i, bvh) = store.pick_view(handle).unwrap();
+                bvh.raycast_first(p, i, [x, 0.2, 3.0], [0.0, 0.0, -1.0], 0.0, 100.0, Side::Double)
+            };
+            assert_eq!(pick(&built, a), pick(&loaded, b));
+        }
+        // An index for 2 triangles does not fit a 1 triangle mesh.
+        assert_eq!(
+            MeshStore::new(1000).load_mesh_indexed(positions[..9].to_vec(), indices[..3].to_vec(), flat),
+            Err(MeshError::InvalidIndex)
+        );
     }
 
     #[test]

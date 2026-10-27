@@ -57,10 +57,11 @@ export function prepare(item: ImportedMesh, runtime: Runtime, progress: Progress
 
 /** Every buffer of the prepared meshes, each once, to transfer. */
 export function buffers(prepared: PreparedMesh[]): Transferable[] {
-  return prepared.flatMap(({ mesh, display }) => [
+  return prepared.flatMap(({ mesh, display, pickIndex }) => [
     mesh.positions.buffer,
     mesh.indices.buffer,
     ...(display ? [display.positions.buffer, display.indices.buffer] : []),
+    ...(pickIndex ? [pickIndex.bounds.buffer, pickIndex.links.buffer, pickIndex.order.buffer] : []),
   ]);
 }
 

@@ -4,6 +4,7 @@
 //! placement's Poisson field and minima read it. Lives in `supports/` because the support builder
 //! lands columns on it; the generic policy only consumes it.
 
+mod cache;
 mod full;
 mod grid;
 mod leaf;
@@ -13,6 +14,7 @@ mod query;
 mod sdf;
 mod tables;
 
+pub use cache::{cache_stats, clear_cache};
 pub use full::FullMesh;
 pub use grid::Remesh;
 pub use num::{V3, fr, hypot, hypot3, js_round};

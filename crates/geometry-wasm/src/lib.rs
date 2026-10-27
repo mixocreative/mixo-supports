@@ -4,7 +4,7 @@ use mixo_geometry_core::core::mesh::{MeshError, MeshStore};
 use mixo_geometry_core::core::stl::{AsciiStlStream, BinaryStlStream, StlError};
 use mixo_geometry_core::core::brush::{self, BodySegments, Occluder};
 use mixo_geometry_core::core::matrix::{self, Handedness, Matrix4};
-use mixo_geometry_core::core::spatial::Side;
+use mixo_geometry_core::core::spatial::{Bvh, FlatBvh, Side};
 use mixo_geometry_core::core::{normals, overlay, pick};
 use mixo_geometry_core::supports::parts::model as support_model;
 use mixo_geometry_core::supports::{error as support_error, settings as support_settings};
@@ -151,6 +151,37 @@ pub fn decimate_display(
     })
 }
 
+/// A mesh's pick index as flat arrays: per node `min xyz, max xyz` (`bounds`) and `start, count`
+/// (`links`), then the triangle permutation (`order`). Transferable between realms.
+#[wasm_bindgen]
+pub struct PickIndex {
+    bounds: Vec<f32>,
+    links: Vec<u32>,
+    order: Vec<u32>,
+}
+
+#[wasm_bindgen]
+impl PickIndex {
+    pub fn take_bounds(&mut self) -> Vec<f32> {
+        std::mem::take(&mut self.bounds)
+    }
+    pub fn take_links(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.links)
+    }
+    pub fn take_order(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.order)
+    }
+}
+
+/// The pick index of a mesh outside any session (the import worker builds it once; the main
+/// thread loads it with `GeometrySession.load_mesh_indexed`).
+#[wasm_bindgen]
+pub fn build_pick_index(positions: &[f32], indices: &[u32]) -> Result<PickIndex, JsValue> {
+    check_triangles(positions, indices)?;
+    let flat = Bvh::build(positions, indices).to_flat();
+    Ok(PickIndex { bounds: flat.bounds, links: flat.links, order: flat.order })
+}
+
 #[wasm_bindgen]
 pub struct GeometrySession {
     store: MeshStore,
@@ -171,12 +202,26 @@ impl GeometrySession {
         self.store.load_mesh(positions, indices).map_err(mesh_error)
     }
 
+    /// `load_mesh` with a pick index built elsewhere (`build_pick_index`, in a worker): used as is,
+    /// not rebuilt on the first pick. An index that does not fit the mesh is `INVALID_INDEX`.
+    pub fn load_mesh_indexed(&mut self, positions: Vec<f32>, indices: Vec<u32>, bounds: Vec<f32>, links: Vec<u32>, order: Vec<u32>) -> Result<u32, JsValue> {
+        self.store.load_mesh_indexed(positions, indices, FlatBvh { bounds, links, order }).map_err(mesh_error)
+    }
+
+    /// The mesh's pick index as flat arrays (built now if it has none), to hand to another session.
+    pub fn pick_index(&mut self, handle: u32) -> Result<PickIndex, JsValue> {
+        let flat = self.store.pick_index_flat(handle).map_err(mesh_error)?;
+        Ok(PickIndex { bounds: flat.bounds, links: flat.links, order: flat.order })
+    }
+
     pub fn mesh_bounds(&self, handle: u32) -> Result<Vec<f32>, JsValue> {
         let bounds = self.store.bounds(handle).map_err(mesh_error)?;
         Ok([bounds.min, bounds.max].concat())
     }
 
     pub fn release_mesh(&mut self, handle: u32) -> Result<(), JsValue> {
+        // The voxel remesh cache (keyed on mesh bits) may hold this model's state: free it with the mesh.
+        mixo_geometry_core::supports::remesh::clear_cache();
         self.store.release_mesh(handle).map_err(mesh_error)
     }
 
