@@ -1,4 +1,4 @@
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
 
 type Point2 = [number, number];
 

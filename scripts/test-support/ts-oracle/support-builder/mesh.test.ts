@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
 import { buildSupportMesh, trussSegments, type GeneratedSupportMesh, type SupportContact } from './mesh';
-import { contactAtTriangle, meshBounds, tipsOf } from './meshQuery';
-import { defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings } from './settings';
+import { contactAtTriangle, meshBounds, tipsOf } from '../../../../src/core/supports/meshQuery';
+import { defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings } from '../../../../src/core/supports/settings';
 
 const settings: LiveSupportSettings = { ...defaultSupportSettings, contactShape: 'SPHERE', roofSeededModes: [] };
 const contact: SupportContact = { id: 'auto-0', position: [0, 10, 0], normal: [0, -1, 0] };

@@ -1,5 +1,5 @@
 import type { ContactIntent, CurveNode, GeneratedSupportMesh, Point2, SupportComponent, SupportPart } from './mesh';
-import { add, cross, dot, normalizeOrDown, scale, subtract, type Vector } from '../vec3';
+import { add, cross, dot, normalizeOrDown, scale, subtract, type Vector } from '../../../../src/core/vec3';
 
 /** Shorter than this (mm), a segment or axis counts as zero length. */
 export const MIN_LENGTH = 1e-4;

@@ -1,11 +1,11 @@
 import { LABEL_CAP_RATIO, layoutLabel } from './labelFont';
-import type { LiveSupportSettings } from './settings';
+import type { LiveSupportSettings } from '../../../../src/core/supports/settings';
 import { cornerBisectors, raftOutline } from './raft';
 import { buildRoofCage } from './roof';
 import type { Point2, SupportMeshOptions } from './mesh';
 import type { MeshBuilder } from './meshBuilder';
-import { meshBounds } from './meshQuery';
-import { add, scale, type Vector } from '../vec3';
+import { meshBounds } from '../../../../src/core/supports/meshQuery';
+import { add, scale, type Vector } from '../../../../src/core/vec3';
 
 /** Resampled points of a raft outline built from the feet alone (no model). */
 const RING_SAMPLES = 48;

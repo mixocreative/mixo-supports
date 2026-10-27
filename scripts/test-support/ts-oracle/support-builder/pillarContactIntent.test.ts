@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildSupportMesh, type SupportContact } from './mesh';
-import { defaultSupportSettings } from './settings';
-import { crossingSupportStructureParts } from './dentalBodyClearance';
-import type { TriangleMesh } from '../analysis/types';
+import { defaultSupportSettings } from '../../../../src/core/supports/settings';
+import { crossingSupportStructureParts } from '../../../../src/core/supports/dentalBodyClearance';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
 
 describe('pillar neck contact provenance', () => {
   it('tags a certified primary face without changing generated geometry', () => {

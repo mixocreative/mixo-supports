@@ -10,16 +10,15 @@ import { proposeDentalContactFootprint } from '../core/analysis/dentalContactFoo
 import { dentalRegionAllowedOnFace, dentalSupportAllowedAt, type DentalPolicy } from '../core/analysis/dentalPolicy';
 import { jobContacts, type CheckJob, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
 import { cross, normalize, subtract, type Vector } from '../core/vec3';
-import { buildSupportMesh, type GeneratedSupportMesh, type SupportMeshOptions } from '../core/supports/mesh';
+import type { GeneratedSupportMesh } from '../core/supports/mesh';
+import { buildSupportMesh, type SupportBuildOptions } from './rustSupports';
 import { crossingAutomaticBodyContactIds, crossingSupportStructureParts } from '../core/supports/dentalBodyClearance';
 import { createModelCollisionIndex } from '../core/supports/modelCollisionIndex';
-import { screenColumnRoutes } from '../core/supports/columnPathScreen';
 import { dentalBuildSettings } from '../core/supports/dentalSettings';
 import type { Landing } from '../core/supports/landing';
 import { dentalSecondaryLandingOnApprovedSide } from './dentalLandingSide';
 import { dentalPrimarySourceFace, sameDentalPrimary } from './dentalPrimaryFace';
 import { supportMeshToUnitLocal } from './supportFrame';
-import { raftOutline } from '../core/supports/raft';
 import { RemeshTarget } from '../core/supports/remesh';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformDirection, transformPoint } from '../state/transform';
@@ -30,26 +29,6 @@ import { applyTransform, inverseTransformDirection, inverseTransformPoint, trans
  * app module state/transform (three-free since Task 7); it could move into the core by switching to
  * core/transform.ts.
  */
-
-type Outline = ReturnType<typeof raftOutline>;
-const outlineCache = new WeakMap<object, Map<string, Outline>>();
-
-/** The raft outline depends only on the model, its frame, Expand Width and voxels; cache it per model. */
-function cachedOutline(source: object, frame: JobTransform, model: ReturnType<typeof applyTransform>, settings: LiveSupportSettings): Outline {
-  const roof = settings.roofMode !== 'OFF';
-  const expand = roof ? Math.max(settings.raftExpandWidth, settings.cageSideGap + settings.columnDiameter / 2) : settings.raftExpandWidth;
-  const voxels = roof ? Math.max(settings.voxelResolution, 64) : settings.voxelResolution;
-  const key = JSON.stringify([frame, expand, voxels]);
-  let entries = outlineCache.get(source);
-  if (!entries) outlineCache.set(source, (entries = new Map()));
-  let outline = entries.get(key);
-  if (!outline) {
-    outline = raftOutline(model, expand, voxels);
-    if (entries.size > 8) entries.clear();
-    entries.set(key, outline);
-  }
-  return outline;
-}
 
 const remeshCache = new WeakMap<object, Map<string, RemeshTarget>>();
 
@@ -72,11 +51,11 @@ function cachedRemesh(source: object, frame: JobTransform, model: ReturnType<typ
 
 /**
  * Support mesh of one unit in its local space, ready to render under the unit's parent group, with
- * the automatic contacts it left out for a forbidden secondary landing (`dropped`). The remesh and
- * raft caches are keyed on `job.mesh`, so passing the same mesh object again keeps them warm.
+ * the automatic contacts it left out for a forbidden secondary landing (`dropped`). The remesh
+ * cache is keyed on `job.mesh`, so passing the same mesh object again keeps them warm. The raft
+ * outline is recomputed by the Rust build each time (it is cheap there).
  */
-export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback,
-  options: { pathPreflight?: boolean } = {}): GeneratedSupportMesh {
+export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): GeneratedSupportMesh {
   const { frame } = job;
   if (frame === null) return buildSupportMesh([], defaultSupportSettings);
   const dental = job.dental;
@@ -116,24 +95,15 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback,
   const landingAllowed = dentalValid && dental?.kind === 'two-contour'
     ? (landing: Landing): boolean => dentalSecondaryLandingOnApprovedSide(job.mesh, dental, frame, landing)
     : undefined;
-  const pathDropped = new Set<string>();
-  const decideColumn: SupportMeshOptions['decideColumn'] = collisionIndex && options.pathPreflight === true ? (proposal) => {
-    if (screenColumnRoutes(collisionIndex, proposal.routes).status !== 'blocked') return 'build';
-    if (proposal.origin === 'manual') return 'build';
-    pathDropped.add(proposal.contactId);
-    return 'omit';
-  } : undefined;
-  const buildOptions: SupportMeshOptions = {
+  const buildOptions: SupportBuildOptions = {
     mode: job.mode,
     labelText: job.labelText,
     model,
     remesh: cachedRemesh(job.mesh, frame, model, settings.pillarDiameter),
     ...(settings.scatterAutoTree && settings.scatterSafeDistance !== 0 ? { scatterRemesh: cachedRemesh(job.mesh, frame, model, 0, settings.scatterSpacing / 4) } : {}),
-    ...(settings.raftEnabled || settings.roofMode !== 'OFF' ? { raftOutline: cachedOutline(job.mesh, frame, model, settings) } : {}),
     ...(onProgress ? { onProgress } : {}),
     zones: job.contacts.zones.map((stamp) => ({ ...stamp, center: transformPoint(frame, stamp.center), normal: transformDirection(frame, stamp.normal) })),
     ...(landingAllowed ? { landingAllowed } : {}),
-    ...(decideColumn ? { decideColumn } : {}),
   };
   let effectiveSettings = settings;
   let mesh = buildSupportMesh(contacts, effectiveSettings, buildOptions);
@@ -182,7 +152,6 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback,
     if (!structureFallback.includes('brace')) structureFallback.push('brace');
   }
   if (structureFallback.length > 0) mesh.dentalStructureFallback = structureFallback;
-  if (decideColumn) mesh.droppedByPath = [...new Set([...(mesh.droppedByPath ?? []), ...pathDropped])];
   mesh.dropped = [...new Set([...mesh.dropped, ...rejectedAutoIds])];
   if (dental?.kind === 'two-contour' && currentDental?.contacts.every((candidate) => candidate.rim)) {
     const footprintSettings = dentalFootprintSettings(dental.tuning ?? defaultDentalTuning);

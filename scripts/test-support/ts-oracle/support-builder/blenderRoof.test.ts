@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import reference from '../../../tools/blender-parity/reference.json';
+import reference from '../../../../tools/blender-parity/reference.json';
 import { raftOutline } from './raft';
 import { buildRoofCage } from './roof';
-import { defaultSupportSettings, type LiveSupportSettings } from './settings';
+import { defaultSupportSettings, type LiveSupportSettings } from '../../../../src/core/supports/settings';
 
 /**
  * Roof and Cage against Resin UV (tools/blender-parity/probe.py cases roof_* and cage_*):

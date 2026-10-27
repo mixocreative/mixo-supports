@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
 import { buildSupportMesh, type SupportContact } from './mesh';
-import { defaultSupportSettings } from './settings';
+import { defaultSupportSettings } from '../../../../src/core/supports/settings';
 
 const plain = { ...defaultSupportSettings, roofMode: 'OFF' as const, roofSeededModes: [],
   raftEnabled: false, trussEnabled: false, scatterAutoTree: false };

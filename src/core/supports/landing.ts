@@ -26,7 +26,7 @@ export interface Landing {
  * Connection Length) and the model surface straight below it, when there is one (the column lands
  * there instead of on the plate).
  */
-export function columnLanding(contact: SupportContact, settings: Readonly<LiveSupportSettings>, ray: LineTarget | undefined): { bend: Vector; hit?: Landing } {
+export function columnLanding(contact: SupportContact, settings: Readonly<LiveSupportSettings>, ray: Lander | undefined): { bend: Vector; hit?: Landing } {
   const bend = add(contact.position, scale(neckDirection(normalizeOrDown(contact.normal), settings.maxNeckAngle), settings.neckLength));
   const hit = ray?.cast(bend, ray.height);
   return hit ? { bend, hit } : { bend };
@@ -36,11 +36,18 @@ export function columnLanding(contact: SupportContact, settings: Readonly<LiveSu
  * SLASG_Tree2 landing ray of one Auto Tree: from Middle Ø above its junction straight down, and the
  * model surface it hits, when there is one (the tree lands there instead of dropping a trunk).
  */
-export function treeLanding(tree: AutoTree, settings: Readonly<LiveSupportSettings>, ray: LineTarget | undefined): { source: Vector; hit?: Landing } {
+export function treeLanding(tree: AutoTree, settings: Readonly<LiveSupportSettings>, ray: Lander | undefined): { source: Vector; hit?: Landing } {
   const [x, y, z] = tree.junction;
   const source: Vector = [x, y + settings.pillarDiameter, z];
   const hit = ray?.cast(source, ray.height);
   return hit ? { source, hit } : { source };
+}
+
+/** What the landing and neck-normal queries need from a target: the voxel-remeshed `LineTarget` or an exact-surface cast. */
+export interface Lander {
+  readonly height: number;
+  cast(from: Vector, length: number): Landing | undefined;
+  normal(contact: SupportContact): Vector;
 }
 
 /** `to` moved `depth` further along the direction from `from` to `to`. */
@@ -54,7 +61,7 @@ export function sinkInto(from: Vector, to: Vector, depth: number): Vector {
  * preview ("Exact Shape"). Landing rays find the exact surface first and scan the remesh only from
  * two voxels above it, as the remesh stays within a voxel of the model.
  */
-export class LineTarget {
+export class LineTarget implements Lander {
   readonly height: number;
   constructor(private readonly exact: DownRaycaster, private readonly remesh: RemeshTarget | undefined) {
     this.height = exact.height;

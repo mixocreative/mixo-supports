@@ -1,6 +1,6 @@
-import type { LiveSupportSettings } from './settings';
+import type { LiveSupportSettings } from '../../../../src/core/supports/settings';
 import { cornerBisectors } from './raft';
-import { distance, type Vector } from '../vec3';
+import { distance, type Vector } from '../../../../src/core/vec3';
 type Point2 = [number, number];
 
 /** A solid as a polygon swept along a vector (plates, slab) or a closed band (ring walls). */

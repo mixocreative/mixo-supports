@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import reference from '../../../tools/blender-parity/reference.json';
+import reference from '../../../../tools/blender-parity/reference.json';
 import { autoTrees, type SupportContact } from './mesh';
-import { defaultSupportSettings, type LiveSupportSettings } from './settings';
+import { defaultSupportSettings, type LiveSupportSettings } from '../../../../src/core/supports/settings';
 
 /**
  * Auto Tree against Resin UV (tools/blender-parity/probe.py cases tree_*): junction layout

@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { nodeEngine } from '../../scripts/test-support/rustImport';
 import type { SupportContact } from '../core/supports/mesh';
-import { defaultSupportSettings, updateSetting, type LiveSupportSettings } from '../core/supports/settings';
-import { SETTINGS_ORDER, buildSupportsWasm, engineSettingsLayout } from '../../scripts/test-support/supportBuildWasm';
-import { alignerScenario, compareBuilds, fixtureScenarios, landingDifferences, landsOnExactSurface, remeshOf, rustBuild, rustInputs, treeLandingsOf, tsBuild, withRustModel, withoutStructures, type Scenario } from '../../scripts/test-support/supportParityHarness';
+import { defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings } from '../core/supports/settings';
+import { SETTINGS_ORDER, buildSupportsWasm, engineSettingsLayout } from '../supports/supportBuildWasm';
+import { alignerScenario, compareBuilds, fixtureScenarios, landingDifferences, landsOnExactSurface, remeshOf, rustBuild, rustInputs, treeLandingsOf, tsBuild, withRustModel, withStructures, type Scenario } from '../../scripts/test-support/supportParityHarness';
 
 /*
- * U4a: the Rust column builder (tip, neck, pillar, foot) against the TS builder fed the SAME
- * contacts, with Tree / Brace / raft / roof / cage off. Rule 7: indices and tags identical,
- * positions within 1e-5 mm. TS stays in production until the whole builder cuts over.
+ * U4a-U4c: the Rust support builder (tip, neck, pillar, foot, Auto Tree, Brace, raft, label, Roof,
+ * Cage) against the TS builder (the oracle, scripts/test-support/ts-oracle/support-builder) fed the
+ * SAME contacts. Rule 7: indices and tags identical, positions within 1e-5 mm.
  */
 
 let landedColumns = 0;
 let totalComponents = 0;
-const seen = { treeBranch: 0, treeTrunk: 0, treeNeck: 0, brace: 0, treeLanded: 0, casts: 0, hits: 0, exactBuilds: 0 };
+const seen = { parts: new Set<string>(), treeBranch: 0, treeTrunk: 0, treeNeck: 0, brace: 0, treeLanded: 0, casts: 0, hits: 0, exactBuilds: 0 };
 
 function check(scenario: Scenario): void {
   const remesh = remeshOf(scenario);
@@ -33,6 +33,7 @@ function check(scenario: Scenario): void {
   seen.exactBuilds += landsOnExactSurface(scenario) ? 1 : 0;
   seen.treeLanded += trees.filter((t) => t.hit).length;
   for (const c of ts.components) {
+    seen.parts.add(c.part);
     if (c.part === 'tree-branch') seen.treeBranch += 1;
     if (c.part === 'tree-trunk') seen.treeTrunk += 1;
     if (c.part === 'neck' && c.structureKind === 'tree') seen.treeNeck += 1;
@@ -40,37 +41,45 @@ function check(scenario: Scenario): void {
   }
 }
 
-const sample = (): Scenario => fixtureScenarios('export')[0]!;
+let sampled: Scenario | undefined;
+const sample = (): Scenario => (sampled ??= fixtureScenarios('export')[0]!);
 
 describe('engine contract', () => {
   it('the host settings packer has the order the engine reads', () => {
     expect(engineSettingsLayout(nodeEngine)).toEqual([...SETTINGS_ORDER]);
   });
 
-  it('Roof, Cage and Raft are typed NOT_YET_PORTED errors, never partial geometry', () => {
+  it('builds Raft, Roof, Cage and the label (a model gives the outline), none of them stubs', () => {
     const contacts = [{ id: 'a', position: [0, 8, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], origin: 'auto' as const }];
-    const base = withoutStructures({ ...defaultSupportSettings, roofSeededModes: [] });
-    const run = (settings: LiveSupportSettings) => () => withRustModel(sample(), (session) => buildSupportsWasm(session, contacts, settings, 'export'));
-    expect(run({ ...base, raftEnabled: true })).toThrowError(expect.objectContaining({ code: 'NOT_YET_PORTED', detail: 'Raft' }));
-    expect(run({ ...base, roofMode: 'ROOF' })).toThrowError(expect.objectContaining({ detail: 'Roof' }));
-    expect(run({ ...base, roofMode: 'CAGE' })).toThrowError(expect.objectContaining({ detail: 'Cage' }));
-    expect(run({ ...base, scatterAutoTree: true, trussEnabled: true })).not.toThrow();
-    expect(run(base)).not.toThrow();
+    const base = withStructures({ ...defaultSupportSettings, roofSeededModes: [] });
+    const run = (settings: LiveSupportSettings) => withRustModel(sample(), (session, model) => buildSupportsWasm(session, contacts, settings, 'export', { model, labelText: 'A' }).components.map((c) => c.part));
+    expect(run({ ...base, raftEnabled: true })).toEqual(expect.arrayContaining(['raft', 'label']));
+    expect(run({ ...base, raftEnabled: false })).not.toContain('raft');
+    expect(run({ ...base, roofMode: 'ROOF' })).toEqual(expect.arrayContaining(['column', 'roof']));
+    expect(run({ ...base, roofMode: 'CAGE' })).toContain('cage-ring');
   });
 
   it('Auto Tree with Safe Distance needs the voxel remesh (U5): a typed error', () => {
     const contacts = [{ id: 'a', position: [0, 8, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], origin: 'auto' as const }];
-    const settings = { ...withoutStructures({ ...defaultSupportSettings, roofSeededModes: [] }), scatterAutoTree: true, scatterSafeDistance: 0.5 };
+    const settings = { ...withStructures({ ...defaultSupportSettings, roofSeededModes: [] }), scatterAutoTree: true, scatterSafeDistance: 0.5 };
     expect(() => withRustModel(sample(), (session, model) => buildSupportsWasm(session, contacts, settings, 'export', { model }))).toThrowError(expect.objectContaining({ code: 'NOT_YET_PORTED', detail: 'Tree' }));
   });
 
+  it('rejects malformed host input (omission and layout shapes) with typed errors', () => {
+    const contacts = [{ id: 'a', position: [0, 8, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], origin: 'auto' as const }];
+    const settings = withStructures({ ...defaultSupportSettings, roofSeededModes: [] });
+    const run = (options: Parameters<typeof buildSupportsWasm>[4]) => () => withRustModel(sample(), (session, model) => buildSupportsWasm(session, contacts, settings, 'export', { model, ...options }));
+    expect(run({ omitContacts: [1] })).toThrowError(expect.objectContaining({ code: 'BAD_INPUT' }));
+    expect(run({ omitContacts: [0] })).not.toThrow();
+  });
+
   it('rejects a setting outside its validated range with a typed error', () => {
-    const base = withoutStructures({ ...defaultSupportSettings, roofSeededModes: [] });
+    const base = withStructures({ ...defaultSupportSettings, roofSeededModes: [] });
     expect(() => withRustModel(sample(), (session) => buildSupportsWasm(session, [], { ...base, resolution: 2 }, 'export'))).toThrowError(expect.objectContaining({ code: 'SETTING_OUT_OF_RANGE', detail: 'resolution' }));
   });
 });
 
-describe('golden fixtures: every variant, preview and export (Tree and Brace as each variant configures them)', () => {
+describe('golden fixtures: every variant, preview and export (Tree, Brace, raft, label, Roof as each variant configures them)', () => {
   for (const mode of ['preview', 'export'] as const) {
     for (const scenario of fixtureScenarios(mode)) {
       it(scenario.name, () => check(scenario), 60_000);
@@ -93,11 +102,21 @@ describe('settings and per-support shapes that reach other column code paths', (
     ['tree + sphere + square tips', (s) => updateSetting(updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'contactShape', 'SPHERE'), 'tipSection', 'SQUARE')],
     ['tree + straight tips, 3 percent increment', (s) => updateSetting(updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'tipProfile', 'STRAIGHT'), 'treeSectionIncrement', 3)],
     ['tree descent 6, brace angle 30', (s) => updateSetting(updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'scatterBranchDescent', 6), 'trussAngle', 30)],
+    ['safe distance 0.5 (host-supplied layout)', (s) => updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'scatterSafeDistance', 0.5)],
+    ['label AB-12 (digits and dash)', (s) => s],
+    ['raft off, label on', (s) => updateSetting(s, 'raftEnabled', false)],
+    ['raft wall angle 25, tall wall, thick floor', (s) => updateSetting(updateSetting(updateSetting(s, 'raftWallAngle', 25), 'raftWallHeight', 6), 'raftFloorThickness', 1.6)],
+    ['raft narrow expand, low voxel resolution', (s) => updateSetting(updateSetting(s, 'raftExpandWidth', 1.5), 'voxelResolution', 24)],
+    ['label letter size 6, margin 1, offset', (s) => updateSetting(updateSetting(updateSetting(updateSetting(s, 'labelSize', 6), 'labelMargin', 1), 'labelOffsetX', 2), 'labelOffsetY', -1.5)],
+    ['roof with diagonals and concentric braces', (s) => updateSetting(updateSetting(updateSetting(setRoofMode(s, 'ROOF'), 'diagonalEnabled', true), 'braceConcentric', 3), 'columnCount', 10)],
+    ['roof open ceiling', (s) => updateSetting(setRoofMode(s, 'ROOF'), 'storeyEncloseCeiling', false)],
+    ['cage', (s) => setRoofMode(s, 'CAGE')],
+    ['cage with diagonals, raft off', (s) => updateSetting(updateSetting(setRoofMode(s, 'CAGE'), 'diagonalEnabled', true), 'raftEnabled', false)],
     ['brace only, long distance limit', (s) => ({ ...updateSetting(s, 'trussDistanceLimit', 30), scatterAutoTree: false, trussEnabled: true })],
   ];
   for (const scenario of base) {
     for (const [label, change] of variants) {
-      it(`${scenario.name}: ${label}`, () => check({ ...scenario, name: `${scenario.name} ${label}`, settings: change(scenario.settings) }), 60_000);
+      it(`${scenario.name}: ${label}`, () => check({ ...scenario, name: `${scenario.name} ${label}`, settings: change(scenario.settings), ...(label.startsWith('label AB') ? { labelText: 'AB-12' } : {}) }), 60_000);
     }
     it(`${scenario.name}: tips-only preview`, () => check({ ...scenario, name: `${scenario.name} tips-only`, mode: 'preview', settings: { ...scenario.settings, previewMode: 'ONLY_TIP' } }), 60_000);
     it(`${scenario.name}: manual contacts and own shapes`, () => {
@@ -119,6 +138,10 @@ describe('reference aligner dental contacts', () => {
 });
 
 describe('not vacuous', () => {
+  it('compared raft, label, roof, cage and their sub-parts', () => {
+    for (const part of ['raft', 'label', 'roof', 'column', 'roof-brace', 'cross-bar', 'cage-ring']) expect(seen.parts.has(part), part).toBe(true);
+  });
+
   it('compared Auto Tree branches, trunks, tree necks, tree landings, braces and landing rays', () => {
     expect(seen.treeBranch).toBeGreaterThan(0);
     expect(seen.treeTrunk).toBeGreaterThan(0);

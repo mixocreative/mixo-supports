@@ -15,6 +15,7 @@ const root = process.cwd();
 const require = createRequire(resolve(root, 'package.json'));
 const engine = require(resolve(root, 'crates/geometry-wasm/pkg-node/mixo_geometry_wasm.js'));
 
+await import('./test-support/useNodeEngine'); // registers the Rust engine the transforms and the support build run on
 const { binaryStlTriangles, stlKind } = await import('../src/core/import/stlHeader');
 const { prepare, centerImportedWithWasm, decimateWithWasm } = await import('../src/workers/prepareImport');
 const { proposeDentalSupportRegion } = await import('../src/core/analysis/dentalRegion');

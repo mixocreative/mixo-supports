@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { buildSupportMesh, treeGeometry, type SupportContact } from './mesh';
-import type { TriangleMesh } from '../analysis/types';
-import { crossingSupportStructureParts } from './dentalBodyClearance';
-import { supportBodyConflicts } from './bodyIntersection';
-import type { LineTarget } from './landing';
-import { defaultSupportSettings } from './settings';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
+import { crossingSupportStructureParts } from '../../../../src/core/supports/dentalBodyClearance';
+import { supportBodyConflicts } from '../../../../src/core/supports/bodyIntersection';
+import type { LineTarget } from '../../../../src/core/supports/landing';
+import { defaultSupportSettings } from '../../../../src/core/supports/settings';
 
 describe('tree contact intent provenance', () => {
   const contacts: SupportContact[] = [

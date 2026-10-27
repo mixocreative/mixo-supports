@@ -6,18 +6,19 @@ import { jobContacts } from '../../src/core/jobs';
 import { dentalBuildSettings } from '../../src/core/supports/dentalSettings';
 import { autoTreeLayout } from '../../src/core/supports/autotree';
 import { columnLanding, lineTarget, neckDirection, treeLanding, type Landing } from '../../src/core/supports/landing';
-import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from '../../src/core/supports/mesh';
+import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from './ts-oracle/support-builder/mesh';
 import { RemeshTarget } from '../../src/core/supports/remesh';
 import { defaultSupportSettings, withShape, type LiveSupportSettings } from '../../src/core/supports/settings';
 import { GOLDEN_FIXTURES } from '../../src/goldens/fixtures';
 import { supportedUnit } from '../../src/goldens/pipeline';
 import { applyTransform, transformDirection, transformPoint } from '../../src/state/transform';
 import { supportJobOf, resolveSettings } from '../../src/supports/unitSupports';
-import { buildSupportsWasm, castDownWasm, type ColumnInput, type SuppliedLanding, type WasmSupportBuild } from './supportBuildWasm';
+import { buildSupportsWasm, castDownWasm, type ColumnInput, type HostLayout, type SuppliedLanding, type WasmSupportBuild } from '../../src/supports/supportBuildWasm';
 import { add, normalizeOrDown, scale, type Vector } from '../../src/core/vec3';
 
 /*
- * Parity harness for the Rust support builder (U4a; reused by U4b/U4c). A scenario is the SAME
+ * Parity harness for the Rust support builder (U4a-U4c). The TS builder it compares against is the
+ * oracle (scripts/test-support/ts-oracle/support-builder). A scenario is the SAME
  * placement fed to the TS builder and to Rust: plate-space contacts, the model, settings, mode.
  * TS runs with its own ray cast; Rust gets what that ray cast produced (sampled normals, the
  * landing under each neck), because placement and ray casting are not part of the builder port.
@@ -30,18 +31,20 @@ export interface Scenario {
   contacts: SupportContact[];
   settings: LiveSupportSettings;
   mode: 'preview' | 'export';
+  /** Label embossed on the raft (needs raft + labels on); none by default. */
+  labelText?: string;
 }
 
-/** Settings with the structures U4c has not ported (raft, roof, cage) off. Tree and Brace stay as configured unless `force` sets them. */
-export function withoutStructures(settings: LiveSupportSettings, force: { tree?: boolean; brace?: boolean } = {}): LiveSupportSettings {
-  return { ...settings, scatterAutoTree: force.tree ?? settings.scatterAutoTree, trussEnabled: force.brace ?? settings.trussEnabled, raftEnabled: false, roofMode: 'OFF', roofSeededModes: [] };
+/** Settings with Tree and Brace as configured unless `force` sets them; Raft, Roof, Cage and the label stay as configured. */
+export function withStructures(settings: LiveSupportSettings, force: { tree?: boolean; brace?: boolean } = {}): LiveSupportSettings {
+  return { ...settings, scatterAutoTree: force.tree ?? settings.scatterAutoTree, trussEnabled: force.brace ?? settings.trussEnabled, roofSeededModes: [] };
 }
 
 const exactOnly = (s: Scenario) => s.settings.lowPolyMode && s.mode === 'preview';
 
 /** The TS reference build (the oracle) for a scenario. */
 export function tsBuild(scenario: Scenario, remesh = remeshOf(scenario)): GeneratedSupportMesh {
-  return buildSupportMesh(scenario.contacts, scenario.settings, { mode: scenario.mode, model: scenario.model, ...(remesh ? { remesh } : {}) });
+  return buildSupportMesh(scenario.contacts, scenario.settings, { mode: scenario.mode, model: scenario.model, ...(scenario.labelText ? { labelText: scenario.labelText } : {}), ...(remesh ? { remesh } : {}) });
 }
 
 export function remeshOf(scenario: Scenario): RemeshTarget | undefined {
@@ -75,6 +78,14 @@ export function treeLandingsOf(scenario: Scenario, remesh = remeshOf(scenario)):
   return autoTreeLayout(sampled, scenario.model, scenario.settings).trees.map((tree) => treeLanding(tree, scenario.settings, ray));
 }
 
+/** The Auto Tree layout the TS scatter finds (Safe Distance reads its scatter remesh); what the host supplies to Rust until U5. */
+export function treeLayoutOf(scenario: Scenario, remesh = remeshOf(scenario)): HostLayout | undefined {
+  if (!scenario.settings.scatterAutoTree) return undefined;
+  const ray = lineTarget(scenario.model, scenario.settings, remesh, scenario.mode === 'export');
+  const sampled = scenario.contacts.map((contact) => ({ ...contact, normal: ray.normal(contact) }));
+  return autoTreeLayout(sampled, scenario.model, scenario.settings);
+}
+
 type Session = { load_mesh(positions: Float32Array, indices: Uint32Array): number; free(): void };
 
 /** Runs `use` with the scenario's model loaded in a fresh Rust session. */
@@ -92,8 +103,10 @@ export function withRustModel<T>(scenario: Scenario, use: (session: Session, mod
  * voxel remesh the Rust core does not have yet (U5), so those landings are supplied from TS.
  */
 export function rustBuild(scenario: Scenario, inputs = rustInputs(scenario), trees: readonly { hit?: SuppliedLanding }[] = treeLandingsOf(scenario)): WasmSupportBuild {
+  const layout = scenario.settings.scatterSafeDistance !== 0 ? treeLayoutOf(scenario) : undefined;
+  const label = scenario.labelText ? { labelText: scenario.labelText } : {};
   return withRustModel(scenario, (session, model) => buildSupportsWasm(session, inputs, scenario.settings, scenario.mode, exactOnly(scenario)
-    ? { model, landings: 'model' } : { model, landings: 'supplied', treeLandings: trees.map((t) => t.hit) }));
+    ? { model, landings: 'model', ...(layout ? { layout } : {}), ...label } : { model, landings: 'supplied', treeLandings: trees.map((t) => t.hit), ...(layout ? { layout } : {}), ...label }));
 }
 
 export const landsOnExactSurface = exactOnly;
@@ -176,8 +189,9 @@ export function fixtureScenarios(mode: 'preview' | 'export'): Scenario[] {
           id: c.id, position: transformPoint(frame, c.position), normal: transformDirection(frame, c.normal),
           ...(c.kind ? { kind: c.kind } : {}), ...(c.origin === 'manual' ? { origin: 'manual' as const } : {}), ...(c.shape ? { shape: c.shape } : {}),
         })),
-        settings: withoutStructures(resolveSettings(unit.settings)),
+        settings: withStructures(resolveSettings(unit.settings)),
         mode,
+        labelText: 'A',
       });
     }
   }
@@ -200,7 +214,8 @@ export function alignerScenario(mode: 'preview' | 'export', lowPoly: boolean): S
     contacts: region.contacts.map((c, i): SupportContact => ({
       id: `dental-${i}`, position: [c.position[0], c.position[1] + lift, c.position[2]], normal: [...c.normal], sourceFace: c.face,
     })),
-    settings: withoutStructures(dentalBuildSettings({ ...defaultSupportSettings, lowPolyMode: lowPoly })),
+    settings: withStructures(dentalBuildSettings({ ...defaultSupportSettings, lowPolyMode: lowPoly })),
     mode,
+    labelText: 'A',
   };
 }

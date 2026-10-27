@@ -59,11 +59,10 @@ describe('dental import and preview parity', () => {
     const preview = runSupportJob(supportJob);
     const ids = (supports: typeof preview) => [...new Set(supports.components.flatMap((part) => part.contactId ? [part.contactId] : []))].sort();
     expect(ids(preview)).toEqual(ids(review.supports));
-    const enabled = runSupportJob({ ...supportJob, mode: 'export' }, undefined, { pathPreflight: true });
-    const baseline = runSupportJob({ ...supportJob, mode: 'export' }, undefined, { pathPreflight: false });
-    expect(baseline.droppedByPath).toBeUndefined();
-    expect(ids(enabled)).toEqual(ids(baseline));
-    expect(enabled.droppedByPath?.every((id) => baseline.dropped.includes(id))).toBe(true);
-    expect(enabled.indices.length).toBe(baseline.indices.length);
+    // Export keeps the same automatic contacts as the preview. (The opt-in path preflight that used to be
+    // compared here ran inside the TS builder; it returns, if its measured benefit holds, with the U7 safety engine.)
+    const exported = runSupportJob({ ...supportJob, mode: 'export' });
+    expect(exported.droppedByPath).toBeUndefined();
+    expect(ids(exported)).toEqual(ids(preview));
   }, 180000);
 });

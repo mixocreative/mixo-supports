@@ -1,12 +1,11 @@
-import type { ContactIntent, SupportPart } from '../../src/core/supports/mesh';
-import { SHAPE_KEYS, type LiveSupportSettings, type SettingKey, type ShapeOverride } from '../../src/core/supports/settings';
-import type { Vector } from '../../src/core/vec3';
+import type { ContactIntent, SupportPart } from '../core/supports/mesh';
+import { SHAPE_KEYS, type LiveSupportSettings, type SettingKey, type ShapeOverride } from '../core/supports/settings';
+import type { Vector } from '../core/vec3';
 
 /*
  * Host adapter for the Rust `build_supports` call (U4): packs validated settings and contacts into
  * the flat typed arrays the ABI takes, and unpacks the arrays and component tags it returns. Layouts
  * are defined in crates/geometry-core/src/supports/{settings,flat}.rs and checked against the engine.
- * Not wired into production callers until the whole builder cuts over (after U4c).
  */
 
 /** Order of the flat settings array (Rust `SETTINGS_LAYOUT`). */
@@ -84,6 +83,28 @@ export interface BuildOptions {
   /** `model` casts landings against the model (default); `supplied` takes contact landings and `treeLandings` from the caller. */
   landings?: 'model' | 'supplied';
   treeLandings?: readonly (SuppliedLanding | undefined)[];
+  /** Label text embossed on the raft (empty or absent: none). */
+  labelText?: string;
+  /** Contact indices the host omitted (zones, landing rules). */
+  omitContacts?: readonly number[];
+  /** Auto Tree layout indices the host omitted. */
+  omitTrees?: readonly number[];
+  /** Auto Tree layout the host computed (Safe Distance reads the voxel remesh until U5); absent: Rust computes it. */
+  layout?: HostLayout;
+}
+
+export interface HostLayout {
+  trees: readonly { junction: Vector; members: readonly number[] }[];
+  removed: ReadonlySet<number>;
+}
+
+/** Flat form of a host layout (Rust `decode_layout`). */
+export function packLayout(layout: HostLayout | undefined): Float64Array {
+  if (!layout) return new Float64Array();
+  const flat: number[] = [layout.trees.length];
+  for (const tree of layout.trees) flat.push(...tree.junction, tree.members.length, ...tree.members);
+  flat.push(layout.removed.size, ...[...layout.removed].sort((a, b) => a - b));
+  return Float64Array.from(flat);
 }
 
 export const CONTACT_STRIDE = 16;
@@ -133,7 +154,7 @@ export interface WasmSupportBuild {
 }
 
 interface Session {
-  build_supports(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number, landings: number, treeLandings: Float64Array): {
+  build_supports(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number, landings: number, treeLandings: Float64Array, labelText: string, omitContacts: Uint32Array, omitTrees: Uint32Array, layout: Float64Array): {
     take_positions(): Float32Array; take_indices(): Uint32Array; take_tags(): Uint32Array;
     take_reach(): Float64Array; take_intents(): Float64Array; take_dropped(): Uint32Array; free(): void;
   };
@@ -144,12 +165,13 @@ interface Engine {
   support_settings_layout(): string[];
 }
 
-/** Throws (code `NOT_YET_PORTED`, `detail` the structure) for a request the Rust core cannot build yet. */
+/** Throws (code `NOT_YET_PORTED`, `detail` the structure) for a request the Rust core cannot build yet (Safe Distance Auto Tree without a host layout). */
 export function buildSupportsWasm(session: unknown, contacts: readonly ColumnInput[], settings: Readonly<LiveSupportSettings>, mode: 'preview' | 'export', options: BuildOptions = {}): WasmSupportBuild {
   const wasm = session as Session;
   const packed = packContacts(contacts);
   const result = wasm.build_supports(options.model ?? NO_MODEL, contacts.map((c) => c.id), packed.contacts, packed.shapes, packSettings(settings), mode === 'export' ? 1 : 0,
-    options.landings === 'supplied' ? 1 : 0, packTreeLandings(options.treeLandings ?? []));
+    options.landings === 'supplied' ? 1 : 0, packTreeLandings(options.treeLandings ?? []), options.labelText ?? '',
+    Uint32Array.from(options.omitContacts ?? []), Uint32Array.from(options.omitTrees ?? []), packLayout(options.layout));
   try {
     const tags = result.take_tags();
     const reach = result.take_reach();

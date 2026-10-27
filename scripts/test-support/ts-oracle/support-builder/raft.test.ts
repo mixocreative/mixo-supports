@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
 import { raftOutline } from './raft';
 
 /** Axis-aligned boxes in one mesh (web Y up), given as [x0, z0, x1, z1] footprints 2 mm tall. */

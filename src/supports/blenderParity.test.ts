@@ -4,7 +4,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import mushroomContacts from '../../tools/blender-parity/mushroom_contacts.json';
 import { generatePlacement, minimaStages } from '../core/analysis/placement';
 import { RemeshTarget } from '../core/supports/remesh';
-import { buildSupportMesh } from '../core/supports/mesh';
+import { buildSupportMesh } from './rustSupports';
 import { defaultSupportSettings, toPlacementSettings } from '../core/supports/settings';
 import { geometryToMesh } from '../../scripts/test-support/rustImport';
 

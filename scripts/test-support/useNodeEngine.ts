@@ -1,5 +1,7 @@
 import { setTransformEngine } from '../../src/state/transformEngine';
+import { setSupportEngine } from '../../src/supports/supportEngine';
 import { nodeEngine } from './rustImport';
 
 /* Tests and Node scripts run the production Rust matrix calls on the pkg-node build. */
 setTransformEngine(nodeEngine);
+setSupportEngine(nodeEngine);

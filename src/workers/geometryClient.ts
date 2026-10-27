@@ -1,6 +1,7 @@
 import initWasm, { AsciiStlSession, BinaryStlSession, body_segments, center_positions_in_place, decimate_display, dental_contour_segments, dental_face_overlay, engine_version, GeometrySession, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, vertex_normals, weld_positions_in_place } from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm.js';
 import wasmUrl from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm_bg.wasm?url';
 import { setTransformEngine } from '../state/transformEngine';
+import { setSupportEngine } from '../supports/supportEngine';
 import { assertGeometryVersion } from './geometryVersion';
 
 export interface GeometryEngine {
@@ -55,6 +56,7 @@ export function geometryReady(): Promise<GeometryEngine> {
     assertGeometryVersion(engine_version());
     loaded = { engine_version, GeometrySession, center_positions_in_place, weld_positions_in_place, decimate_display, BinaryStlSession, AsciiStlSession, body_segments, dental_contour_segments, dental_face_overlay, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, vertex_normals };
     setTransformEngine(loaded);
+    setSupportEngine(loaded);
     return loaded;
   });
   return ready;
