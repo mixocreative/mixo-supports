@@ -1,13 +1,12 @@
 import type { GeneratedSupportMesh } from '../core/supports/mesh';
-import type { GeometryEngine } from '../workers/geometryClient';
 
 /**
  * Drag over in screen space: the brush is a circle of fixed size in canvas pixels that follows the
  * pointer. A support is under it when its projected body (each part reduced to its axis) comes
  * within the circle and some part of it under the circle is not hidden behind the model. The
  * maths runs in the Rust core (`body_segments`, `GeometrySession.project_brush`); this file is the
- * typed host glue. The TypeScript version it replaced is the oracle in
- * scripts/test-support/ts-oracle/screenBrush.ts.
+ * typed host glue. The TypeScript version it replaced lives with the tests
+ * as a reference.
  */
 
 export type Point2 = readonly [number, number];
@@ -19,10 +18,20 @@ export interface BodySegments {
   points: Float32Array;
 }
 
+/** What the engine's `body_segments` call returns (its WASM result object). */
+interface BodySegmentsEngine {
+  body_segments(positions: Float32Array, indices: Uint32Array, contact: Uint32Array, start: Uint32Array, count: Uint32Array): {
+    take_keys(): ArrayLike<number>;
+    take_first(): ArrayLike<number>;
+    take_points(): Float32Array;
+    free(): void;
+  };
+}
+
 const NO_CONTACT = 0xffffffff;
 
 /** Each support part with a contact reduced to its axis, per contact (unit-local, like the mesh). Built once per support mesh. */
-export function bodySegments(engine: Pick<GeometryEngine, 'body_segments'>, mesh: Pick<GeneratedSupportMesh, 'positions' | 'indices' | 'components'>): BodySegments {
+export function bodySegments(engine: BodySegmentsEngine, mesh: Pick<GeneratedSupportMesh, 'positions' | 'indices' | 'components'>): BodySegments {
   const names: string[] = [];
   const keyOf = new Map<string, number>();
   const { components } = mesh;

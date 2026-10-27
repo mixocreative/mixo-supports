@@ -52,5 +52,56 @@
       }
     }
   },
-  "brushP95": "measured in browser in U2 (screenBrush.ts needs camera + raycast, no pure headless function)"
+  "brushP95": {
+    "label": "drag-over brush: one pointer step (stroke point -> hit ids), headless Chromium via scripts/brush_perf.py, recorded aligner camera/strokes, 20 reps x 3 views x 6 strokes x 7 points",
+    "date": "2026-10-27",
+    "timerNote": "performance.now resolution is 0.1 ms in this browser",
+    "ts": "oracle: three-mesh-bvh rays, visibility cached per stroke, projection reused (the pre-U2 production path), and the same with a cold cache each step",
+    "rust": "project_brush, one batched call per step, projection and rays redone every call, nothing cached (production since U2)",
+    "triangles": 373956,
+    "pickIndexBuildMs": {
+      "ts": 115.8,
+      "rust": 207.1
+    },
+    "supports_48": {
+      "ts_cached": {
+        "n": 2520,
+        "p50_ms": 0,
+        "p95_ms": 0.1,
+        "max_ms": 2.1
+      },
+      "ts_cold_cache": {
+        "n": 2520,
+        "p50_ms": 0,
+        "p95_ms": 0.1,
+        "max_ms": 0.3
+      },
+      "rust": {
+        "n": 2520,
+        "p50_ms": 0,
+        "p95_ms": 0.1,
+        "max_ms": 0.7
+      }
+    },
+    "supports_1920": {
+      "ts_cached": {
+        "n": 2520,
+        "p50_ms": 0.4,
+        "p95_ms": 1.8,
+        "max_ms": 3.9
+      },
+      "ts_cold_cache": {
+        "n": 2520,
+        "p50_ms": 0.7,
+        "p95_ms": 3.3,
+        "max_ms": 5.3
+      },
+      "rust": {
+        "n": 2520,
+        "p50_ms": 0.7,
+        "p95_ms": 3.2,
+        "max_ms": 4.9
+      }
+    }
+  }
 }

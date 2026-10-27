@@ -9,7 +9,7 @@ const tsImport = import.meta.glob<string>(['./core/import/*.ts', '!./core/import
 describe('TS import geometry is oracle-only', () => {
   it('the TS welder/parser live in the oracle, not in src/core/import', () => {
     expect(Object.keys(tsImport).sort()).toEqual(['./core/import/estimate.ts', './core/import/stlHeader.ts']);
-    expect(Object.keys(oracle).map((file) => file.split('/').pop()).sort()).toEqual(['import.ts', 'stl.ts', 'weld.ts']);
+    expect(Object.keys(oracle).map((file) => file.split('/').pop()).sort()).toEqual(['dentalFaceOverlay.ts', 'import.ts', 'screenBrush.ts', 'stl.ts', 'weld.ts']);
   });
 
   it('no production file uses the oracle or the removed TS weld/parse helpers', () => {
