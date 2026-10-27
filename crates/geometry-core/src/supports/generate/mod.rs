@@ -55,6 +55,10 @@ pub struct Verdict {
     pub reason: Option<&'static str>,
     /// Every non-exempt crossing of the final mesh (empty for `Clear`).
     pub issues: Vec<BodyIssue>,
+    /// True when a blocked crossing belongs to a part no contact owns (a tree trunk or a brace serves
+    /// several contacts and records none), so every contact's island credit was withdrawn as the
+    /// conservative reading. A crossing that names its contact withdraws only that contact's.
+    pub unattributed_crossing: bool,
 }
 
 pub struct Generated {
@@ -108,17 +112,17 @@ pub fn generate(input: GenerateInput) -> Result<Generated, BuildError> {
             let components = enrich::review_components(index, &outcome.contacts, &outcome.built);
             let mesh = SupportMesh { positions: &outcome.built.positions, indices: &outcome.built.indices, components: &components };
             let report = review_body_clearance(index, &mesh, &outcome.settings, expired);
-            Verdict { status: report.status, reason: report.reason, issues: report.issues }
+            let unattributed_crossing = report.issues.iter().any(|i| i.blocked && i.contact.is_none());
+            Verdict { status: report.status, reason: report.reason, issues: report.issues, unattributed_crossing }
         }
-        None => Verdict { status: Status::Clear, reason: None, issues: Vec::new() },
+        None => Verdict { status: Status::Clear, reason: None, issues: Vec::new(), unattributed_crossing: false },
     };
+    let mut verdict = verdict;
     // Only a policy with an approved-area landing rule has an outside; the generic one permits every face.
     let permitted_area = matches!(policy.landing_rule, LandingRule::ApprovedFaces { .. }).then(|| |face: u32| policy.permitted_faces.get(face as usize));
     let islands = match model {
         Some(model) => {
-            let blocked: Vec<bool> = (0..outcome.contacts.len())
-                .map(|k| verdict.issues.iter().any(|i| i.blocked && (i.contact == Some(k as u32) || i.contact.is_none())))
-                .collect();
+            let blocked = withdrawn_contacts(&verdict.issues, outcome.contacts.len());
             island_verdict(IslandInput {
                 positions: model.positions(),
                 indices: model.indices(),
@@ -132,40 +136,47 @@ pub fn generate(input: GenerateInput) -> Result<Generated, BuildError> {
         }
         None => IslandVerdict::Ok(Vec::new()),
     };
-    let rings = rings_of(policy, &outcome);
+    let (rings, ring_error) = rings_of(policy, &outcome);
+    // A ring that cannot be measured is not "fully open" and not fine: the verdict cannot be clear.
+    if let (Some(reason), Status::Clear) = (ring_error, verdict.status) {
+        verdict.status = Status::Inconclusive;
+        verdict.reason = Some(reason);
+    }
     let contact_ids = outcome.contacts.iter().map(|c| c.candidate.id.0.clone()).collect();
     let dropped_by_zones = outcome.built.dropped_by_zones.iter().map(|&k| outcome.contacts[k as usize].candidate.id.0.clone()).collect();
     Ok(Generated { dropped: outcome.dropped, fallback: outcome.fallback, trials: outcome.trials, built: outcome.built, contact_ids, dropped_by_zones, verdict, islands, rings })
 }
 
-/// Coverage of each policy ring from the built automatic contacts that reproduce its candidates.
-fn rings_of(policy: &PolicyResult, outcome: &repair::Outcome) -> Vec<RingCoverage> {
+/// Contacts whose island credit a blocked crossing withdraws. A crossing that names its contact
+/// un-verifies only that contact's support. One with no owner (a trunk or brace: the build records no
+/// contact list for them) cannot be attributed to a subset, so it conservatively withdraws all;
+/// `Verdict::unattributed_crossing` reports that.
+fn withdrawn_contacts(issues: &[BodyIssue], count: usize) -> Vec<bool> {
+    (0..count).map(|k| issues.iter().any(|i| i.blocked && (i.contact == Some(k as u32) || i.contact.is_none()))).collect()
+}
+
+/// Coverage of each policy ring from the built automatic contacts that reproduce its candidates, and
+/// the reason of the first ring that could not be measured (that ring is left out of the list).
+fn rings_of(policy: &PolicyResult, outcome: &repair::Outcome) -> (Vec<RingCoverage>, Option<&'static str>) {
     let mut built = vec![false; outcome.contacts.len()];
     for component in &outcome.built.components {
         if let Some(k) = component.tag.contact {
             built[k as usize] = true;
         }
     }
-    policy
-        .rings
-        .iter()
-        .filter_map(|ring| {
-            let retained: Vec<f64> = outcome
-                .contacts
-                .iter()
-                .enumerate()
-                .filter(|(k, _)| built[*k] && outcome.ring_keys[*k].is_some())
-                .filter_map(|(k, _)| ring.arcs.iter().find(|(id, _)| Some(id) == outcome.ring_keys[k].as_ref()).map(|(_, arc)| *arc))
-                .collect();
-            Some(ring_coverage(ring.perimeter_mm, ring.spacing_mm, &retained).unwrap_or(RingCoverage {
-                perimeter_mm: ring.perimeter_mm,
-                retained: 0,
-                max_gap_mm: ring.perimeter_mm,
-                review_gap_mm: ring.spacing_mm * 2.0,
-                needs_review: true,
-            }))
-        })
-        .collect()
+    let mut error = None;
+    let mut rings = Vec::new();
+    for ring in &policy.rings {
+        let retained: Vec<f64> = (0..outcome.contacts.len())
+            .filter(|&k| built[k] && outcome.ring_keys[k].is_some())
+            .filter_map(|k| ring.arcs.iter().find(|(id, _)| Some(id) == outcome.ring_keys[k].as_ref()).map(|(_, arc)| *arc))
+            .collect();
+        match ring_coverage(ring.perimeter_mm, ring.spacing_mm, &retained) {
+            Ok(coverage) => rings.push(coverage),
+            Err(reason) => error = error.or(Some(reason)),
+        }
+    }
+    (rings, error)
 }
 
 #[cfg(test)]

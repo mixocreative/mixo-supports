@@ -44,7 +44,7 @@ pub fn candidate_id(rim: RimSide, index: usize) -> CandidateId {
     CandidateId(format!("dental-{}-{index}", if rim == RimSide::Outer { "outer" } else { "opening" }))
 }
 
-/// Policy of a detected region. `alternates` stay empty until U7 supplies repair options.
+/// Policy of a detected region. `alternates` are empty here; the host adds repair options when it assembles the policy.
 pub fn policy_from_region(region: &Region, profile: &AlignerProfile) -> DentalPolicy {
     let mut permitted = FaceMask::new(region.contact_faces.len());
     for (face, &flag) in region.contact_faces.iter().enumerate() {

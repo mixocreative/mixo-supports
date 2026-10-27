@@ -1,5 +1,5 @@
 //! Triangle mesh view and the double-precision vector helpers the dental detectors share.
-//! The float operation order mirrors the TypeScript oracle (`scripts/test-support/ts-oracle/dental`).
+//! The float operation order is fixed: the frozen golden outputs depend on it.
 
 pub type V3 = [f64; 3];
 

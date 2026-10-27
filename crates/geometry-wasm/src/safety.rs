@@ -1,6 +1,6 @@
 //! WASM bindings of the shared safety engine (U7): `generate` runs the whole support pipeline for a
 //! `PolicyResult` (permit, build, exact body check, bounded repair, island and ring verdicts), and
-//! `check_supports` is the support check. A policy crosses the boundary as data in a `PolicyData`
+//! `check_support_problems` is the support check. A policy crosses the boundary as data in a `PolicyData`
 //! (no callback): the host fills it from the policy it produced and passes it to `generate`.
 
 use super::{GeometrySession, build_error, coded_error, mesh_error};

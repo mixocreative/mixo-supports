@@ -1,6 +1,6 @@
 //! Rigid placements, general 4x4 inverse, points/directions through a matrix, handedness.
 //! Column-major `[col * 4 + row]` like three.js and Babylon. Arithmetic follows three.js r173
-//! operation for operation (the TS oracle in scripts/test-support/ts-oracle/ does the same).
+//! operation for operation, so results match the three.js matrices the host used before.
 
 pub type Matrix4 = [f64; 16];
 

@@ -214,3 +214,20 @@ fn a_timeout_is_inconclusive_never_clear_and_a_found_crossing_still_blocks() {
     let report = review_body_clearance(&index, &blocked.mesh(), &settings(), &always);
     assert_eq!(report.status, Status::Inconclusive);
 }
+
+#[test]
+fn a_crossing_found_before_the_deadline_still_ends_inconclusive_with_the_hit_kept() {
+    let index = CollisionIndex::new(&MODEL, &[0, 1, 2]);
+    let blocked = plain(Part::Brace, &PIERCING);
+    // Not expired while the component is scanned, expired by the time the report is judged.
+    let polls = std::cell::Cell::new(0);
+    let late = || {
+        polls.set(polls.get() + 1);
+        polls.get() > 1
+    };
+    let report = review_body_clearance(&index, &blocked.mesh(), &settings(), &late);
+    assert_eq!((report.status, report.reason), (Status::Inconclusive, Some("timeout")));
+    assert!(report.issues.iter().any(|i| i.blocked), "the hit stays as detail: {:?}", report.issues);
+    // Without the deadline the same mesh is blocked.
+    assert_eq!(review(&MODEL, &[0, 1, 2], &blocked).status, Status::Blocked);
+}

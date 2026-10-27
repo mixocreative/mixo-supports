@@ -19,11 +19,7 @@ use mixo_geometry_core::dental::rim::BoundaryKind;
 use super::{GeometrySession, mesh_error};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
-fn error(code: &str) -> JsValue {
-    let exception = js_sys::Error::new(code);
-    let _ = js_sys::Reflect::set(exception.as_ref(), &JsValue::from_str("code"), &JsValue::from_str(code));
-    exception.into()
-}
+use super::coded_error as error;
 
 fn profile_of(id: &str) -> Result<&'static AlignerProfile, JsValue> {
     profiles::profile(id).ok_or_else(|| error("UNKNOWN_PROFILE"))
@@ -694,7 +690,7 @@ impl GeometrySession {
         }
         let band_views = (!bands.is_empty()).then(|| [&bands[..faces], &bands[faces..faces * 2], &bands[faces * 2..faces * 3], &bands[faces * 3..]]);
         let support = (!support_indices.is_empty()).then_some(SupportMesh { positions: support_positions, indices: support_indices, tip_flags });
-        if support.is_some() && (support_indices.len() % 3 != 0 || support_indices.iter().any(|&i| i as usize * 3 >= support_positions.len())) {
+        if support.is_some() && (support_indices.len() % 3 != 0 || support_indices.iter().any(|&i| i as usize * 3 + 2 >= support_positions.len())) {
             return Err(error("INVALID_INDEX"));
         }
         let input = ReviewInput {

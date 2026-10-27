@@ -1,7 +1,7 @@
 //! Drag-over screen brush maths: support bodies reduced to axis segments, their projection to the
 //! canvas, and which supports a circle swept along a stroke touches and can see. Framework-free:
-//! the host hands in a local-to-clip matrix and the visible occluding models. Mirrors
-//! src/editing/screenBrush.ts (the TS oracle), including its single-precision projected buffer.
+//! the host hands in a local-to-clip matrix and the visible occluding models. The projected buffer is
+//! single precision, as the screen brush has always used.
 
 use super::matrix::{Matrix4, apply_to_direction, apply_to_point};
 use super::spatial::{Bvh, Side};

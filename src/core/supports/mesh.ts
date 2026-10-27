@@ -111,12 +111,10 @@ export interface DentalRimCoverage {
 export interface GeneratedSupportMesh extends TriangleMesh {
   parts: SupportPart[];
   components: SupportComponent[];
-  /** Automatic contacts this build left out because a secondary landing was forbidden. */
+  /** Automatic contacts this build left out (policy, landing rule, no-support zone or repair). */
   dropped: string[];
   /** Subset of dropped contacts rejected specifically by a no-support zone. */
   droppedByZones?: string[];
-  /** Automatic columns omitted by an explicit pre-build route decision, when enabled. */
-  droppedByPath?: string[];
   /** Exact body-clearance verdict of the final mesh (`generate`); absent on a mesh not built by it. */
   verdict?: SupportVerdict;
   /** Revision of the request this mesh answers (`generate` echoes it); the host drops any other. */

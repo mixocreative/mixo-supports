@@ -64,9 +64,8 @@ pub fn crossing_structure_parts(index: &CollisionIndex, supports: &SupportMesh, 
     hits.iter()
         .map(|h| {
             let c = &supports.components[h.component];
-            if is_tree_neck(c) {
-                StructurePart::TreeBranch
-            } else if c.tag.part == Part::TreeBranch {
+            // A tree neck is switched off with the tree's branches.
+            if is_tree_neck(c) || c.tag.part == Part::TreeBranch {
                 StructurePart::TreeBranch
             } else if c.tag.part == Part::TreeTrunk {
                 StructurePart::TreeTrunk
@@ -125,7 +124,8 @@ fn valid_supports(s: &SupportMesh) -> bool {
 }
 
 /// Exact full-mesh body-clearance report; `Clear` means no body intersection, not print-stable. A
-/// timeout is `Inconclusive` unless a crossing was already found, never `Clear`.
+/// timeout is always `Inconclusive` (reason "timeout"), never `Clear` and never `Blocked`: a deadline
+/// that expired means the scan may be partial, so even a crossing already found is kept only as detail.
 pub fn review_body_clearance(index: &CollisionIndex, supports: &SupportMesh, settings: &SupportSettings, expired: &dyn Fn() -> bool) -> BodyReport {
     if !index.valid || !valid_supports(supports) {
         return BodyReport { status: Status::Inconclusive, issues: Vec::new(), reason: Some("invalid-geometry") };
@@ -153,12 +153,14 @@ pub fn review_body_clearance(index: &CollisionIndex, supports: &SupportMesh, set
         })
         .collect();
     let timed_out = expired();
-    let status = if issues.iter().any(|i| i.blocked) {
+    let status = if timed_out {
+        Status::Inconclusive
+    } else if issues.iter().any(|i| i.blocked) {
         Status::Blocked
-    } else if timed_out || !issues.is_empty() {
+    } else if !issues.is_empty() {
         Status::Inconclusive
     } else {
         Status::Clear
     };
-    BodyReport { status, issues, reason: (timed_out && status == Status::Inconclusive).then_some("timeout") }
+    BodyReport { status, issues, reason: timed_out.then_some("timeout") }
 }

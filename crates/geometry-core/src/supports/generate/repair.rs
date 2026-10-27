@@ -203,8 +203,7 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
                 mesh_dropped = ids(&built, &slots);
                 crossing = crossing_auto(run, &built, &slots, &|_| true);
             }
-            if !crossing.is_empty() && trials < budget {
-                trials += 1;
+            if !crossing.is_empty() && spend(&mut trials, budget) {
                 let mut blocked = Ids::of(crossing);
                 let mut dropped = Ids::of(mesh_dropped.clone());
                 let automatic: Vec<String> = slots.iter().filter(|s| is_auto(s)).map(|s| id_of(s).to_string()).collect();
@@ -216,8 +215,8 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
                 // all remaining automatic supports if that happens rather than returning a crossing body.
                 let still: Vec<String> = automatic.iter().filter(|id| !blocked.contains(id)).cloned().collect();
                 let remaining = crossing_auto(run, &built, &slots, &|id| still.iter().any(|s| s == id));
-                if !remaining.is_empty() {
-                    trials += 1;
+                // Every rebuild counts against the budget; without one left the crossing is reported.
+                if !remaining.is_empty() && spend(&mut trials, budget) {
                     blocked.extend(automatic);
                     slots.retain(|s| !is_auto(s));
                     built = build(run, &slots, &effective)?;
@@ -229,10 +228,9 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
                 mesh_dropped = all.list;
             }
         }
-        if !(run.expired)() && !crossing_structures(run, &built, &slots, &effective).is_empty() && trials < budget {
+        if !(run.expired)() && !crossing_structures(run, &built, &slots, &effective).is_empty() && spend(&mut trials, budget) {
             // Rebuilding after a pillar omission can rearrange a tree or brace. Do not keep any
             // automatic structure if the bounded fallback still intersects the model.
-            trials += 1;
             let mut omitted = Ids::of(mesh_dropped.clone());
             omitted.extend(original_auto.iter().cloned());
             slots.retain(|s| !is_auto(s));

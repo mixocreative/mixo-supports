@@ -304,3 +304,50 @@ fn structure_flags_are_an_upper_bound_on_the_settings() {
     assert!(!limited.scatter_auto_tree && !limited.truss_enabled && !limited.raft_enabled);
     assert_eq!(limit_structures(&s, &structures(true, true)), s);
 }
+
+fn issue(contact: Option<u32>, blocked: bool) -> BodyIssue {
+    BodyIssue { part: Part::Pillar, contact, origin: crate::supports::safety::clearance::IssueOrigin::Auto, model_face: 0, blocked }
+}
+
+#[test]
+fn a_crossing_withdraws_only_its_own_contact_unless_it_has_no_owner() {
+    assert_eq!(withdrawn_contacts(&[issue(Some(1), true)], 3), vec![false, true, false]);
+    // An uncertain (not blocked) entry withdraws nothing.
+    assert_eq!(withdrawn_contacts(&[issue(Some(1), false)], 2), vec![false, false]);
+    // A trunk or brace crossing has no owner: all are withdrawn, and the verdict says it was a guess.
+    assert_eq!(withdrawn_contacts(&[issue(None, true)], 2), vec![true, true]);
+}
+
+#[test]
+fn a_pillar_crossing_is_attributed_so_the_verdict_is_not_flagged_unattributed() {
+    let fixture = two_walls();
+    let out = fixture.run(vec![contact("a", [0.0, 20.0, 0.0], Origin::Auto)], &plain_settings(&[]), &policy(fixture.faces(), Vec::new(), 0, AutomaticRule::AsGiven), &never);
+    assert_eq!(out.verdict.status, Status::Blocked);
+    assert!(!out.verdict.unattributed_crossing);
+}
+
+#[test]
+fn the_repair_never_spends_more_than_its_budget() {
+    let fixture = two_walls();
+    let candidate = Candidate { id: CandidateId("cand".into()), source_face: Some(0), point: [0.0, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };
+    for budget in 1..=4 {
+        let p = policy(fixture.faces(), vec![candidate.clone()], budget, AutomaticRule::MatchCandidates);
+        let out = fixture.run(vec![contact("auto-0", [0.0, 20.0, 0.0], Origin::Auto)], &plain_settings(&[]), &p, &never);
+        assert!(out.trials <= budget, "budget {budget} spent {}", out.trials);
+    }
+    // A budget of 1 still gets the one rebuild that leaves the crossing contact out.
+    let p = policy(fixture.faces(), vec![candidate], 1, AutomaticRule::MatchCandidates);
+    let out = fixture.run(vec![contact("auto-0", [0.0, 20.0, 0.0], Origin::Auto)], &plain_settings(&[]), &p, &never);
+    assert_eq!(out.trials, 1);
+    assert!(out.dropped.contains(&"auto-0".to_string()));
+}
+
+#[test]
+fn a_ring_that_cannot_be_measured_is_inconclusive_not_a_full_perimeter_gap() {
+    let fixture = Fixture::new(&[([-5.0, 20.0, -5.0], [5.0, 24.0, 5.0])]);
+    let mut p = policy(fixture.faces(), Vec::new(), 0, AutomaticRule::AsGiven);
+    p.rings = vec![Ring { perimeter_mm: 20.0, spacing_mm: 0.0, arcs: Vec::new() }];
+    let out = fixture.run(vec![contact("a", [0.0, 20.0, 0.0], Origin::Auto)], &plain_settings(&[]), &p, &never);
+    assert!(out.rings.is_empty());
+    assert_eq!((out.verdict.status, out.verdict.reason), (Status::Inconclusive, Some("Invalid ring measure")));
+}

@@ -22,6 +22,10 @@ describe('export gate', () => {
   it('refuses an inconclusive body-clearance verdict', () => {
     expect(exportRefusal({ revision: 3, units: [result({ verdict: 'inconclusive' })] }, ['a'], same)).toEqual({ reason: 'inconclusive', unitId: 'a' });
   });
+  it('refuses a timed-out build: a timeout is inconclusive even when a crossing was found before it', () => {
+    // The engine reports a timeout as inconclusive (never blocked), so the gate refuses it.
+    expect(exportRefusal({ revision: 3, units: [result({ verdict: 'inconclusive' })] }, ['a'], same)?.reason).toBe('inconclusive');
+  });
   it('does not stop on an inconclusive island verdict (the model mesh itself could not be analysed)', () => {
     expect(exportRefusal({ revision: 3, units: [result({ islands: 'inconclusive' })] }, ['a'], same)).toBeUndefined();
   });

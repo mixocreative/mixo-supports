@@ -1,6 +1,6 @@
 //! OpenVDB lookup tables from tools/VolumeToMesh.h (Apache-2.0, Copyright Contributors to the
-//! OpenVDB Project; see THIRD-PARTY-NOTICES.txt), used to reproduce Blender's Grid to Mesh. Generated
-//! from the TS tables of the oracle (scripts/test-support/ts-oracle/remesh/openvdbTables.ts).
+//! OpenVDB Project; see THIRD-PARTY-NOTICES.txt), used to reproduce Blender's Grid to Mesh. Checked
+//! in as generated data; do not edit by hand.
 //! Cell corner order: 0 (i, j, k), 1 (i+1, j, k), 2 (i+1, j, k+1), 3 (i, j, k+1), 4 (i, j+1, k),
 //! 5 (i+1, j+1, k), 6 (i+1, j+1, k+1), 7 (i, j+1, k+1); bit n set = corner n inside.
 
