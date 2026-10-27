@@ -63,6 +63,8 @@ import { customisedAmong, liveSelection, scopeCounts, shapePatch, shapeView } fr
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
 import { contactToRemove } from './editing/removal';
 import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
+import { acceptsDentalDrop, type DentalNotice } from './editing/session';
+import { profileById } from './dental/alignerProfiles';
 import { BUILDING_STATUS, busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
 import { checkStatus, joinRun, runToken, tallyChecks, uncovered, type CheckTally } from './editing/check';
@@ -96,7 +98,8 @@ const exportKindOf = (id: CommandId) => id.slice('export.'.length) as ExportKind
 const VIEWPORT_CLASS: Record<GestureKind, string> = {
   none: '',
   zones: ' viewport--editing viewport--zones',
-  'dental-orientation': ' viewport--editing viewport--dental',
+  'dental-type': ' viewport--editing viewport--dental',
+  'dental-aligner': ' viewport--editing viewport--dental',
   'dental-area': ' viewport--editing viewport--dental',
   'dental-review': ' viewport--editing viewport--dental',
   add: ' viewport--editing',
@@ -449,17 +452,47 @@ export default function App() {
     );
   }, [runCheck, setStatus, targets]);
 
+  // ---- Dental Step 1: orient the dropped aligner ------------------------------------------
+  const dentalOrientSeq = useRef(0);
+  /** Mesh check, orientation and type check of the aligner on the plate, in the analysis worker; the result lands in the session. */
+  const startDentalAligner = useCallback((unit: PrintUnit) => {
+    const token = ++dentalOrientSeq.current;
+    send({ type: 'dentalLoading' });
+    const stale = () => dentalOrientSeq.current !== token || sessionRef.current.dentalAligner !== 'loading' || sceneRef.current.activeUnitId !== unit.id;
+    const failed = (notices: readonly DentalNotice[]) => send({ type: 'dentalOrientFailed', notices });
+    void analysis().dentalOrient(`dental-orient:${unit.id}`, unit.source, { key: 'Orienting {name}', vars: { name: unit.name } }).then((result) => {
+      if (stale()) return;
+      if (!result) return failed([{ kind: 'failed' }]);
+      const notices: DentalNotice[] = result.meshOk ? [] : [{ kind: 'holes' }];
+      if (result.kind === 'failed') return failed([...notices, { kind: 'failed' }]);
+      if (result.opening === 'absent' && profileById(sessionRef.current.dentalProfile)?.opening === 'yes') notices.push({ kind: 'mismatch' });
+      const current = sceneRef.current.units.find((candidate) => candidate.id === unit.id);
+      if (result.rotation && current) dispatch({ type: 'transform/set', unitId: unit.id, transform: { ...current.transform, rotation: result.rotation } });
+      else notices.push({ kind: 'uncertain' });
+      setGizmoMode('rotate');
+      requestView('fit');
+      send({ type: 'dentalOriented', proposal: result.proposal, notices });
+    }, () => { if (!stale()) failed([{ kind: 'failed' }]); });
+  }, [analysis, dispatch, requestView, send]);
+
   // ---- Import --------------------------------------------------------------------------
   const importFiles = useCallback(async (files: readonly File[]) => {
+    // Dental Step 1 takes the aligner itself: one file, and it is oriented once read.
+    const dentalDrop = acceptsDentalDrop(sessionRef.current);
+    const badFile = (message: Message) => {
+      setStatusMessage(message);
+      if (dentalDrop) send({ type: 'dentalBadFile', message });
+    };
     // A mode owns the scene until it is finished: a dropped or chosen file waits.
-    const refusal = importRefusal(sessionRef.current.mode);
+    const refusal = dentalDrop ? undefined : importRefusal(sessionRef.current.mode);
     if (refusal) {
       // The refusal also pulses the left panel's lock note, which says why and how out.
       setPulse((current) => ({ panel: 'left', seq: current.seq + 1 }));
       return setStatusMessage(refusal);
     }
-    const accepted = files.filter(acceptModelFile);
-    if (accepted.length === 0) return setStatusMessage(errorStatus('import', new CodedError('file-type', 'file-type')));
+    const accepted = files.filter(acceptModelFile).slice(0, dentalDrop ? 1 : undefined);
+    if (accepted.length === 0) return badFile(errorStatus('import', new CodedError('file-type', 'file-type')));
+    if (dentalDrop) send({ type: 'dentalLoading' });
     /** The file being read, named in an error. */
     let reading = accepted[0]!.name;
     // One controller for the whole drop: Cancel (in the activity list) stops it and nothing is added.
@@ -511,22 +544,45 @@ export default function App() {
         added.push(...placed);
       }
       // A mode that began while the files were read still ends here, so the new objects are never edited under it.
-      send({ type: 'leave' });
+      if (!dentalDrop) send({ type: 'leave' });
       dispatch({ type: 'batch', commands: [
         // Handed over: the worker's fresh arrays, also the keys of their display copy and pick index.
         ...added.map((unit) => ({ type: 'unit/add' as const, unit, owned: true })),
         { type: 'selection/set', unitIds: added.map((unit) => unit.id), activeUnitId: added[0]!.id },
       ] });
       reservation.commit(added.map((unit) => unit.id));
+      if (dentalDrop) {
+        const aligner = added[0]!;
+        if (meshTier(triangleCount(aligner), RUNTIME) === 'heavy') {
+          dispatch({ type: 'unit/remove', unitId: aligner.id });
+          return badFile({ key: 'This aligner has too many triangles ({n}) for the dental flow. Simplify the file and drop it again.', vars: { n: triangleCount(aligner).toLocaleString() } });
+        }
+        setStatusMessage({ key: 'Imported {name}. Checking and orienting it…', vars: { name: aligner.name } });
+        return startDentalAligner(aligner);
+      }
       const heaviest = added.reduce((most, unit) => (triangleCount(unit) > triangleCount(most) ? unit : most));
       const plate = units.reduce((sum, unit) => sum + triangleCount(unit), 0);
       setStatusMessage(importStatus({ name: heaviest.name, triangles: triangleCount(heaviest) }, plate, added.length, RUNTIME));
     } catch (error) {
       reservation.release();
-      if (isAbort(error)) setStatus('Import cancelled; nothing was added.');
-      else setStatusMessage(errorStatus('import', codedJobError(error), { name: reading }));
+      if (isAbort(error)) {
+        setStatus('Import cancelled; nothing was added.');
+        if (dentalDrop) send({ type: 'dentalBadFile', message: { key: 'Import cancelled; nothing was added.' } });
+      } else badFile(errorStatus('import', codedJobError(error), { name: reading }));
     }
-  }, [dispatch, importer, send, setStatus]);
+  }, [dispatch, importer, send, setStatus, startDentalAligner]);
+
+  /** Step 1 with the object already selected on the plate instead of a drop. */
+  const useSelectedAligner = useCallback(() => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+    if (!unit || !acceptsDentalDrop(sessionRef.current)) return;
+    if (meshTier(triangleCount(unit), RUNTIME) === 'heavy') {
+      const message = { key: 'This aligner has too many triangles ({n}) for the dental flow. Simplify the file and drop it again.', vars: { n: triangleCount(unit).toLocaleString() } };
+      setStatusMessage(message);
+      return send({ type: 'dentalBadFile', message });
+    }
+    startDentalAligner(unit);
+  }, [send, startDentalAligner]);
 
   const replaceWith = useCallback((next: PrintScene) => dispatchHistory({ type: 'replace', scene: next }), []);
   const refuseWhileBusy = useCallback((message: Message) => {
@@ -805,18 +861,11 @@ export default function App() {
       case 'transform.move': return setGizmoMode('translate');
       case 'transform.rotate': return setGizmoMode('rotate');
       case 'supports.generate': return generate();
-      case 'supports.dentalAuto': {
-        const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
-        if (!unit) return;
-        const proposal = proposeDentalOrientation(unit.source);
-        if (proposal.kind !== 'proposal') return setStatus('Dental opening could not be detected safely. Rotate the model manually and use normal Generate.');
-        setGizmoMode('rotate');
-        return send({ type: 'enterDental', proposal });
-      }
+      case 'supports.dentalAuto': return send({ type: 'enterDental' });
       case 'dental.useDetected': {
         const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
         const proposal = sessionRef.current.dentalProposal;
-        if (!unit || !proposal || sessionRef.current.dentalStage !== 'orientation') return;
+        if (!unit || !proposal || sessionRef.current.dentalStage !== 'aligner') return;
         const rotation = rotationToDentalPose(unit.source, proposal.rim);
         if (!rotation) return setStatus('Auto orientation is uncertain. Adjust the aligner with the rotation gizmo.');
         dispatch({ type: 'transform/set', unitId: unit.id, transform: { ...unit.transform, rotation } });
@@ -825,16 +874,20 @@ export default function App() {
       case 'dental.next': {
         const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
         const proposal = sessionRef.current.dentalProposal;
-        if (!unit || !proposal || sessionRef.current.dentalStage !== 'orientation') return;
+        if (!unit || sessionRef.current.dentalStage !== 'aligner' || sessionRef.current.dentalAligner !== 'ready') return;
+        // Orientation failed: there is no opening to build the support area from.
+        if (!proposal) return setStatus('No aligner opening was found, so no support area can be proposed. Go Back and choose another file, or Exit.');
         const detection = ++dentalDetectionSeq.current;
         setStatus('Detecting the two dental contours and support area…');
         void analysis().dentalRegion(`dental-region:${unit.id}`, unit.source,
           { key: 'Detecting dental support area on {name}', vars: { name: unitName(unit.id) } }).then((region) => {
           if (dentalDetectionSeq.current !== detection ||
             sceneRef.current.units.find((candidate) => candidate.id === unit.id) !== unit ||
-            sessionRef.current.dentalStage !== 'orientation' || sessionRef.current.dentalProposal !== proposal) return;
+            sessionRef.current.dentalStage !== 'aligner' || sessionRef.current.dentalProposal !== proposal) return;
           if (!region || region.kind !== 'proposal') {
-            setStatus('Dental contours could not be isolated on this model. Keep manual orientation or use normal Generate.');
+            // No area detected: Step 2 opens empty, with its message; Next stays off until something is marked.
+            send({ type: 'acceptDentalOrientation', noArea: true });
+            requestView('bottom');
             return;
           }
           dispatch({ type: 'dental/set', unitId: unit.id, policy: { kind: 'two-contour', rim: proposal.rim, region, stamps: [] } });
@@ -851,7 +904,13 @@ export default function App() {
         if (!generateDental(reviewed)) return setStatus('The model changed while dental tips were reviewed. Wait for the new preview.');
         return send({ type: 'acceptDentalArea' });
       }
-      case 'dental.back': return send({ type: 'backDentalArea' });
+      case 'dental.back': return send({ type: 'backDental' });
+      case 'dental.exit': {
+        // Whatever Step 1 or Step 2 still reads or detects is dropped; the aligner stays on the plate.
+        dentalOrientSeq.current += 1;
+        dentalDetectionSeq.current += 1;
+        return send({ type: 'exit' });
+      }
       case 'mode.edit': {
         send({ type: 'enterEdit' });
         const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
@@ -906,7 +965,7 @@ export default function App() {
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
     mode: editMode, activeName: activeUnit?.name, supported: scene.units.some((unit) => unit.supports), zones: activeUnit?.zones.length ?? 0, exporting, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction, method: session.selectStyle, dragAction: effectiveBrushMode(session.brushMode, session.shiftHeld),
-    selection: selection.size, customisedActive, customisedSelected, customisedTargeted: bandCounts.customised, customisedOthers: Math.max(0, bandCounts.customised - customisedActive), activeSupported: Boolean(activeUnit?.supports), generating, dentalPreviewReady: Boolean(dentalPreview?.result.points.length), canUndo, canRedo: history.future.length > 0, undoStep, redoStep, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
+    selection: selection.size, customisedActive, customisedSelected, customisedTargeted: bandCounts.customised, customisedOthers: Math.max(0, bandCounts.customised - customisedActive), activeSupported: Boolean(activeUnit?.supports), generating, dentalPreviewReady: Boolean(dentalPreview?.result.points.length), dentalStage: session.dentalStage, dentalAlignerReady: session.dentalAligner === 'ready', dentalProposed: Boolean(session.dentalProposal), canUndo, canRedo: history.future.length > 0, undoStep, redoStep, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
   };
   const command = (id: CommandId) => resolve(id, ui);
   useEffect(() => {
@@ -1003,7 +1062,7 @@ export default function App() {
       </aside>
       <section
         className={`viewport${isDraggingOver ? ' viewport--dropping' : ''}${VIEWPORT_CLASS[press.kind]}`}
-        onDragOver={(event) => { event.preventDefault(); setIsDraggingOver(sessionRef.current.mode === 'off'); }}
+        onDragOver={(event) => { event.preventDefault(); setIsDraggingOver(sessionRef.current.mode === 'off' || acceptsDentalDrop(sessionRef.current)); }}
         onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDraggingOver(false); }}
         onDrop={dropImport}
       >
@@ -1053,7 +1112,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hidden={zonesHidden} ui={ui} send={send} run={runCommand} />
-          : press.kind === 'dental-orientation' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview?.localPoints.length ?? 0} previewStatus={dentalPreviewState.kind} reviewReady={Boolean(activeUnit?.supports && built.get(activeUnit.id)?.unit === activeUnit)} rimGap={dentalRimGap} structureFallback={activeMesh?.dentalStructureFallback} tuning={dentalTuning.tuning} tuningBusy={dentalTuning.busy} tuningError={dentalTuning.error} onTuningChange={dentalTuning.change} structure={activeUnit?.dental?.kind === 'two-contour' ? activeUnit.dental.structure : undefined} onStructureChange={onDentalStructureChange} send={send} run={runCommand} />
+          : press.kind === 'dental-type' || press.kind === 'dental-aligner' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} lang={lang} selectedName={activeUnit?.name} onFiles={(files) => void importFiles(files)} onUseSelected={useSelectedAligner} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview?.localPoints.length ?? 0} previewStatus={dentalPreviewState.kind} reviewReady={Boolean(activeUnit?.supports && built.get(activeUnit.id)?.unit === activeUnit)} rimGap={dentalRimGap} structureFallback={activeMesh?.dentalStructureFallback} tuning={dentalTuning.tuning} tuningBusy={dentalTuning.busy} tuningError={dentalTuning.error} onTuningChange={dentalTuning.change} structure={activeUnit?.dental?.kind === 'two-contour' ? activeUnit.dental.structure : undefined} onStructureChange={onDentalStructureChange} send={send} run={runCommand} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>

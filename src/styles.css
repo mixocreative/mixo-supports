@@ -608,3 +608,51 @@ dialog.terms h2 { margin-bottom: 8px; }
 dialog.terms p { margin: 0 0 10px; font-size: 12.5px; line-height: 1.7; }
 dialog.terms .terms-item { display: flex; gap: 6px; }
 dialog.terms .terms-item > span { flex: none; }
+
+/* ---- Dental flow: Step 0 type cards, Step 1 drop prompt ---------------------- */
+.dental-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 96px 16px 32px;
+  background: rgba(244, 242, 237, .9);
+  text-align: center;
+}
+.dental-stage h2 { margin: 0; font-size: 15px; font-weight: 500; letter-spacing: .06em; }
+.dental-cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; }
+.dental-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: 260px;
+  padding: 20px 16px 18px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: center;
+  white-space: normal;
+}
+.dental-card:hover:not(:disabled) { border-color: var(--ink); background: #fff; }
+.dental-card[aria-pressed='true'] { border-color: var(--red); box-shadow: inset 0 0 0 1px var(--red); }
+.dental-card strong { font-size: 14px; font-weight: 500; letter-spacing: .04em; }
+.dental-card small { font-size: 11.5px; line-height: 1.7; color: var(--muted); }
+.dental-card-art { width: 150px; height: 112px; color: var(--ink); }
+.dental-drop {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: min(460px, 100%);
+  padding: 36px 24px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.dental-drop p { margin: 0; font-size: 12px; line-height: 1.7; color: var(--muted); }
+.dental-problem, .dental-notice .edit-note { color: var(--danger); }
+.dental-notice { display: grid; gap: 6px; justify-items: end; }
+@media (max-width: 720px) { .dental-card { width: 100%; } }

@@ -8,7 +8,8 @@ import type { EditMode, StatusMessage } from './types';
 /** What a click or drag does now, per gesture: the current tool in Support Edit Mode, the brush in zones mode. */
 const GESTURE_STATUS = {
   zones: 'Paint where supports must not grow; drag on the model.',
-  'dental-orientation': 'Review the detected aligner orientation, then accept it or adjust it manually.',
+  'dental-type': 'Choose the aligner type to begin.',
+  'dental-aligner': 'Drop an aligner STL, or choose one. It is oriented automatically; adjust with the gizmo, then press Next.',
   'dental-area': 'Mark where dental supports may grow; Remove clears permission. Drag on the model.',
   'dental-review': 'Review the generated supports, then finish.',
   add: 'Support Edit Mode: click the model to add, right-click a support to remove.',
@@ -55,12 +56,13 @@ function standingStatus(session: EditSession): StatusMessage | undefined {
  */
 export function sessionStatus(previous: EditSession, next: EditSession, event: SessionEvent): StatusMessage | undefined {
   const entering = (event.type === 'enterEdit' || event.type === 'enterZones' || event.type === 'enterDental') && previous.mode === 'off';
-  if (entering && previous.activeUnitId === undefined) return { key: event.type === 'enterEdit' ? 'Select an object to edit its supports.' : 'Select an object first.' };
-  if (entering && previous.heavy !== undefined) return heavyStatus(previous);
+  // The dental flow starts at Step 0 and takes its aligner by drop: it needs no object yet.
+  if (entering && event.type !== 'enterDental' && previous.activeUnitId === undefined) return { key: event.type === 'enterEdit' ? 'Select an object to edit its supports.' : 'Select an object first.' };
+  if (entering && event.type !== 'enterDental' && previous.heavy !== undefined) return heavyStatus(previous);
   if (event.type === 'exit' && next.mode === 'off') {
     if (previous.mode === 'edit') return { key: 'Support edits kept.' };
     if (previous.mode === 'zones') return { key: 'No-support zones kept.' };
-    if (previous.mode === 'dental') return { key: 'Dental support area kept.' };
+    if (previous.mode === 'dental') return { key: 'Left the aligner on the plate without supports.' };
   }
   if (next.mode === 'off' || next === previous) return undefined;
   const now = standingStatus(next);

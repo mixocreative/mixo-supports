@@ -11,8 +11,9 @@ import type { BrushMode, DentalKind, EditMode, ZoneKind } from './types';
 export type Gesture =
   | { kind: 'none' }
   | { kind: 'zones'; brush: { radius: number; kind: ZoneKind } }
-  | { kind: 'dental-orientation'; proposal: NonNullable<EditSession['dentalProposal']> }
-  | { kind: 'dental-area'; brush: { radius: number; kind: DentalKind } }
+  | { kind: 'dental-type'; profile: string | undefined }
+  | { kind: 'dental-aligner'; phase: EditSession['dentalAligner']; proposal: EditSession['dentalProposal']; notices: EditSession['dentalNotices']; profile: string | undefined }
+  | { kind: 'dental-area'; brush: { radius: number; kind: DentalKind }; notices: EditSession['dentalNotices'] }
   | { kind: 'dental-review' }
   /** `remove`: a click removes the support it hits instead of adding one. */
   | { kind: 'add'; remove: boolean }
@@ -27,11 +28,13 @@ export function gesture(session: EditSession): Gesture {
     case 'off': return { kind: 'none' };
     case 'zones': return { kind: 'zones', brush: { radius: session.zoneRadius, kind: session.zoneKind } };
     case 'dental':
-      return session.dentalStage === 'orientation'
-        ? { kind: 'dental-orientation', proposal: session.dentalProposal! }
-        : session.dentalStage === 'area'
-          ? { kind: 'dental-area', brush: { radius: session.dentalRadius, kind: session.dentalKind } }
-          : { kind: 'dental-review' };
+      return session.dentalStage === 'type'
+        ? { kind: 'dental-type', profile: session.dentalProfile }
+        : session.dentalStage === 'aligner'
+          ? { kind: 'dental-aligner', phase: session.dentalAligner, proposal: session.dentalProposal, notices: session.dentalNotices, profile: session.dentalProfile }
+          : session.dentalStage === 'area'
+            ? { kind: 'dental-area', brush: { radius: session.dentalRadius, kind: session.dentalKind }, notices: session.dentalNotices }
+            : { kind: 'dental-review' };
     case 'edit':
       if (session.tool === 'add') return { kind: 'add', remove: session.addAction === 'remove' };
       return session.selectStyle === 'click' ? { kind: 'pick' } : { kind: 'drag', brush: { radius: session.brushRadius, mode: effectiveBrushMode(session.brushMode, session.shiftHeld) }, base: session.brushMode, flipped: session.shiftHeld, sizing: session.brushSizing };

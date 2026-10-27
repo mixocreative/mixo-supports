@@ -224,8 +224,23 @@ describe('the left panel commands', () => {
 
   it('names the aligner workflow and keeps auto orientation separate from Next', () => {
     expect(resolve('supports.dentalAuto', READY).label).toBe('Aligner Support Production');
-    expect(resolve('dental.useDetected', at({ mode: 'dental' })).label).toBe('Auto orientation');
-    expect(resolve('dental.next', at({ mode: 'dental' })).label).toBe('Next');
+    expect(resolve('dental.useDetected', at({ mode: 'dental', dentalStage: 'aligner', dentalProposed: true })).label).toBe('Auto orientation');
+    expect(resolve('dental.next', at({ mode: 'dental', dentalAlignerReady: true })).label).toBe('Next');
+  });
+
+  it('the dental flow can start with no object, since Step 1 takes the aligner by drop', () => {
+    expect(resolve('supports.dentalAuto', at({ units: 0, active: false, activeName: undefined }))).toMatchObject({ enabled: true });
+    expect(resolve('supports.dentalAuto', at({ mode: 'dental' })).enabled).toBe(false);
+  });
+
+  it('Step 1 Next waits for an aligner; Back is offered from Step 1; Exit in every step', () => {
+    expect(resolve('dental.next', at({ mode: 'dental', dentalStage: 'aligner' }))).toMatchObject({ enabled: false, disabledReason: { key: 'Add an aligner first.' } });
+    expect(resolve('dental.next', at({ mode: 'dental', dentalStage: 'aligner', dentalAlignerReady: true })).enabled).toBe(true);
+    expect(resolve('dental.useDetected', at({ mode: 'dental', dentalStage: 'aligner' })).enabled).toBe(false);
+    expect(resolve('dental.back', at({ mode: 'dental', dentalStage: 'type' })).visible).toBe(false);
+    for (const dentalStage of ['aligner', 'area', 'review'] as const) expect(resolve('dental.back', at({ mode: 'dental', dentalStage })).visible).toBe(true);
+    for (const dentalStage of ['type', 'aligner', 'area', 'review'] as const) expect(resolve('dental.exit', at({ mode: 'dental', dentalStage }))).toMatchObject({ visible: true, enabled: true });
+    expect(resolve('dental.exit', READY).visible).toBe(false);
   });
 
   it('Delete objects needs a selected object', () => {

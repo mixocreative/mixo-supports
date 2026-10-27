@@ -1,7 +1,16 @@
 import type { SupportContact } from '../core/supports/mesh';
 import type { DentalProposal } from '../core/analysis/dental';
 import { paintSelection, pruneSelection, toggleSelection } from './selection';
-import type { AddAction, BrushMode, DentalKind, EditMode, EditTool, SelectStyle, ZoneKind } from './types';
+import type { AddAction, BrushMode, DentalKind, EditMode, EditTool, SelectStyle, StatusMessage, ZoneKind } from './types';
+
+/** The dental flow's steps: 0 aligner type, 1 aligner (drop, check, orient), 2 support area, 3 supports. */
+export type DentalStage = 'type' | 'aligner' | 'area' | 'review';
+/** Step 1 itself: waiting for a file, reading and orienting it, or showing the oriented aligner. */
+export type DentalAligner = 'prompt' | 'loading' | 'ready';
+/** A message the dental bar shows in a step; `bad-file` carries the import error line. */
+export type DentalNotice =
+  | { kind: 'bad-file'; message: StatusMessage }
+  | { kind: 'failed' } | { kind: 'uncertain' } | { kind: 'holes' } | { kind: 'mismatch' } | { kind: 'no-area' };
 
 /**
  * The editing session of the active object: which mode is on, its tools and the selected
@@ -29,8 +38,11 @@ export interface EditSession {
   zoneKind: ZoneKind;
   /** Zone brush radius in mm. */
   zoneRadius: number;
-  /** Dental stays on its orientation preview until the user accepts it. */
-  dentalStage: 'orientation' | 'area' | 'review';
+  dentalStage: DentalStage;
+  /** The chosen aligner profile id; the last choice outlasts the mode (Step 0 highlights it). */
+  dentalProfile: string | undefined;
+  dentalAligner: DentalAligner;
+  dentalNotices: readonly DentalNotice[];
   dentalProposal: Extract<DentalProposal, { kind: 'proposal' }> | undefined;
   dentalKind: DentalKind;
   dentalRadius: number;
@@ -53,7 +65,10 @@ export const initialSession: EditSession = {
   brushSizing: false,
   zoneKind: 'paint',
   zoneRadius: 2,
-  dentalStage: 'orientation',
+  dentalStage: 'type',
+  dentalProfile: undefined,
+  dentalAligner: 'prompt',
+  dentalNotices: [],
   dentalProposal: undefined,
   dentalKind: 'allow',
   dentalRadius: 2,
@@ -72,10 +87,17 @@ export const FIX_TOOL_EVENTS: readonly SessionEvent[] = [{ type: 'setTool', tool
 export type SessionEvent =
   | { type: 'enterEdit' }
   | { type: 'enterZones' }
-  | { type: 'enterDental'; proposal: Extract<DentalProposal, { kind: 'proposal' }> }
-  | { type: 'acceptDentalOrientation' }
+  | { type: 'enterDental' }
+  | { type: 'chooseDentalProfile'; id: string }
+  | { type: 'switchDentalProfile'; id: string }
+  | { type: 'dentalLoading' }
+  | { type: 'dentalOriented'; proposal: Extract<DentalProposal, { kind: 'proposal' }>; notices: readonly DentalNotice[] }
+  | { type: 'dentalOrientFailed'; notices: readonly DentalNotice[] }
+  | { type: 'dentalBadFile'; message: StatusMessage }
+  | { type: 'dismissDentalNotice'; kind: DentalNotice['kind'] }
+  | { type: 'acceptDentalOrientation'; noArea?: boolean }
   | { type: 'acceptDentalArea' }
-  | { type: 'backDentalArea' }
+  | { type: 'backDental' }
   | { type: 'exit' }
   | { type: 'leave' }
   | { type: 'activeUnitChanged'; id: string | undefined; heavy?: number | undefined }
@@ -119,21 +141,54 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
     case 'enterZones':
       return state.mode === 'off' && editable(state) ? withMode(state, 'zones') : state;
     case 'enterDental':
-      return state.mode === 'off' && editable(state)
-        ? { ...withMode(state, 'dental'), dentalStage: 'orientation', dentalProposal: event.proposal }
+      // Entry needs no object: Step 0 and the drop in Step 1 come first.
+      return state.mode === 'off'
+        ? { ...withMode(state, 'dental'), dentalStage: 'type', dentalAligner: 'prompt', dentalNotices: [], dentalProposal: undefined }
+        : state;
+    case 'chooseDentalProfile':
+      return state.mode === 'dental' && state.dentalStage === 'type'
+        ? { ...state, dentalStage: 'aligner', dentalProfile: event.id, dentalAligner: 'prompt', dentalNotices: [], dentalProposal: undefined }
+        : state;
+    case 'switchDentalProfile':
+      return state.mode === 'dental' && state.dentalStage === 'aligner'
+        ? { ...state, dentalProfile: event.id, dentalAligner: 'loading', dentalNotices: [], dentalProposal: undefined }
+        : state;
+    case 'dentalLoading':
+      return state.mode === 'dental' && state.dentalStage === 'aligner'
+        ? { ...state, dentalAligner: 'loading', dentalNotices: [], dentalProposal: undefined }
+        : state;
+    case 'dentalOriented':
+      return state.mode === 'dental' && state.dentalStage === 'aligner' && state.dentalAligner === 'loading'
+        ? { ...state, dentalAligner: 'ready', dentalProposal: event.proposal, dentalNotices: event.notices }
+        : state;
+    case 'dentalOrientFailed':
+      return state.mode === 'dental' && state.dentalStage === 'aligner' && state.dentalAligner === 'loading'
+        ? { ...state, dentalAligner: 'ready', dentalProposal: undefined, dentalNotices: event.notices }
+        : state;
+    case 'dentalBadFile':
+      return state.mode === 'dental' && state.dentalStage === 'aligner'
+        ? { ...state, dentalAligner: 'prompt', dentalProposal: undefined, dentalNotices: [{ kind: 'bad-file', message: event.message }] }
+        : state;
+    case 'dismissDentalNotice':
+      return state.mode === 'dental' && state.dentalNotices.some((notice) => notice.kind === event.kind)
+        ? { ...state, dentalNotices: state.dentalNotices.filter((notice) => notice.kind !== event.kind) }
         : state;
     case 'acceptDentalOrientation':
-      return state.mode === 'dental' && state.dentalStage === 'orientation' && state.dentalProposal
-        ? { ...state, dentalStage: 'area' }
+      return state.mode === 'dental' && state.dentalStage === 'aligner' && state.dentalAligner === 'ready'
+        ? { ...state, dentalStage: 'area', dentalNotices: event.noArea ? [{ kind: 'no-area' }] : [] }
         : state;
     case 'acceptDentalArea':
       return state.mode === 'dental' && state.dentalStage === 'area'
-        ? { ...state, dentalStage: 'review' }
+        ? { ...state, dentalStage: 'review', dentalNotices: [] }
         : state;
-    case 'backDentalArea':
-      return state.mode === 'dental' && state.dentalStage === 'review'
-        ? { ...state, dentalStage: 'area' }
-        : state;
+    case 'backDental':
+      if (state.mode !== 'dental') return state;
+      switch (state.dentalStage) {
+        case 'review': return { ...state, dentalStage: 'area' };
+        case 'area': return { ...state, dentalStage: 'aligner', dentalAligner: 'ready', dentalNotices: [] };
+        case 'aligner': return { ...state, dentalStage: 'type', dentalAligner: 'prompt', dentalProposal: undefined, dentalNotices: [] };
+        case 'type': return state;
+      }
     case 'exit':
     case 'leave':
       return withMode(state, 'off');
@@ -175,4 +230,9 @@ export function editable(state: EditSession): boolean {
 /** The step entered a mode from outside: undo inside the mode stops at the scene it began with. */
 export function startsEditing(previous: EditSession, next: EditSession): boolean {
   return previous.mode === 'off' && next.mode !== 'off';
+}
+
+/** Step 1 takes a dropped or chosen file only while it waits for one (not while reading the last). */
+export function acceptsDentalDrop(state: EditSession): boolean {
+  return state.mode === 'dental' && state.dentalStage === 'aligner' && state.dentalAligner !== 'loading';
 }

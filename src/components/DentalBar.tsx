@@ -1,19 +1,27 @@
 import { resolve, type CommandId, type UiState } from '../editing/commands';
 import type { Gesture } from '../editing/gesture';
-import { t } from '../i18n';
+import type { SessionEvent } from '../editing/session';
+import { profileById } from '../dental/alignerProfiles';
+import { t, type Lang } from '../i18n';
 import { defaultDentalTuning, type DentalTuning } from '../core/analysis/dentalTuning';
 import type { DentalStructure } from '../core/analysis/dentalPolicy';
 import { defaultDentalStructure } from '../core/supports/dentalSettings';
 import { CommandButton } from './CommandButton';
+import { DentalAlignerBar, DentalAlignerPrompt, DentalTypeStep, noticeText } from './DentalSteps';
 import { DoneButton } from './EditBar';
 import { RangeField } from './RangeField';
 import { SurfaceBrushBar } from './SurfaceBrushBar';
 
 /** Dental Auto Generate chrome: review the detector first, then mark only permitted support area. */
 export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus = 'loading', reviewReady = true, rimGap,
-  structureFallback, tuning = defaultDentalTuning, tuningBusy = false, tuningError = false, onTuningChange,
+  lang = 'en', selectedName, onFiles, onUseSelected, structureFallback, tuning = defaultDentalTuning, tuningBusy = false, tuningError = false, onTuningChange,
   structure = defaultDentalStructure, onStructureChange, send, run }: {
-  gesture: Extract<Gesture, { kind: 'dental-orientation' | 'dental-area' | 'dental-review' }>;
+  gesture: Extract<Gesture, { kind: 'dental-type' | 'dental-aligner' | 'dental-area' | 'dental-review' }>;
+  lang?: Lang;
+  /** Step 1: the object selected on the plate, offered as the aligner without a drop. */
+  selectedName?: string;
+  onFiles?: (files: File[]) => void;
+  onUseSelected?: () => void;
   unitName: string | undefined;
   ui: UiState;
   tipCount?: number;
@@ -27,23 +35,34 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
   onTuningChange?: (tuning: DentalTuning) => void;
   structure?: Readonly<DentalStructure>;
   onStructureChange?: (structure: DentalStructure) => void;
-  send: (event: { type: 'setDentalKind'; kind: 'allow' | 'erase' } | { type: 'setDentalRadius'; radius: number }) => void;
+  send: (event: SessionEvent) => void;
   run: (id: CommandId) => void;
 }) {
-  if (gesture.kind === 'dental-orientation') return <>
+  if (gesture.kind === 'dental-type') return <>
     <div className="edit-frame" aria-hidden="true" />
     <div className="edit-badge" role="status">
-      {t('Step 1 · Orientation')}<span>{unitName}</span>
-      <b>{t('Review the detected lower opening before changing orientation.')}</b>
+      {t('Step 0 · Aligner type')}
+      <b>{t('Choose the aligner type to begin.')}</b>
     </div>
-    <div className="edit-bar">
-      <div className="edit-row">
-        <span className="edit-hint">{t('Detector confidence {n}%', { n: Math.round(gesture.proposal.diagnostics.confidence * 100) })}</span>
-        <CommandButton command={resolve('dental.useDetected', ui)} run={run} />
-        <CommandButton command={resolve('dental.next', ui)} run={run} />
-      </div>
-      <p className="edit-note" role="note">{t('Auto orientation only rotates the aligner. Adjust with the rotation gizmo, then press Next.')}</p>
+    <div className="edit-bar"><div className="edit-row"><CommandButton command={resolve('dental.exit', ui)} run={run} /></div></div>
+    <DentalTypeStep profile={gesture.profile} lang={lang} send={send} />
+  </>;
+  if (gesture.kind === 'dental-aligner') return <>
+    <div className="edit-frame" aria-hidden="true" />
+    <div className="edit-badge" role="status">
+      {t('Step 1 · Aligner')}<span>{gesture.phase === 'ready' ? unitName : profileById(gesture.profile)?.name[lang]}</span>
+      <b>{gesture.phase === 'ready' ? t('Review the orientation. Turn the aligner with the gizmo if needed.') : t('Add the aligner STL.')}</b>
     </div>
+    {gesture.phase === 'ready'
+      ? <DentalAlignerBar notices={gesture.notices} proposal={gesture.proposal} profile={gesture.profile} lang={lang} ui={ui} send={send} run={run} />
+      : <>
+        <div className="edit-bar"><div className="edit-row">
+          <CommandButton command={resolve('dental.back', ui)} run={run} />
+          <CommandButton command={resolve('dental.exit', ui)} run={run} />
+        </div></div>
+        <DentalAlignerPrompt phase={gesture.phase} notices={gesture.notices} selectedName={selectedName}
+          onFiles={(files) => onFiles?.(files)} onUseSelected={() => onUseSelected?.()} />
+      </>}
   </>;
   if (gesture.kind === 'dental-review') return <>
     <div className="edit-frame" aria-hidden="true" />
@@ -67,7 +86,7 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
     <div className="edit-frame" aria-hidden="true" />
     <div className="edit-badge" role="status">
       {t('Step 2 · Support area')}<span>{unitName}</span>
-      <b>{t('Support area is marked. Press Next, or paint to adjust.')}</b>
+      <b>{gesture.notices.some((notice) => notice.kind === 'no-area') ? t('No support area was detected. Mark it, then press Next.') : t('Support area is marked. Press Next, or paint to adjust.')}</b>
     </div>
     <SurfaceBrushBar
       className="dental-brush"
@@ -102,13 +121,16 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
         </div>
         {tuningBusy && <p className="edit-note" role="status">{t('Updating support area and tips…')}</p>}
         {tuningError && <p className="edit-note" role="alert">{t('Could not update the support strip. The previous area is still active.')}</p>}
+        {gesture.notices.map((notice) => <p key={notice.kind} className="edit-note" role="alert">{noticeText(notice)}</p>)}
         <p className="edit-note" role="note">{t('Drag on the model to paint; drag empty space to rotate the view. Proposed support tips: {n}. Final generation may exclude tips whose supports touch an unapproved face.', { n: tipCount })}</p>
-        {previewStatus !== 'ready' || tipCount === 0 ? <p className="edit-note" role="status">{t(previewStatus === 'error'
+        {!gesture.notices.some((notice) => notice.kind === 'no-area') && (previewStatus !== 'ready' || tipCount === 0) ? <p className="edit-note" role="status">{t(previewStatus === 'error'
           ? 'Could not preview safe support tips. Adjust the area or retry.'
           : previewStatus === 'ready' ? 'No safe support tips were found. Automatic placement is paused.'
             : 'Finding safe support tips…')}</p> : null}
       </>}
       actions={<>
+        <CommandButton command={resolve('dental.back', ui)} run={run} />
+        <CommandButton command={resolve('dental.exit', ui)} run={run} />
         <CommandButton command={resolve('dental.generate', tuningBusy ? { ...ui, dentalPreviewReady: false } : ui)} run={run} />
       </>}
     />

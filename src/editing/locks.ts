@@ -18,7 +18,7 @@ const SECTIONS: Record<Panel, readonly PanelSection[]> = {
 
 export function sectionLocked(section: PanelSection, mode: EditMode): boolean {
   if (mode === 'off') return false;
-  if (section === 'check' || section === 'settings' || section === 'export') return mode === 'zones';
+  if (section === 'check' || section === 'settings' || section === 'export') return mode === 'zones' || mode === 'dental';
   return true;
 }
 

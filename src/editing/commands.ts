@@ -16,7 +16,7 @@ export const COMMAND_IDS = [
   'supports.generate', 'supports.dentalAuto', 'supports.clearManual', 'supports.remove', 'check.run',
   'mode.edit', 'mode.zones', 'mode.exit',
   'zones.clearAll',
-  'dental.useDetected', 'dental.next', 'dental.generate', 'dental.back',
+  'dental.useDetected', 'dental.next', 'dental.generate', 'dental.back', 'dental.exit',
   'edit.generate', 'edit.add', 'edit.remove', 'edit.dragSelect', 'edit.dragUnselect', 'edit.clearSelection', 'edit.deleteSelection',
   'setting.clickReach',
   'shape.reset', 'shape.selectCustomised',
@@ -77,6 +77,12 @@ export interface UiState {
   generating: boolean;
   /** The reviewed dental contact placement matches the current model and paint. */
   dentalPreviewReady?: boolean;
+  /** Dental Step 1: an aligner is read and oriented (or orientation failed), so Next may go on. */
+  dentalAlignerReady?: boolean;
+  /** Dental Step 1: the detector proposed an orientation (Auto orientation can re-apply it). */
+  dentalProposed?: boolean;
+  /** The dental step: Back is offered from Step 1 on. */
+  dentalStage?: 'type' | 'aligner' | 'area' | 'review';
 }
 
 interface Command {
@@ -187,8 +193,8 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
   },
   'supports.dentalAuto': {
     role: 'secondary', label: () => 'Aligner Support Production', hint: () => 'Detect an aligner lower opening, review orientation, then limit supports to its approved lower area',
-    visible: always, enabled: (s) => s.mode === 'off' && editable(s) && !s.generating,
-    disabledReason: (s) => (s.generating ? generatingReason : s.mode !== 'off' || !editable(s) ? entryReason(s) : undefined),
+    visible: always, enabled: (s) => s.mode === 'off' && !s.generating,
+    disabledReason: (s) => (s.generating ? generatingReason : s.mode !== 'off' ? entryReason(s) : undefined),
   },
   'supports.clearManual': {
     role: 'destructive', label: () => 'Clear manual edits', hint: () => 'Remove manual supports and bring back removed automatic ones, at once. Undo brings the edits back',
@@ -239,12 +245,14 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     visible: (s) => s.mode === 'zones', enabled: (s) => s.zones > 0, disabledReason: (s) => (s.zones > 0 ? undefined : { key: 'No zones are painted yet.' }),
   },
   'dental.useDetected': {
-    role: 'secondary', label: () => 'Auto orientation', hint: () => 'Rotate the aligner to the proposed orientation without advancing',
-    visible: (s) => s.mode === 'dental', enabled: always, disabledReason: never,
+    role: 'secondary', label: () => 'Auto orientation', hint: () => 'Rotate the aligner to the proposed orientation again',
+    visible: (s) => s.mode === 'dental' && s.dentalStage === 'aligner', enabled: (s) => Boolean(s.dentalProposed),
+    disabledReason: (s) => (s.dentalProposed ? undefined : { key: 'No orientation was proposed for this aligner.' }),
   },
   'dental.next': {
     role: 'primary', label: () => 'Next', hint: () => 'Keep the current orientation and review the proposed support area',
-    visible: (s) => s.mode === 'dental', enabled: always, disabledReason: never,
+    visible: (s) => s.mode === 'dental', enabled: (s) => Boolean(s.dentalAlignerReady),
+    disabledReason: (s) => (s.dentalAlignerReady ? undefined : { key: 'Add an aligner first.' }),
   },
   'dental.generate': {
     role: 'primary', label: () => 'Next',
@@ -253,7 +261,11 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     disabledReason: (s) => (s.generating ? generatingReason : s.dentalPreviewReady ? undefined : { key: 'Wait for safe dental tips before continuing.' }),
   },
   'dental.back': {
-    role: 'secondary', label: () => 'Back', hint: () => 'Return to the dental area and keep your edits',
+    role: 'secondary', label: () => 'Back', hint: () => 'Return to the previous step and keep your edits',
+    visible: (s) => s.mode === 'dental' && s.dentalStage !== 'type', enabled: always, disabledReason: never,
+  },
+  'dental.exit': {
+    role: 'secondary', label: () => 'Exit', hint: () => 'Leave the dental flow. The aligner stays on the plate without supports',
     visible: (s) => s.mode === 'dental', enabled: always, disabledReason: never,
   },
   'edit.generate': {

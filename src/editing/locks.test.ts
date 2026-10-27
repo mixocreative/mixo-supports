@@ -21,3 +21,11 @@ describe('panel locks', () => {
     expect(lockNote('right', 'zones')).toEqual({ key: 'Finish painting zones first: press Esc or Done.' });
   });
 });
+
+describe('dental flow locks', () => {
+  it('dims every section of both panels, like zones', () => {
+    for (const section of ['import', 'objects', 'transform', 'supports', 'check', 'settings', 'export'] as const) expect(sectionLocked(section, 'dental')).toBe(true);
+    expect(lockNote('left', 'dental')).toBeDefined();
+    expect(lockNote('right', 'dental')).toBeDefined();
+  });
+});
