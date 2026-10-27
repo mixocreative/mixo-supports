@@ -10,7 +10,6 @@ import { proposeDentalOrientation, rotationToDentalPose } from './dental';
 import { inspectDentalCentralOpening } from './dentalContours';
 import { orientDentalAligner } from './dentalOrient';
 import { proposeDentalSupportRegion, retuneDentalSupportRegion, type DentalRegionProposal } from './dentalRegion';
-import { positionId } from '../../../scripts/test-support/ts-oracle/placement/placement';
 import type { TriangleMesh } from './types';
 
 /*
