@@ -38,7 +38,7 @@ Names are those exported by `crates/geometry-wasm`. Several return objects with 
 | Spatial | `transform`, `transform_positions`, `transform_vectors`, `invert_matrix`, `transformed_min_y`, `pick`, `pick_pixels`, `build_pick_index`, `project_brush`, `body_segments`, `refine_for_overlay`, `dental_face_overlay`, `vertex_normals` |
 | Dental policy | `orient_dental`, `propose_dental_orientation`, `propose_dental_region`, `retune_dental_region`, `inspect_dental_opening`, `dental_footprint`, `dental_side_bands`, `dental_sample_contacts`, `dental_pose`, `dental_legacy_fill`, `dental_allowed_vertices`, `manual_dental_area`, `manual_dental_area_from_stamps`, `dental_profile_ids` |
 | Generic policy | `generic_place`, `generic_policy_contacts`, plus the edit bookkeeping calls (`rekey_contact_ids`, `rekey_hand_work`, `remap_deleted_ids`, `hiding_removal_ids`) |
-| Build and check | `build_supports` (low-level, used by the parity tests), `generate(model, contacts, settings, ..., PolicyData, timeout_ms, revision)`, `check_support_problems`, `contour_perimeter` |
+| Build and check | `build_supports` (low-level, used by the parity tests), `generate(model, contacts, settings, ..., PolicyHandle, timeout_ms, revision)` with the policy made by `dental_policy` / `generic_policy` in the same session, `check_support_problems`, `contour_perimeter` |
 | Review | `diagnose(handle, revision, ...)` returns the review layers (name, color, positions, indices) |
 
 The earlier planning names (`import_mesh`, `place_supports`, `diagnose_supports` and so on) were never the exported names. The table above is authoritative.

@@ -27,24 +27,26 @@ Layers are one-way: `core` is used by `supports`, which is used by the policies 
 
 ## The contract between a policy and the engine
 
-A policy produces a `PolicyResult` (`supports/policy.rs`). It is data. There are no callbacks.
+A policy produces a `PolicyResult` (`supports/policy.rs`). It is data. There are no callbacks. Both policies are made in Rust inside the session that runs `generate`: `GeometrySession.dental_policy(handle, profile, kind, tuning, stamps, saved region, structure, frame)` (`dental/policy.rs`) and `GeometrySession.generic_policy(handle, settings, edits, zones)` (`generic/policy.rs`) return a `PolicyHandle` that the host passes straight to `generate`. The host only packs the saved policy as numbers; it never assembles or edits a policy.
 
 | Field | Meaning |
 |---|---|
-| `permitted_faces` | Bitset over source faces. Dental: the contact strip plus the operator's paint. Generic: every face. |
-| `candidates` | Primary contacts: id, source face, point, normal, origin (`Auto` or `Manual`). |
-| `alternates` | Ordered repair options per contact. **No policy supplies any today** (see the validation section). The runner and `select_gap_alternates` are tested with synthetic ones. |
+| `permitted_faces` | Bitset over source faces. Dental two-contour: the recomputed contact strip (empty when the saved area does not reproduce). Dental painted from scratch: the painted faces. Generic: every face. |
+| `candidates` | Primary contacts: id, source face, point, normal, origin (`Auto` or `Manual`). Dental IDs are `dental-outer-N` / `dental-opening-N` (region order, kept when paint erases one); a candidate passes the face gate (`area_allows`: on the strip, last paint stamp reaching it decides) in Rust. |
+| `alternates` | Ordered repair options per contact. Dental: the phase-zero samples of the same strip (`dental-outer-alt-N`), each offered to the one primary that follows it on its rim within one spacing, so two contacts can never move to one spot. They are never extra primaries. Generic: none. |
 | `structures` | Allowed pillar, tree, brace, roof, cage, raft flags. Dental: roof and cage off. The flags are an upper bound on the user's settings (`limit_structures`). |
+| `structure_choice` | The policy's own Tree/Brace choice, applied to the settings before the bound (`permit::chosen_settings`). Dental: the per-aligner Step 3 switches (default both on, whatever the generic settings say). Generic: none, the settings decide. |
 | `repair_budget` | Maximum rebuilds. 0 means report only. Dental default is 8 (profile data). |
 | `landing_rule` | `Unrestricted`, or `ApprovedFaces { stamps }`: a column or tree may land on the model only on an upward-facing source face inside `permitted_faces`; a later paint stamp at the landing point can erase or restore it. Dental uses `ApprovedFaces`. |
-| `automatic` | `AsGiven` (generic: the candidates are the contacts) or `MatchCandidates` (dental: an automatic contact is built only if it reproduces a candidate within 0.03 mm and normal dot above 0.95, and it then takes that candidate's source face). |
-| `rings` | Closed contours with a nominal contact spacing and the arclength of each candidate on them (dental: outer rim and opening rim). Used for the rim-gap report. |
+| `automatic` | `AsGiven` (generic: the candidates are the contacts; dental painted from scratch: the fill contacts of the painted area) or `MatchCandidates { tol_mm, min_dot }` (dental two-contour: an automatic contact is built only if it reproduces a candidate within the profile's `matchToleranceMm` (0.03) and normal dot above `matchMinDot` (0.95), and it then takes that candidate's source face). |
+| `rings` | Closed contours with a nominal contact spacing and the arclength of each candidate and alternate on them (dental: outer rim and opening rim). Used for the rim-gap report. |
+| `islands_outside_permitted` | Whether the policy has an outside: an unresolved island whose lowest point touches no permitted face is then `outside-policy`. Dental: yes. Generic: no. |
 
 A new mode is a new producer of this struct. Nothing else changes.
 
 ## One `generate` call
 
-`GeometrySession.generate` (`crates/geometry-wasm/src/safety.rs`, core `supports/generate/mod.rs`) takes the model handle, the contacts, the settings, zones, the policy data, a `revision` (u32) and a timeout in milliseconds. It runs the whole pipeline and returns the support mesh arrays with component tags, the verdict, the dropped lists, the island verdict, the ring coverage, the number of rebuilds and the echoed revision. TypeScript never runs a retry loop. `src/supports/jobRunner.ts` is about 80 lines: it moves contacts and zones to plate space, builds the policy input and makes the one call.
+`GeometrySession.generate` (`crates/geometry-wasm/src/safety.rs`, core `supports/generate/mod.rs`) takes the plate-space model handle (`load_placed` from the unit's own handle), the contacts, the settings, zones, the `PolicyHandle`, a `revision` (u32) and a timeout in milliseconds. It runs the whole pipeline and returns the support mesh arrays with component tags, the verdict, the dropped lists, the island verdict, the ring coverage, the number of rebuilds and the echoed revision. TypeScript never runs a retry loop. `src/supports/jobRunner.ts` is about 70 lines: it moves contacts and zones to plate space, names the policy maker (dental or generic) and makes the one call.
 
 Steps inside `generate`:
 

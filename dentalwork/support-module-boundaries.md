@@ -51,18 +51,20 @@ A collision-free support can still start at an unsupported island, and a support
 
 ## What a policy supplies
 
-`PolicyResult` fields: `permitted_faces`, `candidates`, `alternates`, `structures`, `repair_budget`, `landing_rule`, `automatic`, `rings`. See the table in [technical-algorithm.md](technical-algorithm.md#the-contract-between-a-policy-and-the-engine). Adding a mode means writing a new producer of this struct. The engine does not change.
+`PolicyResult` fields: `permitted_faces`, `candidates`, `alternates`, `structures`, `structure_choice`, `repair_budget`, `landing_rule`, `automatic`, `rings`, `islands_outside_permitted`. Rust makes it (`dental_policy`, `generic_policy`); the host passes the handle to `generate`. See the table in [technical-algorithm.md](technical-algorithm.md#the-contract-between-a-policy-and-the-engine). Adding a mode means writing a new producer of this struct. The engine does not change.
 
 Differences between the two policies are only these values:
 
 | | Generic | Dental |
 |---|---|---|
-| Permitted faces | every face | contact strip plus paint |
-| Landing rule | unrestricted | approved faces (upward faces inside the strip) |
-| Automatic rule | candidates as given | match candidates (0.03 mm, normal dot above 0.95) |
+| Permitted faces | every face | recomputed contact strip (painted from scratch: the paint) |
+| Landing rule | unrestricted | approved faces (upward faces inside the area) |
+| Automatic rule | candidates as given | match candidates (profile: 0.03 mm, normal dot above 0.95); painted from scratch: its own fill contacts as given |
+| Tree and Brace | the settings | the aligner's Step 3 switches |
 | Roof and cage | allowed | off |
 | Rings | none | outer rim and opening rim |
-| Alternates | none | none supplied yet |
+| Alternates | none | phase-zero samples, one per primary |
+| Islands outside the area | none (no outside) | reported as outside-policy |
 | Repair budget | 0 (reports, does not repair) | profile default (8) |
 
 ## Safety behavior shared by both policies
