@@ -67,6 +67,8 @@ The Rust source must be split further by responsibility as each phase lands; thi
 
 **Files:** Rust mesh/import/weld/decimate modules; narrow `src/workers/{importWorker,projectWorker,prepareImport}.ts`, `src/state/import.ts`.
 
+Progress: the import worker's bounding-box centering is now a bulk, in-place Rust/WASM call with native, Node and real browser-worker tests. STL parse/weld, glTF weld, decimation and pick BVH remain TypeScript; the task is not complete.
+
 - [ ] Port binary/ASCII STL parse, vertex weld, finite validation, centering and display decimation. Match existing unit placement and original mesh IDs; keep GLTF container decoding in JS but pass raw arrays to Rust for geometry processing.
 - [ ] Native, Node and browser parity tests cover malformed STL, handedness, high triangle counts, imported GLTF and saved-project reload. Delete production TS geometry only after these pass.
 

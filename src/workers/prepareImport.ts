@@ -3,11 +3,19 @@ import { MeshBVH } from 'three-mesh-bvh';
 import type { TriangleMesh } from '../core/analysis/types';
 import { assertTriangleCapacity, meshTier, TRIANGLE_BUDGET, type Runtime } from '../core/budget';
 import { decimate } from '../core/decimate';
-import { centreInPlace, type ImportedMesh } from '../state/import';
+import type { ImportedMesh } from '../state/import';
 import type { SerializedBvh } from '../state/meshExtras';
 import type { PreparedMesh } from './importProtocol';
+import type { GeometryEngine } from './geometryClient';
 
 export type Progress = (fraction: number, stage: string) => void;
+
+/** The import worker uses this bulk WASM operation; no per-vertex JS/WASM calls. */
+export function centerImportedWithWasm(item: ImportedMesh, engine: GeometryEngine): ImportedMesh {
+  const data = engine.center_positions_in_place(item.mesh.positions);
+  const triplet = (offset: number): [number, number, number] => [data[offset]!, data[offset + 1]!, data[offset + 2]!];
+  return { ...item, centred: { center: triplet(0), bounds: { min: triplet(3), max: triplet(6) } } };
+}
 
 /** The pick index of a mesh as the viewport reads it (three-mesh-bvh, indirect: the mesh's own index array is never reordered). */
 export function buildPickIndex(mesh: TriangleMesh, onProgress?: (fraction: number) => void): SerializedBvh {
@@ -21,11 +29,11 @@ export function buildPickIndex(mesh: TriangleMesh, onProgress?: (fraction: numbe
 }
 
 /** Centre, check the size, simplify a heavy mesh for display, build the pick index of what is drawn. */
-export function prepare(item: ImportedMesh, runtime: Runtime, progress: Progress, from: number, to: number): PreparedMesh {
+export function prepare(item: ImportedMesh, runtime: Runtime, progress: Progress, from: number, to: number, center: (item: ImportedMesh) => ImportedMesh): PreparedMesh {
   const triangles = item.mesh.indices.length / 3;
   // Backstop for formats estimated (or not counted) before parsing.
   assertTriangleCapacity(item.name, triangles, runtime, true);
-  const centred = centreInPlace(item);
+  const centred = center(item);
   let display: TriangleMesh | undefined;
   if (meshTier(triangles, runtime) === 'heavy') {
     progress(from, 'Simplifying display copy');

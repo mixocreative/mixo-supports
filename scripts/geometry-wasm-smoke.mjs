@@ -8,8 +8,16 @@ const packageFile = fileURLToPath(packagePath);
 assert.ok(existsSync(packageFile), 'Node WASM package must be built before its smoke test');
 
 const require = createRequire(import.meta.url);
-const { engine_version: engineVersion, GeometrySession } = require(packageFile);
+const { engine_version: engineVersion, GeometrySession, center_positions_in_place: centerPositionsInPlace } = require(packageFile);
 assert.equal(engineVersion(), 1, 'Node WASM and host must agree on the geometry schema');
+
+const shifted = new Float32Array([8, -2, 4, 12, 4, 6]);
+assert.deepEqual(Array.from(centerPositionsInPlace(shifted)), [10, 1, 5, 8, -2, 4, 12, 4, 6]);
+assert.deepEqual(Array.from(shifted), [-2, -3, -1, 2, 3, 1]);
+const invalidCenter = new Float32Array([1, NaN, 3]);
+assert.throws(() => centerPositionsInPlace(invalidCenter), { code: 'NON_FINITE' });
+assert.equal(invalidCenter[0], 1);
+assert.ok(Number.isNaN(invalidCenter[1]));
 
 const session = new GeometrySession(48);
 const handle = session.load_mesh(

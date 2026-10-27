@@ -1,6 +1,7 @@
 //! Host-independent geometry engine. Geometry operations will migrate here.
 
 pub mod mesh;
+pub mod transform;
 
 /// Version of the host/core request schema.
 pub fn engine_version() -> u32 {

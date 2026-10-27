@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const SOURCES = import.meta.glob<string>(['./*.ts', '!./*.test.ts'], { query: '?raw', import: 'default', eager: true });
 
 describe('worker job contract', () => {
-  const clients = Object.entries(SOURCES).filter(([file]) => /Client\.ts$/.test(file));
+  const clients = Object.entries(SOURCES).filter(([file, code]) => /Client\.ts$/.test(file) && /new WorkerTask\b/.test(code));
   const workers = Object.entries(SOURCES).filter(([file]) => /Worker\.ts$/.test(file));
 
   it('finds the clients and workers', () => {

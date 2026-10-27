@@ -8,6 +8,19 @@ pub fn engine_version() -> u32 {
     mixo_geometry_core::engine_version()
 }
 
+/// Mutates the caller's vertex buffer and returns center XYZ, then original min/max XYZ.
+#[wasm_bindgen]
+pub fn center_positions_in_place(positions: &mut [f32]) -> Result<Vec<f64>, JsValue> {
+    let centered =
+        mixo_geometry_core::transform::center_positions(positions).map_err(mesh_error)?;
+    Ok(centered
+        .center
+        .into_iter()
+        .chain(centered.bounds.min.into_iter().map(f64::from))
+        .chain(centered.bounds.max.into_iter().map(f64::from))
+        .collect())
+}
+
 #[wasm_bindgen]
 pub struct GeometrySession {
     store: MeshStore,

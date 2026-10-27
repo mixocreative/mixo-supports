@@ -1,8 +1,9 @@
 import type { TriangleMesh } from '../core/analysis/types';
 import { StlWelder } from '../core/import/stl';
 import { named, weldRawMesh } from '../state/import';
+import { geometryReady } from './geometryClient';
 import type { ImportTask, PreparedMesh } from './importProtocol';
-import { buffers, prepare, type Progress } from './prepareImport';
+import { buffers, centerImportedWithWasm, prepare, type Progress } from './prepareImport';
 import { serveTask, transferable } from './serveTask';
 
 /** A File is read in slices this big, so the whole file never sits in memory at once. */
@@ -22,6 +23,8 @@ async function readStl(file: Blob, name: string, progress: Progress): Promise<Tr
 
 /** STL reading and welding, glTF welding, display copies and pick indices, off the main thread. */
 serveTask<ImportTask, PreparedMesh[]>(async (task, { progress: post }) => {
+  const engine = await geometryReady();
+  const center = (item: Parameters<typeof prepare>[0]) => centerImportedWithWasm(item, engine);
   let last = 0;
   const progress: Progress = (fraction, stage) => {
     const now = performance.now();
@@ -33,12 +36,12 @@ serveTask<ImportTask, PreparedMesh[]>(async (task, { progress: post }) => {
   if (task.kind === 'stl') {
     const name = task.name.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
     const mesh = await readStl(task.file, name, progress);
-    prepared = [prepare({ name, mesh }, task.runtime, progress, 0.75, 1)];
+    prepared = [prepare({ name, mesh }, task.runtime, progress, 0.75, 1, center)];
   } else {
     const share = 1 / task.meshes.length;
     prepared = task.meshes.map((raw, k) => {
       progress(k * share, 'Welding vertices');
-      return prepare(weldRawMesh(raw), task.runtime, progress, (k + 0.5) * share, (k + 1) * share);
+      return prepare(weldRawMesh(raw), task.runtime, progress, (k + 0.5) * share, (k + 1) * share, center);
     });
   }
   progress(1, 'Done');
