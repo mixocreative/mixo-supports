@@ -1,11 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { BufferAttribute, BufferGeometry, DoubleSide, Ray, Vector3 } from 'three';
-import { MeshBVH } from 'three-mesh-bvh';
-import { buildBrushFixture, type BrushFixture } from '../../scripts/fixtures/brush/generate';
+import type { BrushFixture } from '../../scripts/fixtures/brush/types';
+import { approxArray, expectGolden, readGolden } from '../../scripts/test-support/golden';
+import { seededRays } from '../../scripts/test-support/knotRays';
 import { nodeEngine, parseStl } from '../../scripts/test-support/rustImport';
-import { dentalFaceOverlay, dentalContourSegments } from '../../scripts/test-support/ts-oracle/dentalFaceOverlay';
-import { vertexNormals } from '../../scripts/test-support/ts-oracle/placement/vertexNormals';
 import { refineForOverlay } from '../core/supports/overlayMesh';
 import { fromLeftHandedMatrix, toLeftHanded, toLeftHandedMatrix } from '../core/handedness';
 import { applyToDirection, applyToPoint, invertMatrix, placementMatrix, transformPositions } from '../core/transform';
@@ -34,9 +32,7 @@ describe('recorded aligner camera + strokes: Rust pick and project_brush equal t
   const handle = session.load_mesh(mesh.positions, mesh.indices);
   const slots = FIXTURE.bodies.first.length - 1;
 
-  it('the committed fixture is what the TS oracle makes today', () => {
-    // JSON drops the sign of -0, so compare what a write and read-back would give.
-    expect(JSON.parse(JSON.stringify(buildBrushFixture()))).toEqual(FIXTURE);
+  it('the recorded fixture (aligner-brush.json, made once by the TS oracle) is for this aligner', () => {
     expect(mesh.indices.length / 3).toBe(FIXTURE.triangles);
   });
 
@@ -86,50 +82,30 @@ describe('recorded aligner camera + strokes: Rust pick and project_brush equal t
   });
 });
 
-describe('random rays: Rust BVH picks the same face as three-mesh-bvh', () => {
+describe('random rays: Rust BVH picks the same face as the recorded three-mesh-bvh answers', () => {
   it('on the knot, double sided', () => {
-    const geometry = new BufferGeometry();
-    geometry.setAttribute('position', new BufferAttribute(knot.positions, 3));
-    geometry.setIndex(new BufferAttribute(knot.indices, 1));
-    const bvh = new MeshBVH(geometry, { indirect: true } as ConstructorParameters<typeof MeshBVH>[1]);
+    const recorded = readGolden<{ faces: number[]; distances: number[] }>('knot-random-rays');
     const session = new engine.GeometrySession(0x10000000);
     const handle = session.load_mesh(knot.positions, knot.indices);
-    const lo = new Vector3(Infinity, Infinity, Infinity);
-    const hi = new Vector3(-Infinity, -Infinity, -Infinity);
-    for (let i = 0; i < knot.positions.length; i += 3) {
-      lo.min(new Vector3(knot.positions[i], knot.positions[i + 1], knot.positions[i + 2]));
-      hi.max(new Vector3(knot.positions[i], knot.positions[i + 1], knot.positions[i + 2]));
-    }
-    const centre = lo.clone().add(hi).multiplyScalar(0.5);
-    const size = hi.clone().sub(lo).length();
-    let state = 12345;
-    const rnd = () => (state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 4294967296;
-    const rays: number[] = [];
-    for (let k = 0; k < 400; k++) {
-      // From a sphere around the knot toward a random point near its centre.
-      const origin = new Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize().multiplyScalar(size * 3).add(centre);
-      const target = new Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).multiplyScalar(size * 0.8).add(centre);
-      const direction = target.sub(origin).normalize();
-      rays.push(origin.x, origin.y, origin.z, direction.x, direction.y, direction.z);
-    }
+    const rays = seededRays(knot);
     const out = session.pick(handle, Float64Array.from(rays), 0, Infinity, 2) as Float64Array;
     let hits = 0;
     let ties = 0;
-    for (let k = 0; k < 400; k++) {
-      const r = rays.slice(k * 6, k * 6 + 6);
-      const expected = bvh.raycastFirst(new Ray(new Vector3(r[0], r[1], r[2]), new Vector3(r[3], r[4], r[5])), DoubleSide, 0, Infinity);
+    for (let k = 0; k < rays.length / 6; k++) {
       const face = out[k * 5]!;
-      if (face !== (expected?.faceIndex ?? -1)) {
+      const expectedFace = recorded.faces[k]!;
+      const expectedDistance = recorded.distances[k]!;
+      if (face !== expectedFace) {
         // A ray through an edge or a coincident face hits two faces at exactly the same distance;
         // which one an index reports first is traversal-dependent (Rust: lowest face id).
-        expect(expected, `ray ${k}`).toBeDefined();
-        expect(Math.abs(out[k * 5 + 1]! - expected!.distance), `ray ${k} tie`).toBeLessThan(1e-9);
+        expect(expectedFace, `ray ${k}`).toBeGreaterThanOrEqual(0);
+        expect(Math.abs(out[k * 5 + 1]! - expectedDistance), `ray ${k} tie`).toBeLessThan(1e-9);
         ties += 1;
         continue;
       }
-      if (expected) {
+      if (expectedFace >= 0) {
         hits += 1;
-        expect(Math.abs(out[k * 5 + 1]! - expected.distance)).toBeLessThan(1e-5);
+        expect(Math.abs(out[k * 5 + 1]! - expectedDistance)).toBeLessThan(1e-5);
       }
     }
     expect(hits).toBeGreaterThan(40);
@@ -179,14 +155,11 @@ describe('transform, handedness, normals, overlay vertices', () => {
     session.release_mesh(handle);
   });
 
-  it('vertex normals match src/core/analysis/vertexNormals', () => {
-    const points = Array.from({ length: knot.positions.length / 3 }, (_, v) => [knot.positions[v * 3]!, knot.positions[v * 3 + 1]!, knot.positions[v * 3 + 2]!] as [number, number, number]);
-    const faces = Array.from({ length: knot.indices.length / 3 }, (_, f) => [knot.indices[f * 3]!, knot.indices[f * 3 + 1]!, knot.indices[f * 3 + 2]!]);
-    const ts = vertexNormals(points, faces).flat();
-    expect(maxDiff(engine.vertex_normals(knot.positions, knot.indices) as Float32Array, ts)).toBeLessThan(1e-5);
+  it('vertex normals match the recorded TS result', () => {
+    expectGolden('knot-vertex-normals', approxArray(engine.vertex_normals(knot.positions, knot.indices) as Float32Array, 31));
   });
 
-  it('refineForOverlay, dentalFaceOverlay and contour segments match the TS overlay code', () => {
+  it('refineForOverlay matches the TS refine; dentalFaceOverlay and contour segments match the recorded TS result', () => {
     const faces = knot.indices.length / 3;
     for (const [maxEdge, maxTriangles] of [[1e9, faces * 2], [4, faces * 3], [1.5, faces * 3]] as const) {
       const ts = refineForOverlay(knot, maxEdge, maxTriangles);
@@ -198,13 +171,12 @@ describe('transform, handedness, normals, overlay vertices', () => {
       expect(maxDiff(positions, ts.positions)).toBeLessThan(1e-5);
     }
     const allowed = Uint8Array.from({ length: faces }, (_, f) => (f % 3 === 0 ? 1 : 0));
-    const tsFaces = dentalFaceOverlay(knot, allowed);
     const rustFaces = engine.dental_face_overlay(knot.positions, knot.indices, allowed);
-    expect(maxDiff(rustFaces.take_positions() as Float32Array, tsFaces.positions)).toBeLessThan(1e-5);
-    expect(maxDiff(rustFaces.take_normals() as Float32Array, tsFaces.normals)).toBeLessThan(1e-5);
+    const overlayPositions = rustFaces.take_positions() as Float32Array;
+    const overlayNormals = rustFaces.take_normals() as Float32Array;
     rustFaces.free();
-    expect(() => engine.dental_face_overlay(knot.positions, knot.indices, new Uint8Array(3))).toThrow(expect.objectContaining({ code: 'INVALID_LENGTH' }));
     const pairs = Uint32Array.of(0, 5, 7, 9);
-    expect(Array.from(engine.dental_contour_segments(knot.positions, pairs) as Float32Array)).toEqual(Array.from(dentalContourSegments(knot, pairs)));
+    expectGolden('knot-dental-overlay', { positions: approxArray(overlayPositions, 53), normals: approxArray(overlayNormals, 53), segments: engine.dental_contour_segments(knot.positions, pairs) as Float32Array });
+    expect(() => engine.dental_face_overlay(knot.positions, knot.indices, new Uint8Array(3))).toThrow(expect.objectContaining({ code: 'INVALID_LENGTH' }));
   });
 });

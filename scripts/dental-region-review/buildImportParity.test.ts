@@ -2,8 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { proposeDentalOrientation } from '../../src/core/analysis/dental';
 import { sampleDiagnosticContourContacts } from '../../src/core/analysis/dentalContourContacts';
-import { contourPerimeter } from '../test-support/ts-oracle/safety/dentalRimCoverage';
-import { positionId } from '../test-support/ts-oracle/placement/placement';
+import { supportEngine } from '../../src/supports/supportEngine';
 import { defaultSupportSettings } from '../../src/core/supports/settings';
 import { runSupportJob } from '../../src/supports/jobRunner';
 import { placeImportedUnits } from '../../src/state/import';
@@ -11,6 +10,9 @@ import { inverseTransformDirection, inverseTransformPoint, transformPoint } from
 import { buildDentalReview } from './build';
 import { unresolvedCircularArcs } from './phaseGap';
 import { parseStl } from '../test-support/rustImport';
+
+/** The tip ID the placement code derives from a unit-local position: 0.01 mm rounding. */
+const positionId = (position: readonly number[]): string => `auto-${position.map((value) => Math.round(value * 100)).join('_')}`;
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
@@ -34,7 +36,7 @@ describe('dental import and preview parity', () => {
     const turn = { position: [0, 0, 0] as [number, number, number], rotation: review.frame.rotation };
     const retainedAt = (review.region.contacts ?? []).filter((contact) => contact.rim === 'opening' &&
       retained.has(positionId(transformPoint(turn, contact.position)))).map((contact) => contact.distanceAlongContour);
-    const arcs = unresolvedCircularArcs(contourPerimeter(unit.source, review.region.openingEdges), retainedAt,
+    const arcs = unresolvedCircularArcs(supportEngine().contour_perimeter(unit.source.positions, review.region.openingEdges), retainedAt,
       shifted.contacts.map((contact) => ({ atMm: contact.distanceAlongContour, face: contact.face })), 4);
     expect(arcs.map((arc) => [Math.round(arc.gapMm), arc.candidates.length])).toEqual([
       [10, 5], [6, 3], [10, 5], [8, 4], [8, 4],

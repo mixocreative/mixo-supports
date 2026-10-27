@@ -4,11 +4,10 @@ import type { TriangleMesh } from '../../src/core/analysis/types';
 import { proposeDentalSupportRegion } from '../../src/core/analysis/dentalRegion';
 import { jobContacts } from '../../src/supports/genericPolicy';
 import { dentalBuildSettings } from '../../src/core/supports/dentalSettings';
-import { autoTreeLayout } from './ts-oracle/support-builder/autotree';
-import { columnLanding, lineTarget, neckDirection, treeLanding, type Landing } from './ts-oracle/support-builder/landing';
-import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from './ts-oracle/support-builder/mesh';
-import { RemeshTarget } from './ts-oracle/remesh/remesh';
-import { defaultSupportSettings, withShape, type LiveSupportSettings } from '../../src/core/supports/settings';
+import type { SupportContact } from '../../src/core/supports/mesh';
+import { defaultSupportSettings, setRoofMode, updateSetting, withShape, type LiveSupportSettings } from '../../src/core/supports/settings';
+import { approxArray, exactArray } from './golden';
+import { buildSnapshot } from './buildSnapshot';
 import { GOLDEN_FIXTURES } from '../../src/goldens/fixtures';
 import { supportedUnit } from '../../src/goldens/pipeline';
 import { applyTransform, transformDirection, transformPoint } from '../../src/state/transform';
@@ -17,12 +16,12 @@ import { buildSupportsWasm, castDownWasm, type ColumnInput, type WasmSupportBuil
 import { add, normalizeOrDown, scale, type Vector } from '../../src/core/vec3';
 
 /*
- * Parity harness for the Rust support builder (U4a-U4c). The TS builder it compares against is the
- * oracle (scripts/test-support/ts-oracle/support-builder). A scenario is the SAME
- * placement fed to the TS builder and to Rust: plate-space contacts, the model, settings, mode.
- * TS runs the oracle (its own voxel remesh and ray casts); Rust gets the contacts as the placement made them
- * (unsampled normals, the point class) and samples, lands and lays out the Auto Trees itself.
- * Rule 7 (docs/SHIP-PLAN.md): indices, component ids and tags identical; positions within 1e-5 mm.
+ * Parity harness for the Rust support builder (U4a-U4c, U9). A scenario is a placement: plate-space contacts,
+ * the model, settings, mode. Rust gets the contacts as the placement made them (unsampled normals, the point
+ * class) and samples, lands and lays out the Auto Trees itself; its build is compared with the result the
+ * TS builder (the former oracle) produced, recorded in scripts/fixtures/golden/builder/ (see
+ * scripts/test-support/golden.ts for regeneration). Rule 7 (docs/SHIP-PLAN.md): indices, component ids and
+ * tags identical; positions within 1e-5 mm.
  */
 
 export interface Scenario {
@@ -41,15 +40,6 @@ export function withStructures(settings: LiveSupportSettings, force: { tree?: bo
 }
 
 const exactOnly = (s: Scenario) => s.settings.lowPolyMode && s.mode === 'preview';
-
-/** The TS reference build (the oracle) for a scenario. */
-export function tsBuild(scenario: Scenario, remesh = remeshOf(scenario)): GeneratedSupportMesh {
-  return buildSupportMesh(scenario.contacts, scenario.settings, { mode: scenario.mode, model: scenario.model, ...(scenario.labelText ? { labelText: scenario.labelText } : {}), ...(remesh ? { remesh } : {}) });
-}
-
-export function remeshOf(scenario: Scenario): RemeshTarget | undefined {
-  return exactOnly(scenario) ? undefined : new RemeshTarget(scenario.model, scenario.settings.pillarDiameter);
-}
 
 /** The contacts as the placement made them: Rust samples the neck normals and casts the landings itself. */
 export function rustInputs(scenario: Scenario): ColumnInput[] {
@@ -84,67 +74,67 @@ export function rustBuild(scenario: Scenario, inputs = rustInputs(scenario)): Wa
 
 export const landsOnExactSurface = exactOnly;
 
-/** Every column landing ray of a scenario: TS exact ray cast against the Rust one. Empty `differences` when they agree. */
-export function landingDifferences(scenario: Scenario, inputs: readonly ColumnInput[]): { differences: string[]; casts: number; hits: number } {
+/** The neck follows the surface normal but tilts at most `maxAngle` degrees from straight down. */
+function neckDirection(normal: Vector, maxAngle: number): Vector {
+  const angle = Math.acos(Math.max(-1, Math.min(1, -normal[1])));
+  const limit = maxAngle * Math.PI / 180;
+  if (angle <= limit) return normal;
+  const horizontal = Math.hypot(normal[0], normal[2]);
+  if (horizontal < 1e-9) return [0, -1, 0];
+  const sin = Math.sin(limit);
+  return [normal[0] / horizontal * sin, -Math.cos(limit), normal[2] / horizontal * sin];
+}
+
+/** The start of every column's landing ray (the neck's lower end) and the cast length (model height). */
+export function landingSources(scenario: Scenario, inputs: readonly ColumnInput[]): { sources: Vector[]; height: number } {
   const settings = scenario.settings;
-  const exact = lineTarget(scenario.model, { ...settings, lowPolyMode: true }, undefined, false);
-  const sources: Vector[] = inputs.map((contact, k) => {
+  let low = Infinity;
+  let high = -Infinity;
+  for (let at = 1; at < scenario.model.positions.length; at += 3) {
+    low = Math.min(low, scenario.model.positions[at]!);
+    high = Math.max(high, scenario.model.positions[at]!);
+  }
+  const sources = inputs.map((contact, k): Vector => {
     const own = withShape(settings, scenario.contacts[k]!.shape);
     return add(contact.position, scale(neckDirection(normalizeOrDown(contact.normal), own.maxNeckAngle), own.neckLength));
   });
-  const rust = withRustModel(scenario, (session, model) => castDownWasm(session, model, sources, exact.height));
-  const out: string[] = [];
-  sources.forEach((from, k) => {
-    const ts = exact.cast(from, exact.height);
-    const r = rust[k];
-    if (!ts || !r) {
-      if (ts || r) out.push(`landing ${k}: ${ts ? 'only TS' : 'only Rust'} hits`);
-      return;
-    }
-    const gap = Math.max(Math.abs(ts.point[1] - r.y), ...ts.normal.map((v, i) => Math.abs(v - r.normal[i]!)));
-    if (ts.faceIndex !== r.faceIndex) out.push(`landing ${k}: face ${ts.faceIndex} vs ${r.faceIndex}`);
-    else if (gap > 1e-9) out.push(`landing ${k}: differs by ${gap}`);
-  });
-  return { differences: out, casts: sources.length, hits: rust.filter(Boolean).length };
+  return { sources, height: high - low };
 }
 
-function tagsEqual(a: unknown, b: unknown): boolean {
-  if (typeof a === 'number' && typeof b === 'number') return a === b || Math.abs(a - b) <= 1e-9;
-  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((v, i) => tagsEqual(v, b[i]));
-  if (a && b && typeof a === 'object' && typeof b === 'object') {
-    const keys = new Set([...Object.keys(a), ...Object.keys(b)].filter((k) => (a as Record<string, unknown>)[k] !== undefined || (b as Record<string, unknown>)[k] !== undefined));
-    return [...keys].every((k) => tagsEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
-  }
-  return a === b;
+export interface LandingHit { faceIndex: number; y: number; normal: Vector }
+
+/** Comparable record of the landing rays: hit faces exact, heights and normals within tolerance. */
+export function landingSnapshot(hits: readonly (LandingHit | undefined)[]) {
+  return {
+    faces: exactArray(hits.map((hit) => hit?.faceIndex ?? -1)),
+    values: approxArray(hits.flatMap((hit) => (hit ? [hit.y, ...hit.normal] : [0, 0, 0, 0])), 1),
+  };
 }
 
-/** Differences between the TS build and the Rust build under rule 7; empty when they agree. */
-export function compareBuilds(ts: GeneratedSupportMesh, rust: WasmSupportBuild, inputs: readonly ColumnInput[], tolerance = 1e-5): string[] {
-  const out: string[] = [];
-  if (ts.indices.length !== rust.indices.length) out.push(`index count ${ts.indices.length} vs ${rust.indices.length}`);
-  else if (ts.indices.some((v, i) => v !== rust.indices[i])) out.push(`indices differ at ${ts.indices.findIndex((v, i) => v !== rust.indices[i])}`);
-  if (ts.positions.length !== rust.positions.length) out.push(`position count ${ts.positions.length} vs ${rust.positions.length}`);
-  else {
-    let worst = 0;
-    for (let i = 0; i < ts.positions.length; i += 1) worst = Math.max(worst, Math.abs(ts.positions[i]! - rust.positions[i]!));
-    if (worst > tolerance) out.push(`max position difference ${worst} mm`);
-  }
-  const strip = (c: { origin?: unknown }) => ({ ...c, origin: undefined });
-  // Tags: ids, parts, ranges and face ids identical; intent points and normals within 1e-9 (JS Math.hypot and Rust sqrt differ in the last bit).
-  const tsTags = ts.components.map((c) => JSON.parse(JSON.stringify(c)));
-  const rustTags = rust.components.map((c) => JSON.parse(JSON.stringify(strip(c))));
-  const at = tsTags.findIndex((c, i) => !tagsEqual(c, rustTags[i]));
-  if (tsTags.length !== rustTags.length || at >= 0) {
-    out.push(`component tags differ (${tsTags.length} vs ${rustTags.length}) at ${at}: ${JSON.stringify(tsTags[at])} vs ${JSON.stringify(rustTags[at])}`);
-  }
+/** The Rust exact-surface landing rays of a scenario (one entry per contact, undefined when the ray hits nothing). */
+export function rustLandingHits(scenario: Scenario, inputs: readonly ColumnInput[]): (LandingHit | undefined)[] {
+  const { sources, height } = landingSources(scenario, inputs);
+  return withRustModel(scenario, (session, model) => castDownWasm(session, model, sources, height));
+}
+
+/** The comparable snapshot of a Rust build (the recorder builds the same shape from the TS build). */
+export function rustSnapshot(build: WasmSupportBuild, inputs: readonly ColumnInput[]) {
+  return buildSnapshot({ positions: build.positions, indices: build.indices, components: build.components, dropped: build.dropped.map((i) => inputs[i]!.id) });
+}
+
+/** Origin tags of the Rust components against the inputs; empty when they agree. */
+export function originMismatches(rust: WasmSupportBuild, inputs: readonly ColumnInput[]): string[] {
   const originOf = new Map(inputs.map((c) => [c.id, c.origin]));
+  const out: string[] = [];
   for (const c of rust.components) {
     const want = c.contactId === undefined ? undefined : originOf.get(c.contactId);
     if (c.origin !== want) out.push(`origin tag of ${c.part} ${c.contactId}: ${c.origin} vs ${want}`);
   }
-  if (JSON.stringify(ts.dropped) !== JSON.stringify(rust.dropped.map((i) => inputs[i]!.id))) out.push('dropped differs');
   return out;
 }
+
+/** Golden file of a scenario or case: `builder/<name>` with the characters a file name dislikes replaced. */
+export const goldenName = (scenarioName: string, folder = 'builder'): string => `${folder}/${scenarioName.replace(/[^A-Za-z0-9.-]+/g, '_')}`;
 
 /** Contacts of a golden fixture variant as the app builds them, in plate space. */
 export function fixtureScenarios(mode: 'preview' | 'export'): Scenario[] {
@@ -190,4 +180,46 @@ export function alignerScenario(mode: 'preview' | 'export', lowPoly: boolean): S
     mode,
     labelText: 'A',
   };
+}
+
+/** Settings and per-support shapes that reach other column code paths, applied to the export scenarios of two fixtures. */
+export const PARITY_VARIANTS: [string, (s: LiveSupportSettings) => LiveSupportSettings][] = [
+  ['contact sphere', (s) => updateSetting(updateSetting(s, 'contactShape', 'SPHERE'), 'touchDepth', 0.1)],
+  ['square tapered tip', (s) => updateSetting(s, 'tipSection', 'SQUARE')],
+  ['cross straight tip', (s) => updateSetting(updateSetting(s, 'tipSection', 'CROSS'), 'tipProfile', 'STRAIGHT')],
+  ['round straight tip', (s) => updateSetting(s, 'tipProfile', 'STRAIGHT')],
+  ['sphere + square', (s) => updateSetting(updateSetting(s, 'contactShape', 'SPHERE'), 'tipSection', 'SQUARE')],
+  ['tall neck, steep angle, resolution 20', (s) => updateSetting(updateSetting(updateSetting(s, 'neckLength', 4), 'maxNeckAngle', 10), 'resolution', 20)],
+  ['raft off but high lift floor', (s) => updateSetting(s, 'baseHeight', 2.5)],
+  ['tree + brace, wide merge', (s) => updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'trussEnabled', true), 'scatterMergeDistance', 6)],
+  ['tree only', (s) => ({ ...updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 4), trussEnabled: false })],
+  ['tree + sphere + square tips', (s) => updateSetting(updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'contactShape', 'SPHERE'), 'tipSection', 'SQUARE')],
+  ['tree + straight tips, 3 percent increment', (s) => updateSetting(updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'tipProfile', 'STRAIGHT'), 'treeSectionIncrement', 3)],
+  ['tree descent 6, brace angle 30', (s) => updateSetting(updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'scatterBranchDescent', 6), 'trussAngle', 30)],
+  ['safe distance 0.5 (scatter remesh)', (s) => updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'scatterSafeDistance', 0.5)],
+  ['label AB-12 (digits and dash)', (s) => s],
+  ['raft off, label on', (s) => updateSetting(s, 'raftEnabled', false)],
+  ['raft wall angle 25, tall wall, thick floor', (s) => updateSetting(updateSetting(updateSetting(s, 'raftWallAngle', 25), 'raftWallHeight', 6), 'raftFloorThickness', 1.6)],
+  ['raft narrow expand, low voxel resolution', (s) => updateSetting(updateSetting(s, 'raftExpandWidth', 1.5), 'voxelResolution', 24)],
+  ['label letter size 6, margin 1, offset', (s) => updateSetting(updateSetting(updateSetting(updateSetting(s, 'labelSize', 6), 'labelMargin', 1), 'labelOffsetX', 2), 'labelOffsetY', -1.5)],
+  ['roof with diagonals and concentric braces', (s) => updateSetting(updateSetting(updateSetting(setRoofMode(s, 'ROOF'), 'diagonalEnabled', true), 'braceConcentric', 3), 'columnCount', 10)],
+  ['roof open ceiling', (s) => updateSetting(setRoofMode(s, 'ROOF'), 'storeyEncloseCeiling', false)],
+  ['cage', (s) => setRoofMode(s, 'CAGE')],
+  ['cage with diagonals, raft off', (s) => updateSetting(updateSetting(setRoofMode(s, 'CAGE'), 'diagonalEnabled', true), 'raftEnabled', false)],
+  ['brace only, long distance limit', (s) => ({ ...updateSetting(s, 'trussDistanceLimit', 30), scatterAutoTree: false, trussEnabled: true })],
+];
+
+export function variantScenarios(): Scenario[] {
+  const out: Scenario[] = [];
+  for (const scenario of fixtureScenarios('export').filter((s) => s.name.startsWith('cube-overhang.default') || s.name.startsWith('knot.default'))) {
+    for (const [label, change] of PARITY_VARIANTS) {
+      out.push({ ...scenario, name: `${scenario.name} ${label}`, settings: change(scenario.settings), ...(label.startsWith('label AB') ? { labelText: 'AB-12' } : {}) });
+    }
+    out.push({ ...scenario, name: `${scenario.name} tips-only`, mode: 'preview', settings: { ...scenario.settings, previewMode: 'ONLY_TIP' } });
+    const contacts = scenario.contacts.map((c, i): SupportContact => i % 3 === 0
+      ? { ...c, origin: 'manual', shape: i % 2 === 0 ? { contactShape: 'SPHERE', touchDiameter: 0.9, touchDepth: 0.1 } : { tipSection: 'CROSS', pointDiameter: 0.4, neckLength: 3 } }
+      : c);
+    out.push({ ...scenario, name: `${scenario.name} manual+shapes`, contacts });
+  }
+  return out;
 }

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultDentalContactFootprintSettings, proposeDentalContactFootprint } from '../core/analysis/dentalContactFootprint';
 import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
-import { positionId } from '../../scripts/test-support/ts-oracle/placement/placement';
+import { positionId } from './contactEdits';
 import type { SupportPoint } from '../core/analysis/types';
 import type { DentalPlacementJob, JobTransform, SupportJob } from '../core/jobs';
 import { defaultSupportSettings } from '../core/supports/settings';

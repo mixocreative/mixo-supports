@@ -1,29 +1,24 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'vitest';
 import { AsciiStlSession, BinaryStlSession } from '../../crates/geometry-wasm/pkg-node/mixo_geometry_wasm.js';
 import { binaryStlTriangles } from '../core/import/stlHeader';
-import { StlWelder } from '../../scripts/test-support/ts-oracle/stl';
+import { exactArray, expectGolden } from '../../scripts/test-support/golden';
+
+/* Expected arrays were recorded from the TS StlWelder (U9): scripts/fixtures/golden/import-stl-*.json. */
+type Finished = { take_positions(): Float32Array; take_indices(): Uint32Array };
+const plainMesh = (mesh: Finished) => ({ positions: Array.from(mesh.take_positions()), indices: Array.from(mesh.take_indices()) });
 
 describe('Rust/WASM streaming binary STL parity', () => {
   it('matches the saved aligner vertex and index buffers bit-for-bit across uneven chunks', () => {
     const file = readFileSync('docs/dental-reference/reference-aligner.stl');
     const bytes = new Uint8Array(file.buffer, file.byteOffset, file.byteLength);
     const head = bytes.subarray(0, 84);
-    const expected = new StlWelder(head, bytes.length);
     const actual = new BinaryStlSession(binaryStlTriangles(head, bytes.length));
     try {
-      for (let offset = 0; offset < bytes.length; offset += 1_000_003) {
-        const chunk = bytes.subarray(offset, offset + 1_000_003);
-        expected.push(chunk);
-        actual.push(chunk);
-      }
-      const oldMesh = expected.finish();
+      for (let offset = 0; offset < bytes.length; offset += 1_000_003) actual.push(bytes.subarray(offset, offset + 1_000_003));
       const newMesh = actual.finish();
       try {
-        const positions = newMesh.take_positions();
-        const indices = newMesh.take_indices();
-        expect(new Uint32Array(positions.buffer)).toEqual(new Uint32Array(oldMesh.positions.buffer));
-        expect(indices).toEqual(oldMesh.indices);
+        expectGolden('import-stl-aligner', { positions: exactArray(newMesh.take_positions(), 'f32'), indices: exactArray(newMesh.take_indices()) });
       } finally {
         newMesh.free();
       }
@@ -36,16 +31,12 @@ describe('Rust/WASM streaming binary STL parity', () => {
 describe('Rust/WASM streaming ASCII STL parity', () => {
   it('matches a multiline vertex when both lines arrive in one chunk', () => {
     const bytes = new TextEncoder().encode('solid x\nvertex 0\n 0 0\nvertex 1 0 0\nvertex 0 0 1\n');
-    const expected = new StlWelder(bytes.subarray(0, 84), bytes.length);
-    expected.push(bytes);
     const actual = new AsciiStlSession(bytes.length);
     try {
       actual.push(bytes);
-      const oldMesh = expected.finish();
       const newMesh = actual.finish();
       try {
-        expect(new Uint32Array(newMesh.take_positions().buffer)).toEqual(new Uint32Array(oldMesh.positions.buffer));
-        expect(newMesh.take_indices()).toEqual(oldMesh.indices);
+        expectGolden('import-stl-ascii-multiline', plainMesh(newMesh));
       } finally {
         newMesh.free();
       }
@@ -73,19 +64,12 @@ describe('Rust/WASM streaming ASCII STL parity', () => {
       'endfacet',
       'endsolid aligner',
     ].join('\n'));
-    const expected = new StlWelder(bytes.subarray(0, 84), bytes.length);
     const actual = new AsciiStlSession(bytes.length);
     try {
-      for (let offset = 0; offset < bytes.length; offset += 7) {
-        const chunk = bytes.subarray(offset, offset + 7);
-        expected.push(chunk);
-        actual.push(chunk);
-      }
-      const oldMesh = expected.finish();
+      for (let offset = 0; offset < bytes.length; offset += 7) actual.push(bytes.subarray(offset, offset + 7));
       const newMesh = actual.finish();
       try {
-        expect(new Uint32Array(newMesh.take_positions().buffer)).toEqual(new Uint32Array(oldMesh.positions.buffer));
-        expect(newMesh.take_indices()).toEqual(oldMesh.indices);
+        expectGolden('import-stl-ascii-split', plainMesh(newMesh));
       } finally {
         newMesh.free();
       }

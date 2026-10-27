@@ -3,9 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { applyToPoint, placementMatrix, transformPositions } from '../transform';
 import type { Vector } from '../vec3';
 import { parseStl } from '../../../scripts/test-support/rustImport';
-import * as oracleDental from '../../../scripts/test-support/ts-oracle/dental/dental';
-import { inspectDentalCentralOpening as oracleOpening } from '../../../scripts/test-support/ts-oracle/dental/dentalContours';
-import { proposeDentalSupportRegion as oracleRegion } from '../../../scripts/test-support/ts-oracle/dental/dentalRegion';
+import { approxArray, exactArray, expectGolden } from '../../../scripts/test-support/golden';
+import { regionSnapshot } from '../../../scripts/test-support/dentalSnapshots';
 import { proposeDentalOrientation, rotationToDentalPose } from './dental';
 import { inspectDentalCentralOpening } from './dentalContours';
 import { orientDentalAligner } from './dentalOrient';
@@ -13,13 +12,10 @@ import { proposeDentalSupportRegion, retuneDentalSupportRegion, type DentalRegio
 import type { TriangleMesh } from './types';
 
 /*
- * U6a: the Rust dental detectors against the TypeScript oracle (rule 7: IDs, masks and edge sets
+ * U6a: the Rust dental detectors against the recorded TypeScript oracle results (scripts/fixtures/golden; rule 7: IDs, masks and edge sets
  * identical, positions within 1e-5 mm), the seeded 100-pose restoration, and abstention on
  * synthetic aligners without a decidable central opening.
  */
-
-/** The tip ID the placement code derives from a unit-local position (`positionId`): 0.01 mm rounding. */
-const positionId = (position: Vector): string => `auto-${position.map((value) => Math.round(value * 100)).join('_')}`;
 
 const reference = (): TriangleMesh => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
@@ -32,32 +28,12 @@ const proposal = (region: DentalRegionProposal): Region => {
   return region as Region;
 };
 
-function expectSameRegion(actual: Region, expected: Region): void {
-  expect(actual.allowedFaces).toEqual(expected.allowedFaces);
-  expect(actual.outerEdges).toEqual(expected.outerEdges);
-  expect(actual.outerRidgeEdges).toEqual(expected.outerRidgeEdges);
-  expect(actual.outerConnectorEdges).toEqual(expected.outerConnectorEdges);
-  expect(actual.openingEdges).toEqual(expected.openingEdges);
-  expect(actual.contactFaces).toEqual(expected.contactFaces);
-  expect(actual.diagnostics.regionFaces).toEqual(expected.diagnostics.regionFaces);
-  actual.diagnostics.connectorLengths.forEach((length, at) => expect(length).toBeCloseTo(expected.diagnostics.connectorLengths[at]!, 6));
-  expect(actual.contacts).toHaveLength(expected.contacts!.length);
-  actual.contacts!.forEach((contact, at) => {
-    const other = expected.contacts![at]!;
-    expect(contact.face).toBe(other.face);
-    expect(contact.rim).toBe(other.rim);
-    // Tip IDs derive from the contact position: identical IDs, not just close points.
-    expect(positionId(contact.position)).toBe(positionId(other.position));
-    for (let axis = 0; axis < 3; axis += 1) {
-      expect(Math.abs(contact.position[axis]! - other.position[axis]!)).toBeLessThan(1e-5);
-      expect(Math.abs(contact.normal[axis]! - other.normal[axis]!)).toBeLessThan(1e-5);
-    }
-    expect(Math.abs(contact.distanceAlongContour - other.distanceAlongContour)).toBeLessThan(1e-5);
-    expect(Math.abs(contact.distanceFromContour - other.distanceFromContour)).toBeLessThan(1e-5);
-  });
+/** Rust region against the recorded TS result (rule 7: mask, edges, faces, tip IDs exact; positions within 1e-5 mm). */
+function expectSameRegion(name: string, actual: Region): void {
+  expectGolden(name, regionSnapshot(actual));
 }
 
-describe('Rust dental region vs the TS oracle', () => {
+describe('Rust dental region vs the recorded TS oracle', () => {
   const tunings = [
     { setbackMm: 0.2, stripWidthMm: 1, density: 1 },
     { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 },
@@ -66,16 +42,16 @@ describe('Rust dental region vs the TS oracle', () => {
   for (const tuning of tunings) {
     it(`matches mask, contours, tips and IDs at ${JSON.stringify(tuning)}`, () => {
       const mesh = reference();
-      expectSameRegion(proposal(proposeDentalSupportRegion(mesh, tuning)), proposal(oracleRegion(mesh, tuning)));
+      expectSameRegion(`dental-region-${tunings.indexOf(tuning)}`, proposal(proposeDentalSupportRegion(mesh, tuning)));
     }, 120000);
   }
 
-  it('retunes to the oracle result and to fresh detection', () => {
+  it('retunes to the recorded result and to fresh detection', () => {
     const mesh = reference();
     const base = proposal(proposeDentalSupportRegion(mesh));
     const tuning = { setbackMm: 0.35, stripWidthMm: 0.8, density: 1.25 };
     const retuned = proposal(retuneDentalSupportRegion(mesh, base, tuning));
-    expectSameRegion(retuned, proposal(oracleRegion(mesh, tuning)));
+    expectSameRegion('dental-region-retuned', retuned);
     expect(retuned).toEqual(proposal(proposeDentalSupportRegion(mesh, tuning)));
   }, 120000);
 
@@ -87,34 +63,34 @@ describe('Rust dental region vs the TS oracle', () => {
   });
 });
 
-describe('Rust orientation vs the TS oracle', () => {
+/** Rim, pose and central opening of an orientation proposal, as recorded: vectors/pose/confidence within 1e-9, rim points within 1e-4. */
+function orientationSnapshots(found: ReturnType<typeof proposeDentalOrientation>, pose: Vector | undefined, opening: { kind: string; edges?: Uint32Array }) {
+  expect(found.kind).toBe('proposal');
+  if (found.kind !== 'proposal') throw new Error('proposal expected');
+  const { rim } = found;
+  return {
+    tight: {
+      boundaryKind: rim.boundaryKind, pointCount: rim.points.length, openingDirection: rim.openingDirection, centroid: rim.centroid,
+      tangent: rim.tangent, bitangent: rim.bitangent, visibilityMask: exactArray(rim.visibilityMask, 'u8'),
+      confidence: found.diagnostics.confidence, pose: pose ?? null, opening: { kind: opening.kind, edges: opening.kind === 'present' ? exactArray(opening.edges!) : null },
+    },
+    points: approxArray(rim.points, 5),
+  };
+}
+
+describe('Rust orientation vs the recorded TS oracle', () => {
   it('matches the rim, pose and central opening of the reference and of a scrambled pose', () => {
     const mesh = reference();
-    for (const rotation of [[0, 0, 0], [0.61, -0.83, 1.17]] as Vector[]) {
+    [[0, 0, 0], [0.61, -0.83, 1.17]].forEach((rotation, at) => {
       const turned = rotation.every((value) => value === 0) ? mesh
-        : { positions: transformPositions(mesh.positions, placementMatrix({ position: [0, 0, 0], rotation })), indices: mesh.indices };
-      const actual = proposeDentalOrientation(turned);
-      const expected = oracleDental.proposeDentalOrientation(turned);
-      expect(actual.kind).toBe('proposal');
-      expect(expected.kind).toBe('proposal');
-      if (actual.kind !== 'proposal' || expected.kind !== 'proposal') return;
-      expect(actual.rim.boundaryKind).toBe(expected.rim.boundaryKind);
-      expect(actual.rim.points).toHaveLength(expected.rim.points.length);
-      actual.rim.points.forEach((value, at) => expect(Math.abs(value - expected.rim.points[at]!)).toBeLessThan(1e-4));
-      for (const key of ['openingDirection', 'centroid', 'tangent', 'bitangent'] as const) {
-        actual.rim[key].forEach((value, at) => expect(Math.abs(value - expected.rim[key][at]!)).toBeLessThan(1e-9));
-      }
-      expect(actual.rim.visibilityMask).toEqual(expected.rim.visibilityMask);
-      expect(actual.diagnostics.confidence).toBeCloseTo(expected.diagnostics.confidence, 9);
-      const pose = rotationToDentalPose(turned, actual.rim);
-      const oraclePose = oracleDental.rotationToDentalPose(turned, expected.rim);
-      expect(pose).toBeDefined();
-      pose!.forEach((value, at) => expect(Math.abs(value - oraclePose![at]!)).toBeLessThan(1e-9));
-      const opening = inspectDentalCentralOpening(turned, actual.rim);
-      const oracleResult = oracleOpening(turned, expected.rim);
-      expect(opening.kind).toBe(oracleResult.kind);
-      if (opening.kind === 'present' && oracleResult.kind === 'present') expect(opening.edges).toEqual(oracleResult.edges);
-    }
+        : { positions: transformPositions(mesh.positions, placementMatrix({ position: [0, 0, 0], rotation: rotation as Vector })), indices: mesh.indices };
+      const found = proposeDentalOrientation(turned);
+      const actual = orientationSnapshots(found, found.kind === 'proposal' ? rotationToDentalPose(turned, found.rim) : undefined,
+        found.kind === 'proposal' ? inspectDentalCentralOpening(turned, found.rim) : { kind: 'none' });
+      expectGolden(`dental-orient-${at}`, actual.tight, 1e-9);
+      expectGolden(`dental-orient-${at}-points`, actual.points, 1e-4);
+      expect(actual.tight.pose).not.toBeNull();
+    });
   }, 120000);
 });
 

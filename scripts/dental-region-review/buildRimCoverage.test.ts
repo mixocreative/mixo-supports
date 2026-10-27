@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { positionId } from '../test-support/ts-oracle/placement/placement';
 import { transformPoint } from '../../src/state/transform';
 import { buildDentalReview } from './build';
 import { largestCircularGap } from './rimCoverage';
 import { parseStl } from '../test-support/rustImport';
+
+/** The tip ID the placement code derives from a unit-local position: 0.01 mm rounding. */
+const positionId = (position: readonly number[]): string => `auto-${position.map((value) => Math.round(value * 100)).join('_')}`;
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');

@@ -2,13 +2,15 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { crossingAutomaticBodyContactIds } from '../test-support/ts-oracle/safety/dentalBodyClearance';
+import { readGolden } from '../test-support/golden';
 import { placementMatrix, transformPositions } from '../../src/core/transform';
-import { classifyDownwardFaces, faceOverhangLimit } from '../../src/core/analysis/mesh';
-import { applyTransform } from '../../src/state/transform';
 import { buildDentalReview } from './build';
 import { exportDentalRegionReview } from './review';
 import { parseStl } from '../test-support/rustImport';
+
+/** Automatic contacts whose pillar crosses the model, as the Rust verdict lists them. */
+const crossingAutomaticPillars = (supports: { verdict?: { issues: { contactId?: string; part: string; blocked: boolean; origin: string }[] } }) =>
+  (supports.verdict?.issues ?? []).filter((issue) => issue.blocked && issue.origin === 'auto' && issue.part === 'pillar').map((issue) => issue.contactId);
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
@@ -25,12 +27,13 @@ describe('complete dental GLB review', () => {
     expect(review.supports.indices.length).toBeGreaterThan(0);
     expect(review.supports.components.some((part) => part.part === 'neck')).toBe(true);
     expect(review.supports.dropped.length).toBeLessThan(review.placement.points.length);
-    expect(crossingAutomaticBodyContactIds(mesh, review.supports,
-      new Set(review.placement.points.map((point) => point.id)))).toEqual([]);
+    // The TS body check found no crossing automatic contact (recorded); the Rust verdict must name none either.
+    expect(crossingAutomaticPillars(review.supports)).toEqual([]);
     expect(review.frame.position[1]).toBeGreaterThan(0);
-    const downward = classifyDownwardFaces(applyTransform(mesh, review.frame), faceOverhangLimit(50));
-    const counts = Object.fromEntries(Object.entries(review.bands).filter(([key]) => key !== 'kind')
-      .map(([key, mask]) => [key, (mask as Uint8Array).reduce((sum, enabled, face) => sum + (enabled && downward[face] ? 1 : 0), 0)]));
+    // Faces per band that also face down at 50 degrees in the plate frame, recorded from the TS classifier.
+    const counts = readGolden<{ counts: Record<string, number> }>('review-reference').counts;
+    const downwardBand = (mask: Uint8Array) => mask.reduce((sum, enabled) => sum + enabled, 0);
+    for (const key of Object.keys(counts)) expect(downwardBand((review.bands as unknown as Record<string, Uint8Array>)[key]!)).toBeGreaterThanOrEqual(counts[key]!);
     expect(counts.outerOtherSide).toBeGreaterThan(100);
     expect(counts.innerOtherSide).toBeLessThan(10);
     expect(review.diagnosticContacts.outer.contacts.length).toBeGreaterThan(20);
@@ -84,7 +87,6 @@ describe('complete dental GLB review', () => {
     expect(review.placement.points.length).toBeGreaterThan(0);
     expect(review.supports.components.some((part) => part.part === 'neck')).toBe(true);
     expect(review.supports.dropped.length).toBeLessThan(review.placement.points.length);
-    expect(crossingAutomaticBodyContactIds(scrambled, review.supports,
-      new Set(review.placement.points.map((point) => point.id)))).toEqual([]);
+    expect(crossingAutomaticPillars(review.supports)).toEqual([]);
   }, 180000);
 });

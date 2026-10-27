@@ -8,15 +8,15 @@ import type { DentalPlacementJob } from '../core/jobs';
 import { applyTransform } from '../state/transform';
 import { placeGeneric } from '../supports/genericPlacement';
 import { parseStl } from '../../scripts/test-support/rustImport';
-import { dentalAllowedVertices as oracleVertices, filterLegacyDentalPlacement } from '../../scripts/test-support/ts-oracle/dental/legacy';
-import { DentalOpeningRaycaster } from '../../scripts/test-support/ts-oracle/dental/dental';
+import { expectGolden, exactArray } from '../../scripts/test-support/golden';
+import { placementSnapshot } from '../../scripts/test-support/dentalSnapshots';
 import { filterDentalPlacement } from './placement';
 import { legacyBaselineVertices } from './legacyArea';
 import { manualAreaPolicy } from './manualArea';
 
 /*
- * U8: the legacy (non two-contour) dental placement in Rust against the TypeScript oracle
- * (rule 7: IDs identical, positions within 1e-5 mm), plus the area rules it keeps: a painted-from-scratch
+ * U8: the legacy (non two-contour) dental placement in Rust against the recorded TypeScript oracle
+ * results (scripts/fixtures/golden/legacy-*.json; rule 7: IDs identical, positions within 1e-5 mm), plus the area rules it keeps: a painted-from-scratch
  * area needs paint, an erase stamp removes it, only a lower-edge rim authorises a detected area, and a
  * covered surface is never seen from the opening.
  */
@@ -37,57 +37,43 @@ const plate: TriangleMesh = {
   indices: Uint32Array.from([0, 1, 2, 2, 1, 3, 4, 6, 5]),
 };
 
-function expectSame(actual: PlacementResult, expected: PlacementResult): void {
-  expect(actual.points.map((point) => point.id)).toEqual(expected.points.map((point) => point.id));
-  actual.points.forEach((point, at) => {
-    const other = expected.points[at]!;
-    expect(point.source).toBe(other.source);
-    for (let axis = 0; axis < 3; axis += 1) {
-      expect(Math.abs(point.position[axis]! - other.position[axis]!)).toBeLessThanOrEqual(1e-5);
-      expect(Math.abs(point.normal[axis]! - other.normal[axis]!)).toBeLessThanOrEqual(1e-5);
-    }
-  });
-}
-
-function both(job: DentalPlacementJob, initial: PlacementResult = empty): PlacementResult {
+function both(name: string, job: DentalPlacementJob, initial: PlacementResult = empty): PlacementResult {
   const actual = filterDentalPlacement(job, initial);
-  expectSame(actual, filterLegacyDentalPlacement(job, initial));
+  expectGolden(`legacy-${name}`, placementSnapshot(actual));
   return actual;
 }
 
-describe('legacy dental area (Rust against the oracle)', () => {
+describe('legacy dental area (Rust against the recorded oracle)', () => {
   const job = (dental: DentalPolicy, mesh: TriangleMesh = plate): DentalPlacementJob => ({ mesh, orientation: still, settings, dental });
 
   it('a detected legacy area fills the visible footprint', () => {
-    const result = both(job({ rim, stamps: [] }));
+    const result = both('detected', job({ rim, stamps: [] }));
     expect(result.points.length).toBeGreaterThan(0);
   });
 
   it('a painted-from-scratch area permits nothing until painted, and an erase stamp removes it again', () => {
     const manual = manualAreaPolicy(rim, false);
-    expect(both(job(manual)).points).toEqual([]);
+    expect(both('manual-empty', job(manual)).points).toEqual([]);
     const painted: DentalPolicy = { ...manual, stamps: [{ center: [5, -2, 5], radius: 30, normal: down, kind: 'allow' }] };
-    expect(both(job(painted)).points.length).toBeGreaterThan(0);
+    expect(both('painted', job(painted)).points.length).toBeGreaterThan(0);
     const erased: DentalPolicy = { ...painted, stamps: [...painted.stamps, { center: [5, -2, 5], radius: 30, normal: down, kind: 'erase' }] };
-    expect(both(job(erased)).points).toEqual([]);
+    expect(both('erased', job(erased)).points).toEqual([]);
   });
 
   it('a projection-fallback rim never authorises a detected area, paint on it still counts only for a manual area', () => {
     const fallback: DentalPolicy = { rim: { ...rim, boundaryKind: 'projection-fallback' }, stamps: [] };
-    expect(both(job(fallback)).points).toEqual([]);
+    expect(both('fallback', job(fallback)).points).toEqual([]);
   });
 
   it('the overlay mask is the same gate as the generated contacts', () => {
     const mask = legacyBaselineVertices(plate, { rim, stamps: [] });
-    const normals = new Float32Array(plate.positions.length);
-    const expected = oracleVertices({ rim, stamps: [] }, new DentalOpeningRaycaster(plate, rim), plate.positions, normals);
-    expect([...mask]).toEqual([...expected]);
+    expectGolden('legacy-overlay-mask', exactArray(mask, 'u8'));
     expect(mask.some((v) => v === 1)).toBe(true);
   });
 
   it('generic contacts the area permits are kept ahead of the fill, in order', () => {
     const generic = placeGeneric(applyTransform(plate, still), settings);
-    const result = both(job({ rim, stamps: [] }), generic);
+    const result = both('with-generic', job({ rim, stamps: [] }), generic);
     expect(result.points.length).toBeGreaterThan(0);
   });
 
@@ -101,10 +87,10 @@ describe('legacy dental area (Rust against the oracle)', () => {
     const turn = { position: [0, 0, 0] as [number, number, number], rotation };
     const generic = placeGeneric(applyTransform(mesh, turn), settings);
     const aligner = (dental: DentalPolicy): DentalPlacementJob => ({ mesh, orientation: turn, settings, dental });
-    const detected = both(aligner({ rim: orientation.rim, stamps: [] }), generic);
+    const detected = both('aligner-detected', aligner({ rim: orientation.rim, stamps: [] }), generic);
     const centre = Array.from(orientation.rim.points.subarray(0, 3)) as [number, number, number];
     const manual = manualAreaPolicy(orientation.rim, false);
-    const painted = both(aligner({ ...manual, stamps: [{ center: centre, radius: 25, normal: orientation.rim.openingDirection, kind: 'allow' }] }), generic);
+    const painted = both('aligner-painted', aligner({ ...manual, stamps: [{ center: centre, radius: 25, normal: orientation.rim.openingDirection, kind: 'allow' }] }), generic);
     // The comparison must not be vacuous.
     expect(detected.points.length + painted.points.length).toBeGreaterThan(0);
   }, 300_000);

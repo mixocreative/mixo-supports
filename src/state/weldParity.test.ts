@@ -3,8 +3,8 @@ import { BufferAttribute, BufferGeometry, Matrix4, TorusKnotGeometry } from 'thr
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { TriangleMesh } from '../core/analysis/types';
-import { parseStl, weldPositions } from '../../scripts/test-support/rustImport';
-import { StlWelder } from '../../scripts/test-support/ts-oracle/stl';
+import { nodeEngine, parseStl, weldPositions } from '../../scripts/test-support/rustImport';
+import { finishStl, openStlSession, pushStl } from '../workers/stlSession';
 
 /*
  * The typed-array import (src/core/import) must give exactly what the three.js path gave before it:
@@ -76,9 +76,9 @@ describe('typed-array weld matches three mergeVertices', () => {
   it('binary STL fed in odd-sized chunks', () => {
     const buffer = binaryStl(soupOf(new TorusKnotGeometry(10, 3, 64, 8), 1e-4, 7));
     const bytes = new Uint8Array(buffer);
-    const welder = new StlWelder(bytes.subarray(0, 84), bytes.length);
-    for (let offset = 0; offset < bytes.length; offset += 997) welder.push(bytes.subarray(offset, offset + 997));
-    expectSame(welder.finish(), threeStl(buffer));
+    const stream = openStlSession(nodeEngine, bytes.subarray(0, 84), bytes.length);
+    for (let offset = 0; offset < bytes.length; offset += 997) pushStl(stream, bytes.subarray(offset, offset + 997), 'chunks');
+    expectSame(finishStl(stream, 'chunks'), threeStl(buffer));
   });
 
   it('binary STL with trailing padding (header count read, tail ignored, as STLLoader)', () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { decimate_display } from '../../crates/geometry-wasm/pkg-node/mixo_geometry_wasm.js';
 import { decimate } from '../../scripts/test-support/legacyDecimate';
-import { StlWelder } from '../../scripts/test-support/ts-oracle/stl';
+import { parseStl } from '../../scripts/test-support/rustImport';
 import { decimateWithWasm } from './prepareImport';
 
 describe('display decimation WASM parity', () => {
@@ -35,9 +35,8 @@ describe('display decimation WASM parity', () => {
   it('matches the saved aligner at a display-size target', () => {
     const file = readFileSync('docs/dental-reference/reference-aligner.stl');
     const bytes = new Uint8Array(file.buffer, file.byteOffset, file.byteLength);
-    const parser = new StlWelder(bytes.subarray(0, 84), bytes.length);
-    parser.push(bytes);
-    const mesh = parser.finish();
+    // The Rust import is bit-identical to the old TS welder (golden import-stl-aligner).
+    const mesh = parseStl(bytes);
     const expected = decimate(mesh, 20_000);
     const actual = decimateWithWasm(mesh, { decimate_display }, 20_000);
     expect(new Uint32Array(actual.positions.buffer)).toEqual(new Uint32Array(expected.positions.buffer));

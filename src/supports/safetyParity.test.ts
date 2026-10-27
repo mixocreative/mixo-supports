@@ -4,21 +4,15 @@ import type { TriangleMesh } from '../core/analysis/types';
 import type { GeneratedSupportMesh, SupportContact } from '../core/supports/mesh';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
 import { alignerScenario } from '../../scripts/test-support/supportParityHarness';
-import { oracleRepair } from '../../scripts/test-support/ts-oracle/safety/repairOracle';
-import { checkSupports } from '../../scripts/test-support/ts-oracle/safety/supportCheck';
-import { dentalRegionAllowedOnFace } from '../core/analysis/dentalPolicy';
-import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
-import { dentalSecondaryLandingOnApprovedSide } from '../../scripts/test-support/ts-oracle/safety/dentalLandingSide';
+import { approxArray, exactArray, expectGolden, readGolden } from '../../scripts/test-support/golden';
 import { checkSupportProblems } from './checkSupports';
 import { generateSupports, type PolicyInput } from './generateSupports';
-import { readFileSync } from 'node:fs';
-import { parseStl } from '../../scripts/test-support/rustImport';
 import type { Vector } from '../core/vec3';
 
 /*
  * U7 parity (SHIP-PLAN rule 7): the Rust `generate` (permit, build, exact body check, bounded repair)
- * against the TypeScript flow it replaced (scripts/test-support/ts-oracle/safety: TS safety modules
- * driving the same Rust builder), and the Rust support check against the TS one. IDs, tags, dropped
+ * against RECORDED outputs of the TypeScript flow it replaced (scripts/fixtures/golden/safety-*.json, recorded from
+ * the TS oracle in U9; regen with UPDATE_GOLDENS=1, see scripts/test-support/golden.ts). IDs, tags, dropped
  * lists, structure fallbacks and triangle indices identical; positions within 1e-5 mm.
  */
 
@@ -83,21 +77,18 @@ const summary = (mesh: GeneratedSupportMesh) => ({
 
 const seen = { dropped: 0, braceFallback: 0, treeBuilt: 0, builds: 0 };
 
+const slug = (name: string) => `safety-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
+
 function parity(name: string, model: TriangleMesh, contacts: SupportContact[], settings: LiveSupportSettings, landingFaces?: Uint8Array, mode: 'preview' | 'export' = 'preview') {
-  const ts = oracleRepair(contacts, settings, { mode, model, labelText: 'A', ...(landingFaces ? { landingFaces } : {}) });
   const out = generateSupports(contacts, settings, policyFor(contacts, settings, landingFaces), { mode, model, labelText: 'A' });
+  const mesh = { ...out.mesh, ...(out.fallback.length > 0 ? { dentalStructureFallback: out.fallback } : {}) };
   // Contacts that were not moved or dropped keep their input order, so contact IDs and tags compare directly.
-  const rust = { ...out.mesh, ...(out.fallback.length > 0 ? { dentalStructureFallback: out.fallback } : {}) };
-  expect(summary(rust), name).toEqual(summary(ts));
-  expect(Array.from(rust.indices), name).toEqual(Array.from(ts.indices));
-  expect(rust.positions.length).toBe(ts.positions.length);
-  const worst = ts.positions.reduce((m, v, i) => Math.max(m, Math.abs(v - rust.positions[i]!)), 0);
-  expect(worst, name).toBeLessThan(1e-5);
+  expectGolden(slug(name), { ...summary(mesh), indices: exactArray(mesh.indices, 'u32'), positions: approxArray(mesh.positions, mesh.positions.length > 30000 ? 41 : 1) });
   seen.builds += 1;
-  seen.dropped += ts.dropped.length;
-  seen.braceFallback += ts.dentalStructureFallback?.includes('brace') ? 1 : 0;
-  seen.treeBuilt += ts.components.some((c) => c.part === 'tree-branch') ? 1 : 0;
-  return { ts, out };
+  seen.dropped += mesh.dropped.length;
+  seen.braceFallback += mesh.dentalStructureFallback?.includes('brace') ? 1 : 0;
+  seen.treeBuilt += mesh.components.some((c) => c.part === 'tree-branch') ? 1 : 0;
+  return { ts: mesh, out };
 }
 
 describe('generate against the TS safety flow: synthetic models', () => {
@@ -144,18 +135,12 @@ describe('generate against the TS safety flow: synthetic models', () => {
 describe('generate against the TS safety flow: the reference aligner', () => {
   it('builds the same mesh, drops and fallbacks as the TS flow, and reports a verdict and island report', () => {
     const scenario = alignerScenario('preview', true)!;
-    const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
-    const mesh = parseStl(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength), 'aligner');
-    const region = proposeDentalSupportRegion(mesh);
-    if (region.kind !== 'proposal') throw new Error('no region');
-    // The secondary landing rule exactly as the host states it: approved faces facing up in the plate frame.
-    let low = Infinity;
-    for (let i = 1; i < mesh.positions.length; i += 3) low = Math.min(low, mesh.positions[i]!);
-    const frame = { position: [0, defaultSupportSettings.liftHeight - low, 0] as Vector, rotation: [0, 0, 0] as Vector };
-    const policy = { kind: 'two-contour' as const, region, stamps: [], rim: { boundaryKind: 'projection-fallback' as const, points: new Float32Array(), openingDirection: [0, -1, 0] as Vector, centroid: [0, 0, 0] as Vector, tangent: [1, 0, 0] as Vector, bitangent: [0, 0, 1] as Vector, visibilityMask: new Uint8Array(), visibilityResolution: 0, visibilityMin: [0, 0] as [number, number], visibilityMax: [0, 0] as [number, number] } };
-    const faces = mesh.indices.length / 3;
-    const mask = Uint8Array.from({ length: faces }, (_, face) => (dentalSecondaryLandingOnApprovedSide(mesh, policy, frame, { point: [0, 0, 0], normal: [0, 1, 0], faceIndex: face }) ? 1 : 0));
-    expect(dentalRegionAllowedOnFace(policy, 0, [0, 0, 0], [0, 1, 0])).toBeTypeOf('boolean');
+    // The secondary landing mask the TS rule produced on the reference aligner (an input of the Rust call), run-length coded.
+    const { count, runs } = readGolden<{ count: number; runs: number[] }>('safety-aligner-landing-mask');
+    const mask = new Uint8Array(count);
+    let at = 0;
+    runs.forEach((length, k) => { if (k % 2 === 1) mask.fill(1, at, at + length); at += length; });
+    expect(count).toBe(scenario.model.indices.length / 3);
     const { out } = parity('aligner', scenario.model, scenario.contacts, scenario.settings, mask);
     expect(out.mesh.components.length).toBeGreaterThan(200);
     expect(out.mesh.verdict?.status).toMatch(/^(clear|blocked|inconclusive)$/);
@@ -164,17 +149,11 @@ describe('generate against the TS safety flow: the reference aligner', () => {
   }, 900_000);
 });
 
-describe('support check against the TS check', () => {
+describe('support check against the recorded TS check', () => {
   const same = (name: string, mesh: TriangleMesh, contacts: Vector[], settings = { overhangAngleDegrees: 45, spacing: 2 }) => {
-    const ts = checkSupports(mesh, contacts, settings);
     const rust = checkSupportProblems(mesh, contacts, settings);
-    expect(rust.map((p) => p.kind), name).toEqual(ts.map((p) => p.kind));
-    expect(rust.length, name).toBe(ts.length);
-    rust.forEach((p, k) => {
-      for (let axis = 0; axis < 3; axis += 1) expect(Math.abs(p.position[axis]! - ts[k]!.position[axis]!), name).toBeLessThan(1e-5);
-      expect(Math.abs(p.area - ts[k]!.area), name).toBeLessThan(1e-5 * Math.max(1, ts[k]!.area));
-    });
-    return ts.length;
+    expectGolden(slug(`check ${name}`), rust.map((p) => [p.kind, ...p.position, p.area]));
+    return rust.length;
   };
 
   it('matches on boxes, on a covered underside and on a lone island', () => {

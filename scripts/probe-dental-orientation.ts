@@ -2,7 +2,7 @@ import './test-support/useNodeEngine';
 // Disposable, read-only local probe. Supply DENTAL_PROBE_FIXTURE; never commit patient geometry.
 import { readFileSync } from 'node:fs';
 import { proposeDentalOrientation, rotationToDentalPose } from '../src/core/analysis/dental';
-import { rotationToPlateDown } from './test-support/ts-oracle/dental/dental';
+import { rotationToPlateDown } from './test-support/dentalExpect';
 import { legacyBaselineVertices } from '../src/dental/legacyArea';
 import { runPlacementJob } from '../src/supports/jobRunner';
 import { filterDentalPlacement } from '../src/dental/placement';

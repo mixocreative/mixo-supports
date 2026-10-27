@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import type { ContactInputs, DentalPlacementJob, JobTransform, SupportJob } from '../core/jobs';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
-import { columnLanding, lineTarget } from '../../scripts/test-support/ts-oracle/support-builder/landing';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import { dentalRegionAllowedOnFace } from '../core/analysis/dentalPolicy';
@@ -108,8 +107,8 @@ describe('runSupportJob: dental secondary contacts', () => {
   });
 
   it('marks a forbidden secondary landing face as disallowed', () => {
-    const ray = lineTarget(model, settings);
-    const landing = columnLanding({ id: 'auto-shelf', position: [0, 20, 0], normal: [0, -1, 0] }, settings, ray).hit;
+    // The TS landing ray of the shelf contact (recorded oracle result): it lands on the slab top, face 6.
+    const landing = { point: [0, 9, 0] as V, normal: [0, 1, 0] as V, faceIndex: 6, sourcePoint: undefined as V | undefined };
     expect(landing?.faceIndex).toBeDefined();
     expect(mask[landing!.faceIndex!]).toBe(0);
     expect(dentalRegionAllowedOnFace(dental, landing!.faceIndex!, landing!.sourcePoint ?? landing!.point, [0, 1, 0])).toBe(false);
@@ -118,7 +117,7 @@ describe('runSupportJob: dental secondary contacts', () => {
   it('does not trust an all-ones mask even if its local secondary landing gate allows a face', () => {
     const allowed: DentalPolicy = { ...dental, region: { ...dental.region,
       contactFaces: new Uint8Array(mask.length).fill(1) } };
-    const landing = columnLanding({ id: 'auto-shelf', position: [0, 20, 0], normal: [0, -1, 0] }, settings, lineTarget(model, settings)).hit;
+    const landing = { point: [0, 9, 0] as V, normal: [0, 1, 0] as V, faceIndex: 6, sourcePoint: undefined as V | undefined };
     expect(dentalRegionAllowedOnFace(allowed, landing!.faceIndex!, landing!.sourcePoint ?? landing!.point, [0, 1, 0])).toBe(true);
     expect(runSupportJob({ ...job(model, still, contacts), dental: allowed }).dropped).toEqual(['auto-shelf']);
   });

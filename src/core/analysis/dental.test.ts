@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyToDirection, applyToPoint, placementMatrix } from '../transform';
 import { dot, type Vector } from '../vec3';
 import { proposeDentalOrientation, rotationToDentalPose } from './dental';
-import { rimContainsPoint } from '../../../scripts/test-support/ts-oracle/dental/dental';
-import { rotationToPlateDown } from '../../../scripts/test-support/ts-oracle/dental/dental';
+import { rimContainsPoint, rotationToPlateDown } from '../../../scripts/test-support/dentalExpect';
 import type { TriangleMesh } from './types';
 
 describe('proposeDentalOrientation', () => {
