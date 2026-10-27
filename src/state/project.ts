@@ -407,7 +407,8 @@ function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPoli
     }, ...(gapAlternateIds ? { gapAlternateIds: [...gapAlternateIds] } : {}) };
   }
   if (policy.kind !== undefined && policy.kind !== 'legacy') throw new TypeError('unknown dental policy kind');
-  return policy.kind === 'legacy' ? { ...base, kind: 'legacy' } : base;
+  if (policy.origin !== undefined && policy.origin !== 'manual-area') throw new TypeError('unknown dental policy origin');
+  return policy.kind === 'legacy' ? { ...base, kind: 'legacy', ...(policy.origin ? { origin: policy.origin } : {}) } : base;
 }
 
 function cloneDentalStamp(stamp: DentalAllowStamp): DentalAllowStamp {
