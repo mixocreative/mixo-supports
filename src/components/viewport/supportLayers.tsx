@@ -358,7 +358,7 @@ export function CustomisedMarks({ unit, contacts }: { unit: PrintUnit; contacts:
 /** Support check findings, drawn through the model so hidden spots still show. */
 export function ProblemMarkers({ problems }: { problems: readonly SupportProblem[] }) {
   return <group>
-    {problems.map((problem, index) => <mesh key={index} position={problem.position} renderOrder={18}>
+    {problems.map((problem, index) => problem.kind === 'unjudged' ? null : <mesh key={index} position={problem.position} renderOrder={18}>
       <sphereGeometry args={[Math.min(2.5, 0.7 + Math.sqrt(problem.area) / 10), 16, 12]} />
       <meshBasicMaterial color={problem.kind === 'island' ? PREVIEW.island : PREVIEW.overhang} depthTest={false} transparent opacity={0.55} />
     </mesh>)}

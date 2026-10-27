@@ -5,7 +5,7 @@
 
 use super::{GeometrySession, build_error, coded_error, mesh_error};
 use mixo_geometry_core::supports::build::BuildMode;
-use mixo_geometry_core::supports::check::{CheckSettings, ProblemKind, check_supports};
+use mixo_geometry_core::supports::check::{CheckSettings, check_supports};
 use mixo_geometry_core::supports::flat::{self as support_flat, NO_CONTACT};
 use mixo_geometry_core::supports::generate::{Fallback, GenerateInput, IslandStatus, IslandVerdict, generate};
 use mixo_geometry_core::supports::parts::model as support_model;
@@ -312,19 +312,15 @@ impl GeometrySession {
     }
 }
 
-/// Spots the contacts leave unsupported: kind (0 island, 1 overhang), position xyz, area.
+/// Overhang spots the contacts leave unsupported: position xyz, area. (Islands are the `generate` verdict.)
 #[wasm_bindgen]
 pub struct SupportProblems {
-    kinds: Vec<u8>,
     positions: Vec<f64>,
     areas: Vec<f64>,
 }
 
 #[wasm_bindgen]
 impl SupportProblems {
-    pub fn take_kinds(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.kinds)
-    }
     pub fn take_positions(&mut self) -> Vec<f64> {
         std::mem::take(&mut self.positions)
     }
@@ -344,9 +340,8 @@ pub fn check_support_problems(positions: &[f32], indices: &[u32], contacts: &[f6
     }
     let points: Vec<[f64; 3]> = contacts.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect();
     let problems = check_supports(positions, indices, &points, &CheckSettings { overhang_angle_degrees, spacing });
-    let mut out = SupportProblems { kinds: Vec::new(), positions: Vec::new(), areas: Vec::new() };
+    let mut out = SupportProblems { positions: Vec::new(), areas: Vec::new() };
     for p in problems {
-        out.kinds.push(u8::from(p.kind == ProblemKind::Overhang));
         out.positions.extend(p.position);
         out.areas.push(p.area);
     }

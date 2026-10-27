@@ -5,31 +5,38 @@ const CLEAN = 'No unsupported spots found.';
 
 describe('support check tally', () => {
   it('counts a unit whose check was replaced or did not finish as incomplete, never as clean', () => {
-    expect(tallyChecks([{ spots: 2, inZone: 1 }, undefined, { spots: 0, inZone: 0 }])).toEqual({ spots: 2, inZone: 1, incomplete: 1 });
-    expect(tallyChecks([])).toEqual({ spots: 0, inZone: 0, incomplete: 0 });
+    expect(tallyChecks([{ spots: 2, inZone: 1 }, undefined, { spots: 0, inZone: 0 }])).toEqual({ spots: 2, inZone: 1, incomplete: 1, unjudged: 0 });
+    expect(tallyChecks([])).toEqual({ spots: 0, inZone: 0, incomplete: 0, unjudged: 0 });
   });
 
   it('says the check did not finish instead of "No unsupported spots found."', () => {
-    expect(checkStatus({ spots: 0, inZone: 0, incomplete: 1 }).key).not.toBe(CLEAN);
-    expect(checkStatus({ spots: 0, inZone: 0, incomplete: 2 })).toEqual({ key: 'The check did not finish for 1 object: run it again.', other: 'The check did not finish for {n} objects: run it again.', vars: { n: 2 } });
-    expect(checkStatus({ spots: 3, inZone: 0, incomplete: 1 }).key).toBe('The check did not finish for 1 object: run it again.');
+    expect(checkStatus({ spots: 0, inZone: 0, incomplete: 1, unjudged: 0 }).key).not.toBe(CLEAN);
+    expect(checkStatus({ spots: 0, inZone: 0, incomplete: 2, unjudged: 0 })).toEqual({ key: 'The check did not finish for 1 object: run it again.', other: 'The check did not finish for {n} objects: run it again.', vars: { n: 2 } });
+    expect(checkStatus({ spots: 3, inZone: 0, incomplete: 1, unjudged: 0 }).key).toBe('The check did not finish for 1 object: run it again.');
   });
 
   it('reports spots, or clean only when every unit was checked', () => {
-    expect(checkStatus({ spots: 0, inZone: 0, incomplete: 0 })).toEqual({ key: CLEAN });
-    expect(checkStatus({ spots: 2, inZone: 1, incomplete: 0 })).toMatchObject({ vars: { n: 3 } });
+    expect(checkStatus({ spots: 0, inZone: 0, incomplete: 0, unjudged: 0 })).toEqual({ key: CLEAN });
+    expect(checkStatus({ spots: 2, inZone: 1, incomplete: 0, unjudged: 0 })).toMatchObject({ vars: { n: 3 } });
+  });
+
+  it('unjudged islands never read as clean, alone or beside spots, nor after an export', () => {
+    expect(tallyChecks([{ spots: 0, inZone: 0, unjudged: 1 }, { spots: 1, inZone: 0 }])).toEqual({ spots: 1, inZone: 0, incomplete: 0, unjudged: 1 });
+    expect(checkStatus({ spots: 0, inZone: 0, incomplete: 0, unjudged: 1 }).key).toBe('Islands could not be judged on 1 object: see Check supports.');
+    expect(checkStatus({ spots: 2, inZone: 0, incomplete: 0, unjudged: 2 }).then).toMatchObject({ key: 'Islands could not be judged on 1 object.', vars: { n: 2 } });
+    expect(exportStatus('a.stl', { spots: 0, inZone: 0, incomplete: 0, unjudged: 1 }).then?.key).toBe('Islands could not be judged on 1 object: see Check supports.');
   });
 
   it('an export never reads as checked when its check did not finish', () => {
-    expect(exportStatus('a.stl', { spots: 0, inZone: 0, incomplete: 1 })).toEqual({
+    expect(exportStatus('a.stl', { spots: 0, inZone: 0, incomplete: 1, unjudged: 0 })).toEqual({
       key: 'Exported {files}, but the support check did not finish for 1 object: run Check supports.',
       other: 'Exported {files}, but the support check did not finish for {n} objects: run Check supports.',
       vars: { files: 'a.stl', n: 1 },
     });
-    expect(exportStatus('a.stl', { spots: 0, inZone: 0, incomplete: 0 })).toEqual({ key: 'Exported {files}.', vars: { files: 'a.stl' } });
-    expect(exportStatus('a.stl', { spots: 2, inZone: 0, incomplete: 0 }).vars).toEqual({ files: 'a.stl', n: 2 });
-    expect(exportStatus('a.stl', { spots: 1, inZone: 4, incomplete: 0 }).vars).toEqual({ files: 'a.stl', n: 1, m: 4 });
-    expect(exportStatus('a.stl', { spots: 0, inZone: 4, incomplete: 0 }).vars).toEqual({ files: 'a.stl', n: 4 });
+    expect(exportStatus('a.stl', { spots: 0, inZone: 0, incomplete: 0, unjudged: 0 })).toEqual({ key: 'Exported {files}.', vars: { files: 'a.stl' } });
+    expect(exportStatus('a.stl', { spots: 2, inZone: 0, incomplete: 0, unjudged: 0 }).vars).toEqual({ files: 'a.stl', n: 2 });
+    expect(exportStatus('a.stl', { spots: 1, inZone: 4, incomplete: 0, unjudged: 0 }).vars).toEqual({ files: 'a.stl', n: 1, m: 4 });
+    expect(exportStatus('a.stl', { spots: 0, inZone: 4, incomplete: 0, unjudged: 0 }).vars).toEqual({ files: 'a.stl', n: 4 });
   });
 });
 

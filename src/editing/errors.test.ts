@@ -43,6 +43,13 @@ describe('errorStatus', () => {
     expect(status.key).toContain('{limit}');
   });
 
+  it('explains the engine over-capacity refusal (wasm code CAPACITY) in every job', () => {
+    const engine = Object.assign(new Error('capacity'), { code: 'CAPACITY' });
+    expect(errorCode(engine)).toBe('over-capacity');
+    expect(errorStatus('import', engine, { name: 'a.stl' })).toEqual({ key: expect.stringContaining('geometry engine'), vars: { name: 'a.stl' } });
+    for (const context of ['place', 'build', 'check', 'export'] as const) expect(errorStatus(context, engine).key).toContain('geometry engine is full');
+  });
+
   it('gives every job and code a message', () => {
     for (const context of ERROR_CONTEXTS) {
       for (const code of ERROR_CODES) {

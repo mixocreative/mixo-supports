@@ -1,5 +1,5 @@
 import { CapacityError, PlateFullError } from '../core/budget';
-import { CodedError, ERROR_CODES, type ErrorCode } from '../editing/errors';
+import { CodedError, ENGINE_OVER_CAPACITY, ERROR_CODES, type ErrorCode } from '../editing/errors';
 import { WorkerJobError, WorkerTaskError } from './WorkerTask';
 
 /** Numbers formatted for the message (thousands separators in the user's locale). */
@@ -27,6 +27,7 @@ export function codedJobError(error: unknown): unknown {
   }
   const { code, vars } = (error ?? {}) as { code?: unknown; vars?: Record<string, string | number> };
   if (error instanceof Error && isErrorCode(code)) return new CodedError(code, error.message, formatted(vars));
+  if (error instanceof Error && code === ENGINE_OVER_CAPACITY) return new CodedError('over-capacity', error.message);
   return error;
 }
 

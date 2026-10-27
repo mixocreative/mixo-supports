@@ -62,7 +62,6 @@ fn reports_the_whole_underside_of_an_unsupported_box() {
     let (p, i) = boxed(10.0, 5.0, 10);
     let problems = check_supports(&p, &i, &[], &SETTINGS);
     assert!(!problems.is_empty());
-    assert!(problems.iter().any(|q| q.kind == ProblemKind::Island));
     assert!(problems.iter().map(|q| q.area).sum::<f64>() > 80.0);
     assert!(problems.iter().all(|q| (q.position[1] - 5.0).abs() < 1e-5));
 }
@@ -82,12 +81,11 @@ fn points_at_the_uncovered_corner_when_one_contact_is_missing() {
 }
 
 #[test]
-fn flags_a_lone_downward_point_as_an_island_with_the_faces_around_it_covered() {
+fn leaves_islands_to_the_built_path_verdict() {
+    // A lone downward point with its faces covered is no entry here: the island verdict of `generate` owns it.
     let (mut p, i) = boxed(10.0, 5.0, 10);
     let centre = 5 * 11 + 5;
     p[centre * 3 + 1] = 4.0;
     let problems = check_supports(&p, &i, &lattice(&|x, z| x.hypot(z) > 3.0), &SETTINGS);
-    let islands: Vec<_> = problems.iter().filter(|q| q.kind == ProblemKind::Island).collect();
-    assert_eq!(islands.len(), 1);
-    assert_eq!(islands[0].position, [0.0, 4.0, 0.0]);
+    assert!(problems.iter().all(|q| q.area > 0.0));
 }

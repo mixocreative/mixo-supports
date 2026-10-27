@@ -56,6 +56,7 @@ import { deleteCommands } from './supports/selection';
 import { canvasGesture, gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, withShape, type LiveSupportSettings, type SettingKey, type ShapeKey } from './core/supports/settings';
+import { islandProblems } from './supports/islandProblems';
 import { checkJobOf, currentBuild, hiddenByZones, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { COMMAND_IDS, resolve, type CommandId, type UiState } from './editing/commands';
 import { effectiveBrushMode } from './editing/selection';
@@ -417,13 +418,19 @@ export default function App() {
         if (!found) return undefined;
         // Spots face down on the plate: plate down in unit-local space keeps a zone on the far side of a thin floor out.
         const down = inverseTransformDirection(orientation, [0, -1, 0]);
-        const items = found.map((problem) => {
+        const overhangs = found.map((problem) => {
           const position = inverseTransformPoint(orientation, problem.position);
           return { ...problem, unitId: unit.id, position, inZone: problemInZone(unit.zones, position, down) };
         });
+        // Islands are the Rust verdict of the build, already in the unit frame (a vertex of the unit mesh).
+        const islands = islandProblems(mesh?.islands, unit.source.positions).map((problem) => ({
+          ...problem, unitId: unit.id, inZone: problem.kind === 'island' && problemInZone(unit.zones, problem.position, down),
+        }));
+        const items = [...islands, ...overhangs];
         setProblems((current) => new Map(current).set(unit.id, { unit, mesh, items }));
+        const unjudged = items.filter((problem) => problem.kind === 'unjudged').length;
         const inZone = items.filter((problem) => problem.inZone).length;
-        return { spots: items.length - inZone, inZone };
+        return { spots: items.length - inZone - unjudged, inZone, unjudged };
       }
     }));
     return tallyChecks(checked);
@@ -441,7 +448,8 @@ export default function App() {
       if (!entry) return [];
       const mesh = currentBuild(unit, built.get(unit.id));
       if (entry.unit === unit && entry.mesh === mesh) return entry.items;
-      const open = uncovered(entry.items, unitContacts(unit, mesh), resolveSettings(unit.settings).scatterSpacing, isRechecking);
+      // An unjudged island verdict has no spot a support could cover: it stays until the re-check replaces it.
+      const open = uncovered(entry.items, unitContacts(unit, mesh), resolveSettings(unit.settings).scatterSpacing, (problem) => problem.kind === 'unjudged' || isRechecking(problem));
       stale ||= open.length > 0;
       return open;
     });

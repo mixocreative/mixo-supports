@@ -1,6 +1,6 @@
 import type { TriangleMesh } from '../core/analysis/types';
 import { binaryStlTriangles, StlEmptyError, StlFormatError, stlKind } from '../core/import/stlHeader';
-import { CodedError } from '../editing/errors';
+import { CodedError, ENGINE_OVER_CAPACITY } from '../editing/errors';
 import type { GeometryEngine } from './geometryClient';
 
 /* Host glue around the Rust STL sessions: header classification (TS), chunk feeding, typed errors. */
@@ -18,6 +18,7 @@ export function stlWasmError(error: unknown, name: string): Error {
   if (code === 'BAD_STL') return new StlFormatError('the STL file is truncated or damaged');
   if (code === 'NO_MESH') return new StlEmptyError('the STL file contains no triangles');
   if (code === 'NON_FINITE') return nonFiniteError(name);
+  if (code === ENGINE_OVER_CAPACITY) return new CodedError('over-capacity', 'the geometry engine is over capacity');
   return error instanceof Error ? error : new Error(String(error));
 }
 

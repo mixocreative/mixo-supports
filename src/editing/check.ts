@@ -12,24 +12,39 @@ export interface CheckTally {
   inZone: number;
   /** Units whose check did not finish. */
   incomplete: number;
+  /** Units whose islands could not be judged (the island verdict was inconclusive): never counted as clean. */
+  unjudged: number;
 }
 
 /** Sums per-unit results; `undefined` is a unit whose check did not finish. */
-export function tallyChecks(results: readonly ({ spots: number; inZone: number } | undefined)[]): CheckTally {
+export function tallyChecks(results: readonly ({ spots: number; inZone: number; unjudged?: number } | undefined)[]): CheckTally {
   return results.reduce<CheckTally>((sum, result) => (result
-    ? { ...sum, spots: sum.spots + result.spots, inZone: sum.inZone + result.inZone }
-    : { ...sum, incomplete: sum.incomplete + 1 }), { spots: 0, inZone: 0, incomplete: 0 });
+    ? { ...sum, spots: sum.spots + result.spots, inZone: sum.inZone + result.inZone, unjudged: sum.unjudged + (result.unjudged ?? 0) }
+    : { ...sum, incomplete: sum.incomplete + 1 }), { spots: 0, inZone: 0, incomplete: 0, unjudged: 0 });
+}
+
+/** The sentence for objects whose islands could not be judged; `see` points to the list. */
+function unjudgedNote(n: number, see: boolean): StatusMessage {
+  return see
+    ? { key: 'Islands could not be judged on 1 object: see Check supports.', other: 'Islands could not be judged on {n} objects: see Check supports.', vars: { n } }
+    : { key: 'Islands could not be judged on 1 object.', other: 'Islands could not be judged on {n} objects.', vars: { n } };
 }
 
 /** The status line after Check for unsupported spots. */
-export function checkStatus({ spots, inZone, incomplete }: CheckTally): StatusMessage {
+export function checkStatus({ spots, inZone, incomplete, unjudged }: CheckTally): StatusMessage {
   if (incomplete > 0) return { key: 'The check did not finish for 1 object: run it again.', other: 'The check did not finish for {n} objects: run it again.', vars: { n: incomplete } };
-  if (spots + inZone === 0) return { key: 'No unsupported spots found.' };
-  return { key: '1 spot may print unsupported: see Check supports.', other: '{n} spots may print unsupported: see Check supports.', vars: { n: spots + inZone } };
+  if (spots + inZone === 0) return unjudged > 0 ? unjudgedNote(unjudged, true) : { key: 'No unsupported spots found.' };
+  const found: StatusMessage = { key: '1 spot may print unsupported: see Check supports.', other: '{n} spots may print unsupported: see Check supports.', vars: { n: spots + inZone } };
+  return unjudged > 0 ? { ...found, then: unjudgedNote(unjudged, false) } : found;
 }
 
 /** The status line after an export, with what its companion check found. */
-export function exportStatus(files: string, { spots, inZone, incomplete }: CheckTally): StatusMessage {
+export function exportStatus(files: string, tally: CheckTally): StatusMessage {
+  const base = exportFound(files, tally);
+  return tally.unjudged > 0 && tally.incomplete === 0 ? { ...base, then: unjudgedNote(tally.unjudged, true) } : base;
+}
+
+function exportFound(files: string, { spots, inZone, incomplete }: CheckTally): StatusMessage {
   if (incomplete > 0) {
     return {
       key: 'Exported {files}, but the support check did not finish for 1 object: run Check supports.',

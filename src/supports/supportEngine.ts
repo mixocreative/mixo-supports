@@ -21,7 +21,6 @@ export interface PolicyDataHandle {
 }
 
 export interface SupportProblemsHandle {
-  take_kinds(): Uint8Array;
   take_positions(): Float64Array;
   take_areas(): Float64Array;
   free(): void;
