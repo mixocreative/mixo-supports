@@ -1,7 +1,6 @@
 import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { acceleratedRaycast } from 'three-mesh-bvh';
 import type { SupportProblem } from '../../core/analysis/supportCheck';
 import type { SupportPoint } from '../../core/analysis/types';
 import type { GeneratedSupportMesh } from '../../core/supports/mesh';
@@ -20,6 +19,7 @@ import { resolveSettings, unitContacts } from '../../supports/unitSupports';
 import { AddFlash, type AddedAt } from './AddFlash';
 import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
+import { rustRaycast } from './rustRaycast';
 import { type Hover, DentalFaceLayer, DentalRegionLines, DentalRimLine, DentalStampLayer, DentalTipMarkers, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
 import type { ObjectViewportProps } from './types';
 import { MODEL_MESH, SUPPORT_MESH, useScreenBrush } from './useScreenBrush';
@@ -55,13 +55,13 @@ export function UnitObject(props: UnitObjectProps) {
   const supports = gesture.kind === 'dental-area' ? undefined : tips ?? props.supports;
   // A heavy model draws its simplified copy (it takes no hand edits); supports and export use the full one.
   const shown = displayMesh(unit.source);
-  const model = useGeometry(shown, true);
+  const model = useGeometry(shown);
   useWarmZoneOverlay(shown === unit.source ? shown : undefined, props.supports !== undefined);
   // Painting zones: supports are drawn but take no pointer events (presses reach the model).
   const zoning = editing && gesture.kind === 'zones';
   const dentalPainting = editing && gesture.kind === 'dental-area';
   const surfacePainting = zoning || dentalPainting;
-  const supportGeometry = useGeometry(supports, editing && !surfacePainting);
+  const supportGeometry = useGeometry(supports);
   // Select supports: Click picks one support at a time; Drag over (the brush) owns the left button.
   const selecting = gesture.kind === 'pick' || gesture.kind === 'drag';
   const clickSelecting = gesture.kind === 'pick';
@@ -266,7 +266,7 @@ export function UnitObject(props: UnitObjectProps) {
       visible={props.modelVisible}
       userData={MODEL_MESH}
       // Painting zones: other objects take no pointer events (a press passes through to the active one).
-      raycast={(gesture.kind === 'zones' || gesture.kind === 'dental-area') && !props.active ? () => undefined : acceleratedRaycast}
+      raycast={(gesture.kind === 'zones' || gesture.kind === 'dental-area') && !props.active ? () => undefined : rustRaycast}
       onClick={(event) => clickModel(event, false)}
       onContextMenu={(event) => clickModel(event, true)}
       {...(editing ? { onPointerDown: startStroke, onPointerMove: hoverModel, onPointerOut: leave } : {})}
@@ -295,7 +295,7 @@ export function UnitObject(props: UnitObjectProps) {
     {supportGeometry && <mesh
       geometry={supportGeometry}
       userData={SUPPORT_MESH}
-      raycast={surfacePainting ? () => undefined : acceleratedRaycast}
+      raycast={surfacePainting ? () => undefined : rustRaycast}
       // Supports take pointer events only while edited (not while painting zones), so they cost no raycasts otherwise.
       {...(editing && !surfacePainting ? {
         onClick: (event: ThreeEvent<MouseEvent>) => clickSupport(event, false),
