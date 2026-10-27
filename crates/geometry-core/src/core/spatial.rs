@@ -144,6 +144,28 @@ impl Bvh {
         Some(t_min)
     }
 
+    /// Ids of every triangle whose box (with slack) contains the vertical line through (x, z), in
+    /// no particular order. A superset of the triangles a straight-down ray at (x, z) can hit.
+    pub fn column_faces(&self, x: f64, z: f64, out: &mut Vec<u32>) {
+        if self.nodes.is_empty() || !x.is_finite() || !z.is_finite() {
+            return;
+        }
+        let mut stack = vec![0usize];
+        while let Some(index) = stack.pop() {
+            let node = &self.nodes[index];
+            let inside = |axis: usize, v: f64| v >= f64::from(node.min[axis]) - BOX_SLACK && v <= f64::from(node.max[axis]) + BOX_SLACK;
+            if !inside(0, x) || !inside(2, z) {
+                continue;
+            }
+            if node.count == 0 {
+                stack.push(node.start as usize);
+                stack.push(node.start as usize + 1);
+            } else {
+                out.extend_from_slice(&self.order[node.start as usize..(node.start + node.count) as usize]);
+            }
+        }
+    }
+
     /// The nearest hit with `near <= distance <= far`. Equal distances go to the lowest face id.
     pub fn raycast_first(
         &self,
@@ -269,6 +291,22 @@ mod tests {
             }
         }
         (p, i)
+    }
+
+    #[test]
+    fn column_faces_cover_every_face_a_vertical_ray_can_hit() {
+        let (p, i) = grid(10);
+        let bvh = Bvh::build(&p, &i);
+        let mut faces = Vec::new();
+        bvh.column_faces(3.7, 0.0, &mut faces);
+        // The grid stands in the z = 0 plane: a vertical line at x = 3.7 crosses column 3 of every row.
+        assert!((0..10).all(|row| faces.contains(&((row * 10 + 3) * 2))));
+        faces.clear();
+        bvh.column_faces(3.7, 5.0, &mut faces);
+        assert!(faces.is_empty());
+        let mut none = Vec::new();
+        bvh.column_faces(50.0, 0.0, &mut none);
+        assert!(none.is_empty());
     }
 
     #[test]

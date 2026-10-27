@@ -2,6 +2,9 @@
 //!
 //! In, per contact, `CONTACT_STRIDE` f64: point xyz, normal xyz, source face (-1 none), origin
 //! (0 auto, 1 manual), has landing (0/1), landing point xyz, landing normal xyz, landing face (-1 none).
+//! The landing fields are read only with supplied landings (see `build::LandingSource`); otherwise
+//! the build casts them against the model. Tree landings (supplied mode) are `TREE_LANDING_STRIDE`
+//! f64 each: has landing, point xyz, normal xyz, face (-1 none), has source point, source xyz.
 //! Optional `shapes`: `SHAPE_LAYOUT.len()` f64 per contact (NaN = follows the object).
 //!
 //! Out, per component, `COMPONENT_STRIDE` u32: part, structure kind (0 none), contact index
@@ -18,6 +21,7 @@ use super::policy::{Candidate, CandidateId, Origin};
 use super::settings::{SHAPE_LAYOUT, ShapeSettings};
 
 pub const CONTACT_STRIDE: usize = 16;
+pub const TREE_LANDING_STRIDE: usize = 12;
 pub const COMPONENT_STRIDE: usize = 8;
 pub const INTENT_STRIDE: usize = 9;
 pub const NO_CONTACT: u32 = u32::MAX;
@@ -54,6 +58,29 @@ pub fn decode_contacts(ids: &[String], values: &[f64], shapes: &[f64], base: &Sh
                 shape,
                 landing: (v[8] != 0.0).then(|| Landing { point: [v[9], v[10], v[11]], normal: [v[12], v[13], v[14]], face: face(v[15]), source_point: None }),
             })
+        })
+        .collect()
+}
+
+pub fn decode_tree_landings(values: &[f64]) -> Result<Vec<Option<Landing>>, BuildError> {
+    if values.len() % TREE_LANDING_STRIDE != 0 {
+        return Err(BuildError::BadInput("tree landings length"));
+    }
+    values
+        .chunks(TREE_LANDING_STRIDE)
+        .map(|v| {
+            if v[0] == 0.0 {
+                return Ok(None);
+            }
+            if v[1..11].iter().any(|x| !x.is_finite()) {
+                return Err(BuildError::BadInput("tree landing value not finite"));
+            }
+            Ok(Some(Landing {
+                point: [v[1], v[2], v[3]],
+                normal: [v[4], v[5], v[6]],
+                face: (v[7] >= 0.0).then_some(v[7] as u32),
+                source_point: (v[8] != 0.0).then_some([v[9], v[10], v[11]]),
+            }))
         })
         .collect()
 }

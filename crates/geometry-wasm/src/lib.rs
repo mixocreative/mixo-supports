@@ -6,6 +6,7 @@ use mixo_geometry_core::core::brush::{self, BodySegments, Occluder};
 use mixo_geometry_core::core::matrix::{self, Handedness, Matrix4};
 use mixo_geometry_core::core::spatial::Side;
 use mixo_geometry_core::core::{normals, overlay, pick};
+use mixo_geometry_core::supports::parts::model as support_model;
 use mixo_geometry_core::supports::{build as support_build, error as support_error, flat as support_flat, settings as support_settings};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
@@ -183,6 +184,73 @@ impl GeometrySession {
     pub fn transform(&self, handle: u32, matrix: &[f64], handedness: u32) -> Result<Vec<f32>, JsValue> {
         let (positions, _) = self.store.mesh_arrays(handle).map_err(mesh_error)?;
         Ok(matrix::transform_positions(positions, &matrix4(matrix)?, handedness_of(handedness)?))
+    }
+
+    /// Vertical landing casts against a loaded model: for each `from` (xyz), the surface straight
+    /// below within `length` as 5 floats (face or -1, y, upward normal xyz).
+    pub fn cast_down(&mut self, model: u32, from: &[f64], length: f64) -> Result<Vec<f64>, JsValue> {
+        if from.len() % 3 != 0 {
+            return Err(coded_error("INVALID_LENGTH"));
+        }
+        self.store.ensure_pick_index(model).map_err(mesh_error)?;
+        let (positions, indices, bvh) = self.store.pick_view(model).map_err(mesh_error)?;
+        let view = support_model::Model::new(positions, indices, bvh);
+        let mut out = Vec::with_capacity(from.len() / 3 * 5);
+        for point in from.chunks(3) {
+            match view.cast_down([point[0], point[1], point[2]], length) {
+                Some(hit) => out.extend([f64::from(hit.face.unwrap_or(0)), hit.point[1], hit.normal[0], hit.normal[1], hit.normal[2]]),
+                None => out.extend([-1.0, 0.0, 0.0, 0.0, 0.0]),
+            }
+        }
+        Ok(out)
+    }
+
+    /// Builds the support mesh for contacts over a loaded plate-space model (`model` = u32::MAX for
+    /// none). `mode`: 0 preview, 1 export. `landings`: 0 casts them against the model, 1 takes them
+    /// from the contacts and `tree_landings` (the voxel-remeshed surface, until U5). Roof, Cage and
+    /// Raft fail with NOT_YET_PORTED (`detail` names it). Never returns a partial result.
+    pub fn build_supports(
+        &mut self,
+        model: u32,
+        ids: Vec<String>,
+        contacts: &[f64],
+        shapes: &[f64],
+        settings: &[f64],
+        mode: u32,
+        landings: u32,
+        tree_landings: &[f64],
+    ) -> Result<SupportBuild, JsValue> {
+        let settings = support_settings::SupportSettings::from_slice(settings).map_err(build_error)?;
+        let contacts = support_flat::decode_contacts(&ids, contacts, shapes, &settings.shape).map_err(build_error)?;
+        let mode = match mode {
+            0 => support_build::BuildMode::Preview,
+            1 => support_build::BuildMode::Export,
+            _ => return Err(coded_error("BAD_INPUT")),
+        };
+        let trees = support_flat::decode_tree_landings(tree_landings).map_err(build_error)?;
+        let source = match landings {
+            0 => support_build::LandingSource::Model,
+            1 => support_build::LandingSource::Supplied { trees: &trees },
+            _ => return Err(coded_error("BAD_INPUT")),
+        };
+        let built = if model == u32::MAX {
+            support_build::build_supports(&contacts, &settings, mode, None, source)
+        } else {
+            self.store.ensure_pick_index(model).map_err(mesh_error)?;
+            let (positions, indices, bvh) = self.store.pick_view(model).map_err(mesh_error)?;
+            let view = support_model::Model::new(positions, indices, bvh);
+            support_build::build_supports(&contacts, &settings, mode, Some(&view), source)
+        }
+        .map_err(build_error)?;
+        let table = support_flat::encode_components(&built);
+        Ok(SupportBuild {
+            positions: built.positions,
+            indices: built.indices,
+            tags: table.tags,
+            reach: table.reach,
+            intents: table.intents,
+            dropped: built.dropped,
+        })
     }
 
     /// First hit of each ray (origin xyz, direction xyz, mesh-local): 5 floats per ray
@@ -458,30 +526,6 @@ impl SupportBuild {
 #[wasm_bindgen]
 pub fn support_settings_layout() -> Vec<String> {
     support_settings::SETTINGS_LAYOUT.iter().map(|name| (*name).to_string()).collect()
-}
-
-/// Builds the support mesh from caller-supplied placement. U4a builds columns only; a request
-/// for Tree, Brace, Roof, Cage, Raft or Label fails with code NOT_YET_PORTED (`structure` names it).
-/// `mode`: 0 preview, 1 export. Never returns a partial result.
-#[wasm_bindgen]
-pub fn build_supports(ids: Vec<String>, contacts: &[f64], shapes: &[f64], settings: &[f64], mode: u32) -> Result<SupportBuild, JsValue> {
-    let settings = support_settings::SupportSettings::from_slice(settings).map_err(build_error)?;
-    let contacts = support_flat::decode_contacts(&ids, contacts, shapes, &settings.shape).map_err(build_error)?;
-    let mode = match mode {
-        0 => support_build::BuildMode::Preview,
-        1 => support_build::BuildMode::Export,
-        _ => return Err(coded_error("BAD_INPUT")),
-    };
-    let built = support_build::build_supports(&contacts, &settings, mode).map_err(build_error)?;
-    let table = support_flat::encode_components(&built);
-    Ok(SupportBuild {
-        positions: built.positions,
-        indices: built.indices,
-        tags: table.tags,
-        reach: table.reach,
-        intents: table.intents,
-        dropped: built.dropped,
-    })
 }
 
 fn build_error(error: mixo_geometry_core::supports::error::BuildError) -> JsValue {

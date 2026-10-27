@@ -13,7 +13,7 @@ use crate::supports::settings::{ContactShape, ShapeSettings, SupportSettings, Ti
 
 /// A contact as the column builder consumes it: the policy candidate (position and normal in
 /// plate space, normal already sampled by the caller), its own shape, and where a column from
-/// its neck lands on the model, when it does (placement input, never computed here).
+/// its neck lands on the model when the caller supplies landings (`LandingSource::Supplied`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ColumnContact {
     pub candidate: Candidate,
@@ -37,12 +37,12 @@ struct ContactColumn {
 }
 
 /// True when the tip is not the stock round cone.
-fn shaped_tip(shape: &ShapeSettings) -> bool {
+pub(super) fn shaped_tip(shape: &ShapeSettings) -> bool {
     shape.tip_section != TipSection::Round || shape.tip_profile == TipProfile::Straight
 }
 
 /// A tip segment (contact end first or last): Straight holds the end radius, Square / Cross swap the profile.
-fn add_tip(builder: &mut MeshBuilder, nodes: &[CurveNode], shape: &ShapeSettings, segments: usize) {
+pub(super) fn add_tip(builder: &mut MeshBuilder, nodes: &[CurveNode], shape: &ShapeSettings, segments: usize) {
     let radius = shape.tip_radius();
     let path: Vec<CurveNode> = if shape.tip_profile == TipProfile::Straight {
         nodes.iter().map(|node| CurveNode { radius, ..*node }).collect()
@@ -54,7 +54,7 @@ fn add_tip(builder: &mut MeshBuilder, nodes: &[CurveNode], shape: &ShapeSettings
 }
 
 /// Index of the last node at full pillar radius, or -1; the nodes after it taper into a contact on the model.
-fn last_thick(nodes: &[CurveNode], radius: f64) -> i64 {
+pub(super) fn last_thick(nodes: &[CurveNode], radius: f64) -> i64 {
     (0..nodes.len()).rev().find(|&i| nodes[i].radius >= radius - 1e-9).map_or(-1, |i| i as i64)
 }
 
@@ -64,6 +64,12 @@ fn js_slice(nodes: &[CurveNode], start: i64, end: Option<i64>) -> Vec<CurveNode>
     let fix = |i: i64| if i < 0 { (len + i).max(0) } else { i.min(len) };
     let (a, b) = (fix(start), fix(end.unwrap_or(len)));
     if a >= b { Vec::new() } else { nodes[a as usize..b as usize].to_vec() }
+}
+
+/// Lower end of the neck (contact + neck direction x Connection Length): where the landing ray starts.
+pub fn neck_bend(contact: &ColumnContact, own: &SupportSettings) -> V3 {
+    let normal = normalize_or_down(contact.candidate.normal);
+    add(contact.candidate.point, scale(neck_direction(normal, own.shape.max_neck_angle), own.shape.neck_length))
 }
 
 /// SLASG_Line for one contact: neck from the sunk tip to b = contact + d x Connection Length,
@@ -113,13 +119,14 @@ pub fn emit_column(
     raft_top: f64,
     segments: usize,
     tip_only: bool,
+    landing: Option<Landing>,
 ) -> Option<PlateAnchor> {
     let own = settings.with_shape(contact.shape.as_ref());
     let shape = own.shape;
     let origin = contact.candidate.origin;
     let pillar_radius = own.pillar_diameter / 2.0;
     // A tips-only preview casts no landing for its geometry.
-    let hit = if tip_only { None } else { contact.landing };
+    let hit = if tip_only { None } else { landing };
     let column = contact_column(contact, &own, raft_top, hit)?;
     let neck_end = column.curve.iter().enumerate().position(|(i, node)| i > 0 && node.radius == pillar_radius).map_or(-1, |i| i as i64);
     let neck = js_slice(&column.curve, 0, Some(neck_end + 1));
@@ -213,7 +220,7 @@ mod tests {
         values[22] = 0.0; // raftEnabled off
         let settings = SupportSettings::from_slice(&values).unwrap();
         let mut builder = MeshBuilder::new();
-        let anchor = emit_column(&mut builder, 0, &contact([0.0, 10.0, 0.0]), &settings, 0.0, 12, false).unwrap();
+        let anchor = emit_column(&mut builder, 0, &contact([0.0, 10.0, 0.0]), &settings, 0.0, 12, false, None).unwrap();
         emit_feet(&mut builder, &[anchor], settings.pillar_diameter / 2.0, 12);
         let mesh = builder.finish();
         let parts: Vec<Part> = mesh.components.iter().map(|c| c.tag.part).collect();
@@ -226,7 +233,7 @@ mod tests {
     fn tip_under_the_raft_top_builds_nothing() {
         let settings = SupportSettings::from_slice(&default_values()).unwrap();
         let mut builder = MeshBuilder::new();
-        assert!(emit_column(&mut builder, 0, &contact([0.0, 0.5, 0.0]), &settings, 1.0, 12, false).is_none());
+        assert!(emit_column(&mut builder, 0, &contact([0.0, 0.5, 0.0]), &settings, 1.0, 12, false, None).is_none());
         assert!(builder.finish().components.is_empty());
     }
 

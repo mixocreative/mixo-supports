@@ -1,5 +1,5 @@
-//! Where a support column lands and how its neck leans. The landing hit itself is placement
-//! input supplied by the caller (the model ray cast stays with placement), so these are pure.
+//! Where a support column lands and how its neck leans. Landing hits come from `model.rs`
+//! (exact surface) or, until the voxel remesh is ported (U5), from the caller.
 
 use super::vec::{V3, add, normalize_or_down, scale, sub};
 
