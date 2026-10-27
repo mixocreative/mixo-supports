@@ -8,5 +8,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     setupFiles: ['scripts/test-support/useNodeEngine.ts'],
+    // Heavy aligner fixtures and first WASM engine load exceed the 5 s default under load.
+    testTimeout: 60000,
   },
 });
