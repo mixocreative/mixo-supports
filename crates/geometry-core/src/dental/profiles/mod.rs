@@ -1,15 +1,17 @@
 //! Aligner profiles: the data that parameterises dental detection (docs/SHIP-PLAN.md, Aligner
-//! profiles). A profile is a JSON file in this folder, embedded at build time and shared with the
-//! TypeScript host (`src/dental/alignerProfiles.ts` imports the same file for names, descriptions and
-//! card art). Adding an aligner type means adding a file and listing it in `ALL`, not new pipeline code.
+//! profiles). A profile is a JSON file in this folder, embedded at build time (`build.rs` lists the
+//! folder) and shared with the TypeScript host (`src/dental/alignerProfiles.ts` reads the same files
+//! for names, descriptions and card art). Adding an aligner type means adding one file, not new
+//! pipeline code. Parsing is strict: an unknown or a missing key is an error.
 
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-const REFERENCE_ALIGNER: &str = include_str!("reference-aligner.json");
-const ALL: &[&str] = &[REFERENCE_ALIGNER];
+include!(concat!(env!("OUT_DIR"), "/profiles.rs"));
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum OpeningExpected {
     Yes,
     No,
@@ -17,7 +19,8 @@ pub enum OpeningExpected {
 }
 
 /// Detector thresholds (what counts as an aligner, a ridge, a hole, a region).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Thresholds {
     pub axial_variance_max: f64,
     pub terminal_area_ratio_min: f64,
@@ -43,8 +46,10 @@ pub struct Thresholds {
     pub region_allowed_fraction_max: f64,
 }
 
-/// Default strip width, density and setback, their operator limits, and the contact spacing.
-#[derive(Clone, Debug, PartialEq)]
+/// Default strip width, density and setback, their operator limits, the contact spacing, the
+/// repair budget, and how close a built contact must reproduce a candidate.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Defaults {
     pub setback_mm: f64,
     pub strip_width_mm: f64,
@@ -58,91 +63,49 @@ pub struct Defaults {
     pub inner_spacing_mm: f64,
     pub max_search_mm: f64,
     pub repair_budget: u32,
+    /// A built automatic contact reproduces a candidate within this distance (mm) ...
+    pub match_tolerance_mm: f64,
+    /// ... and with normals at least this aligned (dot product).
+    pub match_min_dot: f64,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+/// Host text per locale (the profile card).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Localized {
+    pub en: String,
+    pub ja: String,
+    #[serde(rename = "zh-Hant")]
+    pub zh_hant: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AlignerProfile {
     pub id: String,
+    pub name: Localized,
+    pub description: Localized,
     pub opening: OpeningExpected,
+    /// Card line art (SVG path data); the host draws it, the geometry ignores it.
+    pub card: Vec<String>,
     pub fixture: String,
     pub thresholds: Thresholds,
     pub defaults: Defaults,
 }
 
-fn value_after<'a>(source: &'a str, key: &str) -> &'a str {
-    let pattern = format!("\"{key}\"");
-    let at = source.find(&pattern).unwrap_or_else(|| panic!("profile key {key} missing"));
-    source[at + pattern.len()..].trim_start().trim_start_matches(':').trim_start()
-}
-
-/// Value of the first `"key": <number>` in the profile JSON (numeric keys are unique per file).
-fn number(source: &str, key: &str) -> f64 {
-    let rest = value_after(source, key);
-    let end = rest.find(|c: char| !(c.is_ascii_digit() || "-+.eE".contains(c))).unwrap_or(rest.len());
-    rest[..end].parse().unwrap_or_else(|_| panic!("profile key {key} is not a number"))
-}
-
-fn string(source: &str, key: &str) -> String {
-    let rest = value_after(source, key).strip_prefix('"').expect("string value");
-    rest[..rest.find('"').expect("closing quote")].to_string()
-}
-
-fn parse(source: &str) -> AlignerProfile {
-    let n = |key: &str| number(source, key);
-    let opening = match string(source, "opening").as_str() {
-        "yes" => OpeningExpected::Yes,
-        "no" => OpeningExpected::No,
-        "either" => OpeningExpected::Either,
-        other => panic!("unknown opening expectation {other}"),
-    };
-    AlignerProfile {
-        id: string(source, "id"),
-        opening,
-        fixture: string(source, "fixture"),
-        thresholds: Thresholds {
-            axial_variance_max: n("axialVarianceMax"),
-            terminal_area_ratio_min: n("terminalAreaRatioMin"),
-            terminal_band_fraction: n("terminalBandFraction"),
-            confidence_min: n("confidenceMin"),
-            sharp_angle_deg: n("sharpAngleDeg"),
-            loop_min_vertices: n("loopMinVertices") as usize,
-            loop_band_fraction: n("loopBandFraction"),
-            loop_band_min_mm: n("loopBandMinMm"),
-            loop_radius_ratio_min: n("loopRadiusRatioMin"),
-            loop_extent_min: n("loopExtentMin"),
-            ridge_first_min_edges: n("ridgeFirstMinEdges") as usize,
-            ridge_second_min_edges: n("ridgeSecondMinEdges") as usize,
-            ridge_extent_min: n("ridgeExtentMin"),
-            connector_angle_deg: n("connectorAngleDeg"),
-            opening_resolution_low: n("openingResolutionLow") as usize,
-            opening_resolution_high: n("openingResolutionHigh") as usize,
-            opening_hole_min_fraction: n("openingHoleMinFraction"),
-            opening_loop_min_edges: n("openingLoopMinEdges") as usize,
-            region_allowed_mean_min: n("regionAllowedMeanMin"),
-            region_forbidden_mean_max: n("regionForbiddenMeanMax"),
-            region_allowed_fraction_min: n("regionAllowedFractionMin"),
-            region_allowed_fraction_max: n("regionAllowedFractionMax"),
-        },
-        defaults: Defaults {
-            setback_mm: n("setbackMm"),
-            strip_width_mm: n("stripWidthMm"),
-            density: n("density"),
-            setback_max_mm: n("setbackMaxMm"),
-            strip_width_min_mm: n("stripWidthMinMm"),
-            strip_width_max_mm: n("stripWidthMaxMm"),
-            density_min: n("densityMin"),
-            density_max: n("densityMax"),
-            outer_spacing_mm: n("outerSpacingMm"),
-            inner_spacing_mm: n("innerSpacingMm"),
-            max_search_mm: n("maxSearchMm"),
-            repair_budget: n("repairBudget") as u32,
-        },
-    }
+/// Parses one profile file strictly (unknown or missing keys are errors).
+pub fn parse(source: &str) -> Result<AlignerProfile, String> {
+    serde_json::from_str(source).map_err(|e| e.to_string())
 }
 
 fn registry() -> &'static HashMap<String, AlignerProfile> {
     static REGISTRY: OnceLock<HashMap<String, AlignerProfile>> = OnceLock::new();
-    REGISTRY.get_or_init(|| ALL.iter().map(|source| parse(source)).map(|profile| (profile.id.clone(), profile)).collect())
+    REGISTRY.get_or_init(|| {
+        ALL.iter()
+            .map(|(file, source)| parse(source).unwrap_or_else(|e| panic!("aligner profile {file}: {e}")))
+            .map(|profile| (profile.id.clone(), profile))
+            .collect()
+    })
 }
 
 /// The profile with this id, if one exists.
@@ -176,6 +139,33 @@ mod tests {
         assert_eq!(profile.thresholds.region_forbidden_mean_max, -0.15);
         assert_eq!((profile.defaults.setback_mm, profile.defaults.strip_width_mm, profile.defaults.density), (0.2, 1.0, 1.0));
         assert_eq!((profile.defaults.outer_spacing_mm, profile.defaults.inner_spacing_mm, profile.defaults.max_search_mm), (3.0, 2.0, 1.5));
+        assert_eq!((profile.defaults.match_tolerance_mm, profile.defaults.match_min_dot), (0.03, 0.95));
+        assert_eq!(profile.name.zh_hant, "標準牙套");
+    }
+
+    /// Every profile file in the folder (and the test-only fixture) parses strictly.
+    #[test]
+    fn every_profile_file_parses_strictly() {
+        assert!(!ALL.is_empty());
+        for (file, source) in ALL {
+            let profile = parse(source).unwrap_or_else(|e| panic!("{file}: {e}"));
+            assert_eq!(format!("{}.json", profile.id), *file, "a profile file is named after its id");
+        }
+        parse(include_str!("testdata/second-aligner.json")).expect("test fixture parses");
+    }
+
+    #[test]
+    fn an_unknown_or_a_missing_key_is_an_error() {
+        let source = ALL[0].1;
+        let unknown = source.replacen("\"repairBudget\"", "\"repairBudgett\"", 1);
+        assert!(parse(&unknown).unwrap_err().contains("repairBudgett"));
+        let extra = source.replacen("\"matchMinDot\": 0.95", "\"matchMinDot\": 0.95, \"extra\": 1", 1);
+        assert!(parse(&extra).unwrap_err().contains("extra"));
+        let mut value: serde_json::Value = serde_json::from_str(source).unwrap();
+        value["defaults"].as_object_mut().unwrap().remove("matchToleranceMm");
+        assert!(parse(&value.to_string()).unwrap_err().contains("matchToleranceMm"));
+        value["thresholds"].as_object_mut().unwrap().insert("surprise".into(), 1.into());
+        assert!(parse(&value.to_string()).is_err());
     }
 
     #[test]

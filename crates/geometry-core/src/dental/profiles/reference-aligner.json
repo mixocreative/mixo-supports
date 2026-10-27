@@ -50,6 +50,8 @@
     "outerSpacingMm": 3,
     "innerSpacingMm": 2,
     "maxSearchMm": 1.5,
-    "repairBudget": 8
+    "repairBudget": 8,
+    "matchToleranceMm": 0.03,
+    "matchMinDot": 0.95
   }
 }
