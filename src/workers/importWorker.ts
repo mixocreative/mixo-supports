@@ -24,7 +24,7 @@ async function readStl(file: Blob, name: string, progress: Progress, engine: Geo
   return finishStl(stream, name);
 }
 
-/** STL reading and welding, glTF welding, display copies and pick indices, off the main thread. */
+/** STL reading and welding, glTF welding and display copies, off the main thread. */
 serveTask<ImportTask, PreparedMesh[]>(async (task, { progress: post }) => {
   const engine = await geometryReady();
   const center = (item: Parameters<typeof prepare>[0]) => centerImportedWithWasm(item, engine);
@@ -40,12 +40,12 @@ serveTask<ImportTask, PreparedMesh[]>(async (task, { progress: post }) => {
   if (task.kind === 'stl') {
     const name = task.name.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
     const mesh = await readStl(task.file, name, progress, engine);
-    prepared = [prepare({ name, mesh }, task.runtime, progress, 0.75, 1, center, simplify)];
+    prepared = [prepare({ name, mesh }, task.runtime, progress, center, simplify)];
   } else {
     const share = 1 / task.meshes.length;
     prepared = task.meshes.map((raw, k) => {
       progress(k * share, 'Welding vertices');
-      return prepare(weldRawWithWasm(raw, engine), task.runtime, progress, (k + 0.5) * share, (k + 1) * share, center, simplify);
+      return prepare(weldRawWithWasm(raw, engine), task.runtime, progress, center, simplify);
     });
   }
   progress(1, 'Done');

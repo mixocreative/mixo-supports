@@ -9,8 +9,8 @@ const IMPORT_TIMEOUT_MS = 5 * 60_000;
 
 /**
  * Model import in a worker: STL files are read and welded there, glTF meshes (parsed on the main
- * thread, where GLTFLoader can decode images) are welded there; both get their pick index (and a
- * display copy when heavy) there. A worker lives only while its import runs (WorkerTask 'per-job'),
+ * thread, where GLTFLoader can decode images) are welded there; a heavy mesh gets its
+ * display copy there. A worker lives only while its import runs (WorkerTask 'per-job'),
  * so it holds no memory between imports. An import blocks editing while it shows and can be cancelled.
  */
 export class ImportClient {

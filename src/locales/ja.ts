@@ -467,7 +467,6 @@ export const ja: Dictionary = {
   'The export worker stopped unexpectedly. Nothing was saved; export again.': '書き出し処理が予期せず停止しました。何も保存されていません。もう一度書き出してください。',
   // Background jobs and heavy meshes
   'Simplifying display copy': '表示用モデルを簡略化中',
-  'Building pick index': '選択用インデックスを作成中',
   'Freeing memory': 'メモリを解放中',
   'Background work': 'バックグラウンド処理',
   'Cancel': 'キャンセル',

@@ -471,7 +471,6 @@ export const zhHant: Dictionary = {
   'The export worker stopped unexpectedly. Nothing was saved; export again.': '匯出作業意外中止。沒有儲存任何檔案；請再匯出一次。',
   // Background jobs and heavy meshes
   'Simplifying display copy': '簡化顯示用模型',
-  'Building pick index': '建立點選索引',
   'Freeing memory': '釋放記憶體',
   'Background work': '背景工作',
   'Cancel': '取消',

@@ -2,7 +2,6 @@ import { ProjectFileError, ProjectTooLarge, type ProjectErrorCode } from '../edi
 import type { PrintScene } from '../state/project';
 import { unpackProject } from '../state/projectFile';
 import type { JobActivity } from './jobActivity';
-import { setPrebuiltBvh } from '../state/meshExtras';
 import type { ProjectResult, ProjectTask } from './projectProtocol';
 import { WorkerJobError, WorkerTask, type WorkerLike } from './WorkerTask';
 
@@ -15,7 +14,7 @@ export class ProjectClient {
   constructor(create: (() => WorkerLike) | null, activity?: JobActivity) {
     this.runner = new WorkerTask({
       create, mode: 'per-job', name: 'Open project', activity,
-      fallback: async ({ file, triangleLimit }) => ({ scene: await unpackProject(file, triangleLimit), picks: [] }),
+      fallback: async ({ file, triangleLimit }) => ({ scene: await unpackProject(file, triangleLimit) }),
     });
   }
 
@@ -23,8 +22,7 @@ export class ProjectClient {
   async open(file: File, triangleLimit: number): Promise<PrintScene> {
     const label = { key: 'Opening {name}', vars: { name: file.name } };
     try {
-      const { scene, picks } = await this.runner.run({ file, triangleLimit }, { label, blocking: true, context: 'project' });
-      scene.units.forEach((unit, k) => { if (picks[k]) setPrebuiltBvh(unit.source, picks[k]!); });
+      const { scene } = await this.runner.run({ file, triangleLimit }, { label, blocking: true, context: 'project' });
       return scene;
     } catch (error) {
       throw rebuilt(error);
