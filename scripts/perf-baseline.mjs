@@ -19,7 +19,8 @@ await import('./test-support/useNodeEngine'); // registers the Rust engine the t
 const { binaryStlTriangles, stlKind } = await import('../src/core/import/stlHeader');
 const { prepare, centerImportedWithWasm, decimateWithWasm } = await import('../src/workers/prepareImport');
 const { proposeDentalSupportRegion } = await import('../src/core/analysis/dentalRegion');
-const { filterDentalPlacement, runSupportJob } = await import('../src/supports/jobRunner');
+const { runSupportJob } = await import('../src/supports/jobRunner');
+const { filterDentalPlacement } = await import('../src/dental/placement');
 const { defaultSupportSettings } = await import('../src/core/supports/settings');
 const { GOLDEN_FIXTURES } = await import('../src/goldens/fixtures');
 const { supportedUnit } = await import('../src/goldens/pipeline');
