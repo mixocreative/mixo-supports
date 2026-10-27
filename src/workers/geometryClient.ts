@@ -35,6 +35,20 @@ export function geometryNow(): GeometryEngine | undefined {
   return loaded;
 }
 
+/** Mesh bytes the shared main-thread session may hold (picked, brushed and overlaid models). */
+const SHARED_SESSION_BYTES = 0x20000000;
+let shared: GeometrySession | undefined;
+
+/**
+ * The main thread's session for meshes the viewport picks against (pointer rays, the brush's
+ * occluders). Undefined until `geometryReady()` has resolved. Same package and engine_version as
+ * every worker's instance.
+ */
+export function sharedSession(): GeometrySession | undefined {
+  if (!loaded) return undefined;
+  return (shared ??= new loaded.GeometrySession(SHARED_SESSION_BYTES));
+}
+
 /** One WASM instance per realm (each worker and the main thread); reject a mismatched package before geometry is used. */
 export function geometryReady(): Promise<GeometryEngine> {
   ready ??= initWasm({ module_or_path: wasmUrl }).then(() => {

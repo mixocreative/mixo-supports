@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Vector } from '../core/vec3';
 import { createBrushScheduler, type Brush, type FrameTest } from './brushScheduler';
 import { createDragOver } from './dragOver';
-import { brushHitsFrom, cachedVisibility, projectBodies, type BodySegments } from './screenBrush';
+import { brushHitsFrom, cachedVisibility, projectBodies, type BodySegments } from '../../scripts/test-support/ts-oracle/screenBrush';
 import { createStroke } from './stroke';
 import type { BrushMode } from './types';
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { GeneratedSupportMesh, SupportComponent } from '../core/supports/mesh';
-import type { Vector } from '../core/vec3';
+import type { GeneratedSupportMesh, SupportComponent } from '../../../src/core/supports/mesh';
+import type { Vector } from '../../../src/core/vec3';
 import {
   bodySegments,
   brushHits,

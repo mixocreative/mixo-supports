@@ -14,7 +14,7 @@ import { MeshBVH } from 'three-mesh-bvh';
 import type { TriangleMesh } from '../../../src/core/analysis/types';
 import type { Vector } from '../../../src/core/vec3';
 import { placementMatrix } from '../../../src/core/transform';
-import { brushHitsFrom, cachedVisibility, hiddenByModel, projectBodies, type BodySegments } from '../../../src/editing/screenBrush';
+import { brushHitsFrom, cachedVisibility, hiddenByModel, projectBodies, type BodySegments } from '../../test-support/ts-oracle/screenBrush';
 import { parseStl } from '../../test-support/rustImport';
 
 export const ALIGNER = 'docs/dental-reference/reference-aligner.stl';

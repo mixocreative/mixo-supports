@@ -1,17 +1,17 @@
 import { useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { MeshBVH } from 'three-mesh-bvh';
 import type { GeneratedSupportMesh } from '../../core/supports/mesh';
-import type { Vector } from '../../core/vec3';
 import { createBrushScheduler, type Brush, type FrameTest } from '../../editing/brushScheduler';
 import { createDragOver } from '../../editing/dragOver';
 import { createHoverProbe } from '../../editing/hoverProbe';
 import { takesText } from '../../editing/keys';
 import { effectiveBrushMode } from '../../editing/selection';
-import { bodySegments, brushHitsFrom, cachedVisibility, hiddenByModel, projectBodies, type BodySegments } from '../../editing/screenBrush';
+import { bodySegments, brushHits, type BodySegments, type BrushOccluder } from '../../editing/screenBrush';
 import type { Stroke } from '../../editing/stroke';
 import type { BrushMode } from '../../editing/types';
+import { geometryNow, sharedSession } from '../../workers/geometryClient';
+import { sessionHandle } from './sessionMesh';
 
 /**
  * Marks on the model mesh and the support mesh of an object (their `userData`). Models hide
@@ -52,61 +52,29 @@ function createObjectTest() {
   };
 }
 
-/** A visible model with its pick index and world → model matrix (rigid, so distances carry over). */
-type Occluder = { bvh: MeshBVH; inverse: THREE.Matrix4; side: THREE.Side };
-
 /**
- * Drag over's hit test in the three.js scene, for one support mesh: projects the support bodies
- * (cached until the camera, the object or the canvas size changes) and tests visibility with one
- * ray per spot against the visible models (cached with the projection).
+ * Drag over's hit test for one support mesh: the Rust core (`project_brush`) projects the support
+ * bodies and tests visibility with rays against the visible models, one batched call per brush
+ * step. The host supplies what is on screen: the view-projection with the object's world matrix,
+ * the camera in support-local space, and each visible model's mesh with its support → model matrix.
  */
 function screenBrushView(bodies: BodySegments, camera: THREE.Camera, scene: THREE.Scene, group: { current: THREE.Group | null }, canvas: HTMLCanvasElement) {
-  const ray = new THREE.Ray();
   const matrix = new THREE.Matrix4();
-  const world = new THREE.Vector3();
-  const direction = new THREE.Vector3();
+  const inverseGroup = new THREE.Matrix4();
+  const toModel = new THREE.Matrix4();
+  const eye = new THREE.Vector3();
   let size = { width: canvas.clientWidth, height: canvas.clientHeight };
-  let projection: { key: number[]; projected: Float32Array } | undefined;
-  let occluders: Occluder[] = [];
-  /** One ray from the camera to a unit-local point against the visible models. */
-  const rayVisible = (point: Vector) => {
-    if (!group.current || occluders.length === 0) return true;
-    world.set(point[0], point[1], point[2]).applyMatrix4(group.current.matrixWorld);
-    direction.subVectors(world, camera.position);
-    const distance = direction.length();
-    if (!(distance > 0)) return true;
-    direction.divideScalar(distance);
-    let nearest: number | undefined;
-    for (const { bvh, inverse, side } of occluders) {
-      ray.origin.copy(camera.position).applyMatrix4(inverse);
-      ray.direction.copy(direction).transformDirection(inverse);
-      const hit = bvh.raycastFirst(ray, side, 0, nearest ?? distance);
-      if (hit && (nearest === undefined || hit.distance < nearest)) nearest = hit.distance;
-    }
-    return !hiddenByModel(distance, nearest);
-  };
-  // Rays are remembered while the camera and the object stand still (always, during a stroke).
-  const visibility = cachedVisibility(rayVisible);
-  const project = () => {
-    if (!group.current) return undefined;
-    group.current.updateWorldMatrix(true, false);
-    camera.updateMatrixWorld();
-    matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(group.current.matrixWorld);
-    const key = [...matrix.elements, size.width, size.height];
-    if (!projection || projection.key.some((value, index) => value !== key[index])) {
-      projection = { key, projected: projectBodies(bodies, matrix.elements, size.width, size.height) };
-      visibility.clear();
-    }
-    return projection.projected;
-  };
-  const visibleOccluders = () => {
-    const found: Occluder[] = [];
+  const visibleOccluders = (): BrushOccluder[] => {
+    const found: BrushOccluder[] = [];
     scene.traverseVisible((object) => {
       const mesh = object as THREE.Mesh;
-      const bvh = object.userData.occluder ? mesh.geometry?.boundsTree : undefined;
-      if (!bvh) return;
+      if (!object.userData.occluder || !mesh.geometry) return;
+      const handle = sessionHandle(mesh.geometry);
+      if (handle === undefined) return;
       object.updateWorldMatrix(true, false);
-      found.push({ bvh, inverse: object.matrixWorld.clone().invert(), side: (mesh.material as THREE.Material).side });
+      // support-local → world → model-local (a rigid placement: distances carry over).
+      toModel.copy(object.matrixWorld).invert().multiply(group.current!.matrixWorld);
+      found.push({ handle, toLocal: toModel.elements.slice(), side: (mesh.material as THREE.Material).side });
     });
     return found;
   };
@@ -116,13 +84,15 @@ function screenBrushView(bodies: BodySegments, camera: THREE.Camera, scene: THRE
       size = { width, height };
     },
     frame(): FrameTest | undefined {
-      const projected = project();
-      if (!projected) return undefined;
-      const now = visibleOccluders();
-      // Hide / Show models changes what hides a support while the camera stands still: the remembered rays are stale then.
-      if (now.length !== occluders.length || now.some((occluder, index) => occluder.bvh !== occluders[index]!.bvh)) visibility.clear();
-      occluders = now;
-      return (job, want, stop) => brushHitsFrom(job.next, bodies, projected, job.from, job.to, job.radius, visibility.isVisible, want, stop);
+      const session = sharedSession();
+      if (!group.current || !session) return undefined;
+      group.current.updateWorldMatrix(true, false);
+      camera.updateMatrixWorld();
+      matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(group.current.matrixWorld);
+      eye.copy(camera.position).applyMatrix4(inverseGroup.copy(group.current.matrixWorld).invert());
+      const view = { clip: matrix.elements.slice(), eye: [eye.x, eye.y, eye.z] as const, width: size.width, height: size.height };
+      const occluders = visibleOccluders();
+      return (job, want) => ({ hits: brushHits(session, bodies, occluders, view, job.from, job.to, job.radius, job.next, want), next: bodies.ids.length });
     },
   };
 }
@@ -158,7 +128,7 @@ export function useScreenBrush(options: {
   /** The circle is showing: the pointer is over the canvas with the brush live. */
   const [over, setOver] = useState(false);
   const wanted = Boolean(options.brush);
-  const bodies = useMemo<BodySegments | undefined>(() => (wanted && options.supports ? bodySegments(options.supports) : undefined), [wanted, options.supports]);
+  const bodies = useMemo<BodySegments | undefined>(() => (wanted && options.supports ? bodySegments(geometryNow()!, options.supports) : undefined), [wanted, options.supports]);
   const view = useMemo(() => bodies && screenBrushView(bodies, camera, scene, options.group, gl.domElement), [bodies, camera, scene, options.group, gl]);
   /** Shows the hover again with the brush as it is now (set while the pointer listeners are attached). */
   const refreshHover = useRef<() => void>(() => undefined);
