@@ -193,14 +193,43 @@ pub struct Stroke<'a> {
 /// the stroke's sweeps, ascending). Visibility is one ray per spot against the occluders,
 /// remembered per part and spot (t quantised to 1/8) for the whole stroke.
 pub fn project_brush(bodies: &BodySegments, occluders: &[Occluder], stroke: &Stroke) -> Vec<u32> {
+    project_brush_cached(bodies, occluders, stroke, &mut std::collections::HashMap::new())
+}
+
+/// Visibility answers kept across brush steps while everything that decides them stands still
+/// (camera, canvas, eye, occluders, support bodies). A host calls once per pointer step, so a
+/// per-call cache would re-ray thin silhouette spots and count different supports per step.
+#[derive(Default)]
+pub struct VisibilityCache {
+    key: u64,
+    map: std::collections::HashMap<u64, bool>,
+}
+
+impl VisibilityCache {
+    /// The remembered answers for `key`, cleared when the key changed.
+    pub fn reuse_for(&mut self, key: u64) -> &mut std::collections::HashMap<u64, bool> {
+        if self.key != key {
+            self.key = key;
+            self.map.clear();
+        }
+        &mut self.map
+    }
+}
+
+/// `project_brush` with visibility remembered in `cache` (see `VisibilityCache`).
+pub fn project_brush_cached(
+    bodies: &BodySegments,
+    occluders: &[Occluder],
+    stroke: &Stroke,
+    cache: &mut std::collections::HashMap<u64, bool>,
+) -> Vec<u32> {
     let projected = project_bodies(&bodies.points, &stroke.matrix, stroke.width, stroke.height);
     let end = stroke.end.min(bodies.keys.len());
     let mut hit = vec![false; bodies.keys.len()];
-    let mut cache: std::collections::HashMap<u64, bool> = std::collections::HashMap::new();
     let mut previous: Option<[f64; 2]> = None;
     for sample in stroke.points.chunks_exact(2) {
         let to = [sample[0], sample[1]];
-        sweep(bodies, &projected, previous, to, stroke, end, occluders, &mut cache, &mut hit);
+        sweep(bodies, &projected, previous, to, stroke, end, occluders, cache, &mut hit);
         previous = Some(to);
     }
     (0..hit.len() as u32).filter(|&slot| hit[slot as usize]).collect()
@@ -374,5 +403,13 @@ mod tests {
         let m: Matrix4 = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0];
         let out = project_bodies(&[0.0, 0.0, -5.0, 1.0, 0.0, -6.0], &m, 100.0, 100.0);
         assert!(out.iter().all(|v| v.is_nan()));
+    }
+
+    #[test]
+    fn visibility_cache_survives_steps_until_the_key_changes() {
+        let mut cache = VisibilityCache::default();
+        cache.reuse_for(7).insert(1, true);
+        assert_eq!(cache.reuse_for(7).get(&1), Some(&true));
+        assert!(cache.reuse_for(8).is_empty());
     }
 }

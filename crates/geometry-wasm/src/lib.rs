@@ -151,6 +151,7 @@ pub fn decimate_display(
 #[wasm_bindgen]
 pub struct GeometrySession {
     store: MeshStore,
+    brush_visibility: brush::VisibilityCache,
 }
 
 #[wasm_bindgen]
@@ -159,6 +160,7 @@ impl GeometrySession {
     pub fn new(max_bytes: u32) -> Self {
         Self {
             store: MeshStore::new(max_bytes as usize),
+            brush_visibility: brush::VisibilityCache::default(),
         }
     }
 
@@ -345,8 +347,37 @@ impl GeometrySession {
             end: end as usize,
             want: if want.is_empty() { None } else { Some(want) },
         };
-        Ok(brush::project_brush(&bodies, &occluders, &params))
+        let key = brush_cache_key(&[body_points_bits(body_points), hash_u32(body_first), hash_u32(occluder_handles), hash_u32(occluder_sides)], &[occluder_matrices, matrix, eye, size]);
+        let cache = self.brush_visibility.reuse_for(key);
+        Ok(brush::project_brush_cached(&bodies, &occluders, &params, cache))
     }
+}
+
+/// One key over everything that decides brush visibility; a change clears the remembered rays.
+fn brush_cache_key(parts: &[u64], floats: &[&[f64]]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    parts.hash(&mut hasher);
+    for values in floats {
+        values.len().hash(&mut hasher);
+        values.iter().for_each(|v| v.to_bits().hash(&mut hasher));
+    }
+    hasher.finish()
+}
+
+fn body_points_bits(values: &[f32]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    values.len().hash(&mut hasher);
+    values.iter().for_each(|v| v.to_bits().hash(&mut hasher));
+    hasher.finish()
+}
+
+fn hash_u32(values: &[u32]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    values.hash(&mut hasher);
+    hasher.finish()
 }
 
 fn matrix4(values: &[f64]) -> Result<Matrix4, JsValue> {
