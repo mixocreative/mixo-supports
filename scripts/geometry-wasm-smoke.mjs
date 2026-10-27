@@ -99,3 +99,26 @@ assert.throws(() => limited.load_mesh(
 ), { code: 'CAPACITY' });
 assert.equal(limited.used_bytes(), 0);
 limited.free();
+
+// U6a dental ABI: typed errors, abstention on a cube, profile registry, manual-area contract.
+{
+  const dental = require(packageFile);
+  const cube = {
+    positions: new Float32Array([-1, -1, -1, 1, -1, -1, 1, 1, -1, -1, 1, -1, -1, -1, 1, 1, -1, 1, 1, 1, 1, -1, 1, 1]),
+    indices: new Uint32Array([0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7]),
+  };
+  assert.deepEqual(dental.dental_profile_ids(), ['reference-aligner']);
+  assert.throws(() => dental.orient_dental(cube.positions, cube.indices, 'nope'), { code: 'UNKNOWN_PROFILE' });
+  assert.throws(() => dental.orient_dental(cube.positions, new Uint32Array([0, 1, 99]), 'reference-aligner'), { code: 'INVALID_INDEX' });
+  assert.throws(() => dental.propose_dental_region(cube.positions, cube.indices, new Float64Array([0.2, 1]), 'reference-aligner'), { code: 'INVALID_LENGTH' });
+  const oriented = dental.orient_dental(cube.positions, cube.indices, 'reference-aligner');
+  assert.equal(oriented.status(), 1, 'a cube has no cavity: orientation fails instead of inventing one');
+  oriented.free();
+  const region = dental.propose_dental_region(cube.positions, cube.indices, new Float64Array([0.2, 1, 1]), 'reference-aligner');
+  assert.equal(region.ok(), false);
+  assert.match(region.reason(), /^orientation-/);
+  region.free();
+  assert.deepEqual(Array.from(dental.manual_dental_area(4, new Uint32Array([1, 2]), false, 'reference-aligner')), [0, 1, 1, 0]);
+  assert.throws(() => dental.manual_dental_area(4, new Uint32Array([1]), true, 'reference-aligner'), { code: 'DETECTED_AREA_EXISTS' });
+  assert.throws(() => dental.manual_dental_area(4, new Uint32Array([4]), false, 'reference-aligner'), { code: 'INVALID_INDEX' });
+}

@@ -82,3 +82,24 @@ pub fn inspect_contour_incidence(vertex_count: usize, indices: &[u32], contour: 
     }
     Ok(pairs)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const INDICES: [u32; 36] = [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7];
+
+    #[test]
+    fn a_cube_face_loop_has_two_faces_per_edge() {
+        let pairs = inspect_contour_incidence(8, &INDICES, &[4, 5, 5, 6, 6, 7, 7, 4]).unwrap();
+        assert_eq!(pairs.len(), 8);
+        assert!(pairs.chunks_exact(2).all(|p| p[0] != p[1]));
+    }
+
+    #[test]
+    fn a_gap_a_branch_and_an_edge_without_two_faces_are_rejected() {
+        assert_eq!(inspect_contour_incidence(8, &INDICES, &[4, 5, 5, 6, 6, 7]), Err(IncidenceError::NotOneSimpleLoop));
+        assert_eq!(inspect_contour_incidence(8, &INDICES, &[4, 5, 5, 6, 6, 7, 7, 4, 4, 6]), Err(IncidenceError::NotOneSimpleLoop));
+        assert_eq!(inspect_contour_incidence(8, &INDICES, &[0, 1, 1, 6, 6, 0]), Err(IncidenceError::NotTwoSidedMeshEdge));
+    }
+}
