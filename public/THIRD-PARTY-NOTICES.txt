@@ -2,13 +2,15 @@ Third-party notices for Mixo Supports (https://mixocreative.github.io/mixo-suppo
 
 The application is Copyright (c) 2026 mixocreative, all rights reserved (see
 LICENSE in the source repository). It contains the third-party material below,
-each under its own licence. The npm packages it bundles keep the licences given
-in their package metadata.
+each under its own licence. The npm packages it bundles and the Rust crates
+compiled into its geometry engine (WebAssembly) keep the licences given in their
+package metadata; both lists are generated at build time and follow the
+numbered items below.
 
 Contents
   1. Inter typeface (label glyphs) - SIL Open Font License 1.1
   2. Single-precision arccos (acosf) - FreeBSD msun / Sun Microsystems notice
-  3. OpenVDB lookup tables - Apache License 2.0
+  3. OpenVDB lookup tables and VolumeToMesh port - Apache License 2.0
   4. SLASG Blender add-on (support logic) - MIT License
   5. Zen Kaku Gothic New typeface (UI font) - SIL Open Font License 1.1
 
@@ -114,7 +116,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ==============================================================================
 
-2. Single-precision arccos (src/core/acosf.ts)
+2. Single-precision arccos (crates/geometry-core/src/core/normals.rs)
 
 Ported from FreeBSD msun e_acosf.c (float version of e_acos.c).
 
@@ -131,10 +133,14 @@ Ported from FreeBSD msun e_acosf.c (float version of e_acos.c).
 
 ==============================================================================
 
-3. OpenVDB lookup tables (src/core/supports/openvdbTables.ts)
+3. OpenVDB lookup tables and VolumeToMesh port (crates/geometry-core/src/supports/remesh/)
 
-Lookup tables from OpenVDB tools/VolumeToMesh.h, used to reproduce Blender's
-Grid to Mesh remesh.
+Lookup tables from OpenVDB tools/VolumeToMesh.h, and a port of its VolumeToMesh
+algorithm to Rust (the remesh module named above), used to reproduce Blender's
+Grid to Mesh remesh. This is a modified version, not the original source: the
+code was translated from C++ to Rust (and, earlier, to TypeScript), restricted
+to the cells the support builder queries, and works in single precision at the
+stages where OpenVDB does. The tables are copied from OpenVDB unchanged in value.
 
   Copyright Contributors to the OpenVDB Project
   SPDX-License-Identifier: Apache-2.0

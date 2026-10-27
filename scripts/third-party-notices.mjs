@@ -5,8 +5,10 @@
 // Walks the production dependency tree (package.json "dependencies", recursively through
 // node_modules/<pkg>/package.json), collects name, version, licence and the licence file text, and
 // writes dist/THIRD-PARTY-NOTICES.txt = public/THIRD-PARTY-NOTICES.txt + a generated npm section.
+// plus a Rust section: the crates compiled into the geometry WebAssembly, from `cargo metadata`.
 // Fails (exit 1) on a copyleft licence without a permissive alternative, or a package with no licence text.
 
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -101,15 +103,59 @@ export function collect(rootDir, reviewed = { noFileOk: new Set(), licenseOverri
   return { packages, problems };
 }
 
-export function render(packages) {
+
+/**
+ * Third-party Rust crates compiled into the geometry WebAssembly: the normal (non-dev, non-build)
+ * dependency closure of the wasm crate for wasm32, from `cargo metadata` output. Workspace members
+ * are the application itself and are left out.
+ * @returns {{packages: Array<{name, version, license, homepage, texts}>, problems: string[]}}
+ */
+export function rustPackages(metadata, rootPackage = 'mixo-geometry-wasm') {
+  const byId = new Map(metadata.packages.map((p) => [p.id, p]));
+  const nodes = new Map(metadata.resolve.nodes.map((n) => [n.id, n]));
+  const members = new Set(metadata.workspace_members);
+  const start = metadata.packages.find((p) => p.name === rootPackage);
+  const problems = [];
+  if (!start) return { packages: [], problems: [`${rootPackage}: not in cargo metadata`] };
+  const seen = new Set();
+  const visit = (id) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    for (const dep of nodes.get(id)?.deps ?? []) if (dep.dep_kinds.some((k) => k.kind === null)) visit(dep.pkg);
+  };
+  visit(start.id);
+  const packages = [];
+  for (const id of seen) {
+    if (members.has(id)) continue;
+    const pkg = byId.get(id);
+    const key = `${pkg.name}@${pkg.version}`;
+    const license = pkg.license || '';
+    const texts = licenceTexts(dirname(pkg.manifest_path));
+    if (!license) problems.push(`${key}: no licence in Cargo.toml`);
+    else if (isCopyleft(license)) problems.push(`${key}: copyleft licence ${license}`);
+    if (texts.length === 0) problems.push(`${key}: no LICENSE/LICENCE/COPYING/NOTICE text`);
+    packages.push({ name: pkg.name, version: pkg.version, license, homepage: pkg.homepage || pkg.repository || '', texts });
+  }
+  const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  packages.sort((a, b) => cmp(a.name, b.name) || cmp(a.version, b.version));
+  return { packages, problems };
+}
+
+function cargoMetadata(rootDir) {
+  const run = spawnSync('cargo', ['metadata', '--format-version', '1', '--locked', '--filter-platform', 'wasm32-unknown-unknown'], { cwd: rootDir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, shell: process.platform === 'win32' });
+  if (run.status !== 0) throw new Error(`cargo metadata failed: ${run.stderr || run.error}`);
+  return JSON.parse(run.stdout);
+}
+
+export function render(packages, heading = 'npm packages bundled in the application (generated at build time)', intro = 'Production dependencies of this project and their dependencies, each under the') {
   const bar = '='.repeat(78);
   const out = [
     '',
     bar,
     '',
-    'npm packages bundled in the application (generated at build time)',
+    heading,
     '',
-    'Production dependencies of this project and their dependencies, each under the',
+    intro,
     'licence stated in its package metadata. Full licence texts follow.',
     '',
     'Packages',
@@ -134,9 +180,16 @@ function main() {
   const handWritten = readFileSync(join(rootDir, 'public', 'THIRD-PARTY-NOTICES.txt'), 'utf8')
     .replace(/\r\n/g, '\n')
     .replace(/\s+$/, '\n');
+  const rust = rustPackages(cargoMetadata(rootDir));
+  if (rust.problems.length) {
+    console.error('third-party notices: build failed');
+    for (const p of rust.problems) console.error(`  - ${p}`);
+    process.exit(1);
+  }
   mkdirSync(join(rootDir, 'dist'), { recursive: true });
-  writeFileSync(join(rootDir, 'dist', 'THIRD-PARTY-NOTICES.txt'), handWritten + render(packages));
-  console.log(`third-party notices: ${packages.length} npm packages -> dist/THIRD-PARTY-NOTICES.txt`);
+  writeFileSync(join(rootDir, 'dist', 'THIRD-PARTY-NOTICES.txt'), handWritten + render(packages)
+    + render(rust.packages, 'Rust crates compiled into the geometry engine (generated at build time)', 'Normal dependencies of the geometry WebAssembly crate (from cargo metadata), each under the'));
+  console.log(`third-party notices: ${packages.length} npm packages, ${rust.packages.length} Rust crates -> dist/THIRD-PARTY-NOTICES.txt`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

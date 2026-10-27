@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { collect, isCopyleft, render } from './third-party-notices.mjs';
+import { collect, isCopyleft, render, rustPackages } from './third-party-notices.mjs';
 
 const dirs = [];
 function fixture(root, pkgs) {
@@ -55,5 +55,36 @@ describe('third-party notices collector', () => {
     expect(isCopyleft('MIT OR GPL-3.0')).toBe(false);
     expect(isCopyleft('MIT AND GPL-3.0')).toBe(true);
     expect(isCopyleft('MIT')).toBe(false);
+  });
+
+  it('lists the normal Rust dependency closure of the wasm crate, sorted, without workspace members', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'notices-rust-'));
+    dirs.push(dir);
+    const crate = (name, files) => {
+      const d = join(dir, name);
+      mkdirSync(d, { recursive: true });
+      for (const [f, t] of Object.entries(files)) writeFileSync(join(d, f), t);
+      return join(d, 'Cargo.toml');
+    };
+    const pkg = (name, license, files = {}, version = '1.0.0') => ({ id: name, name, version, license, manifest_path: crate(name, files), homepage: null, repository: `https://example.org/${name}` });
+    const metadata = {
+      workspace_members: ['wasm', 'core'],
+      packages: [
+        pkg('wasm', null), pkg('core', null),
+        pkg('zeta', 'MIT OR Apache-2.0', { 'LICENSE-MIT': 'zeta mit', 'LICENSE-APACHE': 'zeta apache' }),
+        pkg('alpha', 'MIT', { LICENSE: 'alpha text' }),
+        pkg('buildonly', 'GPL-3.0', { COPYING: 'x' }),
+      ],
+      resolve: { nodes: [
+        { id: 'wasm', deps: [{ pkg: 'zeta', dep_kinds: [{ kind: null }] }, { pkg: 'core', dep_kinds: [{ kind: null }] }, { pkg: 'buildonly', dep_kinds: [{ kind: 'build' }] }] },
+        { id: 'core', deps: [] },
+        { id: 'zeta', deps: [{ pkg: 'alpha', dep_kinds: [{ kind: null }] }] },
+        { id: 'alpha', deps: [] }, { id: 'buildonly', deps: [] },
+      ] },
+    };
+    const { packages, problems } = rustPackages(metadata, 'wasm');
+    expect(problems).toEqual([]);
+    expect(packages.map((p) => `${p.name}@${p.version}:${p.license}`)).toEqual(['alpha@1.0.0:MIT', 'zeta@1.0.0:MIT OR Apache-2.0']);
+    expect(render(packages)).toContain('zeta apache');
   });
 });
