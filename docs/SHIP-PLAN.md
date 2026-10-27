@@ -94,6 +94,15 @@ Dental mode is a visible feature. Entering it dims the rest of the editor.
 - U6b: a second with-opening aligner and a real **no-opening** aligner run through the U6a checks. Physical print/fit review on the target printer/resin.
 - Until done: dental mode ships labelled **preview / not clinically validated** (or hidden; owner decides) and abstains on uncertain meshes.
 
+## U0 decisions (2026-10-27)
+
+- D1 `supportCheck.ts`: island part replaced by U7 verdict, deleted in U10 with `runCheckJob` after goldens + aligner match; its overhang-coverage report is ported as a **non-gating generic-policy warning** (Check is a shipped generic feature).
+- D2 `dentalRimCoverage` → shared `supports/verdict`; dental thresholds are profile data.
+- D3 `genericBodyClearance.ts` (+ test) committed as frozen-reference; never extended in TS.
+- D4 `vec3`/budget stay host-adapter; U9 guard separates render/camera use from defects.
+- D5 `buildPickIndex` → Rust `core/spatial` in U2.
+- D6 non-worker `stl.ts`/`weld.ts` helpers → U1.
+
 ## Owner answers (2026-10-27)
 
 1. Dental mode is visible, with the flow above.
