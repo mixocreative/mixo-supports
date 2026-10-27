@@ -190,6 +190,7 @@ function readProps() {
     zones: unit ? unit.zones.length : -1,
     dentalBoundary: unit?.dental?.rim.boundaryKind ?? '',
     dentalKind: unit?.dental?.kind ?? '',
+    dentalOrigin: unit?.dental?.origin ?? '',
     dentalStamps: unit?.dental?.stamps.length ?? -1,
     dentalFaces: unit?.dental?.kind === 'two-contour' ? unit.dental.region.contactFaces?.reduce((sum, face) => sum + face, 0) ?? -1 : -1,
     dentalContacts: unit?.dental?.kind === 'two-contour' ? unit.dental.region.contacts?.length ?? -1 : -1,
@@ -686,6 +687,8 @@ async function walk(url, scratch, dentalFixture) {
       await stepTo('Step 2 · Support area', 120000);
       check('u8 no detected area: Step 2 opens with its message and Next stays off',
         await page.getByText('No support area was detected').first().isVisible() && await d.button('Next').isDisabled(), `status "${await d.status()}"`);
+      const unpainted = await d.props();
+      check('u8b no detected area: paint starts from an empty manual-area policy, not from the cavity footprint', unpainted.dentalKind === 'legacy' && unpainted.dentalOrigin === 'manual-area' && unpainted.dentalStamps === 0, `policy "${unpainted.dentalKind}" origin "${unpainted.dentalOrigin}" stamps ${unpainted.dentalStamps}`);
       await d.button('Back').click();
       await stepTo('Step 1 · Aligner');
       await d.button('Back').click();
