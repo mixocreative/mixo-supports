@@ -18,6 +18,9 @@ function allowedTarget(file: string, target: readonly string[]): boolean {
   const path = target.join('/');
   if (path.startsWith('src/core/') || path.startsWith('src/editing/')) return true;
   if (path.startsWith('tools/') && path.endsWith('.json')) return true;
+  // Aligner profile data is shared with the Rust core (crates/geometry-core/src/dental/profiles); tests read the face labels.
+  if (path.startsWith('crates/geometry-core/src/dental/profiles/') && path.endsWith('.json')) return true;
+  if (file.endsWith('.test.ts') && path.startsWith('docs/dental-reference/') && path.endsWith('.json')) return true;
   // Tests may also load fixtures through the Rust import path (scripts/test-support/rustImport).
   return file.endsWith('.test.ts') && (path.startsWith('src/goldens/') || path.startsWith('scripts/test-support/'));
 }
