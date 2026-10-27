@@ -1,70 +1,107 @@
-# How the aligner gets its support locations
+# How Mixo Supports handles an aligner, in plain language
 
-The detected edges are the starting point. The software does **not** paint the whole surface between the outer edge and the middle hole as a support area. It uses that wide surface only to work out which side of each edge faces the opening. Then it makes a narrow strip beside the edges and places support tips in that strip.
+This page is for dentists and technicians. It has no code. For the engineering detail, see [the technical algorithm](technical-algorithm.md).
 
-Import update: the browser now reads and joins the triangles of a **binary** STL in a self-contained Rust/WASM geometry engine, one file chunk at a time; ASCII STL still uses the older importer. This changes how the model enters the app, not which dental faces may receive supports or how orientation is chosen.
+**Dental mode is a preview. It is not clinically validated.** It was built and tested on one aligner scan. Check every result yourself before you print.
 
-## The current method
+## What the software does
 
-1. The software estimates which way the aligner opens and suggests a print orientation. You can adjust the orientation in Step 1.
-2. It traces the outer **trim rim** on the 3D mesh. The strong ridge sections appear blue in the review GLB. Green paths follow weaker mesh edges to join the blue sections into one closed outer line. The back ends can rise, so the line need not be flat.
-3. If the model has a clear central opening, the software traces its edge in red. It cuts the mesh along the outer and inner lines. The cut separates the surface into two groups. This tells the software which side of each line faces the opening; the wide group is **not** a support mask.
-4. Starting at both lines, the software follows connected triangles for 0.2 to 1.2 mm by default. It keeps the strips on the side opposite the opening-facing group. Their union is the narrow teal **aligner contact strip** shown in Step 2 and in the review GLB. It does not fill gaps by painting across empty space or across a fold of the mesh. Think of each rim as having two possible widths: **cavity-facing** and **non-cavity-facing**. The current automatic permission uses only the non-cavity-facing width; giving the cavity-facing side a nonzero width would be a separate safety decision. “Inside” and “outside” can reverse between the outer rim and central opening, so the selected side is defined by the mesh rather than by screen direction.
-5. The software spaces baseline tips along the outer trim rim at 3 mm intervals and the middle-opening rim at 2 mm intervals by default, whether or not an island check calls for extra reinforcement. It moves each tip onto a nearby triangle in the teal strip. In Step 2, **Strip width** changes the thickness of that permitted band, **Support density** changes the spacing of proposed tips on both rims, and advanced **Rim setback** slides the band away from each trim line along the same non-cavity-facing surface. The painted strip and proposed tips refresh after each change; the controls never grant cavity-facing permission. The smallest width is a thin, nonzero band rather than a mathematically zero-width line, so tips still have a face to land on. Add and Remove paint can change permission **within** the current strip, but Add cannot extend it beyond it. A safety check may reject a proposed tip. Step 3 measures gaps between the automatic supports that were **actually built** and warns if the largest gap on either rim exceeds twice its intended tip spacing. The warning asks for review; it does not force a rejected support or certify smaller gaps as clinically safe.
-6. In Step 3, the app builds the shafts and its existing raft. The builder checks the current STL and strips again. It rejects a saved tip that no longer matches a detected location and rejects a support whose second model contact lands outside the strip. It also removes automatic pillars that its current body-clearance check finds passing through the model. This definitive pillar check happens **inside Generate after mesh construction, before the result is shown**, because the final shaft layout can differ from the proposed path. Manual supports are separate.
+You give it a scan of an aligner. It finds the trim edge of the aligner. It then places small support tips along that edge, builds the supports, and checks that the supports do not cut through the aligner.
 
-The edge line alone cannot tell the software which side faces the opening. The wide face group gives that side label, but it cannot prove dental safety. The narrow strip grows **from the edge along the mesh**, not from every face in the wide group. This is the key difference between the current method and our first method.
+The supports are placed only on a narrow strip next to the trim edge, on the outside face. They are never placed in the inner surface that touches the teeth.
 
-## The earlier wide-area method remains useful
+## The four steps
 
-Our first method treated every face in the opening-facing group between the two detected lines as eligible. On the saved aligner, that group contains 254,344 triangles. It reached underside places that a downward ray might miss, but it also spread too far and produced tips on unwanted surfaces. We stopped using that group as the live contact mask. The code still calculates it because it labels the two sides of each edge, helps reject a bad contour, and may help future support-area tools. The older broad teal GLB and its explanation remain under [`docs/dental-reference`](../docs/dental-reference/README.md). In the **current** review GLB, teal means the narrow strip, not that old wide group.
+Dental mode dims the rest of the editor so you can focus on one aligner at a time.
 
-The review GLB also shows both sides of each edge for diagnosis. Violet and amber sit on opposite sides of the outer line. Cyan and magenta sit around the middle line. Lime and pink dots are older 2 mm-spaced test markers, not current gold supports. These layers help you inspect the side choice; they do not prove dental safety.
+**Step 0. Aligner type.** You pick a card for the type of aligner. Each card shows a line drawing, a name and one sentence. Today there is one type, the reference aligner. The card is still shown, so the steps are always the same. The last type you chose is highlighted.
 
-In Step 2, **Tree branches** and **Cross-braces** are both requested by default. Each can be switched off for one aligner; Roof and Cage are never used in dental generation. A requested tree or brace is built first, then its actual triangles are checked against the aligner. If it crosses the shell, the app rebuilds without that structure and warns in Step 3. On our saved reference, trees currently cross the shell, so they are omitted automatically; braces remain. This is safer than keeping an unsafe tree, but it is not proof that the remaining tips or a future patient's aligner will print well.
+**Step 1. Aligner.** Drop or upload the STL file.
+- The software first checks the mesh. If it has holes or broken geometry, it warns you and marks the detection as unreliable.
+- It then turns the aligner into a good print position by itself.
+- If the scan does not match the type you chose (for example, no central opening was found on a type that has one), it asks "This looks like a different aligner type. Switch?". It does not carry on silently.
+- You can turn the aligner by hand with the gizmo, then press Next.
+- If the software is not sure about the position, it says so and keeps the pose you dropped it in. You then turn it yourself.
+- If the file is wrong, broken or too large, you get a clear message and stay in Step 1.
 
-Why this changed: our first collision pass checked only the vertical pillars. That passed the reference, but turning Tree on exposed intersections in branches and trunks that a pillar check cannot see. The proposed solution of keeping every Tree merely because its starting tip sits on an allowed strip was therefore wrong. The new pass measures the *built* Tree and Brace surfaces against the patient shell. It is fast enough on our one saved model to run during generation because it searches nearby mesh cells rather than every possible triangle pair, but rebuilding after a collision still costs extra time. This logic can serve other support types later; today the policy that removes a crossing Tree/Brace belongs only to dental generation. A future generic collision checker should reuse the geometric intersection method, not the dental-specific decision about what to omit.
+**Step 2. Support area.** The detected strip is shown in teal.
+- **Strip width** makes the strip wider or narrower.
+- **Support density** changes how close together the tips are.
+- **Rim setback** moves the strip away from the trim edge.
+- **Add area** and **Remove area** let you paint. You can only paint inside what the software already allows. Paint cannot make a face safe if the software has rejected it.
+- If the software found no area, it says so, and you paint an area from scratch. Next stays off until something is painted. The software still checks every tip you create this way.
 
-This check errs toward **removing too much**, not letting a questionable Tree through: a Tree branch includes its intentional contact tip in the same mesh part on some settings, so even a legitimate tip touch may count as a collision. The saved reference also has trunk intersections away from the intended strip, so rejecting that Tree is well supported, but we have not proved a Tree will survive on other aligners. Separating the allowed short tip reach from the rest of each branch is still needed before calling Tree handling fully refined.
+**Step 3. Supports.** Supports are built with default settings.
+- You can change tip size, density, lift height, raft on or off, and Tree and Brace on or off. Supports are rebuilt after each change. Supports you added by hand are kept. A message tells you what was kept and what was reset.
+- You can add a support or delete a selected one.
+- The **Label** field is text printed on the support base. The default is `X`. It holds up to 8 characters: letters A to Z, digits 0 to 9 and `-`. Other characters are dropped and letters become capitals.
+- **OK** finishes this aligner. **Add another aligner** also finishes it, and sends you back to Step 1 with the same type.
+- After OK, all finished aligners stay on the plate as normal objects. Every time you add one, the software moves the aligners so they do not overlap. You can then export an STL or save the project.
+- Back is allowed from Step 3 to 2 to 1. It asks first if you would lose supports you edited by hand. Exit leaves the current aligner on the plate with no supports. Aligners you already finished are kept.
 
-We also learned that a good preview contact is not automatically a safe final support. The final builder rechecks the exact face and location, the lower landing must be on the approved side, and a support body can still hit the shell. An unfilled rim gap is reported; it is never "fixed" by forcing a contact outside the strip. A second sampling phase can propose positions inside the same strip, but automatic choice of those alternatives has **not** been completed yet. This distinction is deliberate: it keeps the visible paint boundary, actual contact, and final support from silently disagreeing.
+## What the colors mean in the review file
 
-### What “island detection” means now
+The review script writes a 3D file you can open in Blender or another glTF viewer.
+- **Blue**: the two strong sections of the outer trim edge.
+- **Green**: weaker paths that join the blue sections into one closed line.
+- **Red**: the edge of the central opening, if the aligner has one.
+- **Teal**: the narrow strip where tips may go.
+- **White**: all other faces.
+- **Gold**: the supports.
 
-The current Generate warning calls a low point with no nearby tip an “island.” That is useful, but it does not inspect how separate pieces of the print connect as height increases. A new standalone experimental checker sorts mesh points by height and watches when a new connected piece first appears. It does **not** slice hundreds of print layers, so the saved 373,956-triangle aligner took 202–214 ms across three runs, including mesh-topology validation, and produced 56 candidate births. The old warning combined those into just one “island” warning on a no-contact diagnostic; the two counts measure different things. Most births are not necessarily print failures: the checker does not yet know whether a built support connects each piece to the raft or whether a tiny feature is below printer resolution. It is not yet connected to Generate or export, and no new tip is placed from these 56 candidates. The next pass must test actual support paths; dental may add a tip only inside the approved strip, otherwise it must report the unresolved island.
+Look at the file from every side. A good-looking file does not prove the supports are safe.
 
-The next small piece now exists: a standalone path checker can trace a chain from a candidate point through supports down to the build plate. It refuses chains that stop short, start too high, or have not been marked as verified, and it remembers when a chain depends on a hand-placed support. This is **not yet a print-safety check**: the app still needs to inspect the actual built branches and joints before it can truthfully mark those links verified. No support placement or export behavior changed at this checkpoint.
+## How the strip is found
 
-Tree supports now remember each place they were *meant* to touch the model. A joined branch may serve two top tips and a lower landing; the old part label named only one tip. The extra labels follow the model when it is rotated. A narrow check excuses a short touch on the intended surface while still rejecting an unrelated wall. Support shapes and placement remain unchanged.
+1. The software works out which way the aligner opens.
+2. It follows the outer trim edge along the mesh. If the model has a central opening, it follows that edge as well.
+3. It cuts the surface along these lines. This tells it which side of each line faces the opening.
+4. It grows a thin strip from each line, along the mesh, on the other side. By default the strip starts 0.2 mm from the line and ends 1.2 mm from it.
+5. It places tips along the strip, by default about every 3 mm on the outer edge and every 2 mm on the central opening. Each tip is moved onto a real face of the scan.
 
-That check now has a cautious first version for dental Trees. It looks at each actual triangle intersection, knows which model face was hit, and excuses only a short, shallow hit around a tip whose exact source face is known. If the same branch also hits another wall, that second hit still counts and the existing Tree fallback stays on. If the source face is missing or ambiguous, it makes no exception. The saved aligner still needs its Tree fallback because of other crossings. This does not yet make all Tree paths safe, remove the fallback, or check ordinary generic supports; broader validation remains open.
+The wide face between the two lines is used only to tell which side is which. It is not a support area. An earlier version used it as one, and it put tips on the wrong surfaces.
 
-Because the aligner surface is made of many small triangles, a tip may touch the triangle next to its recorded one. The check now accepts that immediate neighbor only when the triangles truly share an edge and point the same way. A separate wall can be just as close in space but lacks that shared edge, so it still counts as a collision. This does not authorize a wide area around the tip.
+## What the safety check does
 
-A built two-branch Tree was checked with both round and square tips: it remembers both intended top contacts and its lower landing, and a separate wall crossing still fails. The first check missed a square tip's short neck because that neck is stored separately from the Tree branch; a new test caught it, and the Tree safety check now includes that tagged neck. Ordinary pillar necks still need separate classification. This is a targeted software test, not proof that all patient models or all contacts are safe.
+After the supports are built, the software checks the finished 3D shape against the aligner. It asks whether any support passes through the aligner where it should not. A tip is meant to touch the surface. A shaft is not meant to cut through it.
 
-The collision search now builds one map of the transformed model per dental Generate and reuses it when checking pillars, trees, braces, and a rebuilt result. This removes repeated map construction; it does not yet move a blocked support. The next efficiency step is to check a proposed pillar path or brace before drawing its full mesh, then try a few nearby allowed positions when blocked. The finished mesh still needs the exact check: real diameters and joints can touch where a thin path did not.
+The answer is always one of three:
+- **Clear**: nothing wrong was found.
+- **Blocked**: a support cuts through the model. The check says which part, which contact and which face. (Every generic model shows this, because supports always touch the model. It is not a refusal.)
+- **Inconclusive**: the software could not decide. This happens when the mesh is too damaged to judge, or when the check ran out of time. Inconclusive never counts as clear.
 
-A standalone path screen now asks a narrower question before any 3D support is built: is there definitely no model surface within the proposed tube's radius box, or does its centre line definitely pierce a face? It says **clear**, **blocked**, or **not sure**. A nearby face, a known intended tip, damaged model data, or an interrupted calculation produces **not sure**, never an automatic safety pass. This screen is not yet connected to Generate; it does not relocate or remove pillars. The exact finished-mesh check remains the authority.
+When something crosses, the software tries a limited number of repairs. It first switches off Tree or Brace if they cross. It moves a crossing support to another allowed spot if the policy provides one (today no policy provides one). Otherwise it leaves that automatic support out and tells you. It never moves or deletes a support you placed by hand. If a hand-placed support crosses the model, it is reported.
 
-A separate trial selector now has the rule for what to do with several proposed locations: keep the first unblocked allowed location, never move a manually placed support, and stop after a fixed number of trials. If the original path is merely uncertain, leave it in place for the exact final check instead of shifting it on a guess. This is still a tested building block, not the live Generate behavior: the app must supply genuine allowed locations on the trim strip and real paths before it can move a pillar.
+## Export is refused in some cases
 
-The builder can now report the actual path of each support part while it is being made. It reports the narrow neck and shaft separately from the wider foot, plus Tree branches and braces. That matters because treating the wide foot as if the whole shaft were that wide would create false collision warnings. This reporting does not yet move or reject anything; the final built-support collision check is still required.
+You cannot export in these cases. You get a message and no file is written:
+- The result is out of date (you changed something while the export ran).
+- The build returned nothing for an aligner that should have supports.
+- The safety verdict is inconclusive.
 
-There is now also a place to make a decision **before** a whole pillar is built. If a future collision rule rejects an automatic pillar, the builder can leave out its tip, shaft and foot together rather than leaving a broken fragment. The same rule cannot silently remove a pillar you placed by hand. This is plumbing for the safety rule; the app does not call it yet, so today’s Generate results have not changed.
+## Warnings in the problem list
 
-We tested a first collision screen against the saved aligner. It only makes an early decision when the middle or base of a pillar clearly passes through the model; it leaves tooth-contact tips and borderline cases for the existing detailed check. Four early rejects were already rejects in the detailed result, and the final supports stayed the same. The speed difference was too small to trust, so this screen is still switched off in normal Generate while we test a harder collision case. The deliberately placed end of a pillar touching the model is not treated as a reason to delete it.
+Step 3 has a problem list. Each entry has **Show**, which moves the camera there, and often a **Fix**, which adds a support.
+- **Rim gaps**: a stretch of the trim edge where the built tips are more than twice the intended spacing apart. This is a request to look, not a clinical limit.
+- **Supports left out**: tips that were not built because they would cross the model.
+- **Unsupported island**: a low point of the model that no built support carries to the build plate. It is listed where it is.
+- **Could not judge islands on this mesh**: the mesh has defects (for example, edges shared by four triangles), so no island is called supported. There is no Show or Fix. Repair the model and check again. Nothing is called clean in this case.
+- **Islands outside the support area**: dental mode only. Low points that lie outside the allowed strip are not offered a fix, because a support there is not allowed. They are grouped into one entry for information. They are not counted as unsupported spots.
+- A Check that has no current build says it did not finish. It never reports clean.
 
-The support builder can now show a read-only copy of each pillar, Tree, and Brace centre-line immediately before drawing that part. This lets the next step ask the path screen about the *same route the builder intends to draw*, including a pillar's route to the plate. It does not yet reject or move anything. The copy matters: a collision checker cannot accidentally bend the generated support by changing the points it receives.
+On the reference aligner at default settings, most of the low points are listed as unresolved. This is a measurement, not a ruling. Whether low points on the inside of an aligner should count at all is still an open decision for the owner.
 
-Ordinary pillar necks now remember their certified contact face too, without changing their printed shape. A separate label distinguishes a Tree neck from a pillar neck; otherwise the Tree fallback could wrongly fire on a pillar. These labels prepare the next collision report but do not yet approve any pillar-neck overlap.
+## What has been tested, and what has not
 
-On the saved example, an independent mesh check finds no pillar crossing, but it still sees many tiny neck-to-model triangle overlaps. Those overlaps need a separate review before we can say every neck is touching only where intended. The new Tree check does not erase or approve them.
+Tested:
+- One reference aligner, in many random positions.
+- The software returns the same answers on that aligner every time.
+- Every tip and every second landing lands on a face labeled allowed.
 
-There is **not yet one generic “support came through the wrong side of a wall” rule** used by every generator. Dental currently makes two separate decisions: it checks whether a second tip lands on an allowed, outward-facing surface, and it checks whether built pillars, trees, or braces cut through the aligner. The built-part intersection search is now a standalone generic function with tests, but ordinary supports do not yet call it as a mandatory safety gate. The dental rule for rejecting parts remains separate so aligner anatomy is not imposed on arbitrary models.
+Not tested:
+- Any other aligner. The software was tuned on one scan.
+- An aligner with no central opening. The software can code for it, but there is no real scan to try. For now, a scan without a clear opening is "inconclusive" and gets no automatic supports.
+- Printing. No supports from this software have been judged on a physical print, a printer or a resin.
+- Early-layer stability on a printer. The island check is geometric, not a print simulation.
 
-The dental Tree/Brace switches appear in Step 2. During this three-step workflow, the ordinary right-hand settings panel hides its separate generic placement, Tree, Bracing, Roof/Cage, and preset controls; those would otherwise show contradictory values even though dental generation overrides them. Tip, pillar, foot, raft, and lift controls remain available there. The right panel tells the operator to use Step 2 for dental contact area, density, Tree, and Brace choices.
-
-The detector and support positions are calculated from each loaded STL. The saved reference STL is used for tests, not copied into a new model. Rotating that one STL passed tests, and an ideal supported example placed most measured tips near the detected edges. A new check removed two automatic pillars that crossed this reference model, but it does **not** prove every brace, tree, roof, or manual support clears it. We still lack a second patient model, a real U-shaped aligner with no middle hole, and an early-layer stability check. For now, a model with no clear central opening is inconclusive. Keep the app's raft; the ideal example may guide a future dental support diameter. The [support-module map](support-module-boundaries.md) shows which checks are generic and which rules are aligner-specific.
-
-For exact thresholds, source files, and failure rules, read the [technical algorithm](technical-algorithm.md).
+The mode is shown as a preview for these reasons. More scans and physical prints are needed before the label changes.

@@ -1,63 +1,87 @@
-# Support modules: reusable mechanics and dental rules
+# Support modules: who owns what
 
-This is the intended boundary for the ongoing refactor, not a claim that every module below exists or is validated. Preserve the current output while extracting one behavior at a time, and test the caller after each extraction. A dental-specific file or exported function starts with `dental`; generic files do not use that prefix. Short code comments should explain input units, coordinate frame, invariants, and why a failure rejects output—not narrate obvious statements.
+This document says which code owns which decision. It describes the shipped layout at the end of unit U10 of [the ship plan](../docs/SHIP-PLAN.md). For algorithm detail see [technical-algorithm.md](technical-algorithm.md).
 
-> **U7 status (2026-10-28).** Body clearance, landing-side permission, source-face attribution, the bounded repair, rim coverage and the island verdict are one shared Rust engine (`supports/safety`, `supports/generate`) used by both policies. A policy is data (`PolicyResult`: candidates, alternates, approved faces + paint, structure flags, rings, repair budget); there is no dental safety pipeline and no callback. The TypeScript names used below are historical; the only TS left is the host adapter (`src/supports/{generateSupports,checkSupports,jobRunner}.ts`) and the test oracle in `scripts/test-support/ts-oracle/safety/`.
+## The rule
 
-## Plain-language map
+Layers are one-way:
 
-- **Dental edge detection** finds the aligner's outer trim ridge and, when present, its central opening. The oddly rising rear trim is part of the detected 3D curve. This is anatomy-specific, so it belongs in `dentalContours` and other `dental*` files. A generic sharp-edge detector may supply candidate edges, but it cannot decide that a ridge is an aligner trim.
-- **Dental contact policy** decides which narrow side of those curves may carry a tip and how far tips are spaced. It uses generic graph/search and sampling operations but remains in `dental*` files. The broad face-between-curves region is only evidence for choosing a side, not permission to fill the tooth-fitting cavity with contacts.
-- **Support mesh builder** takes approved contact points and creates columns, trees, braces, roof and raft. Those shapes are not intrinsically dental and should be reusable modules with one shared orchestrator. Dental should supply policy/settings rather than copy a builder.
-- **Body Clearance (Collision Detection)** asks whether a shaft or another forbidden support part passes through the model after the actual mesh is built. It must distinguish intentional tip penetration from accidental shaft intersections, identify the offending support IDs, and give the caller a way to fail closed or rebuild without them. The standalone `bodyIntersection.ts` search and `triangleIntersection.ts` predicate are generic; `dentalBodyClearance.ts` selects dental parts and IDs. Automatic dental pillars are filtered; tree branches/trunks and braces now have a conservative whole-mode fallback. Neck penetration and generic-project body-clearance enforcement remain open.
-- **Dental rim coverage** measures the longest gap between *built automatic* contacts on each exact closed trim rim after collision and landing filters. `dentalRimCoverage` is a separate, read-only report: Step 3 warns about a gap, but the measurement never widens the contact strip or revives a rejected support. The current warning trigger is twice nominal sampling spacing and is not a clinical threshold.
-- **Early-Layer Islands (Print Stability)** asks whether a newly appearing model region has a verified path through built supports or already supported lower material to the plate. A path that is collision-free can still begin as an unsupported island. The implemented event-based topology-birth sweep finds candidates without scanning every printer layer; the pure support-path reducer accepts only caller-verified descending links. Neither has a built-geometry adapter or production gate yet. Exact per-layer slicing remains an optional offline check for ambiguous features.
+```
+core  ->  supports  ->  policies: generic, dental
+```
 
-The intended order is `dental detection → dental contact proposal/paint permission → generic support build → generic body-clearance report → dental rejection/rebuild policy → generic early-layer island report → final review/export`. Every final build, preview and export should use the same decisions. Manual supports require explicit reporting rather than silent removal.
+- **`core`** (`crates/geometry-core/src/core`): mesh, STL import, weld, decimate, matrix and transform, normals, spatial index, pick, screen brush, overlay. Knows nothing about supports.
+- **`supports`** (`crates/geometry-core/src/supports`): placement of every part, the manual-edit model, collision and clearance, islands, bounded repair, the verdict. Knows nothing about dental anatomy or about generic placement rules.
+- **Policies** (`generic`, `dental`): each one produces a `PolicyResult` (data). **No collision, landing, repair or mesh-building code may live in a policy.** A policy has no callbacks into the engine.
+- **TypeScript** is host only: UI, React, Three.js buffer copies, camera and gizmo, files, worker lifecycle, settings and project serialization, translations. Any TypeScript vector math beyond render and camera is a defect, enforced by the geometry guard.
 
-## Technical contracts for future extraction
+If you are about to write a collision test, a landing check, a retry loop or a mesh builder inside `dental/` or `generic/`, stop: it belongs in `supports/`, driven by a new field of `PolicyResult` if it needs a new input.
 
-1. `dentalContours(mesh)`: indexed source mesh in local millimetres → outer ridge loop, optional inner-opening loop, source edge/face IDs, confidence or inconclusive. It may use generic adjacency/sharp-edge utilities. It must not turn any other sharp edge into an aligner rim merely because it is long.
-2. `dentalContactFootprint(mesh, contours)`: exact source faces and 3D contour distances → narrow permitted face mask and ordered face-anchored samples, or inconclusive. It does not build shafts.
-3. Generic mesh-builder components: approved contacts/settings → triangles tagged by component and owning contact IDs. Keep raft, column, tree, brace and roof builders separately testable; the wrapper composes them.
-4. Generic `supportBodyConflicts(model, builtMesh, select, skipLandingTips, allowHit?, collisionIndex?)`: shared millimetre coordinate frame → first non-exempt exact model-face/support-triangle hit per selected component. It keeps searching after an approved hit, so a second wall is not hidden. `intersectingSupportComponents` remains a compatibility view over it. `modelCollisionIndex.ts` owns the reusable X/Z spatial grid; `bodyIntersection.ts` queries it and `triangleIntersection.ts` owns the exact predicate. The dental job constructs one index for its transformed model and passes it to all built-body checks, including bounded rebuilds; other callers may omit it and build one on demand. An index from a different model is rejected. Generic jobs do **not** yet enforce the report. Dental's separate `dentalBodyClearance.ts` applies a narrow `contactReach.ts` exception only to Tree branches with exact intended source-face IDs and bounded distance/penetration; a one-edge indexed neighbor with matching source/hit face normals also qualifies. Topologically separate nearby walls, reversed source winding, trunks and braces have no exception. `dentalPrimarySourceFace.ts` binds accepted automatic dental contacts to unique exact contour faces; ambiguity abstains. Joined Tree branches can carry two primary intents and a secondary landing, preserved by `supportFrame.ts` across coordinate conversion. The dental wrong-side landing predicate remains separate from generic `landingAllowed` callback wiring. Multi-edge surface neighborhoods and generic face attribution remain open.
-4a. Generic `preflightSupportPath(index, polyline, radiusMm, { contactFace?, cancelled? })` is a provisional path screen over that index. It returns `clear` only with no radius-expanded box candidates; `blocked` only for a definite non-contact centre-line hit; all close, intended-contact, malformed, budget-exceeded, or cancelled cases are `inconclusive`. It does not build or move anything and is not wired into Generate/export. A bounded candidate runner and final-mesh safety policy remain separate modules to implement; no caller may treat this preflight's `clear` as final approval.
-4b. Generic `chooseSupportCandidate(original, alternatives, policy)` is a pure, attempt-bounded trial selector: caller supplies permission and path-screen functions. It never moves a manual contact, skips forbidden positions, only advances past a definite block, and reports a selected candidate as provisional. Cancellation/invalid/budget results remain unresolved. This is not yet wired to model-specific candidate generation or the builder; dental must supply only exact permitted strip contacts, while generic mode supplies its own zone-compliant positions. Neither may bypass final exact mesh checks.
-4c. Generic `supportRoute.ts` describes copied centre-lines and conservative per-component radii for neck, pillar, foot, Tree, and Brace proposals. `buildSupportMesh` calls optional read-only `onRoute` before tessellating each structure; absent callback preserves existing geometry. Separating the wide foot from the narrow shaft prevents a false shaft-wide envelope. This is the exact builder route, not a parallel guess from contact coordinates. It is an observation seam only: no collision report is yet allowed to omit or reroute the part. Contact-adjacent spans in `pathPreflight.ts` are explicitly uncertain; a separate wall farther along the same route remains blocked. A later policy must supply bounded, permitted alternatives and still run the final exact mesh check.
+## Ownership map
 
-4d. Generic `buildSupportMesh` also has optional `decideColumn`: an entire automatic column can be omitted before any component is emitted, with `droppedByPath` attribution. Manual columns ignore an omit request. Only the guarded dental opt-in caller below supplies collision evidence so far; Tree/Brace decision, permitted relocation, preview/export parity, and generic exact final safety remain separate unfinished work.
+| Decision | Owner | Where |
+|---|---|---|
+| Aligner orientation, outer trim loop, central opening (`present` / `absent` / `ambiguous`), face cut, strips, contact sampling, tuning | dental policy | `dental/{orient,rim,pose,topology,contour,opening,region,bands,sampling,footprint,incidence}.rs` |
+| Which faces are permitted, the candidates, structure flags, rings, landing rule, repair budget | dental policy, as data | `dental/policy.rs` -> `PolicyResult` |
+| Thresholds, default strip width, density, setback, spacing, repair budget, card art, names | aligner profile (data file) | `dental/profiles/<id>.json` |
+| Paint-from-scratch area when detection finds none, the older fill | dental policy | `dental/legacy.rs`, host stamps in `src/dental/manualArea.ts` |
+| Diagnostic review layers and their colors | dental, review only | `dental/review.rs` (`diagnose`) |
+| Generic placement: downward faces, regions, Poisson field, island minima, ridges, edge anchors, deterministic `auto-X_Y_Z` IDs | generic policy | `generic/placement/`, `generic/policy.rs` -> `PolicyResult` |
+| Every support part: tip, neck, foot, pillar, Tree, Brace, roof, cage, raft, label; attribution tags | supports | `supports/parts/` |
+| Voxel remesh (OpenVDB VolumeToMesh port) | supports (the builder lands on it) | `supports/remesh/` |
+| Zones (no-support areas) and manual-edit bookkeeping (compose, remap, rekey, hiding removals) | supports | `supports/zones.rs`, `supports/edits.rs` |
+| Collision index, exact triangle tests, first non-exempt hit per component | supports | `supports/safety/{index,tri,conflicts}.rs` |
+| Intentional contact reach versus crossing | supports | `supports/safety/reach.rs` |
+| Which crossing parts to switch off or leave out | supports (repair order is fixed) | `supports/safety/clearance.rs`, `supports/generate/repair.rs` |
+| Permit step: match to candidates, landing mask, source-face identity | supports | `supports/generate/{permit,enrich}.rs` |
+| Island verdict and topology births, built-path reachability | supports | `supports/generate/islands.rs`, `supports/safety/{births,paths}.rs` |
+| Rim (ring) coverage and gap alternates | supports (shared, thresholds are policy data) | `supports/safety/rim.rs` |
+| Overhang-coverage warning (non-gating) | supports | `supports/check/` |
+| Route preflight, column path screen, candidate chooser | supports, **not wired** | `supports/safety/preflight.rs` |
+| The one `generate` call, `revision` echo, timeout, verdict | supports | `supports/generate/mod.rs`, WASM `geometry-wasm/src/safety.rs` |
+| Workers, revision stamping, cancel, export gate, problem list, settings, presets, project files, i18n | TypeScript host | `src/workers/`, `src/supports/{jobRunner,generateSupports,exportGate,islandProblems}.ts`, `src/dental/` |
 
-4e. Generic `columnPathScreen.ts` screens only definite shaft/foot centre-line hits using `pathPreflight.ts`; ambiguous contact necks and radius envelopes defer to built-mesh review. The builder marks an intentional secondary landing with its actual `uncertainEndMm`, so this bounded contact reach is not an arbitrary global exemption. `runSupportJob` can opt in to this screen for dental only via `{ pathPreflight: true }`, reusing its transformed-model index and collecting `droppedByPath` across rebuilds. Default Generate remains unchanged while a collision-heavy benchmark, generic exact gate, and preview/export status policy are unfinished.
-5. Generic `topologyBirths(mesh)` + `resolveBirthPaths(births, verifiedLinks)`: event-based model birth candidates followed by plate reachability through caller-verified links. Both are standalone and tested. The missing adapter must prove actual contact, component joining, body clearance, and model-to-plate connectivity; otherwise report `inconclusive`, never pass. These modules do not require a live layer raster or change current Generate behavior. A separate offline layer review may still be useful at the target printer resolution.
-6. `dentalSupportPolicy` (name illustrative): invokes generic reports, removes only invalid *automatic* contacts, rebuilds and rechecks, and reports remaining failures. Other product modes can choose their own policies without importing aligner detection.
+## Two independent checks
 
-Do not collapse Body Clearance and Early-Layer Islands into one pass. The former is a 3D overlap/path property; the latter is a print-sequence connectivity property. Tests must include a collision without an island, an island without a collision, intentional tip penetration, an automatic forbidden shaft, and a manual-support diagnostic. Cross-patient dental validation remains a separate gate.
+`Body Clearance` and `Early-Layer Islands` are separate checks with separate verdicts.
+- **Body clearance** asks whether a finished support part passes through the model. Verdict `clear`, `blocked` (with part, contact, face) or `inconclusive`. A timeout is `inconclusive`.
+- **Islands** ask whether each new region of the model has a verified chain of built supports down to the plate. Status `resolved`, `unresolved`, or `inconclusive` for the whole mesh.
 
-## Adjustable values without changing the algorithm
+A collision-free support can still start at an unsupported island, and a supported island can sit on a support that crosses the model. Neither verdict substitutes for the other.
 
-Make the measured values named, typed, validated settings with stable defaults, not scattered literal numbers or an immediately crowded UI. The footprint accepts `setback`, `width`, `outerSpacing`, `innerSpacing`, and `maxSearchDistance`; `defaultDentalContactFootprintSettings` currently groups their one-reference defaults as 0.2 mm, 1.2 mm, 3 mm, 2 mm, and 1.5 mm. The wider settings/persistence boundary remains future work. Keep algorithmic confidence and mesh-validation thresholds separate from ordinary operator settings; an arbitrary slider must not be able to disable an inconclusive or safety rejection silently.
+## What a policy supplies
 
-Configuration order should be `explicit project override → saved dental preset → versioned application default`, with units and acceptable ranges defined once. Persist the *effective* settings and preset version in a project/export so preview and final generation use the same values and old projects do not silently change when defaults evolve. Recompute the contour/contact policy when a geometry-affecting setting changes; invalidate stale paint/contact IDs if the mask changes. Future UI can expose a short list of meaningful controls (tip spacing, contour setback/band width, support diameters) under an advanced panel, while collision and island checks remain on by default. Give each setting default, range, unit, affected stages, and a regression test. The ideal supported example can inform diameter defaults but is not a validated universal prescription.
+`PolicyResult` fields: `permitted_faces`, `candidates`, `alternates`, `structures`, `repair_budget`, `landing_rule`, `automatic`, `rings`. See the table in [technical-algorithm.md](technical-algorithm.md#the-contract-between-a-policy-and-the-engine). Adding a mode means writing a new producer of this struct. The engine does not change.
 
-Even after Body Clearance and Early-Layer Islands pass, release still needs different patient aligners (including no-central-opening U-shapes), labeled allowed/forbidden anatomy, visual/physical-print review, and the Step 1–3 UI/settings polish. Passing two engineering checks is not clinical validation.
+Differences between the two policies are only these values:
 
-## Scoped support-function inventory (26 October 2026)
+| | Generic | Dental |
+|---|---|---|
+| Permitted faces | every face | contact strip plus paint |
+| Landing rule | unrestricted | approved faces (upward faces inside the strip) |
+| Automatic rule | candidates as given | match candidates (0.03 mm, normal dot above 0.95) |
+| Roof and cage | allowed | off |
+| Rings | none | outer rim and opening rim |
+| Alternates | none | none supplied yet |
+| Repair budget | 0 (reports, does not repair) | profile default (8) |
 
-This is a wiring/ownership audit, not a claim that every component has clinical or print validation. The model and built supports must use the same plate-space frame for collision tests; the job runner converts the result back to unit-local space for viewport/export. Both the worker and the direct test/golden path call that same runner.
+## Safety behavior shared by both policies
 
-| Responsibility | Current owner | Boundary decision |
-| --- | --- | --- |
-| Generic overhang placement, contact rekeying | `core/analysis/placement.ts` | Keep separate from dental contour proposals; `supports/unitSupports.ts` adapts scene units to jobs. |
-| Dental orientation, contours, narrow footprint, rim coverage | `core/analysis/dental*.ts` | Anatomy-specific; do not copy into generic mesh building. |
-| User paint/no-support zones | `core/supports/zones.ts`, `overlayMesh.ts` | Generic surface stamps and overlay; dental policy decides permission before placement. |
-| Normal/ray/secondary landing mechanics | `core/supports/landing.ts`, `autotree.ts` | Generic geometry. `supports/dentalLandingSide.ts` is the policy callback for approved aligner source faces. No generic wrong-side policy gate exists yet. |
-| Columns, tips, trees, braces | `core/supports/mesh.ts`, `meshBuilder.ts` | One deterministic tagged builder used by preview/export. `mesh.ts` remains large because it composes geometry; split individual shapes only with behavior-preserving tests. |
-| Raft, roof/cage, remesh | `core/supports/raft*.ts`, `roof.ts`, `remesh.ts` | Generic. Dental settings disable roof/cage; no dental fork of these builders. Remesh is a cohesive numerical/query subsystem despite its length. |
-| Built-body triangle intersection | `core/supports/bodyIntersection.ts`, `triangleIntersection.ts`, `contactReach.ts` | Reusable exact face/triangle evidence; caller-specific intentional-hit predicate is explicit. `contactReach.ts` is generic geometry, while dental supplies exact face IDs and bounds. |
-| Dental collision decisions | `core/supports/dentalBodyClearance.ts`, `supports/dentalPrimaryFace.ts`, `supports/jobRunner.ts` | Pillar ID filtering and tree/brace fallback stay dental-specific. Manual parts are not silently removed. Exact-face reach is now narrowly exempted, but adjacent intended faces may still trigger an overly conservative Tree fallback. |
-| Pillar/Tree neck provenance | `core/supports/mesh.ts`, `meshBuilder.ts` | Certified primary face metadata now reaches ordinary pillar necks; split Tree necks carry explicit `structureKind: 'tree'` so policy cannot confuse the two. Geometry output is unchanged; pillar-neck conflict classification remains open. |
-| Scene job creation, run, commit, export | `supports/unitSupports.ts`, `jobRunner.ts`, `landing.ts`, `export.ts`, `workers/meshWorker.ts` | `supports/landing.ts` means committing finished *placement jobs*, not geometric ray landing. Preview and export must keep the same dental policy; the final export forces full geometry. |
+- Manual contacts are never moved or deleted. A manual crossing is reported.
+- Repair order: switch off a crossing Tree or Brace, move a crossing automatic pillar to the next alternate if one exists, otherwise leave it out, and as the last bounded step build the manual contacts alone. Every rebuild counts against `repair_budget`; with a budget of 0 (the generic policy today) the engine reports crossings and does not repair them.
+- A contact end without face identity is `inconclusive`, never exempt.
+- Preview and export come from the same `generate` result path. Export is refused for stale, failed or inconclusive results.
 
-Priority: (1) finish Tree/body coverage: round and square tips, secondary landing, both round-tip primary adjacent faces, and unrelated-wall crossing now have built tests; a red square-tip neck crossing also exposed and fixed its exclusion from the structural selector. Untagged pillar necks and full-resolution contact intent still need classification; (2) make failed/inconclusive body reports visible in every generic mode without silently deleting manual supports; (3) bind event-based births to geometry-verified support paths and handle the no-opening aligner mode. Splitting `mesh.ts` or `remesh.ts` by line count alone would raise maintenance risk without solving those correctness gaps. Tests for the generic intersection search and dental wrappers protect the extracted seam; browser checks remain required after policy changes.
+## TypeScript that remains, and why
 
-Rust/WASM migration note (2026-10-27): `crates/geometry-core/src/mesh.rs` is the first host-independent mesh-session primitive. It receives complete `Float32Array` positions and `Uint32Array` triangle indices through `crates/geometry-wasm`, validates finite coordinates and indices, retains an opaque non-reused handle, answers bounds, enforces an array-byte budget, and releases the handle. Native, Node WASM and browser WASM tests cover this primitive. `meshWorker.ts` initializes the WASM engine first, but still runs the TypeScript support generator and does **not** yet load its model into the Rust mesh store. The budget counts payload arrays, not all allocator/index overhead. The migration design and task gates are in [wasm-geometry-design.md](wasm-geometry-design.md) and the linked plan; do not mistake this bridge for a migrated detector or safety check.
+`scripts/geometry-allowlist.json` lists every production file the guard flags: 35 files, each `host-adapter` or `host-math`. See [wasm-geometry-inventory.md](wasm-geometry-inventory.md) for the full table. Examples of what stays in TypeScript: the thin calls into the Rust core (`src/supports/{generateSupports,genericPlacement,genericPolicy,contactEdits,rustSupports}.ts`, `src/core/analysis/dental*.ts` adapters), `src/dental/{placement,legacyArea,diagnose,arrange,flow,label,alignerProfiles}.ts`, the viewport and brush hooks, and the worker clients.
+
+The TypeScript oracle directory `scripts/test-support/ts-oracle/` was deleted at U9. Its comparisons live on as recorded golden files in `scripts/fixtures/golden/`. No production code imports test-support code; the guard fails if it does.
+
+## Contracts for extraction or porting
+
+1. **Dental detection**: indexed mesh in local millimetres -> outer loop, optional opening loop, source edge and face IDs, or `inconclusive`. It must not turn another sharp edge into an aligner rim because it is long.
+2. **Contact footprint**: contours -> exact source faces, a narrow permitted mask and ordered face-anchored samples, or `inconclusive`. It builds no shafts.
+3. **Support build**: approved contacts plus settings -> triangles tagged by component and owning contact IDs. Raft, column, tree, brace, roof, cage and label are separately testable parts.
+4. **Body clearance**: model and built mesh in one millimetre frame -> per component, the first non-exempt exact hit.
+5. **Generate**: the single entry point. A failed or cancelled call returns a typed error and never a partial result. Over-capacity inputs return `CAPACITY` (host code `over-capacity`).

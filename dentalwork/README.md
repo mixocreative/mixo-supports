@@ -1,23 +1,38 @@
-# Dental support region work
+# Dental support work: shipped state
 
-The current branch computes narrow contact strips beside the detected contours, rather than filling the broad face between them. This is a testable implementation on one aligner, **not a clinically validated or released rule**. See [the contour-contact design](../docs/superpowers/specs/2026-10-25-dental-contour-contacts.md) and [implementation plan](../docs/superpowers/plans/2026-10-25-dental-contour-contacts.md).
+Mixo Supports builds supports for dental aligners. This folder explains how that works. Everything described here is the state of branch `codex/dental-rework` at the end of unit U10 of [the ship plan](../docs/SHIP-PLAN.md). The ship plan is the record of what was built and when; these documents describe the result.
 
-Start with [the plain-language explanation](plain-language.md) to see what each colored part means. [The technical algorithm](technical-algorithm.md) gives enough detail to rebuild the detector in another language.
+**Dental mode is a preview feature and is not clinically validated.** It was tuned and tested on one reference aligner. See "What is validated and what is not" in [the technical algorithm](technical-algorithm.md#what-is-validated-and-what-is-not) before relying on any result.
 
-[Support-module boundaries](support-module-boundaries.md) separates reusable print-safety and mesh-building functions from aligner-only decisions. In particular, `Body Clearance` and `Early-Layer Islands` are two independent generic checks; only the former has a narrow automatic-pillar gate today.
+## Which document to read
 
-Both documents now distinguish the live edge-seeded contact strips from the older broad face-area and ray-based methods. The old logic and failure evidence remain linked for future experiments; they are not silently discarded or used as current contact permission.
+| You are... | Read |
+|---|---|
+| A dentist or technician who wants to know what the colors and warnings mean | [plain-language.md](plain-language.md) |
+| An engineer who needs to rebuild or change the detector, the safety checks or a policy | [technical-algorithm.md](technical-algorithm.md) |
+| An engineer deciding where a new piece of code belongs | [support-module-boundaries.md](support-module-boundaries.md) |
+| An engineer working on the Rust/WASM core or its host | [wasm-geometry-design.md](wasm-geometry-design.md) |
+| An engineer checking which TypeScript files remain and why | [wasm-geometry-inventory.md](wasm-geometry-inventory.md) |
 
-Double-click `run-review.bat` on Windows. Enter the path to an STL when prompted. The script uses the app's current orientation, dental placement, and support-build functions to create one GLB under ignored `dentalwork/output`, then selects it in File Explorer. Blue marks the two strong outer ridge chains, green the weaker paths joining them, red the central opening, teal the **current narrow contact-face mask**, white other faces, and gold the generated support mesh. Open it in Blender or another glTF viewer and inspect all sides. The command reports contact-mask faces, proposed tips, omitted tips, and support-triangle count. No patient name is written into the GLB or output filename.
+## The short version
 
-The GLB also has four *diagnostic* strips, separately toggleable in Blender: violet = outer contour's opening-facing side, amber = outer contour's other side, cyan = central opening's opening-facing side, magenta = central opening's other side. Each strip follows mesh-face adjacency in 3D from 0.2 to 1.2 mm away from its contour. Teal is the union of amber and magenta—the current **aligner contact strip** beside the detected trim rims. Current contacts are sampled at 3 mm outer / 2 mm inner spacing and mapped to exact source faces. Lime and pink octahedra are separately calculated 2 mm diagnostic markers, not the gold supports. Hide the gold supports to compare layers. Geometric `otherSide` is not proof of the anatomically safe side.
+- Every 3D calculation runs in one Rust core (`crates/geometry-core`), compiled to WebAssembly by `crates/geometry-wasm`. TypeScript only hosts it: screens, camera, files, workers, settings, project saving, translations. A guard script enforces this.
+- Generic mode (any model) and dental mode (aligners) share one support engine. Dental mode only supplies data: where contacts may go, which faces they may land on, which structures are allowed, and how many repair attempts are allowed. That data is called a `PolicyResult`.
+- One call, `generate`, builds the supports, checks them against the model, repairs what it can inside a fixed budget and returns a verdict: `clear`, `blocked` or `inconclusive`. A timeout is `inconclusive`, never `clear`.
+- The dental flow has four steps: 0 aligner type, 1 aligner file and orientation, 2 support area, 3 supports. A finished aligner stays on the plate, and "Add another aligner" starts the next one.
+- Aligner types are data files (profiles). Adding a type does not need new pipeline code.
 
-This is a local review of the narrow contour-band implementation, **not a dental safety certification**. A generated GLB does not prove the print pose, tip-side anatomy, entire support-body clearance, or printability. If detection is inconclusive, the script writes no GLB. Files under `output` are ignored by Git because an STL or derived GLB may contain patient geometry. The one saved reference is the only aligner currently available for testing; rotations of it do not substitute for independent patient models. A no-central-opening U-shaped model remains disabled pending a real test model.
+## Running the review script
 
-For an exact support-body intersection diagnostic, run `npx vite-node --script scripts/dental-region-review/crossings-probe.ts path/to/aligner.stl` from the repository root. It uses the same detector and final support builder as the GLB, compares model and support triangles in their shared local coordinates, and reports intersection pairs by support part, distinct owning contact IDs, and how many model faces lie outside the narrow contact band. Its optional `neckReach` values measure intersection-segment distance from each owning *primary* contact, not from a possible secondary landing. This is a diagnostic: intentional neck/tip penetration also intersects, and an intersection count alone does not classify print safety. Before the new automatic-pillar filter, the saved reference had 107 pillar intersection pairs from two supports, 78 outside the narrow band. The current one-reference probe finds zero forbidden automatic-pillar intersections after filtering; braces, trees, roofs, early-layer islands, and clinical contact placement remain unverified.
+`run-review.bat` (Windows) asks for the path to an STL and writes one review GLB under `dentalwork/output`, then selects it in File Explorer. `dentalwork/output` is ignored by Git because an STL or a GLB made from it can contain patient geometry. Do not commit a new patient STL or its GLB without the owner's approval.
 
-The approved neutral [reference STL and screenshots](../docs/dental-reference/README.md) remain in `docs/dental-reference`. The application code remains in `src/core/analysis/dental.ts` and `src/core/analysis/dentalRegion.ts`.
+The script calls the same Rust core as the app (orientation, region, `generate`) and then `diagnose`, which returns the review layers with their colors. The script only writes those layers into a GLB. The command line version is `npx vite-node --script scripts/dental-region-review/cli.ts --input <stl> --output <glb>`; see [scripts/dental-region-review/README.md](../scripts/dental-region-review/README.md).
 
-The approved next architecture is a UI-independent [Rust/WASM geometry core](wasm-geometry-design.md), with a [phased migration and ship-gate plan](../docs/superpowers/plans/2026-10-27-wasm-geometry-migration.md). **The current app and this BAT script still use TypeScript geometry** until the relevant migration and parity gates pass. The future Babylon.js host will call the same WASM core; this is not a second dental algorithm. The live algorithm explanations above remain authoritative for current behavior and will be updated whenever a port changes that behavior.
+Layer colors in the GLB (set by Rust, `dental/review.rs`): blue is the two strong outer ridge chains, green the weaker paths that join them, red the central opening, teal the narrow contact strip, white all other faces, gold the generated supports. Violet, amber, cyan and magenta are diagnostic side strips of the two contours; teal is the union of amber and magenta. Lime and pink octahedra are sampled contact markers, and the final tips are their own layer (the exact role of the orange layer was not checked; see `review.rs`). If detection is inconclusive the script writes no GLB. No patient name is written into the file or its name.
 
-The [migration inventory](wasm-geometry-inventory.md) tracks the current worker/editor call paths and the pre-port test baseline. It explicitly marks what has **not** moved to WASM yet.
+## Other material
+
+- Decisions and evidence log: [docs/dental-rework-handoff.md](../docs/dental-rework-handoff.md).
+- The approved neutral reference STL, its face labels and the screenshots of the earlier methods: [docs/dental-reference](../docs/dental-reference/README.md).
+- Design notes kept as reference: [contour-contact design](../docs/superpowers/specs/2026-10-25-dental-contour-contacts.md) and [support ship-gates design](../docs/superpowers/specs/2026-10-26-support-ship-gates-design.md). Their task lists are superseded by the ship plan.
+- Performance numbers: [perf-baseline.json](perf-baseline.json) (the pre-port baseline) and the U10 row of the ship plan (the final numbers).
