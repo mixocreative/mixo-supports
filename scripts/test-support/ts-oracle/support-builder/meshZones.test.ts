@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TriangleMesh } from '../../../../src/core/analysis/types';
-import { lineTarget, treeLanding } from '../../../../src/core/supports/landing';
+import { lineTarget, treeLanding } from './landing';
 import { autoTrees, buildSupportMesh, type SupportContact } from './mesh';
 import { defaultSupportSettings, type LiveSupportSettings } from '../../../../src/core/supports/settings';
 import type { ZoneStamp } from '../../../../src/core/supports/zones';

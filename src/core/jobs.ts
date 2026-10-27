@@ -6,12 +6,10 @@
  * Meshes are unit-local; a job's transform says where the unit stood (Euler XYZ radians, mm).
  */
 import type { CheckSettings } from './analysis/supportCheck';
-import { composeContacts } from './analysis/placement';
 import type { PlacementSettings, SupportPoint, TriangleMesh } from './analysis/types';
 import type { DentalPolicy } from './analysis/dentalPolicy';
-import type { SupportContact } from './supports/mesh';
 import type { LiveSupportSettings, ShapeOverride } from './supports/settings';
-import { zonedAt, type ZoneStamp } from './supports/zones';
+import type { ZoneStamp } from './supports/zones';
 import type { Vector } from './vec3';
 
 /** Position and Euler XYZ rotation (radians) of a unit on the plate. */
@@ -65,26 +63,4 @@ export interface CheckJob {
   /** Unit-local contact positions. */
   contacts: Vector[];
   settings: CheckSettings;
-}
-
-/** SLASG point class of each placement source (manual points are untagged face points). */
-const CONTACT_KIND: Record<SupportPoint['source'], NonNullable<SupportContact['kind']>> = {
-  interior: 'face',
-  'physical-boundary': 'edge',
-  'sharp-ridge': 'edge',
-  island: 'vertical',
-};
-
-/**
- * Final contacts in unit-local space: automatic minus deleted and no-support zones,
- * plus manual (manual contacts ignore zones and never join Auto Tree branches). A support that
- * lands in a zone is the support build's call: it reports those contacts as `dropped`.
- */
-export function jobContacts(inputs: ContactInputs): SupportContact[] {
-  return composeContacts(inputs.points, inputs.manual, inputs.deleted)
-    .map(({ id, position, normal, source }): SupportContact => {
-      const shape = inputs.contactSettings[id];
-      return { id, position, normal, kind: CONTACT_KIND[source], origin: id.startsWith('manual-') ? 'manual' : 'auto', ...(shape ? { shape } : {}) };
-    })
-    .filter((contact) => contact.origin === 'manual' || !zonedAt(inputs.zones, contact.position, contact.normal));
 }

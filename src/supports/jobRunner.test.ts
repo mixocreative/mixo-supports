@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import type { ContactInputs, DentalPlacementJob, JobTransform, SupportJob } from '../core/jobs';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
-import { columnLanding, lineTarget } from '../core/supports/landing';
+import { columnLanding, lineTarget } from '../../scripts/test-support/ts-oracle/support-builder/landing';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import { dentalRegionAllowedOnFace } from '../core/analysis/dentalPolicy';

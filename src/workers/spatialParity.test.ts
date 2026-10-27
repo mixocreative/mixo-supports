@@ -5,7 +5,7 @@ import { MeshBVH } from 'three-mesh-bvh';
 import { buildBrushFixture, type BrushFixture } from '../../scripts/fixtures/brush/generate';
 import { nodeEngine, parseStl } from '../../scripts/test-support/rustImport';
 import { dentalFaceOverlay, dentalContourSegments } from '../../scripts/test-support/ts-oracle/dentalFaceOverlay';
-import { vertexNormals } from '../core/analysis/vertexNormals';
+import { vertexNormals } from '../../scripts/test-support/ts-oracle/placement/vertexNormals';
 import { refineForOverlay } from '../core/supports/overlayMesh';
 import { fromLeftHandedMatrix, toLeftHanded, toLeftHandedMatrix } from '../core/handedness';
 import { applyToDirection, applyToPoint, invertMatrix, placementMatrix, transformPositions } from '../core/transform';

@@ -1,9 +1,9 @@
 import type { ProgressCallback, TriangleMesh } from '../../../../src/core/analysis/types';
 import type { DentalRimCoverage } from '../../../../src/core/analysis/dentalRimCoverage';
 import { tipDepth, tipRadius, withShape, type LiveSupportSettings, type ShapeOverride, type TipSection } from '../../../../src/core/supports/settings';
-import { autoTreeLayout, type AutoTree } from '../../../../src/core/supports/autotree';
-import type { RemeshTarget } from '../../../../src/core/supports/remesh';
-import { columnLanding, lineTarget, neckDirection, sinkInto, treeLanding, upDirection, type Landing, type LineTarget } from '../../../../src/core/supports/landing';
+import { autoTreeLayout, type AutoTree } from './autotree';
+import type { RemeshTarget } from '../remesh/remesh';
+import { columnLanding, lineTarget, neckDirection, sinkInto, treeLanding, upDirection, type Landing, type LineTarget } from './landing';
 import { MeshBuilder, MIN_LENGTH } from './meshBuilder';
 import { addStructures } from './raftGeometry';
 import { zonedAt, type ZoneStamp } from '../../../../src/core/supports/zones';

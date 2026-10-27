@@ -1,5 +1,4 @@
 import { checkSupports, type SupportProblem } from '../core/analysis/supportCheck';
-import { generatePlacement, positionId } from '../core/analysis/placement';
 import { classifyDownwardFaces, faceOverhangLimit } from '../core/analysis/mesh';
 import type { PlacementResult, ProgressCallback, SupportPoint } from '../core/analysis/types';
 import { DentalOpeningRaycaster } from '../core/analysis/dental';
@@ -8,18 +7,19 @@ import { contourPerimeter, measureDentalRimCoverage } from '../core/analysis/den
 import { defaultDentalTuning, dentalFootprintSettings } from '../core/analysis/dentalTuning';
 import { proposeDentalContactFootprint } from '../core/analysis/dentalContactFootprint';
 import { dentalRegionAllowedOnFace, dentalSupportAllowedAt, type DentalPolicy } from '../core/analysis/dentalPolicy';
-import { jobContacts, type CheckJob, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
+import { type CheckJob, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
 import { cross, normalize, subtract, type Vector } from '../core/vec3';
-import type { GeneratedSupportMesh } from '../core/supports/mesh';
+import type { GeneratedSupportMesh, Landing } from '../core/supports/mesh';
+import { positionId } from './contactEdits';
+import { jobContacts } from './genericPolicy';
+import { placeGeneric } from './genericPlacement';
 import { buildSupportMesh, type SupportBuildOptions } from './rustSupports';
 import { crossingAutomaticBodyContactIds, crossingSupportStructureParts } from '../core/supports/dentalBodyClearance';
 import { createModelCollisionIndex } from '../core/supports/modelCollisionIndex';
 import { dentalBuildSettings } from '../core/supports/dentalSettings';
-import type { Landing } from '../core/supports/landing';
 import { dentalSecondaryLandingOnApprovedSide } from './dentalLandingSide';
 import { dentalPrimarySourceFace, sameDentalPrimary } from './dentalPrimaryFace';
 import { supportMeshToUnitLocal } from './supportFrame';
-import { RemeshTarget } from '../core/supports/remesh';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformDirection, transformPoint } from '../state/transform';
 
@@ -30,30 +30,9 @@ import { applyTransform, inverseTransformDirection, inverseTransformPoint, trans
  * core/transform.ts.
  */
 
-const remeshCache = new WeakMap<object, Map<string, RemeshTarget>>();
-
-/**
- * Remeshes depend only on the model, its frame and the voxel size (SLASG_Line: Middle Ø; the
- * scatter: Spacing / 4); they fill in lazily as they are queried, so keep them per model.
- */
-function cachedRemesh(source: object, frame: JobTransform, model: ReturnType<typeof applyTransform>, pillarDiameter: number, voxel?: number): RemeshTarget {
-  const key = JSON.stringify([frame, pillarDiameter, voxel ?? null]);
-  let entries = remeshCache.get(source);
-  if (!entries) remeshCache.set(source, (entries = new Map()));
-  let target = entries.get(key);
-  if (!target) {
-    target = new RemeshTarget(model, pillarDiameter, voxel);
-    if (entries.size > 4) entries.clear();
-    entries.set(key, target);
-  }
-  return target;
-}
-
 /**
  * Support mesh of one unit in its local space, ready to render under the unit's parent group, with
- * the automatic contacts it left out for a forbidden secondary landing (`dropped`). The remesh
- * cache is keyed on `job.mesh`, so passing the same mesh object again keeps them warm. The raft
- * outline is recomputed by the Rust build each time (it is cheap there).
+ * the automatic contacts it left out for a forbidden secondary landing (`dropped`).
  */
 export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): GeneratedSupportMesh {
   const { frame } = job;
@@ -99,8 +78,6 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
     mode: job.mode,
     labelText: job.labelText,
     model,
-    remesh: cachedRemesh(job.mesh, frame, model, settings.pillarDiameter),
-    ...(settings.scatterAutoTree && settings.scatterSafeDistance !== 0 ? { scatterRemesh: cachedRemesh(job.mesh, frame, model, 0, settings.scatterSpacing / 4) } : {}),
     ...(onProgress ? { onProgress } : {}),
     zones: job.contacts.zones.map((stamp) => ({ ...stamp, center: transformPoint(frame, stamp.center), normal: transformDirection(frame, stamp.normal) })),
     ...(landingAllowed ? { landingAllowed } : {}),
@@ -176,7 +153,10 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
 
 /** Automatic contacts, in the frame of the turned model (the caller maps them back to the unit). */
 export function runPlacementJob(job: PlacementJob, onProgress?: ProgressCallback): PlacementResult {
-  return generatePlacement(applyTransform(job.mesh, orientationOnly(job.orientation)), job.settings, onProgress);
+  onProgress?.(0, 'Finding overhangs');
+  const result = placeGeneric(applyTransform(job.mesh, orientationOnly(job.orientation)), job.settings);
+  onProgress?.(1, 'Done');
+  return result;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { cross, dot, length, normalize, subtract, type Vector } from '../vec3';
+import { cross, dot, length, normalize, subtract, type Vector } from '../../../../src/core/vec3';
 
 /**
  * Unique undirected edges `[low, high]` of the face loops, in order of first use: faces in

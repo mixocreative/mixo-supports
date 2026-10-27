@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SupportPoint } from '../core/analysis/types';
-import { positionId, rekeyHandWork } from '../core/analysis/placement';
+import { positionId, rekeyHandWork } from '../../scripts/test-support/ts-oracle/placement/placement';
 import type { Vector } from '../core/vec3';
 import { REGENERATE_DELAY_MS, RegenerateQueue, hasHandWork, landedStatus, regenReport, regeneratedStatus, regeneratingStatus } from './regenerate';
 

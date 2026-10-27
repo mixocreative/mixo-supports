@@ -1,5 +1,5 @@
 import { checkSupports, type SupportProblem } from '../core/analysis/supportCheck';
-import { generatePlacement } from '../core/analysis/placement';
+import { placeGeneric } from '../supports/genericPlacement';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import { placeImportedUnits } from '../state/import';
 import { emptyScene, type PrintUnit, type SupportSettings } from '../state/project';
@@ -97,7 +97,7 @@ function generate(unit: PrintUnit, settings: LiveSupportSettings) {
     rotation: [...unit.transform.rotation],
   };
   const orientation: ModelTransform = { position: [0, 0, 0], rotation: [...unit.transform.rotation] };
-  const result = generatePlacement(applyTransform(unit.source, orientation), toPlacementSettings(settings));
+  const result = placeGeneric(applyTransform(unit.source, orientation), toPlacementSettings(settings));
   const points = result.points.map((point): SupportPoint => ({
     ...point,
     position: inverseTransformPoint(orientation, point.position),

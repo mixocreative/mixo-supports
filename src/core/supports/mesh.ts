@@ -11,6 +11,16 @@ import type { ShapeOverride } from './settings';
 
 export type Point2 = [number, number];
 
+/** A point where a support lands on the model, with the landed-on surface normal (pointing up). */
+export interface Landing {
+  point: Vector;
+  normal: Vector;
+  /** Face hit on the exact source mesh, even when the visible landing is voxel-remeshed. */
+  faceIndex?: number;
+  /** Exact hit on that face; use this point for face-local paint permission. */
+  sourcePoint?: Vector;
+}
+
 /** A support contact in build-plate space: Y is up and the plate is y = 0 (mm). */
 export interface SupportContact {
   id: string;

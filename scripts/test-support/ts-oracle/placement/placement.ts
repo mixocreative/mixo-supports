@@ -1,11 +1,11 @@
-import { RemeshTarget, SurfaceQuery } from '../supports/remesh';
+import { RemeshTarget, SurfaceQuery } from '../remesh/remesh';
 import { edgeAnchors } from './edgeAnchors';
 import { NearestPoint } from './nearestPoint';
 import { mergeByDistance } from './mergeByDistance';
 import { Drand48, hashPair } from './random';
 import { vertexNormals } from './vertexNormals';
 import { legacyRidgeMidpoints } from './legacyRidges';
-import { classifyDownwardFaces, faceOverhangLimit, partitionRegions } from './mesh';
+import { classifyDownwardFaces, faceOverhangLimit, partitionRegions } from '../../../../src/core/analysis/mesh';
 import type {
   PlacementResult,
   PlacementSettings,
@@ -13,8 +13,8 @@ import type {
   SupportPointSource,
   ProgressCallback,
   TriangleMesh,
-} from './types';
-import { add, cross, distance, normalize, scale, subtract, type Vector } from '../vec3';
+} from '../../../../src/core/analysis/types';
+import { add, cross, distance, normalize, scale, subtract, type Vector } from '../../../../src/core/vec3';
 
 interface Candidate {
   regionId: number;

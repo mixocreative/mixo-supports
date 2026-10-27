@@ -4,7 +4,7 @@ import { crossingAutomaticBodyContactIds } from '../../src/core/supports/dentalB
 import { buildDentalReview } from './build';
 import { diagnoseSupportCrossings } from './crossings';
 import { inverseTransformPoint, transformPoint } from '../../src/state/transform';
-import { positionId } from '../../src/core/analysis/placement';
+import { positionId } from '../test-support/ts-oracle/placement/placement';
 import { largestCircularGap } from './rimCoverage';
 import { sampleDiagnosticContourContacts } from '../../src/core/analysis/dentalContourContacts';
 import { defaultDentalContactFootprintSettings } from '../../src/core/analysis/dentalContactFootprint';

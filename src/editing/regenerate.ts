@@ -1,4 +1,4 @@
-import type { RekeyedHandWork } from '../core/analysis/placement';
+import type { RekeyedHandWork } from '../core/analysis/types';
 import type { StatusMessage } from './types';
 
 /**

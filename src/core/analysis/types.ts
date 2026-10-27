@@ -39,3 +39,13 @@ export interface PlacementResult {
 
 /** Reports how far a long job has come: `fraction` in [0, 1] and a short stage name. */
 export type ProgressCallback = (fraction: number, stage: string) => void;
+
+/** What a fresh placement made of a unit's hand work, with the counts the Regenerate report gives. */
+export interface RekeyedHandWork<T> {
+  /** The removals re-keyed; one no new contact matches is dropped (and counted in `removals.reset`). */
+  deleted: string[];
+  /** Per-support settings under the id of the support they now belong to; manual supports keep theirs. */
+  overrides: Record<string, T>;
+  removals: { kept: number; reset: number };
+  customised: { kept: number; reset: number };
+}

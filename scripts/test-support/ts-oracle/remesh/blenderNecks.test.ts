@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import reference from '../../../tools/blender-parity/reference.json';
+import reference from '../../../../tools/blender-parity/reference.json';
 import { RemeshTarget } from './remesh';
 
 /**

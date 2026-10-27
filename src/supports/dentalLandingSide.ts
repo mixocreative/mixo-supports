@@ -1,7 +1,7 @@
 import type { TriangleMesh } from '../core/analysis/types';
 import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import type { JobTransform } from '../core/jobs';
-import type { Landing } from '../core/supports/landing';
+import type { Landing } from '../core/supports/mesh';
 import { dentalRegionAllowedOnFace } from '../core/analysis/dentalPolicy';
 import { cross, normalize, subtract, type Vector } from '../core/vec3';
 import { inverseTransformPoint, transformDirection } from '../state/transform';

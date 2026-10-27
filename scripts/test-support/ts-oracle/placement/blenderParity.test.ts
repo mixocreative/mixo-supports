@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { BoxGeometry, BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import mushroomContacts from '../../tools/blender-parity/mushroom_contacts.json';
-import { generatePlacement, minimaStages } from '../core/analysis/placement';
-import { RemeshTarget } from '../core/supports/remesh';
-import { buildSupportMesh } from './rustSupports';
-import { defaultSupportSettings, toPlacementSettings } from '../core/supports/settings';
-import { geometryToMesh } from '../../scripts/test-support/rustImport';
+import mushroomContacts from '../../../../tools/blender-parity/mushroom_contacts.json';
+import { generatePlacement, minimaStages } from './placement';
+import { RemeshTarget } from '../remesh/remesh';
+import { buildSupportMesh } from '../../../../src/supports/rustSupports';
+import { defaultSupportSettings, toPlacementSettings } from '../../../../src/core/supports/settings';
+import { geometryToMesh } from '../../rustImport';
 
 /**
  * Reference numbers measured from Resin UV (Blender 5.2, mixo.support_generate, Light

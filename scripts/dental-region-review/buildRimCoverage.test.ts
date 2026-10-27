@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { positionId } from '../../src/core/analysis/placement';
+import { positionId } from '../test-support/ts-oracle/placement/placement';
 import { transformPoint } from '../../src/state/transform';
 import { buildDentalReview } from './build';
 import { largestCircularGap } from './rimCoverage';

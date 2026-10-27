@@ -2,26 +2,26 @@ import { readFileSync } from 'node:fs';
 import { nodeEngine, parseStl } from './rustImport';
 import type { TriangleMesh } from '../../src/core/analysis/types';
 import { proposeDentalSupportRegion } from '../../src/core/analysis/dentalRegion';
-import { jobContacts } from '../../src/core/jobs';
+import { jobContacts } from '../../src/supports/genericPolicy';
 import { dentalBuildSettings } from '../../src/core/supports/dentalSettings';
-import { autoTreeLayout } from '../../src/core/supports/autotree';
-import { columnLanding, lineTarget, neckDirection, treeLanding, type Landing } from '../../src/core/supports/landing';
+import { autoTreeLayout } from './ts-oracle/support-builder/autotree';
+import { columnLanding, lineTarget, neckDirection, treeLanding, type Landing } from './ts-oracle/support-builder/landing';
 import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from './ts-oracle/support-builder/mesh';
-import { RemeshTarget } from '../../src/core/supports/remesh';
+import { RemeshTarget } from './ts-oracle/remesh/remesh';
 import { defaultSupportSettings, withShape, type LiveSupportSettings } from '../../src/core/supports/settings';
 import { GOLDEN_FIXTURES } from '../../src/goldens/fixtures';
 import { supportedUnit } from '../../src/goldens/pipeline';
 import { applyTransform, transformDirection, transformPoint } from '../../src/state/transform';
 import { supportJobOf, resolveSettings } from '../../src/supports/unitSupports';
-import { buildSupportsWasm, castDownWasm, type ColumnInput, type HostLayout, type SuppliedLanding, type WasmSupportBuild } from '../../src/supports/supportBuildWasm';
+import { buildSupportsWasm, castDownWasm, type ColumnInput, type WasmSupportBuild } from '../../src/supports/supportBuildWasm';
 import { add, normalizeOrDown, scale, type Vector } from '../../src/core/vec3';
 
 /*
  * Parity harness for the Rust support builder (U4a-U4c). The TS builder it compares against is the
  * oracle (scripts/test-support/ts-oracle/support-builder). A scenario is the SAME
  * placement fed to the TS builder and to Rust: plate-space contacts, the model, settings, mode.
- * TS runs with its own ray cast; Rust gets what that ray cast produced (sampled normals, the
- * landing under each neck), because placement and ray casting are not part of the builder port.
+ * TS runs the oracle (its own voxel remesh and ray casts); Rust gets the contacts as the placement made them
+ * (unsampled normals, the point class) and samples, lands and lays out the Auto Trees itself.
  * Rule 7 (docs/SHIP-PLAN.md): indices, component ids and tags identical; positions within 1e-5 mm.
  */
 
@@ -51,39 +51,17 @@ export function remeshOf(scenario: Scenario): RemeshTarget | undefined {
   return exactOnly(scenario) ? undefined : new RemeshTarget(scenario.model, scenario.settings.pillarDiameter);
 }
 
-/** What the TS builder's own ray cast gives each contact: the sampled normal and the column landing under its neck. */
-export function rustInputs(scenario: Scenario, remesh = remeshOf(scenario)): ColumnInput[] {
-  const ray = lineTarget(scenario.model, scenario.settings, remesh, scenario.mode === 'export');
-  const tipOnly = scenario.mode === 'preview' && scenario.settings.previewMode === 'ONLY_TIP';
-  return scenario.contacts.map((contact): ColumnInput => {
-    const sampled = { ...contact, normal: ray.normal(contact) };
-    const landing: Landing | undefined = tipOnly ? undefined : columnLanding(sampled, withShape(scenario.settings, contact.shape), ray).hit;
-    return {
-      id: contact.id,
-      position: sampled.position,
-      normal: sampled.normal,
-      origin: contact.origin === 'manual' ? 'manual' : 'auto',
-      ...(contact.sourceFace === undefined ? {} : { sourceFace: contact.sourceFace }),
-      ...(contact.shape ? { shape: contact.shape } : {}),
-      ...(landing ? { landing: { point: landing.point, normal: landing.normal, ...(landing.faceIndex === undefined ? {} : { faceIndex: landing.faceIndex }) } } : {}),
-    };
-  });
-}
-
-/** What the TS builder's own ray cast gives each Auto Tree junction (layout order). */
-export function treeLandingsOf(scenario: Scenario, remesh = remeshOf(scenario)): { source: Vector; hit?: Landing }[] {
-  if (!scenario.settings.scatterAutoTree) return [];
-  const ray = lineTarget(scenario.model, scenario.settings, remesh, scenario.mode === 'export');
-  const sampled = scenario.contacts.map((contact) => ({ ...contact, normal: ray.normal(contact) }));
-  return autoTreeLayout(sampled, scenario.model, scenario.settings).trees.map((tree) => treeLanding(tree, scenario.settings, ray));
-}
-
-/** The Auto Tree layout the TS scatter finds (Safe Distance reads its scatter remesh); what the host supplies to Rust until U5. */
-export function treeLayoutOf(scenario: Scenario, remesh = remeshOf(scenario)): HostLayout | undefined {
-  if (!scenario.settings.scatterAutoTree) return undefined;
-  const ray = lineTarget(scenario.model, scenario.settings, remesh, scenario.mode === 'export');
-  const sampled = scenario.contacts.map((contact) => ({ ...contact, normal: ray.normal(contact) }));
-  return autoTreeLayout(sampled, scenario.model, scenario.settings);
+/** The contacts as the placement made them: Rust samples the neck normals and casts the landings itself. */
+export function rustInputs(scenario: Scenario): ColumnInput[] {
+  return scenario.contacts.map((contact): ColumnInput => ({
+    id: contact.id,
+    position: contact.position,
+    normal: contact.normal,
+    origin: contact.origin === 'manual' ? 'manual' : 'auto',
+    ...(contact.kind ? { kind: contact.kind } : {}),
+    ...(contact.sourceFace === undefined ? {} : { sourceFace: contact.sourceFace }),
+    ...(contact.shape ? { shape: contact.shape } : {}),
+  }));
 }
 
 type Session = { load_mesh(positions: Float32Array, indices: Uint32Array): number; free(): void };
@@ -98,28 +76,22 @@ export function withRustModel<T>(scenario: Scenario, use: (session: Session, mod
   }
 }
 
-/**
- * The Rust build. Outside the exact-surface case (Low Poly Mode preview) the TS builder lands on a
- * voxel remesh the Rust core does not have yet (U5), so those landings are supplied from TS.
- */
-export function rustBuild(scenario: Scenario, inputs = rustInputs(scenario), trees: readonly { hit?: SuppliedLanding }[] = treeLandingsOf(scenario)): WasmSupportBuild {
-  const layout = scenario.settings.scatterSafeDistance !== 0 ? treeLayoutOf(scenario) : undefined;
+/** The Rust build: neck normals, landings (voxel remesh unless a Low Poly preview) and the Auto Tree layout are its own. */
+export function rustBuild(scenario: Scenario, inputs = rustInputs(scenario)): WasmSupportBuild {
   const label = scenario.labelText ? { labelText: scenario.labelText } : {};
-  return withRustModel(scenario, (session, model) => buildSupportsWasm(session, inputs, scenario.settings, scenario.mode, exactOnly(scenario)
-    ? { model, landings: 'model', ...(layout ? { layout } : {}), ...label } : { model, landings: 'supplied', treeLandings: trees.map((t) => t.hit), ...(layout ? { layout } : {}), ...label }));
+  return withRustModel(scenario, (session, model) => buildSupportsWasm(session, inputs, scenario.settings, scenario.mode, { model, landings: 'target', ...label }));
 }
 
 export const landsOnExactSurface = exactOnly;
 
-/** Every landing ray of a scenario (column necks, tree junctions): TS exact ray cast against the Rust one. Empty `differences` when they agree. */
-export function landingDifferences(scenario: Scenario, inputs: readonly ColumnInput[], trees: readonly { source: Vector }[]): { differences: string[]; casts: number; hits: number } {
+/** Every column landing ray of a scenario: TS exact ray cast against the Rust one. Empty `differences` when they agree. */
+export function landingDifferences(scenario: Scenario, inputs: readonly ColumnInput[]): { differences: string[]; casts: number; hits: number } {
   const settings = scenario.settings;
   const exact = lineTarget(scenario.model, { ...settings, lowPolyMode: true }, undefined, false);
   const sources: Vector[] = inputs.map((contact, k) => {
     const own = withShape(settings, scenario.contacts[k]!.shape);
     return add(contact.position, scale(neckDirection(normalizeOrDown(contact.normal), own.maxNeckAngle), own.neckLength));
   });
-  for (const tree of trees) sources.push(tree.source);
   const rust = withRustModel(scenario, (session, model) => castDownWasm(session, model, sources, exact.height));
   const out: string[] = [];
   sources.forEach((from, k) => {

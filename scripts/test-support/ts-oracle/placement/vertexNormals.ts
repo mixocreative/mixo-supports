@@ -1,4 +1,4 @@
-import { acosf } from '../acosf';
+import { acosf } from './acosf';
 
 type Vector = [number, number, number];
 

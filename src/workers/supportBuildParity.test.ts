@@ -3,12 +3,14 @@ import { nodeEngine } from '../../scripts/test-support/rustImport';
 import type { SupportContact } from '../core/supports/mesh';
 import { defaultSupportSettings, setRoofMode, updateSetting, type LiveSupportSettings } from '../core/supports/settings';
 import { SETTINGS_ORDER, buildSupportsWasm, engineSettingsLayout } from '../supports/supportBuildWasm';
-import { alignerScenario, compareBuilds, fixtureScenarios, landingDifferences, landsOnExactSurface, remeshOf, rustBuild, rustInputs, treeLandingsOf, tsBuild, withRustModel, withStructures, type Scenario } from '../../scripts/test-support/supportParityHarness';
+import { alignerScenario, compareBuilds, fixtureScenarios, landingDifferences, landsOnExactSurface, remeshOf, rustBuild, rustInputs, tsBuild, withRustModel, withStructures, type Scenario } from '../../scripts/test-support/supportParityHarness';
 
 /*
- * U4a-U4c: the Rust support builder (tip, neck, pillar, foot, Auto Tree, Brace, raft, label, Roof,
- * Cage) against the TS builder (the oracle, scripts/test-support/ts-oracle/support-builder) fed the
- * SAME contacts. Rule 7: indices and tags identical, positions within 1e-5 mm.
+ * U4a-U4c + U5: the Rust support builder (tip, neck, pillar, foot, Auto Tree, Brace, raft, label, Roof,
+ * Cage) against the TS builder (the oracle, scripts/test-support/ts-oracle/support-builder, with its
+ * own voxel remesh) fed the SAME contacts; Rust samples the neck normals, lands on the remesh and lays
+ * out the Auto Trees (Safe Distance included) itself. Rule 7: indices and tags identical, positions
+ * within 1e-5 mm.
  */
 
 let landedColumns = 0;
@@ -18,20 +20,19 @@ const seen = { parts: new Set<string>(), treeBranch: 0, treeTrunk: 0, treeNeck: 
 function check(scenario: Scenario): void {
   const remesh = remeshOf(scenario);
   const ts = tsBuild(scenario, remesh);
-  const inputs = rustInputs(scenario, remesh);
-  const trees = treeLandingsOf(scenario, remesh);
-  const rust = rustBuild(scenario, inputs, trees);
+  const inputs = rustInputs(scenario);
+  const rust = rustBuild(scenario, inputs);
   expect(ts.components.length, `${scenario.name} builds something`).toBeGreaterThan(0);
   expect(compareBuilds(ts, rust, inputs), scenario.name).toEqual([]);
   // Rule 7 on the landing rays themselves: the Rust exact-surface cast equals the TS one on every neck and junction.
-  const landings = landingDifferences(scenario, inputs, trees);
+  const landings = landingDifferences(scenario, inputs);
   expect(landings.differences, `${scenario.name} landings`).toEqual([]);
   totalComponents += ts.components.length;
-  landedColumns += inputs.filter((c) => c.landing).length;
+  landedColumns += ts.components.filter((c) => c.landingReach !== undefined).length;
   seen.casts += landings.casts;
   seen.hits += landings.hits;
   seen.exactBuilds += landsOnExactSurface(scenario) ? 1 : 0;
-  seen.treeLanded += trees.filter((t) => t.hit).length;
+  seen.treeLanded += ts.components.filter((c) => c.contactIntent?.some((i) => i.kind === 'secondary')).length;
   for (const c of ts.components) {
     seen.parts.add(c.part);
     if (c.part === 'tree-branch') seen.treeBranch += 1;
@@ -59,18 +60,12 @@ describe('engine contract', () => {
     expect(run({ ...base, roofMode: 'CAGE' })).toContain('cage-ring');
   });
 
-  it('Auto Tree with Safe Distance needs the voxel remesh (U5): a typed error', () => {
-    const contacts = [{ id: 'a', position: [0, 8, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], origin: 'auto' as const }];
-    const settings = { ...withStructures({ ...defaultSupportSettings, roofSeededModes: [] }), scatterAutoTree: true, scatterSafeDistance: 0.5 };
-    expect(() => withRustModel(sample(), (session, model) => buildSupportsWasm(session, contacts, settings, 'export', { model }))).toThrowError(expect.objectContaining({ code: 'NOT_YET_PORTED', detail: 'Tree' }));
-  });
-
-  it('rejects malformed host input (omission and layout shapes) with typed errors', () => {
+  it('rejects malformed host input (landing-rule flag shapes) with typed errors', () => {
     const contacts = [{ id: 'a', position: [0, 8, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], origin: 'auto' as const }];
     const settings = withStructures({ ...defaultSupportSettings, roofSeededModes: [] });
     const run = (options: Parameters<typeof buildSupportsWasm>[4]) => () => withRustModel(sample(), (session, model) => buildSupportsWasm(session, contacts, settings, 'export', { model, ...options }));
-    expect(run({ omitContacts: [1] })).toThrowError(expect.objectContaining({ code: 'BAD_INPUT' }));
-    expect(run({ omitContacts: [0] })).not.toThrow();
+    expect(run({ rejectedColumns: [true, false] })).toThrowError(expect.objectContaining({ code: 'BAD_INPUT' }));
+    expect(run({ rejectedColumns: [true] })).not.toThrow();
   });
 
   it('rejects a setting outside its validated range with a typed error', () => {
@@ -102,7 +97,7 @@ describe('settings and per-support shapes that reach other column code paths', (
     ['tree + sphere + square tips', (s) => updateSetting(updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'contactShape', 'SPHERE'), 'tipSection', 'SQUARE')],
     ['tree + straight tips, 3 percent increment', (s) => updateSetting(updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'tipProfile', 'STRAIGHT'), 'treeSectionIncrement', 3)],
     ['tree descent 6, brace angle 30', (s) => updateSetting(updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'scatterBranchDescent', 6), 'trussAngle', 30)],
-    ['safe distance 0.5 (host-supplied layout)', (s) => updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'scatterSafeDistance', 0.5)],
+    ['safe distance 0.5 (scatter remesh)', (s) => updateSetting(updateSetting(updateSetting(s, 'scatterAutoTree', true), 'scatterMergeDistance', 5), 'scatterSafeDistance', 0.5)],
     ['label AB-12 (digits and dash)', (s) => s],
     ['raft off, label on', (s) => updateSetting(s, 'raftEnabled', false)],
     ['raft wall angle 25, tall wall, thick floor', (s) => updateSetting(updateSetting(updateSetting(s, 'raftWallAngle', 25), 'raftWallHeight', 6), 'raftFloorThickness', 1.6)],

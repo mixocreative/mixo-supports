@@ -1,5 +1,6 @@
 import type { ContactIntent, SupportPart } from '../core/supports/mesh';
 import { SHAPE_KEYS, type LiveSupportSettings, type SettingKey, type ShapeOverride } from '../core/supports/settings';
+import type { ZoneStamp } from '../core/supports/zones';
 import type { Vector } from '../core/vec3';
 
 /*
@@ -52,69 +53,47 @@ export function packSettings(settings: Readonly<LiveSupportSettings>): Float64Ar
   return Float64Array.from(SETTINGS_ORDER, (key) => encode(key, settings[key]));
 }
 
-/** A contact as the Rust column builder takes it; the normal is already sampled, the landing already cast. */
+export const ZONE_STRIDE = 8;
+
+export function packZones(zones: readonly ZoneStamp[]): Float64Array {
+  const flat = new Float64Array(zones.length * ZONE_STRIDE);
+  zones.forEach((z, k) => flat.set([...z.center, ...z.normal, z.radius, z.kind === 'paint' ? 1 : 0], k * ZONE_STRIDE));
+  return flat;
+}
+
+/** A contact as the Rust column builder takes it; the neck normal is sampled on the remesh by Rust (by `kind`). */
 export interface ColumnInput {
   id: string;
   position: Vector;
   normal: Vector;
   sourceFace?: number;
   origin: 'auto' | 'manual';
+  /** SLASG point class: `face` and `edge` contacts take their neck normal from the remesh, `vertical` ones point straight down. */
+  kind?: 'face' | 'edge' | 'vertical';
   shape?: ShapeOverride;
-  /** Where a column from this contact's neck lands on the model, when it does. */
-  landing?: { point: Vector; normal: Vector; faceIndex?: number };
-}
-
-/** A landing the TS voxel-remeshed ray cast produced (supplied mode only, until the remesh is ported in U5). */
-export interface SuppliedLanding { point: Vector; normal: Vector; faceIndex?: number; sourcePoint?: Vector }
-
-export const TREE_LANDING_STRIDE = 12;
-
-export function packTreeLandings(landings: readonly (SuppliedLanding | undefined)[]): Float64Array {
-  const flat = new Float64Array(landings.length * TREE_LANDING_STRIDE);
-  landings.forEach((hit, k) => {
-    if (hit) flat.set([1, ...hit.point, ...hit.normal, hit.faceIndex ?? -1, hit.sourcePoint ? 1 : 0, ...(hit.sourcePoint ?? [0, 0, 0])], k * TREE_LANDING_STRIDE);
-  });
-  return flat;
 }
 
 export interface BuildOptions {
   /** Handle of the plate-space model loaded in the session; none builds without a model. */
   model?: number;
-  /** `model` casts landings against the model (default); `supplied` takes contact landings and `treeLandings` from the caller. */
-  landings?: 'model' | 'supplied';
-  treeLandings?: readonly (SuppliedLanding | undefined)[];
+  /** `target` (default with a model) samples neck normals and lands columns on the exact surface, then the voxel remesh (exact only in a Low Poly preview); `model` lands on the exact surface alone. */
+  landings?: 'model' | 'target';
   /** Label text embossed on the raft (empty or absent: none). */
   labelText?: string;
-  /** Contact indices the host omitted (zones, landing rules). */
-  omitContacts?: readonly number[];
-  /** Auto Tree layout indices the host omitted. */
-  omitTrees?: readonly number[];
-  /** Auto Tree layout the host computed (Safe Distance reads the voxel remesh until U5); absent: Rust computes it. */
-  layout?: HostLayout;
+  /** No-support zones in plate space. */
+  zones?: readonly ZoneStamp[];
+  /** Landing rule: per contact / per Auto Tree layout index, the column lands where the host rejects it (both empty: no rule). */
+  rejectedColumns?: readonly boolean[];
+  rejectedTrees?: readonly boolean[];
 }
 
-export interface HostLayout {
-  trees: readonly { junction: Vector; members: readonly number[] }[];
-  removed: ReadonlySet<number>;
-}
-
-/** Flat form of a host layout (Rust `decode_layout`). */
-export function packLayout(layout: HostLayout | undefined): Float64Array {
-  if (!layout) return new Float64Array();
-  const flat: number[] = [layout.trees.length];
-  for (const tree of layout.trees) flat.push(...tree.junction, tree.members.length, ...tree.members);
-  flat.push(layout.removed.size, ...[...layout.removed].sort((a, b) => a - b));
-  return Float64Array.from(flat);
-}
-
-export const CONTACT_STRIDE = 16;
+export const CONTACT_STRIDE = 17;
+const KIND_CODE = { face: 1, edge: 2, vertical: 3 } as const;
 
 export function packContacts(contacts: readonly ColumnInput[]): { contacts: Float64Array; shapes: Float64Array } {
   const flat = new Float64Array(contacts.length * CONTACT_STRIDE);
   contacts.forEach((c, k) => {
-    const hit = c.landing;
-    flat.set([...c.position, ...c.normal, c.sourceFace ?? -1, c.origin === 'manual' ? 1 : 0, hit ? 1 : 0,
-      ...(hit?.point ?? [0, 0, 0]), ...(hit?.normal ?? [0, 0, 0]), hit?.faceIndex ?? -1], k * CONTACT_STRIDE);
+    flat.set([...c.position, ...c.normal, c.sourceFace ?? -1, c.origin === 'manual' ? 1 : 0, 0, 0, 0, 0, 0, 0, 0, -1, c.kind ? KIND_CODE[c.kind] : 0], k * CONTACT_STRIDE);
   });
   const any = contacts.some((c) => c.shape && Object.keys(c.shape).length > 0);
   const shapes = any ? new Float64Array(contacts.length * SHAPE_ORDER.length).fill(NaN) : new Float64Array();
@@ -149,14 +128,19 @@ export interface WasmSupportBuild {
   positions: Float32Array;
   indices: Uint32Array;
   components: TaggedComponent[];
-  /** Indices of omitted automatic contacts. */
+  /** Indices of omitted automatic contacts (zones, landing rule). */
   dropped: number[];
+  /** The subset of `dropped` a no-support zone caused. */
+  droppedByZones: number[];
 }
 
 interface Session {
-  build_supports(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number, landings: number, treeLandings: Float64Array, labelText: string, omitContacts: Uint32Array, omitTrees: Uint32Array, layout: Float64Array): {
+  build_supports(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number, landings: number, labelText: string, zones: Float64Array, rejectedColumns: Uint8Array, rejectedTrees: Uint8Array): {
     take_positions(): Float32Array; take_indices(): Uint32Array; take_tags(): Uint32Array;
-    take_reach(): Float64Array; take_intents(): Float64Array; take_dropped(): Uint32Array; free(): void;
+    take_reach(): Float64Array; take_intents(): Float64Array; take_dropped(): Uint32Array; take_dropped_by_zones(): Uint32Array; free(): void;
+  };
+  probe_landings(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number, landings: number): {
+    take_landings(): Float64Array; tree_count(): number; free(): void;
   };
   cast_down(model: number, from: Float64Array, length: number): Float64Array;
 }
@@ -165,13 +149,12 @@ interface Engine {
   support_settings_layout(): string[];
 }
 
-/** Throws (code `NOT_YET_PORTED`, `detail` the structure) for a request the Rust core cannot build yet (Safe Distance Auto Tree without a host layout). */
 export function buildSupportsWasm(session: unknown, contacts: readonly ColumnInput[], settings: Readonly<LiveSupportSettings>, mode: 'preview' | 'export', options: BuildOptions = {}): WasmSupportBuild {
   const wasm = session as Session;
   const packed = packContacts(contacts);
+  const flags = (rejected: readonly boolean[] | undefined) => Uint8Array.from(rejected ?? [], (r) => (r ? 1 : 0));
   const result = wasm.build_supports(options.model ?? NO_MODEL, contacts.map((c) => c.id), packed.contacts, packed.shapes, packSettings(settings), mode === 'export' ? 1 : 0,
-    options.landings === 'supplied' ? 1 : 0, packTreeLandings(options.treeLandings ?? []), options.labelText ?? '',
-    Uint32Array.from(options.omitContacts ?? []), Uint32Array.from(options.omitTrees ?? []), packLayout(options.layout));
+    options.landings === 'model' ? 0 : 2, options.labelText ?? '', packZones(options.zones ?? []), flags(options.rejectedColumns), flags(options.rejectedTrees));
   try {
     const tags = result.take_tags();
     const reach = result.take_reach();
@@ -205,7 +188,7 @@ export function buildSupportsWasm(session: unknown, contacts: readonly ColumnInp
         ...(tags[t + 1] === 1 ? { structureKind: 'tree' as const } : {}),
       });
     }
-    return { positions: result.take_positions(), indices: result.take_indices(), components, dropped: Array.from(result.take_dropped()) };
+    return { positions: result.take_positions(), indices: result.take_indices(), components, dropped: Array.from(result.take_dropped()), droppedByZones: Array.from(result.take_dropped_by_zones()) };
   } finally {
     result.free();
   }
@@ -220,4 +203,23 @@ export function engineSettingsLayout(engine: unknown): string[] {
 export function castDownWasm(session: unknown, model: number, from: readonly Vector[], length: number): ({ faceIndex: number; y: number; normal: Vector } | undefined)[] {
   const out = (session as Session).cast_down(model, Float64Array.from(from.flat()), length);
   return from.map((_, k) => out[k * 5]! < 0 ? undefined : { faceIndex: out[k * 5]!, y: out[k * 5 + 1]!, normal: [out[k * 5 + 2]!, out[k * 5 + 3]!, out[k * 5 + 4]!] });
+}
+
+/** Where each column (contact order) and each Auto Tree (layout order) lands, for a host landing rule; `face` is the exact source face, `point` the exact hit there. */
+export interface ProbedLanding { face?: number; point: Vector }
+
+export function probeLandingsWasm(session: unknown, contacts: readonly ColumnInput[], settings: Readonly<LiveSupportSettings>, mode: 'preview' | 'export', model: number): { columns: (ProbedLanding | undefined)[]; trees: (ProbedLanding | undefined)[] } {
+  const packed = packContacts(contacts);
+  const result = (session as Session).probe_landings(model, contacts.map((c) => c.id), packed.contacts, packed.shapes, packSettings(settings), mode === 'export' ? 1 : 0, 2);
+  try {
+    const flat = result.take_landings();
+    const trees = result.tree_count();
+    const all = Array.from({ length: flat.length / 5 }, (_, k): ProbedLanding | undefined => {
+      const o = k * 5;
+      return flat[o] === 0 ? undefined : { ...(flat[o + 1]! < 0 ? {} : { face: flat[o + 1]! }), point: [flat[o + 2]!, flat[o + 3]!, flat[o + 4]!] };
+    });
+    return { columns: all.slice(0, all.length - trees), trees: all.slice(all.length - trees) };
+  } finally {
+    result.free();
+  }
 }

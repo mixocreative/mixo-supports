@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { BoxGeometry, BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import stages from '../../tools/blender-parity/minima_stages.json';
-import { faceNormal, vertexNormals } from '../core/analysis/vertexNormals';
-import { minimaStages } from '../core/analysis/placement';
-import { compareKeeps, compareMerges, compareNormals, compareSnaps } from '../core/analysis/parity.testkit';
-import { RemeshTarget } from '../core/supports/remesh';
-import { geometryToMesh } from '../../scripts/test-support/rustImport';
+import stages from '../../../../tools/blender-parity/minima_stages.json';
+import { faceNormal, vertexNormals } from './vertexNormals';
+import { minimaStages } from './placement';
+import { compareKeeps, compareMerges, compareNormals, compareSnaps } from './parity.testkit';
+import { RemeshTarget } from '../remesh/remesh';
+import { geometryToMesh } from '../../rustImport';
 
 type Vector = [number, number, number];
 

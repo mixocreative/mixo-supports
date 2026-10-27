@@ -5,7 +5,7 @@ import { identityTransform, type PrintUnit } from '../state/project';
 import { applyTransform } from '../state/transform';
 import { meshBounds } from '../core/supports/meshQuery';
 import { defaultSupportSettings } from '../core/supports/settings';
-import { jobContacts } from '../core/jobs';
+import { jobContacts } from './genericPolicy';
 import { dentalPlacementJobOf, hiddenByZones, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './unitSupports';
 
 // A closed 10 mm cube: its underside (y = -5) is where the contacts sit.

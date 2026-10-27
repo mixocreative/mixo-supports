@@ -1,10 +1,10 @@
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
 import type { AutoTree } from './autotree';
-import type { LiveSupportSettings } from './settings';
-import type { SupportContact } from './mesh';
-import { meshBounds } from './meshQuery';
-import { RemeshTarget } from './remesh';
-import { add, cross, normalizeOrDown, scale, subtract, type Vector } from '../vec3';
+import type { LiveSupportSettings } from '../../../../src/core/supports/settings';
+import type { SupportContact } from '../../../../src/core/supports/mesh';
+import { meshBounds } from '../../../../src/core/supports/meshQuery';
+import { RemeshTarget } from '../remesh/remesh';
+import { add, cross, normalizeOrDown, scale, subtract, type Vector } from '../../../../src/core/vec3';
 
 /*
  * Where a support column lands: the SLASG_Line target (exact model or voxel remesh), its

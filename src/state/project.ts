@@ -1,5 +1,5 @@
 import type { PlacementResult, Region, SupportPoint, TriangleMesh } from '../core/analysis/types';
-import { contactsHiddenByMarkers, rekeyPoints, remapDeleted } from '../core/analysis/placement';
+import { contactsHiddenByMarkers, rekeyPoints, remapDeleted } from '../supports/contactEdits';
 import { defaultSupportSettings, parseShapeOverride, type ShapeOverride } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { DentalAllowStamp, DentalPolicy } from '../core/analysis/dentalPolicy';

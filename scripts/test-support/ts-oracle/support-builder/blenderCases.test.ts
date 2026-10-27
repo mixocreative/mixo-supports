@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import reference from '../../../../tools/blender-parity/reference.json';
-import { edgeAnchors } from '../../../../src/core/analysis/edgeAnchors';
+import { edgeAnchors } from '../placement/edgeAnchors';
 import type { TriangleMesh } from '../../../../src/core/analysis/types';
 import { buildSupportMesh, columnChain, trussSegments, type Column, type GeneratedSupportMesh, type SupportContact } from './mesh';
 import { defaultSupportSettings, type LiveSupportSettings } from '../../../../src/core/supports/settings';

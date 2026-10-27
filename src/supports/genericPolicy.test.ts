@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { SupportPoint } from './analysis/types';
-import { jobContacts, type ContactInputs } from './jobs';
+import type { SupportPoint } from '../core/analysis/types';
+import type { ContactInputs } from '../core/jobs';
+import { jobContacts } from './genericPolicy';
 
 const point = (id: string, x: number, source: SupportPoint['source'] = 'interior'): SupportPoint => ({ id, regionId: 0, position: [x, 0, 0], normal: [0, -1, 0], source });
 const inputs = (overrides: Partial<ContactInputs> = {}): ContactInputs => ({ points: [point('auto-0', 0), point('auto-1', 10, 'island')], manual: [point('manual-a', 20)], deleted: [], zones: [], contactSettings: {}, ...overrides });

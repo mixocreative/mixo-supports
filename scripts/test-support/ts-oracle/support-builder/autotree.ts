@@ -1,7 +1,7 @@
-import type { TriangleMesh } from '../analysis/types';
-import { RemeshTarget, type Polygon } from './remesh';
-import type { LiveSupportSettings } from './settings';
-import { add, cross, distance, dot, normalize, scale, subtract, type Vector } from '../vec3';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
+import { RemeshTarget, type Polygon } from '../remesh/remesh';
+import type { LiveSupportSettings } from '../../../../src/core/supports/settings';
+import { add, cross, distance, dot, normalize, scale, subtract, type Vector } from '../../../../src/core/vec3';
 
 export interface TreeContact {
   position: Vector;

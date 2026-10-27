@@ -1,5 +1,5 @@
-import type { TriangleMesh } from './types';
-import { add, cross, dot, normalize, scale, subtract, type Vector } from '../vec3';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
+import { add, cross, dot, normalize, scale, subtract, type Vector } from '../../../../src/core/vec3';
 
 export interface EdgeAnchor {
   position: Vector;

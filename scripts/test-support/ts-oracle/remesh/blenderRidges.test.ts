@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import edgeOrder from '../../../tools/blender-parity/edge_order_stages.json';
-import stages from '../../../tools/blender-parity/ridge_stages.json';
-import { faceNormal, vertexNormals } from '../analysis/vertexNormals';
-import { legacyRidgeMidpoints, meshEdges } from '../analysis/legacyRidges';
-import { compareKeeps, compareMerges, compareNormals, compareSnaps } from '../analysis/parity.testkit';
-import { minimaStages } from '../analysis/placement';
+import edgeOrder from '../../../../tools/blender-parity/edge_order_stages.json';
+import stages from '../../../../tools/blender-parity/ridge_stages.json';
+import { faceNormal, vertexNormals } from '../placement/vertexNormals';
+import { legacyRidgeMidpoints, meshEdges } from '../placement/legacyRidges';
+import { compareKeeps, compareMerges, compareNormals, compareSnaps } from '../placement/parity.testkit';
+import { minimaStages } from '../placement/placement';
 
 type Vector = [number, number, number];
 

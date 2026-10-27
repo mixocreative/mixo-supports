@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import reference from '../../../tools/blender-parity/reference_safe.json';
-import { autoTreeLayout } from './autotree';
-import { defaultSupportSettings, type LiveSupportSettings } from './settings';
+import reference from '../../../../tools/blender-parity/reference_safe.json';
+import { autoTreeLayout } from '../support-builder/autotree';
+import { defaultSupportSettings, type LiveSupportSettings } from '../../../../src/core/supports/settings';
 
 /**
  * Auto Tree eligibility and Safe Distance against Resin UV on a ledge model

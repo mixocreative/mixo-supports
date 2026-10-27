@@ -1,6 +1,6 @@
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
 import { ADAPTABLE, AMBIGUOUS_FACE, EDGE_GROUPS } from './openvdbTables';
-import { add, cross, dot, length, normalize, scale, subtract, type Vector } from '../vec3';
+import { add, cross, dot, length, normalize, scale, subtract, type Vector } from '../../../../src/core/vec3';
 
 /** Unit vector, or straight down for a zero-length one. */
 const normalizeOrDown = (v: Vector): Vector => normalize(v, [0, -1, 0]);

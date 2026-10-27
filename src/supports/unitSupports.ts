@@ -1,8 +1,9 @@
 import { labelForIndex } from '../core/analysis/mesh';
 import type { PlacementResult, ProgressCallback, SupportPoint } from '../core/analysis/types';
 import { DEFAULT_DENTAL_LABEL } from '../dental/label';
-import { hidingRemovals, positionId, rekeyHandWork, type RekeyedHandWork } from '../core/analysis/placement';
-import { jobContacts, type CheckJob, type ContactInputs, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
+import { hidingRemovals, positionIds, rekeyHandWork, type RekeyedHandWork } from './contactEdits';
+import { jobContacts } from './genericPolicy';
+import { type CheckJob, type ContactInputs, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
 import type { GeneratedSupportMesh, SupportContact } from '../core/supports/mesh';
 import { defaultSupportSettings, toPlacementSettings, type LiveSupportSettings, type SettingKey } from '../core/supports/settings';
 import type { ContactSettings, JSONObject, PrintUnit, SceneCommand, SupportSettings } from '../state/project';
@@ -216,10 +217,9 @@ export function unitLowestY(unit: PrintUnit): number {
  * position, so an ID and the stored position share one frame.
  */
 export function placedPoints(orientation: JobTransform, result: Pick<PlacementResult, 'points'>): SupportPoint[] {
-  return result.points.map((point): SupportPoint => {
-    const position = inverseTransformPoint(orientation, point.position);
-    return { ...point, id: positionId(position), position, normal: inverseTransformDirection(orientation, point.normal) };
-  });
+  const positions = result.points.map((point) => inverseTransformPoint(orientation, point.position));
+  const ids = positionIds(positions);
+  return result.points.map((point, k): SupportPoint => ({ ...point, id: ids[k]!, position: positions[k]!, normal: inverseTransformDirection(orientation, point.normal) }));
 }
 
 /**
