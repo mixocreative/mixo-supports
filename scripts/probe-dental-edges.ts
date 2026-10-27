@@ -1,3 +1,4 @@
+import './test-support/useNodeEngine';
 /** Edge-network diagnosis for a neutral dental STL; optional SVG/GLB debug exports never alter the source mesh. */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { proposeDentalOrientation } from '../src/core/analysis/dental';
