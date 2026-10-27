@@ -9,7 +9,7 @@ assert.ok(existsSync(packageFile), 'Node WASM package must be built before its s
 
 const require = createRequire(import.meta.url);
 const { engine_version: engineVersion, GeometrySession, center_positions_in_place: centerPositionsInPlace,
-  weld_positions_in_place: weldPositionsInPlace, decimate_display: decimateDisplay, BinaryStlSession } = require(packageFile);
+  weld_positions_in_place: weldPositionsInPlace, decimate_display: decimateDisplay, BinaryStlSession, AsciiStlSession } = require(packageFile);
 assert.equal(engineVersion(), 1, 'Node WASM and host must agree on the geometry schema');
 
 const shifted = new Float32Array([8, -2, 4, 12, 4, 6]);
@@ -58,6 +58,23 @@ const emptyStl = new BinaryStlSession(0);
 emptyStl.push(new Uint8Array(84));
 assert.throws(() => emptyStl.finish(), { code: 'NO_MESH' });
 emptyStl.free();
+
+const asciiBytes = new TextEncoder().encode('solid x\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 0 1\nendsolid x');
+const asciiStream = new AsciiStlSession(asciiBytes.length);
+for (let offset = 0; offset < asciiBytes.length; offset += 5) asciiStream.push(asciiBytes.subarray(offset, offset + 5));
+const asciiMesh = asciiStream.finish();
+assert.deepEqual(Array.from(asciiMesh.take_indices()), [0, 1, 2]);
+asciiMesh.free();
+assert.throws(() => asciiStream.finish(), { code: 'INVALID_HANDLE' });
+asciiStream.free();
+const emptyAscii = new AsciiStlSession(10);
+emptyAscii.push(new TextEncoder().encode('solid x'));
+assert.throws(() => emptyAscii.finish(), { code: 'NO_MESH' });
+emptyAscii.free();
+const shortAscii = new AsciiStlSession(20);
+shortAscii.push(new TextEncoder().encode('solid x\nvertex 0 0 0'));
+assert.throws(() => shortAscii.finish(), { code: 'BAD_STL' });
+shortAscii.free();
 
 const session = new GeometrySession(48);
 const handle = session.load_mesh(

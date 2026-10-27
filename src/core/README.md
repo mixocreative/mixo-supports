@@ -23,7 +23,7 @@ conventions converts at its boundary: a left-handed host (Babylon.js by default)
 | `budget.ts` | Heavy-mesh budgets (warn 1x, refuse 4x per runtime), tiers (full / large / heavy), `assertTriangleCapacity`, memory estimate and cap |
 | `crates/geometry-core/src/decimate.rs` | Rust vertex clustering for a heavy mesh's display copy. `scripts/test-support/legacyDecimate.ts` is the test-only parity reference. |
 | `jobGate.ts` | `TriangleGate`: heavy jobs start only while running triangles plus their own fit the limit |
-| `import/stl.ts` | Chunked binary/ASCII STL straight into a welded Y-up mesh (identical to three's STLLoader + rotateX + mergeVertices) |
+| `import/stl.ts` | Legacy STL parser retained for non-worker callers and parity tests. The production import worker uses Rust `BinaryStlSession` and `AsciiStlSession` for chunked parsing, rotation, and welding. |
 | `import/weld.ts` | Typed-array vertex weld (open addressing, no string keys), bit-identical to `mergeVertices(geometry, 1e-4)` |
 | `import/estimate.ts` | Triangle count before parsing: binary STL exact from size, ASCII STL sampled, glTF/GLB from the JSON |
 | `handedness.ts` | Mirror to and from a left-handed Y-up host (meshes, vectors, matrices) |

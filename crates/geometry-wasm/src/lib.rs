@@ -1,7 +1,7 @@
 //! Thin WebAssembly bindings for the host-independent geometry core.
 
 use mixo_geometry_core::mesh::{MeshError, MeshStore};
-use mixo_geometry_core::stl::{BinaryStlStream, StlError};
+use mixo_geometry_core::stl::{AsciiStlStream, BinaryStlStream, StlError};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
 #[wasm_bindgen]
@@ -31,6 +31,42 @@ pub struct WeldResult {
 #[wasm_bindgen]
 pub struct BinaryStlSession {
     stream: Option<BinaryStlStream>,
+}
+
+#[wasm_bindgen]
+pub struct AsciiStlSession {
+    stream: Option<AsciiStlStream>,
+}
+
+#[wasm_bindgen]
+impl AsciiStlSession {
+    #[wasm_bindgen(constructor)]
+    pub fn new(file_size: u32) -> Result<Self, JsValue> {
+        Ok(Self {
+            stream: Some(AsciiStlStream::new(file_size as usize).map_err(stl_error)?),
+        })
+    }
+
+    pub fn push(&mut self, chunk: &[u8]) -> Result<(), JsValue> {
+        self.stream
+            .as_mut()
+            .ok_or_else(|| coded_error("INVALID_HANDLE"))?
+            .push(chunk)
+            .map_err(stl_error)
+    }
+
+    pub fn finish(&mut self) -> Result<WeldResult, JsValue> {
+        let mesh = self
+            .stream
+            .take()
+            .ok_or_else(|| coded_error("INVALID_HANDLE"))?
+            .finish()
+            .map_err(stl_error)?;
+        Ok(WeldResult {
+            positions: mesh.positions,
+            indices: mesh.indices,
+        })
+    }
 }
 
 #[wasm_bindgen]

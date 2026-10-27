@@ -116,6 +116,32 @@ with sync_playwright() as playwright:
         )
         assert stl_import["indices"] == [0, 1, 2] and stl_import["vertices"] == 3, stl_import
         assert stl_import["center"][0:2] == [1, 1], stl_import
+        ascii_import = page.evaluate(
+            """async () => new Promise((resolve, reject) => {
+              const bytes = new TextEncoder().encode('solid x\\nvertex 0 0 0\\nvertex 2 0 0\\nvertex 0 0 2\\nendsolid x');
+              const worker = new Worker('/mixo-supports/src/workers/importWorker.ts', { type: 'module' });
+              const timer = setTimeout(() => { worker.terminate(); reject(new Error('ASCII STL import timed out')); }, 15000);
+              worker.onmessage = ({ data }) => {
+                if (data.type !== 'done' && data.type !== 'error') return;
+                clearTimeout(timer);
+                worker.terminate();
+                if (data.type === 'error') reject(new Error(data.message));
+                else resolve({ center: data.result[0].centred.center,
+                  indices: Array.from(data.result[0].mesh.indices),
+                  vertices: data.result[0].mesh.positions.length / 3 });
+              };
+              worker.onerror = event => {
+                clearTimeout(timer);
+                worker.terminate();
+                reject(new Error(event.message));
+              };
+              worker.postMessage({ id: 5, type: 'run', payload: {
+                kind: 'stl', name: 'wasm-ascii.stl', runtime: 'web', file: new Blob([bytes]),
+              }});
+            })"""
+        )
+        assert ascii_import["indices"] == [0, 1, 2] and ascii_import["vertices"] == 3, ascii_import
+        assert ascii_import["center"][0:2] == [1, 1], ascii_import
         invalid_import = page.evaluate(
             """async () => new Promise((resolve, reject) => {
               const worker = new Worker('/mixo-supports/src/workers/importWorker.ts', { type: 'module' });

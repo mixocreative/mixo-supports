@@ -1,5 +1,5 @@
 import type { TriangleMesh } from '../core/analysis/types';
-import { binaryStlTriangles, StlEmptyError, StlFormatError, StlWelder, stlKind } from '../core/import/stl';
+import { binaryStlTriangles, StlEmptyError, StlFormatError, stlKind } from '../core/import/stl';
 import { CodedError } from '../editing/errors';
 import { named } from '../state/import';
 import { geometryReady, type GeometryEngine } from './geometryClient';
@@ -20,34 +20,27 @@ function stlWasmError(error: unknown, name: string): Error {
 
 async function readStl(file: Blob, name: string, progress: Progress, engine: GeometryEngine): Promise<TriangleMesh> {
   const head = new Uint8Array(await file.slice(0, 84).arrayBuffer());
-  if (stlKind(head, file.size) === 'binary') {
-    const stream = named(name, () => new engine.BinaryStlSession(binaryStlTriangles(head, file.size)));
-    try {
-      for (let offset = 0; offset < file.size; offset += CHUNK_BYTES) {
-        progress(0.7 * offset / file.size, 'Reading file');
-        const chunk = new Uint8Array(await file.slice(offset, offset + CHUNK_BYTES).arrayBuffer());
-        try { stream.push(chunk); } catch (error) { throw stlWasmError(error, name); }
-      }
-      progress(0.7, 'Welding vertices');
-      let result;
-      try { result = stream.finish(); } catch (error) { throw stlWasmError(error, name); }
-      try {
-        return { positions: result.take_positions(), indices: result.take_indices() };
-      } finally {
-        result.free();
-      }
-    } finally {
-      stream.free();
+  const kind = stlKind(head, file.size);
+  const stream = named(name, () => kind === 'binary'
+    ? new engine.BinaryStlSession(binaryStlTriangles(head, file.size))
+    : new engine.AsciiStlSession(file.size));
+  try {
+    for (let offset = 0; offset < file.size; offset += CHUNK_BYTES) {
+      progress(0.7 * offset / file.size, 'Reading file');
+      const chunk = new Uint8Array(await file.slice(offset, offset + CHUNK_BYTES).arrayBuffer());
+      try { stream.push(chunk); } catch (error) { throw stlWasmError(error, name); }
     }
+    progress(0.7, 'Welding vertices');
+    let result;
+    try { result = stream.finish(); } catch (error) { throw stlWasmError(error, name); }
+    try {
+      return { positions: result.take_positions(), indices: result.take_indices() };
+    } finally {
+      result.free();
+    }
+  } finally {
+    stream.free();
   }
-  const welder = named(name, () => new StlWelder(head, file.size));
-  for (let offset = 0; offset < file.size; offset += CHUNK_BYTES) {
-    progress(0.7 * offset / file.size, 'Reading file');
-    const chunk = new Uint8Array(await file.slice(offset, offset + CHUNK_BYTES).arrayBuffer());
-    named(name, () => welder.push(chunk));
-  }
-  progress(0.7, 'Welding vertices');
-  return named(name, () => welder.finish());
 }
 
 /** STL reading and welding, glTF welding, display copies and pick indices, off the main thread. */
