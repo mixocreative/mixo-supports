@@ -1,5 +1,5 @@
-use crate::mesh::MeshError;
-use crate::weld::{VertexAccumulator, WeldedMesh};
+use crate::core::mesh::MeshError;
+use crate::core::weld::{VertexAccumulator, WeldedMesh};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum StlError {

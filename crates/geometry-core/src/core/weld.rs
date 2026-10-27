@@ -1,4 +1,4 @@
-use crate::mesh::MeshError;
+use crate::core::mesh::MeshError;
 use std::collections::HashMap;
 
 pub struct WeldedMesh {
@@ -112,7 +112,7 @@ fn js_int32(value: f64) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::weld_positions;
-    use crate::mesh::MeshError;
+    use crate::core::mesh::MeshError;
 
     const IDENTITY: [f64; 16] = [
         1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,

@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use crate::mesh::MeshError;
-use crate::weld::WeldedMesh;
+use crate::core::mesh::MeshError;
+use crate::core::weld::WeldedMesh;
 
 pub fn decimate_display(
     positions: &[f32],
@@ -120,7 +120,7 @@ fn cluster(
 #[cfg(test)]
 mod tests {
     use super::decimate_display;
-    use crate::mesh::MeshError;
+    use crate::core::mesh::MeshError;
 
     #[test]
     fn clusters_vertices_and_drops_degenerate_triangles() {

@@ -1,4 +1,4 @@
-use crate::mesh::{Bounds, MeshError};
+use crate::core::mesh::{Bounds, MeshError};
 
 pub struct Centering {
     pub center: [f64; 3],
@@ -33,7 +33,7 @@ pub fn center_positions(positions: &mut [f32]) -> Result<Centering, MeshError> {
 #[cfg(test)]
 mod tests {
     use super::center_positions;
-    use crate::mesh::MeshError;
+    use crate::core::mesh::MeshError;
 
     #[test]
     fn centers_in_place_and_returns_original_bounds() {

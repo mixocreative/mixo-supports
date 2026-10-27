@@ -1,7 +1,7 @@
 //! Thin WebAssembly bindings for the host-independent geometry core.
 
-use mixo_geometry_core::mesh::{MeshError, MeshStore};
-use mixo_geometry_core::stl::{AsciiStlStream, BinaryStlStream, StlError};
+use mixo_geometry_core::core::mesh::{MeshError, MeshStore};
+use mixo_geometry_core::core::stl::{AsciiStlStream, BinaryStlStream, StlError};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
 #[wasm_bindgen]
@@ -13,7 +13,7 @@ pub fn engine_version() -> u32 {
 #[wasm_bindgen]
 pub fn center_positions_in_place(positions: &mut [f32]) -> Result<Vec<f64>, JsValue> {
     let centered =
-        mixo_geometry_core::transform::center_positions(positions).map_err(mesh_error)?;
+        mixo_geometry_core::core::transform::center_positions(positions).map_err(mesh_error)?;
     Ok(centered
         .center
         .into_iter()
@@ -119,7 +119,7 @@ pub fn weld_positions_in_place(
     matrix: &[f64],
 ) -> Result<WeldResult, JsValue> {
     let welded =
-        mixo_geometry_core::weld::weld_positions(positions, indices, matrix).map_err(mesh_error)?;
+        mixo_geometry_core::core::weld::weld_positions(positions, indices, matrix).map_err(mesh_error)?;
     Ok(WeldResult {
         positions: welded.positions,
         indices: welded.indices,
@@ -134,7 +134,7 @@ pub fn decimate_display(
     max_triangles: u32,
 ) -> Result<WeldResult, JsValue> {
     let mesh =
-        mixo_geometry_core::decimate::decimate_display(positions, indices, max_triangles as usize)
+        mixo_geometry_core::core::decimate::decimate_display(positions, indices, max_triangles as usize)
             .map_err(mesh_error)?;
     Ok(WeldResult {
         positions: mesh.positions,

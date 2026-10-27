@@ -1,10 +1,9 @@
 //! Host-independent geometry engine. Geometry operations will migrate here.
 
-pub mod decimate;
-pub mod mesh;
-pub mod stl;
-pub mod transform;
-pub mod weld;
+pub mod core;
+pub mod dental;
+pub mod generic;
+pub mod supports;
 
 /// Version of the host/core request schema.
 pub fn engine_version() -> u32 {
