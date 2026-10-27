@@ -183,6 +183,7 @@ function readProps() {
     drawn: drawn.size,
     dropped: mesh ? mesh.dropped.length : -1,
     droppedDrawn: mesh ? mesh.dropped.filter((id) => drawn.has(id)).length : -1,
+    islands: mesh?.islands ? (mesh.islands.status === 'ok' ? { resolved: mesh.islands.islands.filter((i) => i.status === 'resolved').length, unresolved: mesh.islands.islands.filter((i) => i.status === 'unresolved').length, manualOnly: mesh.islands.islands.filter((i) => i.status === 'manual-only').length } : 'inconclusive') : undefined,
     dentalReviewGap: mesh?.dentalRimCoverage?.opening.reviewGapMm ?? -1,
     customised: unit ? Object.keys(unit.contactSettings).length : -1,
     active: out.scene?.activeUnitId,
@@ -985,8 +986,125 @@ async function walk(url, scratch, dentalFixture) {
   check('h no console errors or warnings', errors.length === 0, errors.length ? errors.slice(0, 3).join(' || ') : '0 messages');
 }
 
+
+// ---- locale walk ------------------------------------------------------------------------------
+// WALK_LOCALES=en,ja,zh-Hant node scripts/walk.mjs: instead of the English walk, one short pass per
+// language (generic Generate + Check on the knot, then the dental Steps 0-3 on the reference aligner
+// + Check), driven by the translated labels read from src/locales, with screenshots named
+// <lang>-<flow>-<step>.png in WALK_OUT. The full English walk stays the behaviour walk.
+
+/** The translator of one language, read from src/locales/<lang>.ts (English text is the key). */
+function translator(lang) {
+  if (lang === 'en') return (key) => key;
+  const source = readFileSync(path.join(ROOT, 'src', 'locales', `${lang}.ts`), 'utf8');
+  const unquote = (text) => text.replace(/\\(['\\])/g, '$1').replace(/\\n/g, '\n');
+  const table = new Map();
+  for (const m of source.matchAll(/^ {2}'((?:[^'\\]|\\.)*)':\s*'((?:[^'\\]|\\.)*)',\s*$/gm)) table.set(unquote(m[1]), unquote(m[2]));
+  return (key) => table.get(key) ?? key;
+}
+
+async function walkLocale(url, scratch, lang, dentalFixture) {
+  const tr = translator(lang);
+  const tag = (name) => `[${lang}] ${name}`;
+  const shot = (page, name) => page.screenshot({ path: path.join(scratch, `${lang}-${name}.png`) });
+  const context = await browser.newContext({ viewport: VIEWPORT, acceptDownloads: true });
+  await context.addInitScript((value) => { try { localStorage.setItem('mixo-supports.lang', value); } catch { /* storage off */ } }, lang);
+  const page = await context.newPage();
+  const errors = [];
+  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`${m.type()}: ${m.text()}`); });
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  const button = (key) => page.getByRole('button', { name: tr(key), exact: true }).first();
+  const badgeHas = (key, ms = 20000) => page.waitForFunction((word) => document.querySelector('.edit-badge')?.innerText.includes(word), tr(key), { timeout: ms });
+  const quiet = () => page.waitForFunction(() => !!document.querySelector('.job-activity')?.hidden, null, { timeout: 300000 });
+  const idle = (ms) => page.evaluate((span) => new Promise((resolve) => setTimeout(resolve, span)), ms);
+  try {
+    // Generic: knot -> Generate -> Check supports. The knot's island verdict is inconclusive (non-manifold tube).
+    await page.goto(url);
+    await page.setInputFiles('.drop input[type=file]', FIXTURE);
+    await page.waitForFunction(() => document.body.innerText.includes('knot'), null, { timeout: 60000 });
+    const htmlLang = await page.evaluate(() => document.documentElement.lang);
+    check(tag('g0 the page is in the language'), htmlLang === lang && (lang === 'en' || (await button('Aligner Support Production').count()) > 0), `html lang ${htmlLang}`);
+    await shot(page, 'generic-1-imported');
+    await page.locator('.panel.left .primary').first().click();
+    const countsText = tr('{auto} automatic, {manual} manual, {removed} removed');
+    // Literal text between the numbers (the separators differ by language); the counts are digits.
+    const generated = countsText.split(/\{(?:auto|manual|removed)\}/).map((part) => [...part].map((ch) => (/[A-Za-z0-9\s]/.test(ch) || ch.charCodeAt(0) > 127 ? ch : `\\${ch}`)).join('')).reduce((out, part, k) => out + (k === 0 ? '' : k === 1 ? '[1-9][\\d,]*' : '[\\d,]+') + part, '');
+    await page.waitForFunction((source) => new RegExp(source).test(document.querySelector('footer')?.innerText ?? ''), generated, { timeout: 600000 });
+    await quiet();
+    await idle(800);
+    await shot(page, 'generic-2-generated');
+    await page.evaluate(() => { window.__statuses = []; new MutationObserver(() => { const text = document.querySelector('footer strong')?.innerText ?? ''; if (text && window.__statuses.at(-1) !== text) window.__statuses.push(text); }).observe(document.querySelector('footer'), { subtree: true, childList: true, characterData: true }); });
+    // A Check pressed before the preview build lands says "did not finish" (never clean); press it again once the build is in.
+    const unfinished = tr('The check did not finish for 1 object: run it again.');
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      await button('Check for unsupported spots').click();
+      await idle(1500);
+      await quiet();
+      await idle(500);
+      if ((await page.evaluate(() => document.querySelector('footer strong')?.innerText ?? '')) !== unfinished) break;
+      note(`[${lang}] Check pressed before the build landed: "${unfinished}", pressing again`);
+      await idle(3000);
+    }
+    await page.waitForSelector('.problems li', { timeout: 300000 });
+    await quiet();
+    await idle(500);
+    const rows = await page.locator('.problems li').evaluateAll((items) => items.map((li) => ({ text: li.innerText, buttons: li.querySelectorAll('button').length })));
+    const unjudged = rows.find((row) => row.text.includes(tr('Could not judge islands on this mesh')));
+    const status = await page.evaluate(() => document.querySelector('footer strong')?.innerText ?? '');
+    check(tag('g1 Check lists "could not judge islands" for the knot, with no Show or Fix on it'), Boolean(unjudged) && unjudged.buttons === 0 && unjudged.text.includes(tr('This mesh has defects, such as edges shared by more than two faces, so no island is called supported. Repair the model, then check again.')), `rows ${rows.length}, first "${rows[0]?.text.replace(/\s+/g, ' ')}"`);
+    const said = status.includes(tr('Islands could not be judged on 1 object.')) || status.includes(tr('Islands could not be judged on 1 object: see Check supports.'));
+    check(tag('g2 the status line never says clean while islands are unjudged'), status !== tr('No unsupported spots found.') && said, `status "${status}"`);
+    await page.locator('.problems li').last().scrollIntoViewIfNeeded();
+    await shot(page, 'generic-3-problem-list');
+    note(`[${lang}] statuses after Check: ${JSON.stringify(await page.evaluate(() => window.__statuses))}`);
+    note(`[${lang}] problem rows: ${JSON.stringify(rows.map((row) => row.text.replace(/\s+/g, ' ')))}`);
+
+    // Dental: Step 0 -> 3 on the reference aligner, then Check.
+    const reference = dentalFixture ?? path.join(ROOT, 'docs', 'dental-reference', 'reference-aligner.stl');
+    await page.goto(url);
+    await button('Aligner Support Production').click();
+    await badgeHas('Step 0 · Aligner type');
+    await shot(page, 'dental-step0');
+    await page.locator('.dental-card').click();
+    await badgeHas('Step 1 · Aligner');
+    await shot(page, 'dental-step1');
+    await page.setInputFiles(`input[aria-label="${tr('Choose aligner file')}"]`, reference);
+    await badgeHas('Review the orientation. Turn the aligner with the gizmo if needed.', 180000);
+    await button('Next').click();
+    await badgeHas('Step 2 · Support area', 180000);
+    await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /[1-9]/.test(note.innerText)), null, { timeout: 240000 });
+    await idle(800);
+    await shot(page, 'dental-step2');
+    await button('Next').click();
+    await badgeHas('Step 3 · Supports', 240000);
+    await page.waitForFunction((ok) => { const b = [...document.querySelectorAll('button')].find((x) => x.innerText.trim() === ok); return b && !b.disabled; }, tr('OK'), { timeout: 300000 });
+    await quiet();
+    await idle(800);
+    await shot(page, 'dental-step3');
+    await page.locator('.dental-side').getByRole('button', { name: tr('Check for unsupported spots'), exact: true }).click();
+    const none = tr('No problems listed. Press Check supports to look for islands and overhangs.');
+    await idle(1500);
+    await quiet();
+    await page.waitForFunction((word) => document.querySelector('.dental-side .problems li') || document.querySelector('.dental-side')?.innerText.includes(word), none, { timeout: 120000 }).catch(() => {});
+    await idle(800);
+    const side = await page.locator('.dental-side').innerText();
+    const listed = await page.locator('.dental-side .problems li').evaluateAll((items) => items.map((li) => li.innerText.replace(/\s+/g, ' ')));
+    check(tag('d1 Step 3 Check ends in the problem list (rows) or the translated empty note'), listed.length > 0 || side.includes(none), `rows ${JSON.stringify(listed)}`);
+    const badge = (await page.locator('.edit-badge').innerText()).replace(/\s+/g, ' ');
+    check(tag('d2 Step 3 badge is in the language'), lang === 'en' ? badge.includes('Step 3 ·') : !badge.includes('Step 3 ·'), badge);
+    await page.locator('.dental-side .problems li').last().scrollIntoViewIfNeeded().catch(() => {});
+    note(`[${lang}] dental island verdict: ${JSON.stringify((await page.evaluate(readProps)).islands)}`);
+    await shot(page, 'dental-step3-problems');
+  } catch (error) {
+    check(tag('locale walk'), false, error.message);
+    await shot(page, 'error').catch(() => {});
+  }
+  check(tag('h no console errors or warnings'), errors.length === 0, errors.length ? errors.slice(0, 3).join(' || ') : '0 messages');
+  await context.close();
+}
+
 // WALK_OUT: where a run leaves its screenshots and files for review; ordinary passing runs remove them.
-const scratch = process.env.WALK_OUT ? (mkdirSync(path.resolve(process.env.WALK_OUT), { recursive: true }), mkdtempSync(path.join(path.resolve(process.env.WALK_OUT), 'run-'))) : mkdtempSync(path.join(tmpdir(), 'mixo-walk-'));
+const scratch = process.env.WALK_LOCALES && process.env.WALK_OUT ? (mkdirSync(path.resolve(process.env.WALK_OUT), { recursive: true }), path.resolve(process.env.WALK_OUT)) : process.env.WALK_OUT ? (mkdirSync(path.resolve(process.env.WALK_OUT), { recursive: true }), mkdtempSync(path.join(path.resolve(process.env.WALK_OUT), 'run-'))) : mkdtempSync(path.join(tmpdir(), 'mixo-walk-'));
 async function stopAll() {
   await browser?.close().catch(() => {});
   stopVite(vite);
@@ -1001,13 +1119,16 @@ try {
   await waitFor(url, vite);
   console.log(`walk on ${url}`);
   const dentalFixture = process.env.DENTAL_WALK_FIXTURE;
-  await walk(url, scratch, dentalFixture);
+  if (process.env.WALK_LOCALES) {
+    browser = await launch();
+    for (const lang of process.env.WALK_LOCALES.split(',').map((item) => item.trim()).filter(Boolean)) await walkLocale(url, scratch, lang, dentalFixture);
+  } else await walk(url, scratch, dentalFixture);
 } catch (error) {
   check('walk setup', false, error.message);
 } finally {
   await stopAll();
 }
 const failed = results.filter((r) => !r.ok).length;
-if (failed === 0 && !process.env.WALK_OUT) rmSync(scratch, { recursive: true, force: true });
+if (failed === 0 && !process.env.WALK_OUT && !process.env.WALK_LOCALES) rmSync(scratch, { recursive: true, force: true });
 console.log(`${failed === 0 ? 'ALL PASS' : `${failed} FAIL`} (${results.length} checks, ${Math.round((Date.now() - started) / 1000)} s)`);
 process.exit(failed === 0 ? 0 : 1);

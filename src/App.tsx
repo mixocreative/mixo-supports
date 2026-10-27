@@ -428,6 +428,9 @@ export default function App() {
         }));
         const items = [...islands, ...overhangs];
         setProblems((current) => new Map(current).set(unit.id, { unit, mesh, items }));
+        // No current build: the island verdict is not known yet, so this check is not complete (never clean);
+        // the re-check below runs once the build lands and lists what it finds.
+        if (!mesh) return undefined;
         const unjudged = items.filter((problem) => problem.kind === 'unjudged').length;
         const inZone = items.filter((problem) => problem.inZone).length;
         return { spots: items.length - inZone - unjudged, inZone, unjudged };
