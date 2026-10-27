@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-27T14:19:43.021Z",
+  "machine": {
+    "host": "DCT-QKQMSOSVEMM",
+    "cpu": "AMD Ryzen 9 9950X 16-Core Processor            ",
+    "cores": 32,
+    "memGb": 62,
+    "platform": "win32 10.0.26300",
+    "node": "v22.15.1"
+  },
+  "method": "median of 3 in-process runs (vite-node, Node, not a browser); sample 1 includes JIT warm-up",
+  "results": {
+    "import": {
+      "label": "import reference-aligner.stl (WASM stream + centre + pick index)",
+      "medianMs": 195.3,
+      "samplesMs": [
+        195.3,
+        235.6,
+        165
+      ],
+      "detail": {
+        "triangles": 373956,
+        "vertices": 186976
+      }
+    },
+    "dentalGenerate": {
+      "label": "aligner dental Generate (region + filter + runSupportJob)",
+      "medianMs": 12247.9,
+      "samplesMs": [
+        16871.1,
+        12247.9,
+        12231.6
+      ],
+      "detail": {
+        "contacts": 117,
+        "supportTriangles": 38032,
+        "dropped": 16
+      }
+    },
+    "knotGenerate": {
+      "label": "knot Generate (golden default: placement + preview mesh)",
+      "medianMs": 1440.1,
+      "samplesMs": [
+        1578.6,
+        1403,
+        1440.1
+      ],
+      "detail": {
+        "sourceTriangles": 1920,
+        "contacts": 150,
+        "supportTriangles": 48160
+      }
+    }
+  },
+  "brushP95": "measured in browser in U2 (screenBrush.ts needs camera + raycast, no pure headless function)"
+}
