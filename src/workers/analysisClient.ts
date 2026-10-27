@@ -1,6 +1,7 @@
 import type { SupportProblem } from '../core/analysis/supportCheck';
 import type { DentalRegionProposal } from '../core/analysis/dentalRegion';
 import type { DentalTuning } from '../core/analysis/dentalTuning';
+import type { DentalOrientation } from '../core/analysis/dentalOrient';
 import type { PlacementResult, TriangleMesh } from '../core/analysis/types';
 import type { CheckJob, DentalPlacementJob, PlacementJob } from '../core/jobs';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
@@ -60,6 +61,12 @@ export class AnalysisClient {
 
   dentalPlace(key: string, job: DentalPlacementJob, label: JobLabel): Promise<PlacementResult | undefined> {
     return this.submit(key, { kind: 'dental-place', job }, label).then((result) => (result?.kind === 'dental-placed' ? result.result : undefined));
+  }
+
+  /** Step 1 of the dental flow: orientation, opening and mesh check of a dropped aligner, off the main thread. */
+  dentalOrient(key: string, mesh: TriangleMesh, label: JobLabel): Promise<DentalOrientation | undefined> {
+    return this.submit(key, { kind: 'dental-orient', job: { mesh } }, label).then((result) =>
+      result?.kind === 'dental-orient-result' ? result.orientation : undefined);
   }
 
   dentalRegion(key: string, mesh: TriangleMesh, label: JobLabel): Promise<DentalRegionProposal | undefined> {

@@ -110,6 +110,18 @@ describe('analysis client', () => {
     await expect(pending).resolves.toEqual(region);
   });
 
+  it('orients a dropped aligner in a worker job on a copy of the model', async () => {
+    const { workers, create } = pool();
+    const client = new AnalysisClient(create, () => {}, 1);
+    const source = mesh();
+    const pending = client.dentalOrient('dental-orient:a', source, label);
+    expect(workers[0]!.received[0]!.payload.kind).toBe('dental-orient');
+    expect(workers[0]!.received[0]!.payload.job.mesh).not.toBe(source);
+    const orientation = { kind: 'failed' as const, reason: 'no-cavity', meshOk: true };
+    workers[0]!.done(0, { kind: 'dental-orient-result', orientation });
+    await expect(pending).resolves.toEqual(orientation);
+  });
+
   it('retunes an accepted dental region in a replaceable worker job', async () => {
     const { workers, create } = pool();
     const client = new AnalysisClient(create, () => {}, 1);
