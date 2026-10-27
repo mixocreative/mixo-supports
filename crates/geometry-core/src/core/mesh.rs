@@ -1,3 +1,4 @@
+use super::spatial::Bvh;
 use std::collections::BTreeMap;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -30,6 +31,8 @@ pub struct Bounds {
 struct Mesh {
     positions: Vec<f32>,
     indices: Vec<u32>,
+    /// Pick index, built on first use.
+    bvh: Option<Bvh>,
 }
 
 pub struct MeshStore {
@@ -81,7 +84,7 @@ impl MeshStore {
         let handle = self.next_id;
         self.next_id = self.next_id.checked_add(1).ok_or(MeshError::Capacity)?;
         self.used_bytes += bytes;
-        self.meshes.insert(handle, Mesh { positions, indices });
+        self.meshes.insert(handle, Mesh { positions, indices, bvh: None });
         Ok(handle)
     }
 
@@ -96,6 +99,28 @@ impl MeshStore {
             }
         }
         Ok(Bounds { min, max })
+    }
+
+    /// The mesh's raw arrays.
+    pub fn mesh_arrays(&self, handle: u32) -> Result<(&[f32], &[u32]), MeshError> {
+        let mesh = self.meshes.get(&handle).ok_or(MeshError::InvalidHandle)?;
+        Ok((&mesh.positions, &mesh.indices))
+    }
+
+    /// Builds the mesh's pick index if it has none yet.
+    pub fn ensure_pick_index(&mut self, handle: u32) -> Result<(), MeshError> {
+        let mesh = self.meshes.get_mut(&handle).ok_or(MeshError::InvalidHandle)?;
+        if mesh.bvh.is_none() {
+            mesh.bvh = Some(Bvh::build(&mesh.positions, &mesh.indices));
+        }
+        Ok(())
+    }
+
+    /// The mesh's arrays and its pick index (call `ensure_pick_index` first).
+    pub fn pick_view(&self, handle: u32) -> Result<(&[f32], &[u32], &Bvh), MeshError> {
+        let mesh = self.meshes.get(&handle).ok_or(MeshError::InvalidHandle)?;
+        let bvh = mesh.bvh.as_ref().ok_or(MeshError::InvalidHandle)?;
+        Ok((&mesh.positions, &mesh.indices, bvh))
     }
 
     pub fn release_mesh(&mut self, handle: u32) -> Result<(), MeshError> {
