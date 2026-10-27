@@ -1,9 +1,9 @@
-import type { TriangleMesh } from '../analysis/types';
-import type { GeneratedSupportMesh, SupportComponent } from './mesh';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
+import type { GeneratedSupportMesh, SupportComponent } from '../../../../src/core/supports/mesh';
 import { intersectingSupportComponents, supportBodyConflicts } from './bodyIntersection';
 import { isIntentionalContactReach } from './contactReach';
 import type { ModelCollisionIndex } from './modelCollisionIndex';
-import { contactRadius, defaultSupportSettings, tipDepth, type LiveSupportSettings } from './settings';
+import { contactRadius, defaultSupportSettings, tipDepth, type LiveSupportSettings } from '../../../../src/core/supports/settings';
 
 /** Dental policy: reject automatic pillar bodies, exempting only their marked landing-tip reach. */
 export function crossingAutomaticBodyContactIds(model: TriangleMesh, supports: GeneratedSupportMesh,

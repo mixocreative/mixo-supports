@@ -1,4 +1,4 @@
-import type { TriangleMesh } from './types';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
 
 export type DentalRimKind = 'outer' | 'opening';
 

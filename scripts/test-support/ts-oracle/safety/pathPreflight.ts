@@ -1,4 +1,4 @@
-import type { Vector } from '../vec3';
+import type { Vector } from '../../../../src/core/vec3';
 import type { ModelCollisionIndex } from './modelCollisionIndex';
 import { segmentTriangleHitParameter, type Triangle3D } from './triangleIntersection';
 

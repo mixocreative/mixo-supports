@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import type { ContactInputs, DentalPlacementJob, JobTransform, SupportJob } from '../core/jobs';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
@@ -9,7 +9,6 @@ import { dentalRegionAllowedOnFace } from '../core/analysis/dentalPolicy';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
 import { readFileSync } from 'node:fs';
 import { filterDentalPlacement, runSupportJob } from './jobRunner';
-import * as collisionIndex from '../core/supports/modelCollisionIndex';
 import { parseStl } from '../../scripts/test-support/rustImport';
 
 type V = [number, number, number];
@@ -82,20 +81,17 @@ describe('runSupportJob: dental secondary contacts', () => {
   const contacts: ContactInputs = { points: [point('auto-shelf', [0, 20, 0], [0, -1, 0])], manual: [],
     deleted: [], zones: [], contactSettings: {} };
 
-  it('builds one generic collision index for repeated dental body checks', () => {
+  it('returns the exact body-clearance verdict and the island report with the mesh (one generate call)', () => {
     const braceModel = boxes([[-20, 20, -20], [20, 24, 20]]);
     const manual: ContactInputs = { points: [], manual: [
-      point('left', [-10, 20, 0], [0, -1, 0]),
-      point('middle', [0, 20, 0], [0, -1, 0]),
-      point('right', [10, 20, 0], [0, -1, 0]),
+      point('manual-left', [-10, 20, 0], [0, -1, 0]),
+      point('manual-middle', [0, 20, 0], [0, -1, 0]),
+      point('manual-right', [10, 20, 0], [0, -1, 0]),
     ], deleted: [], zones: [], contactSettings: {} };
-    const buildIndex = vi.spyOn(collisionIndex, 'createModelCollisionIndex');
-    try {
-      runSupportJob({ ...job(braceModel, still, manual), dental });
-      expect(buildIndex).toHaveBeenCalledTimes(1);
-    } finally {
-      buildIndex.mockRestore();
-    }
+    const built = runSupportJob({ ...job(braceModel, still, manual), dental });
+    expect(built.verdict?.status).toBeDefined();
+    expect(built.islands?.status).toBe('ok');
+    expect(built.components.filter((component) => component.part === 'neck')).toHaveLength(3);
   });
 
   it('does not build automatic supports from a dental policy that cannot be reproduced from its STL', () => {

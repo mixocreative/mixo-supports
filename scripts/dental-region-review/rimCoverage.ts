@@ -1,1 +1,1 @@
-export { largestCircularGap } from '../../src/core/analysis/dentalRimCoverage';
+export { largestCircularGap } from '../test-support/ts-oracle/safety/dentalRimCoverage';

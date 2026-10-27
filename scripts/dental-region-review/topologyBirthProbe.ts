@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { topologyBirths } from '../../src/core/analysis/topologyBirths';
-import { checkSupports } from '../../src/core/analysis/supportCheck';
+import { topologyBirths } from '../test-support/ts-oracle/safety/topologyBirths';
+import { checkSupports } from '../test-support/ts-oracle/safety/supportCheck';
 import { parseStl } from '../test-support/rustImport';
 
 const file = process.argv[2];

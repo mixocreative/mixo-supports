@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TriangleMesh } from './types';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
 import { topologyBirths } from './topologyBirths';
 
 const mesh = (positions: number[], indices: number[]): TriangleMesh => ({

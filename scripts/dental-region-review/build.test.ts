@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { crossingAutomaticBodyContactIds } from '../../src/core/supports/dentalBodyClearance';
+import { crossingAutomaticBodyContactIds } from '../test-support/ts-oracle/safety/dentalBodyClearance';
 import { placementMatrix, transformPositions } from '../../src/core/transform';
 import { classifyDownwardFaces, faceOverhangLimit } from '../../src/core/analysis/mesh';
 import { applyTransform } from '../../src/state/transform';

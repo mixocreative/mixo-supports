@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { TriangleMesh } from '../analysis/types';
-import type { GeneratedSupportMesh, SupportPart } from './mesh';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
+import type { GeneratedSupportMesh, SupportPart } from '../../../../src/core/supports/mesh';
 import { createModelCollisionIndex } from './modelCollisionIndex';
-import { defaultSupportSettings } from './settings';
+import { defaultSupportSettings } from '../../../../src/core/supports/settings';
 import { reviewGenericBodyClearance } from './genericBodyClearance';
 
 const model: TriangleMesh = {

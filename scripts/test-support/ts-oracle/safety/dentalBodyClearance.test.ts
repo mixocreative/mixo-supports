@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { TriangleMesh } from '../analysis/types';
-import type { GeneratedSupportMesh, SupportPart } from './mesh';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
+import type { GeneratedSupportMesh, SupportPart } from '../../../../src/core/supports/mesh';
 import { crossingAutomaticBodyContactIds, crossingSupportStructureParts } from './dentalBodyClearance';
 import { createModelCollisionIndex } from './modelCollisionIndex';
 

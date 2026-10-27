@@ -1,10 +1,10 @@
-// FROZEN REFERENCE (SHIP-PLAN U0 decision D3): not wired to Generate; do not extend in TS. Ported to Rust supports/clearance in U7, then deleted.
-import type { TriangleMesh } from '../analysis/types';
-import type { GeneratedSupportMesh, SupportPart } from './mesh';
+// TEST-ONLY ORACLE (SHIP-PLAN U7): the frozen TS reference of the generic body-clearance review, ported to Rust `supports/safety/clearance.rs`.
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
+import type { GeneratedSupportMesh, SupportPart } from '../../../../src/core/supports/mesh';
 import { supportBodyConflicts } from './bodyIntersection';
 import { isIntentionalContactReach } from './contactReach';
 import { createModelCollisionIndex, type ModelCollisionIndex } from './modelCollisionIndex';
-import { contactRadius, tipDepth, type LiveSupportSettings } from './settings';
+import { contactRadius, tipDepth, type LiveSupportSettings } from '../../../../src/core/supports/settings';
 
 export interface GenericBodyIssue {
   part: SupportPart;

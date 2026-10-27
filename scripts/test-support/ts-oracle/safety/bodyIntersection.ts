@@ -1,8 +1,8 @@
-import type { TriangleMesh } from '../analysis/types';
-import type { GeneratedSupportMesh, SupportComponent } from './mesh';
-import { tipsOf } from './meshQuery';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
+import type { GeneratedSupportMesh, SupportComponent } from '../../../../src/core/supports/mesh';
+import { tipsOf } from '../../../../src/core/supports/meshQuery';
 import { createModelCollisionIndex, type CollisionBounds, type ModelCollisionIndex } from './modelCollisionIndex';
-import type { Vector } from '../vec3';
+import type { Vector } from '../../../../src/core/vec3';
 import { trianglesIntersect3D, type Triangle3D } from './triangleIntersection';
 
 export interface SupportBodyConflict {

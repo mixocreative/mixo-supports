@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { checkSupports } from './supportCheck';
-import type { TriangleMesh } from './types';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
 
 type Vector = [number, number, number];
 

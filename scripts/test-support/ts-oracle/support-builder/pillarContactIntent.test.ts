@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildSupportMesh, type SupportContact } from './mesh';
 import { defaultSupportSettings } from '../../../../src/core/supports/settings';
-import { crossingSupportStructureParts } from '../../../../src/core/supports/dentalBodyClearance';
+import { crossingSupportStructureParts } from '../safety/dentalBodyClearance';
 import type { TriangleMesh } from '../../../../src/core/analysis/types';
 
 describe('pillar neck contact provenance', () => {

@@ -7,7 +7,7 @@ import { buildSupportMesh as oracle } from '../../scripts/test-support/ts-oracle
 import { buildSupportMesh } from './rustSupports';
 
 /*
- * The production build (Rust, with the host's zone / landing-rule decisions) against the TS builder
+ * The Rust build (zones and a per-face landing mask as data) against the TS builder
  * it replaced (oracle), through the same options: rule 7 (indices, tags, dropped lists identical,
  * positions within 1e-5 mm) on the cases the Rust ABI alone cannot see: no-support zones, landing
  * rules, tips-only previews, trees blocked by either, and an Auto Tree Safe Distance.
@@ -34,7 +34,11 @@ type Options = { mode?: 'preview' | 'export'; model?: TriangleMesh; labelText?: 
 
 function same(contacts: SupportContact[], settings: LiveSupportSettings, options: Options): GeneratedSupportMesh {
   const ts = oracle(contacts, settings, options as never);
-  const rust = buildSupportMesh(contacts, settings, options as never);
+  // The production rule is data: the oracle's face predicate becomes a per-face mask.
+  const { landingAllowed, ...rest } = options;
+  const faces = options.model ? options.model.indices.length / 3 : 0;
+  const landingFaces = landingAllowed ? Uint8Array.from({ length: faces }, (_, face) => (landingAllowed({ faceIndex: face }) ? 1 : 0)) : undefined;
+  const rust = buildSupportMesh(contacts, settings, { ...rest, ...(landingFaces ? { landingFaces } : {}) } as never);
   expect(Array.from(rust.indices)).toEqual(Array.from(ts.indices));
   expect(rust.positions.length).toBe(ts.positions.length);
   const worst = ts.positions.reduce((m, v, i) => Math.max(m, Math.abs(v - rust.positions[i]!)), 0);

@@ -1,7 +1,7 @@
-import type { TriangleMesh } from '../analysis/types';
-import type { GeneratedSupportMesh } from './mesh';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
+import type { GeneratedSupportMesh } from '../../../../src/core/supports/mesh';
 import type { SupportBodyConflict } from './bodyIntersection';
-import { cross, distance, dot, length, normalize, subtract, type Vector } from '../vec3';
+import { cross, distance, dot, length, normalize, subtract, type Vector } from '../../../../src/core/vec3';
 
 export interface ContactReachLimits {
   radiusMm: number;

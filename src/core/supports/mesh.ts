@@ -1,5 +1,4 @@
 import type { TriangleMesh } from '../analysis/types';
-import type { DentalRimCoverage } from '../analysis/dentalRimCoverage';
 import type { Vector } from '../vec3';
 import type { ShapeOverride } from './settings';
 
@@ -70,6 +69,45 @@ export interface SupportComponent {
   contactIntent?: ContactIntent[];
 }
 
+/** One place where a built support crosses the model (Rust `review_body_clearance`). */
+export interface SupportIssue {
+  /** Owning contact; absent for a structure (brace, tree trunk, roof...). */
+  contactId?: string;
+  part: SupportPart;
+  /** Source face the support crosses. */
+  modelFace: number;
+  /** False: a contact end without face identity, which cannot be judged (inconclusive, not blocked). */
+  blocked: boolean;
+  origin: 'auto' | 'manual' | 'structural';
+}
+
+/** One verdict for both policies: a timeout or an unjudgeable crossing is `inconclusive`, never `clear`. */
+export interface SupportVerdict {
+  status: 'clear' | 'blocked' | 'inconclusive';
+  reason?: string;
+  issues: SupportIssue[];
+}
+
+/** Island verdict from the built-path graph: `resolved` only when verified supports reach the plate. */
+export type IslandReport =
+  | { status: 'ok'; islands: Array<{ height: number; vertex: number; status: 'resolved' | 'unresolved' | 'manual-only' }> }
+  | { status: 'inconclusive'; reason: string };
+
+export interface DentalRimCoverageItem {
+  perimeterMm: number;
+  retained: number;
+  maxGapMm: number;
+  /** This is a review trigger, not a clinical acceptance threshold. */
+  reviewGapMm: number;
+  needsReview: boolean;
+}
+
+export interface DentalRimCoverage {
+  outer: DentalRimCoverageItem;
+  opening: DentalRimCoverageItem;
+  needsReview: boolean;
+}
+
 export interface GeneratedSupportMesh extends TriangleMesh {
   parts: SupportPart[];
   components: SupportComponent[];
@@ -79,6 +117,10 @@ export interface GeneratedSupportMesh extends TriangleMesh {
   droppedByZones?: string[];
   /** Automatic columns omitted by an explicit pre-build route decision, when enabled. */
   droppedByPath?: string[];
+  /** Exact body-clearance verdict of the final mesh (`generate`); absent on a mesh not built by it. */
+  verdict?: SupportVerdict;
+  /** Islands of the model against the built supports (`generate`). */
+  islands?: IslandReport;
   /** Final built contacts on each dental rim; absent when the detector could not certify a contour. */
   dentalRimCoverage?: DentalRimCoverage;
   /** Requested dental structures omitted because their built geometry crossed the model. */

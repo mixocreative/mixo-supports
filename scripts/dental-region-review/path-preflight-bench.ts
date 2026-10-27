@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
-import { createModelCollisionIndex } from '../../src/core/supports/modelCollisionIndex';
-import { preflightSupportPath } from '../../src/core/supports/pathPreflight';
+import { createModelCollisionIndex } from '../test-support/ts-oracle/safety/modelCollisionIndex';
+import { preflightSupportPath } from '../test-support/ts-oracle/safety/pathPreflight';
 import { parseStl } from '../test-support/rustImport';
 
 const input = process.argv[2];

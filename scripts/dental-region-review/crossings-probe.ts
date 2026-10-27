@@ -1,6 +1,6 @@
 import '../test-support/useNodeEngine';
 import { readFileSync } from 'node:fs';
-import { crossingAutomaticBodyContactIds } from '../../src/core/supports/dentalBodyClearance';
+import { crossingAutomaticBodyContactIds } from '../test-support/ts-oracle/safety/dentalBodyClearance';
 import { buildDentalReview } from './build';
 import { diagnoseSupportCrossings } from './crossings';
 import { inverseTransformPoint, transformPoint } from '../../src/state/transform';
@@ -9,7 +9,7 @@ import { largestCircularGap } from './rimCoverage';
 import { sampleDiagnosticContourContacts } from '../../src/core/analysis/dentalContourContacts';
 import { defaultDentalContactFootprintSettings } from '../../src/core/analysis/dentalContactFootprint';
 import { unresolvedCircularArcs } from './phaseGap';
-import { selectDentalGapAlternates } from '../../src/core/analysis/dentalGapAlternates';
+import { selectDentalGapAlternates } from '../test-support/ts-oracle/safety/dentalGapAlternates';
 import { parseStl } from '../test-support/rustImport';
 
 const input = process.argv[2];

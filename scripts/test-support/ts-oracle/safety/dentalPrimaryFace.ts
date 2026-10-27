@@ -1,5 +1,5 @@
-import type { DiagnosticContourContact } from '../core/analysis/dentalContourContacts';
-import { dot, type Vector } from '../core/vec3';
+import type { DiagnosticContourContact } from '../../../../src/core/analysis/dentalContourContacts';
+import { dot, type Vector } from '../../../../src/core/vec3';
 
 const POSITION_TOLERANCE_MM = 0.03;
 const NORMAL_DOT_MINIMUM = 0.95;

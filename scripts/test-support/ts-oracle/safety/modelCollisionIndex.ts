@@ -1,5 +1,5 @@
-import type { TriangleMesh } from '../analysis/types';
-import { meshBounds } from './meshQuery';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
+import { meshBounds } from '../../../../src/core/supports/meshQuery';
 
 export interface CollisionBounds {
   minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number;

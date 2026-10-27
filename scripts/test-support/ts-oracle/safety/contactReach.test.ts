@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { TriangleMesh } from '../analysis/types';
-import type { GeneratedSupportMesh } from './mesh';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
+import type { GeneratedSupportMesh } from '../../../../src/core/supports/mesh';
 import type { SupportBodyConflict } from './bodyIntersection';
 import { isIntentionalContactReach } from './contactReach';
 

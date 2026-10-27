@@ -82,9 +82,8 @@ export interface BuildOptions {
   labelText?: string;
   /** No-support zones in plate space. */
   zones?: readonly ZoneStamp[];
-  /** Landing rule: per contact / per Auto Tree layout index, the column lands where the host rejects it (both empty: no rule). */
-  rejectedColumns?: readonly boolean[];
-  rejectedTrees?: readonly boolean[];
+  /** Low-level landing rule: one 0/1 per source face of `model`, where a support may land (absent: no rule). The policy form is `generate`. */
+  landingFaces?: Uint8Array;
 }
 
 export const CONTACT_STRIDE = 17;
@@ -135,12 +134,9 @@ export interface WasmSupportBuild {
 }
 
 interface Session {
-  build_supports(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number, landings: number, labelText: string, zones: Float64Array, rejectedColumns: Uint8Array, rejectedTrees: Uint8Array): {
+  build_supports(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number, landings: number, labelText: string, zones: Float64Array, landingFaces: Uint8Array): {
     take_positions(): Float32Array; take_indices(): Uint32Array; take_tags(): Uint32Array;
     take_reach(): Float64Array; take_intents(): Float64Array; take_dropped(): Uint32Array; take_dropped_by_zones(): Uint32Array; free(): void;
-  };
-  probe_landings(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number, landings: number): {
-    take_landings(): Float64Array; tree_count(): number; free(): void;
   };
   cast_down(model: number, from: Float64Array, length: number): Float64Array;
 }
@@ -149,45 +145,47 @@ interface Engine {
   support_settings_layout(): string[];
 }
 
+/** Decodes the per-component tag tables of the Rust build (layout in `supports/flat.rs`); `idOf` names a contact by its index in the build input. */
+export function decodeComponents(tags: Uint32Array, reach: Float64Array, intents: Float64Array, idOf: (contact: number) => string): TaggedComponent[] {
+  const components: TaggedComponent[] = [];
+  for (let k = 0; k < reach.length; k += 1) {
+    const t = k * 8;
+    const contact = tags[t + 2]!;
+    const origin = tags[t + 3]!;
+    const intentStart = tags[t + 6]! * 9;
+    const intentCount = tags[t + 7]!;
+    components.push({
+      part: PARTS[tags[t]!]!,
+      ...(contact === NO_CONTACT ? {} : { contactId: idOf(contact) }),
+      ...(origin === 0 ? {} : { origin: origin === 2 ? 'manual' as const : 'auto' as const }),
+      start: tags[t + 4]!,
+      count: tags[t + 5]!,
+      ...(Number.isNaN(reach[k]!) ? {} : { landingReach: reach[k]! }),
+      ...(intentCount === 0 ? {} : {
+        contactIntent: Array.from({ length: intentCount }, (_, j): ContactIntent => {
+          const o = intentStart + j * 9;
+          const face = intents[o + 2]!;
+          const point = [intents[o + 3]!, intents[o + 4]!, intents[o + 5]!] as Vector;
+          const normal = [intents[o + 6]!, intents[o + 7]!, intents[o + 8]!] as Vector;
+          return intents[o] === 1
+            ? { kind: 'primary', contactId: idOf(intents[o + 1]!), point, normal, ...(face < 0 ? {} : { faceIndex: face }) }
+            : { kind: 'secondary', point, normal, ...(face < 0 ? {} : { faceIndex: face }) };
+        }),
+      }),
+      // Key order follows the TS builder so serialised tags compare equal.
+      ...(tags[t + 1] === 1 ? { structureKind: 'tree' as const } : {}),
+    });
+  }
+  return components;
+}
+
 export function buildSupportsWasm(session: unknown, contacts: readonly ColumnInput[], settings: Readonly<LiveSupportSettings>, mode: 'preview' | 'export', options: BuildOptions = {}): WasmSupportBuild {
   const wasm = session as Session;
   const packed = packContacts(contacts);
-  const flags = (rejected: readonly boolean[] | undefined) => Uint8Array.from(rejected ?? [], (r) => (r ? 1 : 0));
   const result = wasm.build_supports(options.model ?? NO_MODEL, contacts.map((c) => c.id), packed.contacts, packed.shapes, packSettings(settings), mode === 'export' ? 1 : 0,
-    options.landings === 'model' ? 0 : 2, options.labelText ?? '', packZones(options.zones ?? []), flags(options.rejectedColumns), flags(options.rejectedTrees));
+    options.landings === 'model' ? 0 : 2, options.labelText ?? '', packZones(options.zones ?? []), options.landingFaces ?? new Uint8Array());
   try {
-    const tags = result.take_tags();
-    const reach = result.take_reach();
-    const intents = result.take_intents();
-    const components: TaggedComponent[] = [];
-    for (let k = 0; k < reach.length; k += 1) {
-      const t = k * 8;
-      const contact = tags[t + 2]!;
-      const origin = tags[t + 3]!;
-      const intentStart = tags[t + 6]! * 9;
-      const intentCount = tags[t + 7]!;
-      components.push({
-        part: PARTS[tags[t]!]!,
-        ...(contact === NO_CONTACT ? {} : { contactId: contacts[contact]!.id }),
-        ...(origin === 0 ? {} : { origin: origin === 2 ? 'manual' as const : 'auto' as const }),
-        start: tags[t + 4]!,
-        count: tags[t + 5]!,
-        ...(Number.isNaN(reach[k]!) ? {} : { landingReach: reach[k]! }),
-        ...(intentCount === 0 ? {} : {
-          contactIntent: Array.from({ length: intentCount }, (_, j): ContactIntent => {
-            const o = intentStart + j * 9;
-            const face = intents[o + 2]!;
-            const point = [intents[o + 3]!, intents[o + 4]!, intents[o + 5]!] as Vector;
-            const normal = [intents[o + 6]!, intents[o + 7]!, intents[o + 8]!] as Vector;
-            return intents[o] === 1
-              ? { kind: 'primary', contactId: contacts[intents[o + 1]!]!.id, point, normal, ...(face < 0 ? {} : { faceIndex: face }) }
-              : { kind: 'secondary', point, normal, ...(face < 0 ? {} : { faceIndex: face }) };
-          }),
-        }),
-        // Key order follows the TS builder so serialised tags compare equal.
-        ...(tags[t + 1] === 1 ? { structureKind: 'tree' as const } : {}),
-      });
-    }
+    const components = decodeComponents(result.take_tags(), result.take_reach(), result.take_intents(), (k) => contacts[k]!.id);
     return { positions: result.take_positions(), indices: result.take_indices(), components, dropped: Array.from(result.take_dropped()), droppedByZones: Array.from(result.take_dropped_by_zones()) };
   } finally {
     result.free();
@@ -203,23 +201,4 @@ export function engineSettingsLayout(engine: unknown): string[] {
 export function castDownWasm(session: unknown, model: number, from: readonly Vector[], length: number): ({ faceIndex: number; y: number; normal: Vector } | undefined)[] {
   const out = (session as Session).cast_down(model, Float64Array.from(from.flat()), length);
   return from.map((_, k) => out[k * 5]! < 0 ? undefined : { faceIndex: out[k * 5]!, y: out[k * 5 + 1]!, normal: [out[k * 5 + 2]!, out[k * 5 + 3]!, out[k * 5 + 4]!] });
-}
-
-/** Where each column (contact order) and each Auto Tree (layout order) lands, for a host landing rule; `face` is the exact source face, `point` the exact hit there. */
-export interface ProbedLanding { face?: number; point: Vector }
-
-export function probeLandingsWasm(session: unknown, contacts: readonly ColumnInput[], settings: Readonly<LiveSupportSettings>, mode: 'preview' | 'export', model: number): { columns: (ProbedLanding | undefined)[]; trees: (ProbedLanding | undefined)[] } {
-  const packed = packContacts(contacts);
-  const result = (session as Session).probe_landings(model, contacts.map((c) => c.id), packed.contacts, packed.shapes, packSettings(settings), mode === 'export' ? 1 : 0, 2);
-  try {
-    const flat = result.take_landings();
-    const trees = result.tree_count();
-    const all = Array.from({ length: flat.length / 5 }, (_, k): ProbedLanding | undefined => {
-      const o = k * 5;
-      return flat[o] === 0 ? undefined : { ...(flat[o + 1]! < 0 ? {} : { face: flat[o + 1]! }), point: [flat[o + 2]!, flat[o + 3]!, flat[o + 4]!] };
-    });
-    return { columns: all.slice(0, all.length - trees), trees: all.slice(all.length - trees) };
-  } finally {
-    result.free();
-  }
 }

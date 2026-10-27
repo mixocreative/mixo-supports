@@ -1,4 +1,4 @@
-import initWasm, { AsciiStlSession, BinaryStlSession, body_segments, build_pick_index, center_positions_in_place, decimate_display, dental_contour_segments, dental_face_overlay, dental_footprint, dental_pose, dental_profile_ids, dental_sample_contacts, dental_side_bands, engine_version, GeometrySession, inspect_dental_opening, invert_matrix, manual_dental_area, manual_dental_area_from_stamps, orient_dental, placement_matrix, propose_dental_orientation, propose_dental_region, refine_for_overlay, retune_dental_region, transform_positions, transform_vectors, vertex_normals, weld_positions_in_place, generic_policy_contacts, position_ids, remap_deleted_ids, hiding_removal_ids, contacts_hidden_by_marker_ids, rekey_contact_ids, rekey_hand_work } from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm.js';
+import initWasm, { AsciiStlSession, BinaryStlSession, body_segments, build_pick_index, center_positions_in_place, decimate_display, dental_contour_segments, dental_face_overlay, dental_footprint, dental_pose, dental_profile_ids, dental_sample_contacts, dental_side_bands, engine_version, GeometrySession, inspect_dental_opening, invert_matrix, manual_dental_area, manual_dental_area_from_stamps, orient_dental, placement_matrix, propose_dental_orientation, propose_dental_region, refine_for_overlay, retune_dental_region, transform_positions, transform_vectors, vertex_normals, weld_positions_in_place, generic_policy_contacts, position_ids, remap_deleted_ids, hiding_removal_ids, contacts_hidden_by_marker_ids, rekey_contact_ids, rekey_hand_work, PolicyData, check_support_problems, contour_perimeter } from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm.js';
 import wasmUrl from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm_bg.wasm?url';
 import { setDentalEngine } from '../core/analysis/dentalEngine';
 import { setTransformEngine } from '../state/transformEngine';
@@ -46,6 +46,10 @@ export interface GeometryEngine {
   contacts_hidden_by_marker_ids: typeof contacts_hidden_by_marker_ids;
   rekey_contact_ids: typeof rekey_contact_ids;
   rekey_hand_work: typeof rekey_hand_work;
+  /* U7 shared safety engine: `GeometrySession.generate` takes a PolicyData; the support check and the contour length. A missing entry here breaks the walk, not the unit tests. */
+  PolicyData: typeof PolicyData;
+  check_support_problems: typeof check_support_problems;
+  contour_perimeter: typeof contour_perimeter;
 }
 
 let ready: Promise<GeometryEngine> | undefined;
@@ -78,7 +82,7 @@ export function sharedSession(): GeometrySession | undefined {
 export function geometryReady(): Promise<GeometryEngine> {
   ready ??= initWasm({ module_or_path: wasmUrl }).then(() => {
     assertGeometryVersion(engine_version());
-    loaded = { engine_version, GeometrySession, center_positions_in_place, weld_positions_in_place, decimate_display, BinaryStlSession, AsciiStlSession, body_segments, build_pick_index, dental_contour_segments, dental_face_overlay, dental_footprint, dental_pose, dental_profile_ids, dental_sample_contacts, dental_side_bands, inspect_dental_opening, invert_matrix, manual_dental_area, manual_dental_area_from_stamps, orient_dental, placement_matrix, propose_dental_orientation, propose_dental_region, refine_for_overlay, retune_dental_region, transform_positions, transform_vectors, vertex_normals, generic_policy_contacts, position_ids, remap_deleted_ids, hiding_removal_ids, contacts_hidden_by_marker_ids, rekey_contact_ids, rekey_hand_work };
+    loaded = { engine_version, GeometrySession, center_positions_in_place, weld_positions_in_place, decimate_display, BinaryStlSession, AsciiStlSession, body_segments, build_pick_index, dental_contour_segments, dental_face_overlay, dental_footprint, dental_pose, dental_profile_ids, dental_sample_contacts, dental_side_bands, inspect_dental_opening, invert_matrix, manual_dental_area, manual_dental_area_from_stamps, orient_dental, placement_matrix, propose_dental_orientation, propose_dental_region, refine_for_overlay, retune_dental_region, transform_positions, transform_vectors, vertex_normals, generic_policy_contacts, position_ids, remap_deleted_ids, hiding_removal_ids, contacts_hidden_by_marker_ids, rekey_contact_ids, rekey_hand_work, PolicyData, check_support_problems, contour_perimeter };
     setTransformEngine(loaded);
     setSupportEngine(loaded);
     setDentalEngine(loaded);

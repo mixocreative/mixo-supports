@@ -1,4 +1,5 @@
-import { checkSupports, type SupportProblem } from '../core/analysis/supportCheck';
+import type { SupportProblem } from '../core/analysis/supportCheck';
+import { checkSupportProblems } from '../supports/checkSupports';
 import { placeGeneric } from '../supports/genericPlacement';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import { placeImportedUnits } from '../state/import';
@@ -120,7 +121,7 @@ function generate(unit: PrintUnit, settings: LiveSupportSettings) {
 /** Support check problems (App: runCheck), in the checked frame. */
 function check(unit: PrintUnit, built: GeneratedSupportMesh, settings: LiveSupportSettings, orientation: ModelTransform, keep: (index: number) => boolean) {
   const contacts = unitContacts(unit, built).filter((_, index) => keep(index)).map((contact) => transformPoint(orientation, contact.position));
-  const problems = checkSupports(applyTransform(unit.source, orientation), contacts, { overhangAngleDegrees: settings.scatterAngle, spacing: settings.scatterSpacing });
+  const problems = checkSupportProblems(applyTransform(unit.source, orientation), contacts, { overhangAngleDegrees: settings.scatterAngle, spacing: settings.scatterSpacing });
   return problems.map((problem: SupportProblem) => ({ kind: problem.kind, position: roundVector(problem.position), area: round(problem.area) }));
 }
 

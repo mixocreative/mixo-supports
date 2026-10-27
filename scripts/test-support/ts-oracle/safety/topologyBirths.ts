@@ -1,4 +1,4 @@
-import type { TriangleMesh } from './types';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
 
 export type TopologyBirthResult =
   | { status: 'ok'; births: Array<{ height: number; vertex: number; plateauVertices: number[] }> }

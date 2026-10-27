@@ -1,4 +1,4 @@
-import { cross, dot, subtract, type Vector } from '../vec3';
+import { cross, dot, subtract, type Vector } from '../../../../src/core/vec3';
 
 export type Triangle3D = readonly [Vector, Vector, Vector];
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { DentalPolicy } from '../core/analysis/dentalPolicy';
-import type { TriangleMesh } from '../core/analysis/types';
-import type { JobTransform } from '../core/jobs';
+import type { DentalPolicy } from '../../../../src/core/analysis/dentalPolicy';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
+import type { JobTransform } from '../../../../src/core/jobs';
 import { dentalSecondaryLandingOnApprovedSide } from './dentalLandingSide';
 
 const frame: JobTransform = { position: [0, 0, 0], rotation: [0, 0, 0] };

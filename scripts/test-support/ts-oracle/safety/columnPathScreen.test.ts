@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../../../../src/core/analysis/types';
 import { createModelCollisionIndex } from './modelCollisionIndex';
 import type { SupportRoute } from './supportRoute';
 import { screenColumnRoutes } from './columnPathScreen';

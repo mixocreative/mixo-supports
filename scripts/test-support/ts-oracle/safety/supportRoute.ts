@@ -1,4 +1,4 @@
-import type { Vector } from '../vec3';
+import type { Vector } from '../../../../src/core/vec3';
 
 /** Proposed tube centre-line in the builder's plate-space millimetre frame. */
 export interface SupportRoute {

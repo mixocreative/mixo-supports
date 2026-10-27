@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { proposeDentalOrientation } from '../../src/core/analysis/dental';
 import { sampleDiagnosticContourContacts } from '../../src/core/analysis/dentalContourContacts';
-import { contourPerimeter } from '../../src/core/analysis/dentalRimCoverage';
+import { contourPerimeter } from '../test-support/ts-oracle/safety/dentalRimCoverage';
 import { positionId } from '../test-support/ts-oracle/placement/placement';
 import { defaultSupportSettings } from '../../src/core/supports/settings';
 import { runSupportJob } from '../../src/supports/jobRunner';

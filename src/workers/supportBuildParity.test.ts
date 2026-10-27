@@ -60,12 +60,12 @@ describe('engine contract', () => {
     expect(run({ ...base, roofMode: 'CAGE' })).toContain('cage-ring');
   });
 
-  it('rejects malformed host input (landing-rule flag shapes) with typed errors', () => {
+  it('rejects a landing mask that does not match the model with a typed error', () => {
     const contacts = [{ id: 'a', position: [0, 8, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number], origin: 'auto' as const }];
     const settings = withStructures({ ...defaultSupportSettings, roofSeededModes: [] });
     const run = (options: Parameters<typeof buildSupportsWasm>[4]) => () => withRustModel(sample(), (session, model) => buildSupportsWasm(session, contacts, settings, 'export', { model, ...options }));
-    expect(run({ rejectedColumns: [true, false] })).toThrowError(expect.objectContaining({ code: 'BAD_INPUT' }));
-    expect(run({ rejectedColumns: [true] })).not.toThrow();
+    expect(run({ landingFaces: new Uint8Array(1) })).toThrowError(expect.objectContaining({ code: 'BAD_INPUT' }));
+    expect(run({})).not.toThrow();
   });
 
   it('rejects a setting outside its validated range with a typed error', () => {
