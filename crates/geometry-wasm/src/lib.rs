@@ -22,6 +22,38 @@ pub fn center_positions_in_place(positions: &mut [f32]) -> Result<Vec<f64>, JsVa
 }
 
 #[wasm_bindgen]
+pub struct WeldResult {
+    positions: Vec<f32>,
+    indices: Vec<u32>,
+}
+
+#[wasm_bindgen]
+impl WeldResult {
+    pub fn take_positions(&mut self) -> Vec<f32> {
+        std::mem::take(&mut self.positions)
+    }
+
+    pub fn take_indices(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.indices)
+    }
+}
+
+/// Transforms and welds one raw mesh; empty indices mean sequential corners.
+#[wasm_bindgen]
+pub fn weld_positions_in_place(
+    positions: &mut [f32],
+    indices: &[u32],
+    matrix: &[f64],
+) -> Result<WeldResult, JsValue> {
+    let welded =
+        mixo_geometry_core::weld::weld_positions(positions, indices, matrix).map_err(mesh_error)?;
+    Ok(WeldResult {
+        positions: welded.positions,
+        indices: welded.indices,
+    })
+}
+
+#[wasm_bindgen]
 pub struct GeometrySession {
     store: MeshStore,
 }

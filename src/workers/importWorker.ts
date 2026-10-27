@@ -1,9 +1,9 @@
 import type { TriangleMesh } from '../core/analysis/types';
 import { StlWelder } from '../core/import/stl';
-import { named, weldRawMesh } from '../state/import';
+import { named } from '../state/import';
 import { geometryReady } from './geometryClient';
 import type { ImportTask, PreparedMesh } from './importProtocol';
-import { buffers, centerImportedWithWasm, prepare, type Progress } from './prepareImport';
+import { buffers, centerImportedWithWasm, prepare, weldRawWithWasm, type Progress } from './prepareImport';
 import { serveTask, transferable } from './serveTask';
 
 /** A File is read in slices this big, so the whole file never sits in memory at once. */
@@ -41,7 +41,7 @@ serveTask<ImportTask, PreparedMesh[]>(async (task, { progress: post }) => {
     const share = 1 / task.meshes.length;
     prepared = task.meshes.map((raw, k) => {
       progress(k * share, 'Welding vertices');
-      return prepare(weldRawMesh(raw), task.runtime, progress, (k + 0.5) * share, (k + 1) * share, center);
+      return prepare(weldRawWithWasm(raw, engine), task.runtime, progress, (k + 0.5) * share, (k + 1) * share, center);
     });
   }
   progress(1, 'Done');

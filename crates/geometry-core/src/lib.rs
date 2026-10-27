@@ -2,6 +2,7 @@
 
 pub mod mesh;
 pub mod transform;
+pub mod weld;
 
 /// Version of the host/core request schema.
 pub fn engine_version() -> u32 {

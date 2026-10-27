@@ -8,7 +8,8 @@ const packageFile = fileURLToPath(packagePath);
 assert.ok(existsSync(packageFile), 'Node WASM package must be built before its smoke test');
 
 const require = createRequire(import.meta.url);
-const { engine_version: engineVersion, GeometrySession, center_positions_in_place: centerPositionsInPlace } = require(packageFile);
+const { engine_version: engineVersion, GeometrySession, center_positions_in_place: centerPositionsInPlace,
+  weld_positions_in_place: weldPositionsInPlace } = require(packageFile);
 assert.equal(engineVersion(), 1, 'Node WASM and host must agree on the geometry schema');
 
 const shifted = new Float32Array([8, -2, 4, 12, 4, 6]);
@@ -18,6 +19,18 @@ const invalidCenter = new Float32Array([1, NaN, 3]);
 assert.throws(() => centerPositionsInPlace(invalidCenter), { code: 'NON_FINITE' });
 assert.equal(invalidCenter[0], 1);
 assert.ok(Number.isNaN(invalidCenter[1]));
+
+const weldInput = new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 0]);
+const welded = weldPositionsInPlace(weldInput, new Uint32Array([2, 1, 0]),
+  new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 3, 0, 0, 1]));
+assert.deepEqual(Array.from(weldInput), [3, 0, 0, 4, 0, 0, 3, 0, 0]);
+assert.deepEqual(Array.from(welded.take_positions()), [3, 0, 0, 4, 0, 0]);
+assert.deepEqual(Array.from(welded.take_indices()), [0, 1, 0]);
+welded.free();
+assert.throws(() => weldPositionsInPlace(new Float32Array([0, 0, 0]), new Uint32Array([1, 1, 1]),
+  new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])), { code: 'INVALID_INDEX' });
+assert.throws(() => weldPositionsInPlace(new Float32Array([1, 0, 0]), new Uint32Array(),
+  new Float64Array([1e40, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])), { code: 'NON_FINITE' });
 
 const session = new GeometrySession(48);
 const handle = session.load_mesh(

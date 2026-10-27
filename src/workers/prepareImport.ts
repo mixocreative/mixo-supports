@@ -3,12 +3,30 @@ import { MeshBVH } from 'three-mesh-bvh';
 import type { TriangleMesh } from '../core/analysis/types';
 import { assertTriangleCapacity, meshTier, TRIANGLE_BUDGET, type Runtime } from '../core/budget';
 import { decimate } from '../core/decimate';
-import type { ImportedMesh } from '../state/import';
+import type { ImportedMesh, RawMesh } from '../state/import';
+import { CodedError } from '../editing/errors';
 import type { SerializedBvh } from '../state/meshExtras';
 import type { PreparedMesh } from './importProtocol';
 import type { GeometryEngine } from './geometryClient';
 
 export type Progress = (fraction: number, stage: string) => void;
+
+/** Bulk glTF position transform and first-seen weld, preserving the existing import result. */
+export function weldRawWithWasm(raw: RawMesh, engine: GeometryEngine): ImportedMesh {
+  try {
+    const result = engine.weld_positions_in_place(raw.positions, raw.indices ?? new Uint32Array(), new Float64Array(raw.matrix));
+    try {
+      return { name: raw.name, mesh: { positions: result.take_positions(), indices: result.take_indices() } };
+    } finally {
+      result.free();
+    }
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code === 'NON_FINITE') {
+      throw new CodedError('non-finite', `${raw.name} has vertex coordinates that are not finite numbers (NaN or infinity); repair or re-export the model`);
+    }
+    throw error;
+  }
+}
 
 /** The import worker uses this bulk WASM operation; no per-vertex JS/WASM calls. */
 export function centerImportedWithWasm(item: ImportedMesh, engine: GeometryEngine): ImportedMesh {

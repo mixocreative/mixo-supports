@@ -63,7 +63,8 @@ with sync_playwright() as playwright:
                 worker.terminate();
                 if (data.type === 'error') reject(new Error(data.message));
                 else resolve({ center: data.result[0].centred.center,
-                  positions: Array.from(data.result[0].mesh.positions) });
+                  positions: Array.from(data.result[0].mesh.positions),
+                  indices: Array.from(data.result[0].mesh.indices) });
               };
               worker.onerror = (event) => {
                 clearTimeout(timer);
@@ -73,14 +74,39 @@ with sync_playwright() as playwright:
               worker.postMessage({ id: 2, type: 'run', payload: {
                 kind: 'weld', runtime: 'web', meshes: [{
                   name: 'wasm-center',
-                  positions: new Float32Array([8, -2, 4, 12, -2, 4, 8, 4, 4]),
+                  positions: new Float32Array([8, -2, 4, 12, -2, 4, 8, 4, 4, 8, -2, 4]),
+                  indices: new Uint32Array([0, 1, 2, 3, 1, 2]),
+                  matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+                }],
+              }});
+            })"""
+        )
+        assert import_result == {"center": [10, 1, 4], "positions": [-2, -3, 0, 2, -3, 0, -2, 3, 0], "indices": [0, 1, 2, 0, 1, 2]}, import_result
+        invalid_import = page.evaluate(
+            """async () => new Promise((resolve, reject) => {
+              const worker = new Worker('/mixo-supports/src/workers/importWorker.ts', { type: 'module' });
+              const timer = setTimeout(() => { worker.terminate(); reject(new Error('invalid import timed out')); }, 15000);
+              worker.onmessage = ({ data }) => {
+                if (data.type !== 'done' && data.type !== 'error') return;
+                clearTimeout(timer);
+                worker.terminate();
+                resolve({ type: data.type, code: data.code });
+              };
+              worker.onerror = (event) => {
+                clearTimeout(timer);
+                worker.terminate();
+                reject(new Error(event.message));
+              };
+              worker.postMessage({ id: 3, type: 'run', payload: {
+                kind: 'weld', runtime: 'web', meshes: [{
+                  name: 'invalid', positions: new Float32Array([NaN, 0, 0, 1, 0, 0, 0, 1, 0]),
                   indices: new Uint32Array([0, 1, 2]),
                   matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
                 }],
               }});
             })"""
         )
-        assert import_result == {"center": [10, 1, 4], "positions": [-2, -3, 0, 2, -3, 0, -2, 3, 0]}, import_result
+        assert invalid_import == {"type": "error", "code": "non-finite"}, invalid_import
         print("browser WASM version and mesh session: PASS")
     finally:
         browser.close()
