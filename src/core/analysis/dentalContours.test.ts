@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { placementMatrix, transformPositions } from '../transform';
-import { inspectDentalCentralOpening, proposeDentalContours } from './dentalContours';
+import { inspectDentalCentralOpening } from './dentalContours';
 import { proposeDentalOrientation } from './dental';
 import { proposeDentalSupportRegion } from './dentalRegion';
 import { parseStl } from '../../../scripts/test-support/rustImport';
@@ -11,27 +11,24 @@ const reference = () => {
   return parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
 };
 
-describe('proposeDentalContours', () => {
-  it('returns the existing exact edge sets without depending on face-region classification', () => {
+describe('dental contours (Rust propose_dental_region)', () => {
+  it('finds the same exact edge sets after rotating the input mesh', () => {
     const mesh = reference();
-    const expected = proposeDentalSupportRegion(mesh);
-    const contours = proposeDentalContours(mesh);
-    expect(expected.kind).toBe('proposal');
+    const contours = proposeDentalSupportRegion(mesh);
     expect(contours.kind).toBe('proposal');
-    if (expected.kind !== 'proposal' || contours.kind !== 'proposal') return;
-    expect(contours.outerEdges).toEqual(expected.outerEdges);
-    expect(contours.outerRidgeEdges).toEqual(expected.outerRidgeEdges);
-    expect(contours.outerConnectorEdges).toEqual(expected.outerConnectorEdges);
-    expect(contours.openingEdges).toEqual(expected.openingEdges);
+    if (contours.kind !== 'proposal') return;
+    expect(contours.outerEdges.length / 2).toBe(2665);
+    expect(contours.openingEdges.length / 2).toBe(339);
     const rotated = { ...mesh, positions: transformPositions(mesh.positions,
       placementMatrix({ position: [0, 0, 0], rotation: [1.1, -2.2, 0.7] })) };
-    expect(proposeDentalContours(rotated)).toMatchObject({ kind: 'proposal',
-      outerEdges: contours.outerEdges, openingEdges: contours.openingEdges });
+    expect(proposeDentalSupportRegion(rotated)).toMatchObject({ kind: 'proposal',
+      outerEdges: contours.outerEdges, outerRidgeEdges: contours.outerRidgeEdges,
+      outerConnectorEdges: contours.outerConnectorEdges, openingEdges: contours.openingEdges });
   }, 30000);
 
   it('abstains on a non-aligner mesh', () => {
     const mesh = { positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]) };
-    expect(proposeDentalContours(mesh).kind).toBe('inconclusive');
+    expect(proposeDentalSupportRegion(mesh).kind).toBe('inconclusive');
   });
 
   it('distinguishes the reference opening from a clean projected no-hole solid', () => {

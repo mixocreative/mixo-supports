@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyToDirection, applyToPoint, placementMatrix } from '../transform';
 import { dot, type Vector } from '../vec3';
-import { DentalOpeningRaycaster, proposeDentalOrientation, rimContainsPoint, rotationToDentalPose, rotationToPlateDown } from './dental';
+import { DentalOpeningRaycaster, proposeDentalOrientation, rimContainsPoint, rotationToDentalPose } from './dental';
+import { rotationToPlateDown } from '../../../scripts/test-support/ts-oracle/dental/dental';
 import type { TriangleMesh } from './types';
 
 describe('proposeDentalOrientation', () => {

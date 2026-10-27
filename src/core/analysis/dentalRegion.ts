@@ -1,9 +1,8 @@
 import type { TriangleMesh } from './types';
-import { dot } from '../vec3';
-import { proposeDentalContours, type Edge, type MeshContext } from './dentalContours';
-import { proposeDentalContactFootprint } from './dentalContactFootprint';
-import { defaultDentalTuning, dentalFootprintSettings, type DentalTuning } from './dentalTuning';
-import type { DiagnosticContourContact } from './dentalContourContacts';
+import { dentalEngine, type DentalRegionResultLike } from './dentalEngine';
+import { defaultDentalTuning, parseDentalTuning, type DentalTuning } from './dentalTuning';
+import { decodeContacts, type DiagnosticContourContact } from './dentalContourContacts';
+import { DEFAULT_PROFILE_ID } from './dentalProfile';
 
 export type DentalRegionProposal =
   | { kind: 'proposal'; allowedFaces: Uint8Array; outerEdges: Uint32Array; outerRidgeEdges: Uint32Array;
@@ -13,57 +12,46 @@ export type DentalRegionProposal =
     diagnostics: { regionFaces: [number, number]; connectorLengths: [number, number] } }
   | { kind: 'inconclusive'; reason: string };
 
-/** Diagnostic face cut. Its broad opening-facing region is not an exterior contact band. */
-function classifyFaces(context: MeshContext, outer: Set<Edge>, opening: Set<Edge>):
-  { allowedFaces: Uint8Array; regionFaces: [number, number] } | null {
-  const blocked = new Set<Edge>([...outer, ...opening]);
-  if (blocked.size !== outer.size + opening.size) return null;
-  const faceCount = context.mesh.indices.length / 3;
-  const parent = Int32Array.from({ length: faceCount }, (_, index) => index);
-  const find = (start: number): number => {
-    let root = start;
-    while (parent[root] !== root) root = parent[root]!;
-    while (start !== root) { const next = parent[start]!; parent[start] = root; start = next; }
-    return root;
-  };
-  for (const edge of context.edges.values()) if (!blocked.has(edge)) parent[find(edge.faces[0]!)] = find(edge.faces[1]!);
-  const regions = new Map<number, { faces: number; sumOpening: number }>();
-  for (let face = 0; face < faceCount; face += 1) {
-    const root = find(face);
-    const region = regions.get(root) ?? { faces: 0, sumOpening: 0 };
-    region.faces += 1;
-    region.sumOpening += dot(context.normals[face]!, context.rim.openingDirection);
-    regions.set(root, region);
+const tuningArray = (tuning: DentalTuning) => {
+  const { setbackMm, stripWidthMm, density } = parseDentalTuning(tuning);
+  return Float64Array.of(setbackMm, stripWidthMm, density);
+};
+
+/** The strip and contacts of a result (the part `retune` replaces); rim labels as the host expects. */
+function contactsOf(result: DentalRegionResultLike) {
+  return { contactFaces: result.take_contact_faces(),
+    contacts: decodeContacts(result.contact_faces_of(), result.contact_points(), result.contact_distances(), result.contact_rims()) };
+}
+
+/**
+ * Two-contour face proposal and its narrow contact strip (Rust `propose_dental_region`). The
+ * broad opening-facing region (`allowedFaces`) is not an exterior contact band; the permitted
+ * strip is `contactFaces`. A failure is an `inconclusive` with its reason, never an empty area.
+ */
+export function proposeDentalSupportRegion(mesh: TriangleMesh, tuning: DentalTuning = defaultDentalTuning, profile: string = DEFAULT_PROFILE_ID): DentalRegionProposal {
+  const result = dentalEngine().propose_dental_region(mesh.positions, mesh.indices, tuningArray(tuning), profile);
+  try {
+    if (!result.ok()) return { kind: 'inconclusive', reason: result.reason() };
+    const faces = result.region_faces();
+    const lengths = result.connector_lengths();
+    return { kind: 'proposal', allowedFaces: result.take_allowed_faces(), outerEdges: result.take_outer_edges(),
+      outerRidgeEdges: result.take_outer_ridge_edges(), outerConnectorEdges: result.take_outer_connector_edges(),
+      openingEdges: result.take_opening_edges(), ...contactsOf(result),
+      diagnostics: { regionFaces: [faces[0]!, faces[1]!], connectorLengths: [lengths[0]!, lengths[1]!] } };
+  } finally {
+    result.free();
   }
-  if (regions.size !== 2) return null;
-  const ranked = [...regions.entries()].sort((a, b) => b[1].sumOpening / b[1].faces - a[1].sumOpening / a[1].faces);
-  const [allowed, forbidden] = ranked;
-  if (!allowed || !forbidden || allowed[1].sumOpening / allowed[1].faces < 0.2 || forbidden[1].sumOpening / forbidden[1].faces > -0.15) return null;
-  if (allowed[1].faces / faceCount < 0.2 || allowed[1].faces / faceCount > 0.85) return null;
-  const allowedFaces = new Uint8Array(faceCount);
-  for (let face = 0; face < faceCount; face += 1) if (find(face) === allowed[0]) allowedFaces[face] = 1;
-  return { allowedFaces, regionFaces: [allowed[1].faces, forbidden[1].faces] };
 }
 
-/** Historical two-contour face proposal, retained for diagnostics and current policy compatibility. */
-export function proposeDentalSupportRegion(mesh: TriangleMesh, tuning: DentalTuning = defaultDentalTuning): DentalRegionProposal {
-  const contours = proposeDentalContours(mesh);
-  if (contours.kind !== 'proposal') return contours;
-  const classified = classifyFaces(contours.context, contours.outer, contours.opening);
-  if (!classified) return { kind: 'inconclusive', reason: 'surface-region-not-isolated' };
-  const region = { kind: 'proposal' as const, ...classified, outerEdges: contours.outerEdges,
-    outerRidgeEdges: contours.outerRidgeEdges, outerConnectorEdges: contours.outerConnectorEdges,
-    openingEdges: contours.openingEdges,
-    diagnostics: { regionFaces: classified.regionFaces, connectorLengths: contours.connectorLengths } };
-  return retuneDentalSupportRegion(mesh, region, tuning);
-}
-
-/** Recomputes only the narrow strip and exact contacts after operator tuning. */
+/** Recomputes only the narrow strip and exact contacts after operator tuning (Rust `retune_dental_region`). */
 export function retuneDentalSupportRegion(mesh: TriangleMesh,
-  region: Extract<DentalRegionProposal, { kind: 'proposal' }>, tuning: DentalTuning): DentalRegionProposal {
-  const footprint = proposeDentalContactFootprint(mesh, region, dentalFootprintSettings(tuning));
-  if (footprint.kind !== 'proposal') return { kind: 'inconclusive', reason: `contact-footprint-${footprint.reason}` };
-  return { ...region, contactFaces: footprint.contactFaces,
-    contacts: [...footprint.outerContacts.map((contact) => ({ ...contact, rim: 'outer' as const })),
-      ...footprint.innerContacts.map((contact) => ({ ...contact, rim: 'opening' as const }))] };
+  region: Extract<DentalRegionProposal, { kind: 'proposal' }>, tuning: DentalTuning, profile: string = DEFAULT_PROFILE_ID): DentalRegionProposal {
+  const result = dentalEngine().retune_dental_region(mesh.positions, mesh.indices, region.allowedFaces, region.outerEdges,
+    region.openingEdges, tuningArray(tuning), Number.NaN, profile);
+  try {
+    if (!result.ok()) return { kind: 'inconclusive', reason: result.reason() };
+    return { ...region, ...contactsOf(result) };
+  } finally {
+    result.free();
+  }
 }

@@ -1,7 +1,8 @@
 import type { TriangleMesh } from './types';
 import type { DentalRegionProposal } from './dentalRegion';
-import { diagnosticDentalSideBands } from './dentalContactBand';
-import { sampleDiagnosticContourContacts, type DiagnosticContourContact } from './dentalContourContacts';
+import { dentalEngine } from './dentalEngine';
+import { decodeContacts, type DiagnosticContourContact } from './dentalContourContacts';
+import { REFERENCE_ALIGNER_PROFILE } from './dentalProfile';
 
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
 
@@ -15,9 +16,12 @@ export interface DentalContactFootprintSettings {
   samplePhaseFraction?: number;
 }
 
-/** Current one-reference defaults; keep widths and spacing together for future validated overrides. */
+const { defaults } = REFERENCE_ALIGNER_PROFILE;
+
+/** Current one-reference defaults, read from the aligner profile data. */
 export const defaultDentalContactFootprintSettings: Readonly<DentalContactFootprintSettings> = {
-  setback: 0.2, width: 1.2, outerSpacing: 3, innerSpacing: 2, maxSearchDistance: 1.5,
+  setback: defaults.setbackMm, width: defaults.setbackMm + 1, outerSpacing: defaults.outerSpacingMm,
+  innerSpacing: defaults.innerSpacingMm, maxSearchDistance: defaults.maxSearchMm,
 };
 
 export type DentalContactFootprint =
@@ -26,26 +30,22 @@ export type DentalContactFootprint =
   | { kind: 'inconclusive'; reason: string };
 
 /**
- * Composes the existing exact contour and local surface-strip detectors into a narrow candidate.
- * The old broad face cut is used only to distinguish the two sides of each ridge. This proposal
- * is not a production permission: contact approach, secondary landings, and body paths still
- * need to be checked before a support is built.
+ * The narrow contact candidate for a region's contours (Rust `dental_footprint`). The old broad
+ * face cut only distinguishes the two sides of each ridge. This proposal is not a production
+ * permission: contact approach, secondary landings, and body paths still need to be checked
+ * before a support is built.
  */
 export function proposeDentalContactFootprint(mesh: TriangleMesh, region: Region,
   settings: DentalContactFootprintSettings): DentalContactFootprint {
-  const bands = diagnosticDentalSideBands(mesh, region, settings);
-  if (bands.kind !== 'proposal') return bands;
-  const outer = sampleDiagnosticContourContacts(mesh, region.outerEdges, bands.outerOtherSide,
-    { spacing: settings.outerSpacing, maxSearchDistance: settings.maxSearchDistance,
-      ...(settings.samplePhaseFraction === undefined ? {} : { phaseMm: settings.outerSpacing * settings.samplePhaseFraction }) });
-  if (outer.kind !== 'proposal') return outer;
-  const inner = sampleDiagnosticContourContacts(mesh, region.openingEdges, bands.innerOtherSide,
-    { spacing: settings.innerSpacing, maxSearchDistance: settings.maxSearchDistance,
-      ...(settings.samplePhaseFraction === undefined ? {} : { phaseMm: settings.innerSpacing * settings.samplePhaseFraction }) });
-  if (inner.kind !== 'proposal') return inner;
-  const contactFaces = new Uint8Array(mesh.indices.length / 3);
-  for (let face = 0; face < contactFaces.length; face += 1) {
-    contactFaces[face] = bands.outerOtherSide[face]! | bands.innerOtherSide[face]!;
+  const result = dentalEngine().dental_footprint(mesh.positions, mesh.indices, region.allowedFaces, region.outerEdges, region.openingEdges,
+    Float64Array.of(settings.setback, settings.width, settings.outerSpacing, settings.innerSpacing, settings.maxSearchDistance,
+      settings.samplePhaseFraction ?? Number.NaN));
+  try {
+    if (!result.ok()) return { kind: 'inconclusive', reason: result.reason() };
+    const contacts = decodeContacts(result.contact_faces_of(), result.contact_points(), result.contact_distances(), result.contact_rims());
+    const strip = (rim: 'outer' | 'opening') => contacts.filter((contact) => contact.rim === rim).map(({ rim: _rim, ...contact }) => contact);
+    return { kind: 'proposal', contactFaces: result.take_contact_faces(), outerContacts: strip('outer'), innerContacts: strip('opening') };
+  } finally {
+    result.free();
   }
-  return { kind: 'proposal', contactFaces, outerContacts: outer.contacts, innerContacts: inner.contacts };
 }

@@ -1,4 +1,5 @@
 import { defaultDentalContactFootprintSettings, type DentalContactFootprintSettings } from './dentalContactFootprint';
+import { REFERENCE_ALIGNER_PROFILE } from './dentalProfile';
 
 export interface DentalTuning {
   setbackMm: number;
@@ -6,14 +7,17 @@ export interface DentalTuning {
   density: number;
 }
 
-export const defaultDentalTuning: Readonly<DentalTuning> = { setbackMm: 0.2, stripWidthMm: 1, density: 1 };
+/** Operator defaults and limits are aligner-profile data (`crates/geometry-core/src/dental/profiles`). */
+const { defaults } = REFERENCE_ALIGNER_PROFILE;
+
+export const defaultDentalTuning: Readonly<DentalTuning> = { setbackMm: defaults.setbackMm, stripWidthMm: defaults.stripWidthMm, density: defaults.density };
 
 /** Bounded operator controls; these are UI limits, not validated clinical ranges. */
 export function parseDentalTuning(input: DentalTuning): DentalTuning {
   const { setbackMm, stripWidthMm, density } = input;
   if (![setbackMm, stripWidthMm, density].every(Number.isFinite) ||
-    setbackMm < 0 || setbackMm > 1 || stripWidthMm < 0.2 || stripWidthMm > 2.4 ||
-    density < 0.5 || density > 2) throw new TypeError('Invalid dental strip or spacing settings');
+    setbackMm < 0 || setbackMm > defaults.setbackMaxMm || stripWidthMm < defaults.stripWidthMinMm || stripWidthMm > defaults.stripWidthMaxMm ||
+    density < defaults.densityMin || density > defaults.densityMax) throw new TypeError('Invalid dental strip or spacing settings');
   return { setbackMm, stripWidthMm, density };
 }
 
