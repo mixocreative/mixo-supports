@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { weld_positions_in_place as weldWasm } from '../../crates/geometry-wasm/pkg-node/mixo_geometry_wasm.js';
-import { weldPositions } from '../core/import/weld';
+import { weldPositions } from '../../scripts/test-support/ts-oracle/weld';
 
 const identity = new Float64Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 

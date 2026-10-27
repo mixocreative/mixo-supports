@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { parseStl } from '../../src/core/import/stl';
 import { proposeDentalSupportRegion } from '../../src/core/analysis/dentalRegion';
 import { exportDentalRegionReview } from './review';
 import { buildDentalReview } from './build';
+import { parseStl } from '../test-support/rustImport';
 
 const argument = (name: string): string | undefined => {
   const at = process.argv.indexOf(name);

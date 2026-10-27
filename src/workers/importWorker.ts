@@ -1,46 +1,27 @@
 import type { TriangleMesh } from '../core/analysis/types';
-import { binaryStlTriangles, StlEmptyError, StlFormatError, stlKind } from '../core/import/stl';
-import { CodedError } from '../editing/errors';
-import { named } from '../state/import';
 import { geometryReady, type GeometryEngine } from './geometryClient';
 import type { ImportTask, PreparedMesh } from './importProtocol';
 import { buffers, centerImportedWithWasm, decimateWithWasm, prepare, weldRawWithWasm, type Progress } from './prepareImport';
 import { serveTask, transferable } from './serveTask';
+import { finishStl, openStlSession, pushStl } from './stlSession';
 
 /** A File is read in slices this big, so the whole file never sits in memory at once. */
 const CHUNK_BYTES = 16 * 1024 * 1024;
 
-function stlWasmError(error: unknown, name: string): Error {
-  const code = (error as { code?: string } | null)?.code;
-  if (code === 'BAD_STL') return new StlFormatError('the STL file is truncated or damaged');
-  if (code === 'NO_MESH') return new StlEmptyError('the STL file contains no triangles');
-  if (code === 'NON_FINITE') return new CodedError('non-finite', `${name} has vertex coordinates that are not finite numbers (NaN or infinity); repair or re-export the model`);
-  return error instanceof Error ? error : new Error(String(error));
-}
-
 async function readStl(file: Blob, name: string, progress: Progress, engine: GeometryEngine): Promise<TriangleMesh> {
   const head = new Uint8Array(await file.slice(0, 84).arrayBuffer());
-  const kind = stlKind(head, file.size);
-  const stream = named(name, () => kind === 'binary'
-    ? new engine.BinaryStlSession(binaryStlTriangles(head, file.size))
-    : new engine.AsciiStlSession(file.size));
+  const stream = openStlSession(engine, head, file.size);
   try {
     for (let offset = 0; offset < file.size; offset += CHUNK_BYTES) {
       progress(0.7 * offset / file.size, 'Reading file');
-      const chunk = new Uint8Array(await file.slice(offset, offset + CHUNK_BYTES).arrayBuffer());
-      try { stream.push(chunk); } catch (error) { throw stlWasmError(error, name); }
+      pushStl(stream, new Uint8Array(await file.slice(offset, offset + CHUNK_BYTES).arrayBuffer()), name);
     }
     progress(0.7, 'Welding vertices');
-    let result;
-    try { result = stream.finish(); } catch (error) { throw stlWasmError(error, name); }
-    try {
-      return { positions: result.take_positions(), indices: result.take_indices() };
-    } finally {
-      result.free();
-    }
-  } finally {
+  } catch (error) {
     stream.free();
+    throw error;
   }
+  return finishStl(stream, name);
 }
 
 /** STL reading and welding, glTF welding, display copies and pick indices, off the main thread. */

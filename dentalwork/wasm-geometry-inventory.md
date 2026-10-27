@@ -37,8 +37,8 @@ Row count: 103 (port 42, port-into-shared-safety 10, frozen-reference 6, host-ad
 | `src/core/conventions.ts` | UP, UNITS, HANDEDNESS | none | host constants | host-adapter | Constants/doc; no callers |
 | `src/core/handedness.ts` | toLeftHanded, fromLeftHanded, ...Matrix | none in production (tests, core/README) | core/transform (handedness arg) | port | U2 `handedness` input; U8 Babylon smoke |
 | `src/core/import/estimate.ts` | estimateTriangles | App | host (header estimate) | host-adapter | Reads header bytes, no geometry |
-| `src/core/import/stl.ts` | stlKind, binaryStlTriangles, StlWelder | state/import, importWorker, estimate, scripts | core/import | port | U1 remainder; StlWelder becomes oracle |
-| `src/core/import/weld.ts` | weldPositions, VertexWelder, transformInto | stl, state/import | core/import | port | U1 remainder; Rust welder already owns the worker path |
+| `src/core/import/stlHeader.ts` | stlKind, binaryStlTriangles, StlFormatError/StlEmptyError | importWorker, stlSession, estimate | host header classifier in front of the Rust sessions | host-adapter | U1: TS parser/welder (`StlWelder`, `parseStl`) moved to `scripts/test-support/ts-oracle/stl.ts` |
+| `scripts/test-support/ts-oracle/weld.ts` | weldPositions, VertexWelder, transformInto | oracle parity tests only | core/import (Rust `weld_positions_in_place`) | frozen-reference | U1: moved out of production; deleted in U9 |
 | `src/core/jobGate.ts` | TriangleGate | App, analysisClient, meshClient | host | host-adapter | Job admission gate |
 | `src/core/jobs.ts` | SupportJob, PlacementJob, JobTransform | jobRunner, unitSupports, analysisClient/Protocol, +4 | ABI request shape (host) | host-adapter | Becomes `generate` request builder in U8 |
 | `src/core/plateLedger.ts` | PlateLedger, PlateReservation | App | host | host-adapter | Triangle-count reservation, not geometry |
@@ -80,7 +80,7 @@ Row count: 103 (port 42, port-into-shared-safety 10, frozen-reference 6, host-ad
 | `src/editing/strokeQueue.ts` | createStrokeQueue | brushScheduler, dragOver | host | host-adapter | Queue |
 | `src/editing/surfaceBrush.ts` | appendSurfaceStamps | UnitObject, dentalPolicy, zones | host data copy | host-adapter | Copies hits into stamps, no math |
 | `src/editing/view.ts` | frameView, spotView, boundsSphere, fitDirection | App, cameras | host camera | host-adapter | Camera framing, allowed host math |
-| `src/state/import.ts` | geometryToMesh, weldRawMesh, importGltfUnits | App, importClient, importWorker, prepareImport | core/import (weld); glTF container decode stays JS | port | U1 remainder |
+| `src/state/import.ts` | gltfRawMeshes, placeImportedUnits, ImportedMesh | App, importClient, importWorker, prepareImport | glTF scene walk + plate placement stay host; weld/centre are Rust | host-adapter | U1: TS geometryToMesh/weldRawMesh/importStl/centreInPlace moved to `ts-oracle/import.ts` |
 | `src/state/transform.ts` | applyTransform, inverseTransformMesh, transformPoint | App, ObjectViewport, import, project, dentalLandingSide, +7 | core/transform (`transform`) | port | U2; host keeps gizmo state |
 | `src/supports/dentalLandingSide.ts` | dentalSecondaryLandingOnApprovedSide | jobRunner | supports/clearance (landing-side check) + allowed-face data | port-into-shared-safety | U7; approved side becomes the face mask in `PolicyResult` |
 | `src/supports/dentalPrimaryFace.ts` | dentalPrimarySourceFace, sameDentalPrimary | jobRunner | supports/repair (source-face attribution) + policy data | port-into-shared-safety | U7; candidates already carry `source_face` |

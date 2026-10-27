@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { AsciiStlSession, BinaryStlSession } from '../../crates/geometry-wasm/pkg-node/mixo_geometry_wasm.js';
-import { binaryStlTriangles, StlWelder } from '../core/import/stl';
+import { binaryStlTriangles } from '../core/import/stlHeader';
+import { StlWelder } from '../../scripts/test-support/ts-oracle/stl';
 
 describe('Rust/WASM streaming binary STL parity', () => {
   it('matches the saved aligner vertex and index buffers bit-for-bit across uneven chunks', () => {

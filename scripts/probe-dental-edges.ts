@@ -1,11 +1,11 @@
 /** Edge-network diagnosis for a neutral dental STL; optional SVG/GLB debug exports never alter the source mesh. */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { parseStl } from '../src/core/import/stl';
 import { proposeDentalOrientation } from '../src/core/analysis/dental';
 import { placementMatrix, transformPositions } from '../src/core/transform';
 import { cross, dot, normalize, subtract, type Vector } from '../src/core/vec3';
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { parseStl } from './test-support/rustImport';
 
 const file = process.env.DENTAL_PROBE_FIXTURE;
 if (!file) throw new Error('DENTAL_PROBE_FIXTURE is required');

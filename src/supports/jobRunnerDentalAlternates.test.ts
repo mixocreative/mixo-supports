@@ -5,10 +5,10 @@ import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
 import { positionId } from '../core/analysis/placement';
 import type { SupportPoint } from '../core/analysis/types';
-import { parseStl } from '../core/import/stl';
 import type { DentalPlacementJob, JobTransform, SupportJob } from '../core/jobs';
 import { defaultSupportSettings } from '../core/supports/settings';
 import { filterDentalPlacement, runSupportJob } from './jobRunner';
+import { parseStl } from '../../scripts/test-support/rustImport';
 
 const still: JobTransform = { position: [0, 0, 0], rotation: [0, 0, 0] };
 const point = (id: string, position: [number, number, number], normal: [number, number, number]): SupportPoint =>

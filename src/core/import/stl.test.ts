@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { binaryStlTriangles, parseStl, StlEmptyError, StlFormatError } from './stl';
+import { parseStl } from '../../../scripts/test-support/rustImport';
+import { binaryStlTriangles, StlEmptyError, StlFormatError } from './stlHeader';
 
 /** A binary STL head claiming `header` triangles. */
 function head(header: number): Uint8Array {

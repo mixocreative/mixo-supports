@@ -5,8 +5,8 @@ import stages from '../../tools/blender-parity/minima_stages.json';
 import { faceNormal, vertexNormals } from '../core/analysis/vertexNormals';
 import { minimaStages } from '../core/analysis/placement';
 import { compareKeeps, compareMerges, compareNormals, compareSnaps } from '../core/analysis/parity.testkit';
-import { geometryToMesh } from '../state/import';
 import { RemeshTarget } from '../core/supports/remesh';
+import { geometryToMesh } from '../../scripts/test-support/rustImport';
 
 type Vector = [number, number, number];
 

@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parseStl } from '../import/stl';
 import { placementMatrix, transformPositions } from '../transform';
 import { proposeDentalSupportRegion, retuneDentalSupportRegion } from './dentalRegion';
 import { defaultDentalTuning } from './dentalTuning';
+import { parseStl } from '../../../scripts/test-support/rustImport';
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');

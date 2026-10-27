@@ -1,5 +1,4 @@
 import { readFileSync } from 'node:fs';
-import { parseStl } from '../../src/core/import/stl';
 import { crossingAutomaticBodyContactIds } from '../../src/core/supports/dentalBodyClearance';
 import { buildDentalReview } from './build';
 import { diagnoseSupportCrossings } from './crossings';
@@ -10,6 +9,7 @@ import { sampleDiagnosticContourContacts } from '../../src/core/analysis/dentalC
 import { defaultDentalContactFootprintSettings } from '../../src/core/analysis/dentalContactFootprint';
 import { unresolvedCircularArcs } from './phaseGap';
 import { selectDentalGapAlternates } from '../../src/core/analysis/dentalGapAlternates';
+import { parseStl } from '../test-support/rustImport';
 
 const input = process.argv[2];
 if (!input) throw new Error('Usage: npx vite-node --script scripts/dental-region-review/crossings-probe.ts model.stl');

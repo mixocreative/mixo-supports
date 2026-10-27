@@ -7,10 +7,10 @@ import type { ZoneStamp } from '../core/supports/zones';
 import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import { dentalRegionAllowedOnFace } from '../core/analysis/dentalPolicy';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
-import { parseStl } from '../core/import/stl';
 import { readFileSync } from 'node:fs';
 import { filterDentalPlacement, runSupportJob } from './jobRunner';
 import * as collisionIndex from '../core/supports/modelCollisionIndex';
+import { parseStl } from '../../scripts/test-support/rustImport';
 
 type V = [number, number, number];
 

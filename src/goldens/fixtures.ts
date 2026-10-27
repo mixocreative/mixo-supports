@@ -1,5 +1,5 @@
 import type { TriangleMesh } from '../core/analysis/types';
-import { importStl } from '../state/import';
+import { importStl } from '../../scripts/test-support/rustImport';
 
 type Vector = [number, number, number];
 

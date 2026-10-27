@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { parseStl } from '../../src/core/import/stl';
 import { topologyBirths } from '../../src/core/analysis/topologyBirths';
 import { checkSupports } from '../../src/core/analysis/supportCheck';
+import { parseStl } from '../test-support/rustImport';
 
 const file = process.argv[2];
 if (!file) throw new Error('Usage: vite-node --script topologyBirthProbe.ts <STL>');

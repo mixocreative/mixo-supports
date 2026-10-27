@@ -1,4 +1,4 @@
-import type { TriangleMesh } from '../analysis/types';
+import type { TriangleMesh } from '../../../src/core/analysis/types';
 
 /**
  * Vertex welding on typed arrays, output-identical to three.js `mergeVertices(geometry, 1e-4)` on a

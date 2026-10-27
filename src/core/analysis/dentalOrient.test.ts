@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parseStl } from '../import/stl';
 import { orientDentalAligner } from './dentalOrient';
 import type { TriangleMesh } from './types';
+import { parseStl } from '../../../scripts/test-support/rustImport';
 
 const reference = (): TriangleMesh => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');

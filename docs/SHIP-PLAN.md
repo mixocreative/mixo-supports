@@ -114,7 +114,7 @@ Dental mode is a visible feature. Entering it dims the rest of the editor.
 | Unit | State | Commit | Note |
 |---|---|---|---|
 | U0 | done | see git log | toolchain, version gate, mesh session; inventory (103 rows), `dentalwork/perf-baseline.json`, report-only `scripts/geometry-guard.mjs` + `src/geometryGuard.test.ts` |
-| U1 | partial | 3fdec6c | binary + ASCII STL, glTF weld, centering, decimation in Rust |
+| U1 | done | see git log | all import callers use Rust (worker + Node test/dev helper `scripts/test-support/rustImport.ts`); TS parser/welder/centre moved to `scripts/test-support/ts-oracle/`; 24-file odd-STL corpus in `scripts/fixtures/stl-corpus/` with parity test (one Rust fix: non-ASCII whitespace); `src/importOracleBoundary.test.ts` guards production |
 | U2–U10 | not started | — | |
 
 ## Reference material (detail only; do not track progress there)

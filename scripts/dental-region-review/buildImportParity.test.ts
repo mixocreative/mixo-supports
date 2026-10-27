@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parseStl } from '../../src/core/import/stl';
 import { proposeDentalOrientation } from '../../src/core/analysis/dental';
 import { sampleDiagnosticContourContacts } from '../../src/core/analysis/dentalContourContacts';
 import { contourPerimeter } from '../../src/core/analysis/dentalRimCoverage';
@@ -11,6 +10,7 @@ import { placeImportedUnits } from '../../src/state/import';
 import { inverseTransformDirection, inverseTransformPoint, transformPoint } from '../../src/state/transform';
 import { buildDentalReview } from './build';
 import { unresolvedCircularArcs } from './phaseGap';
+import { parseStl } from '../test-support/rustImport';
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');

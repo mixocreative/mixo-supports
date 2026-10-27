@@ -1,6 +1,5 @@
 // Disposable, read-only local probe. Supply DENTAL_PROBE_FIXTURE; never commit patient geometry.
 import { readFileSync } from 'node:fs';
-import { parseStl } from '../src/core/import/stl';
 import { proposeDentalOrientation, rotationToDentalPose, rotationToPlateDown } from '../src/core/analysis/dental';
 import { DentalOpeningRaycaster } from '../src/core/analysis/dental';
 import { dentalAllowedVertices } from '../src/core/analysis/dentalPolicy';
@@ -9,6 +8,7 @@ import { defaultSupportSettings, toPlacementSettings } from '../src/core/support
 import { inverseTransformPoint } from '../src/state/transform';
 import { applyToDirection, applyToPoint, placementMatrix, transformPositions } from '../src/core/transform';
 import type { Vector } from '../src/core/vec3';
+import { parseStl } from './test-support/rustImport';
 
 const file = process.env.DENTAL_PROBE_FIXTURE;
 if (!file) throw new Error('DENTAL_PROBE_FIXTURE is required');

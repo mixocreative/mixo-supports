@@ -3,8 +3,8 @@ import { BufferAttribute, BufferGeometry, Matrix4, TorusKnotGeometry } from 'thr
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { TriangleMesh } from '../core/analysis/types';
-import { parseStl, StlWelder } from '../core/import/stl';
-import { weldPositions } from '../core/import/weld';
+import { parseStl, weldPositions } from '../../scripts/test-support/rustImport';
+import { StlWelder } from '../../scripts/test-support/ts-oracle/stl';
 
 /*
  * The typed-array import (src/core/import) must give exactly what the three.js path gave before it:

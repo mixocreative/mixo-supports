@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { CodedError, ERROR_CONTEXTS, errorCode, errorStatus } from './editing/errors';
 import { CapacityError } from './core/budget';
-import { weldRawMesh } from './state/import';
 import { codedJobError } from './workers/jobErrors';
 import { WorkerTaskError } from './workers/WorkerTask';
+import { weldRawMesh } from '../scripts/test-support/rustImport';
 
 const WORKER_CLIENTS = import.meta.glob<string>(['./workers/*Client.ts'], { query: '?raw', import: 'default', eager: true });
 

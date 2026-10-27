@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
-import { parseStl } from '../../src/core/import/stl';
 import { createModelCollisionIndex } from '../../src/core/supports/modelCollisionIndex';
 import { preflightSupportPath } from '../../src/core/supports/pathPreflight';
+import { parseStl } from '../test-support/rustImport';
 
 const input = process.argv[2];
 if (!input) throw new Error('Usage: npx vite-node --script scripts/dental-region-review/path-preflight-bench.ts model.stl');

@@ -1,4 +1,4 @@
-import { binaryStlTriangles, stlKind } from './stl';
+import { binaryStlTriangles, stlKind } from './stlHeader';
 
 /**
  * Triangle count of a model file before it is parsed, from its size and its first bytes (shared

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BufferAttribute, BufferGeometry, Mesh, MeshBasicMaterial, Raycaster, TorusKnotGeometry, Vector3 } from 'three';
 import { acceleratedRaycast, computeBoundsTree, MeshBVH } from 'three-mesh-bvh';
-import { centreInPlace, geometryToMesh } from '../state/import';
 import { buffers, prepare } from './prepareImport';
 import { decimate } from '../../scripts/test-support/legacyDecimate';
+import { centreInPlace, geometryToMesh } from '../../scripts/test-support/rustImport';
 
 /** A pickable mesh on `geometry` (accelerated raycast, first hit only, as the viewport picks). */
 function pickable(geometry: BufferGeometry): Mesh {

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { BoxGeometry, BufferGeometry, Float32BufferAttribute, Group, Mesh } from 'three';
-import { centreInPlace, geometryToMesh, importGltfUnits, importStl, placeImportedUnits, weldRawMesh } from './import';
+import { placeImportedUnits } from './import';
 import { identityTransform, type PrintUnit } from './project';
 import { meshBounds } from '../core/supports/meshQuery';
 import { applyTransform } from './transform';
+import { centreInPlace, geometryToMesh, importGltfUnits, importStl, weldRawMesh } from '../../scripts/test-support/rustImport';
 
 describe('geometryToMesh', () => {
   it('welds coincident STL vertices so connected faces share indices', () => {

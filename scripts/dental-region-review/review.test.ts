@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { parseStl } from '../../src/core/import/stl';
 import { placementMatrix, transformPositions } from '../../src/core/transform';
 import { proposeDentalOrientation } from '../../src/core/analysis/dental';
 import { proposeDentalSupportRegion } from '../../src/core/analysis/dentalRegion';
 import { exportDentalRegionReview } from './review';
+import { parseStl } from '../test-support/rustImport';
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');

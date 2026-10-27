@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parseStl } from '../import/stl';
 import type { TriangleMesh } from '../analysis/types';
 import { refineForOverlay, warmZoneOverlay, zoneOverlay } from './overlayMesh';
+import { parseStl } from '../../../scripts/test-support/rustImport';
 
 /** A 100 mm square of two triangles in the xy plane. */
 const square: TriangleMesh = {

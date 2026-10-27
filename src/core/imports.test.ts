@@ -18,7 +18,8 @@ function allowedTarget(file: string, target: readonly string[]): boolean {
   const path = target.join('/');
   if (path.startsWith('src/core/') || path.startsWith('src/editing/')) return true;
   if (path.startsWith('tools/') && path.endsWith('.json')) return true;
-  return file.endsWith('.test.ts') && path.startsWith('src/goldens/');
+  // Tests may also load fixtures through the Rust import path (scripts/test-support/rustImport).
+  return file.endsWith('.test.ts') && (path.startsWith('src/goldens/') || path.startsWith('scripts/test-support/'));
 }
 
 /** Every problem in one module's source; `file` is its path relative to src, with '/'. */

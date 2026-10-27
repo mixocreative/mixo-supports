@@ -3,10 +3,10 @@ import { MeshBVH } from 'three-mesh-bvh';
 import type { TriangleMesh } from '../core/analysis/types';
 import { assertTriangleCapacity, meshTier, TRIANGLE_BUDGET, type Runtime } from '../core/budget';
 import type { ImportedMesh, RawMesh } from '../state/import';
-import { CodedError } from '../editing/errors';
 import type { SerializedBvh } from '../state/meshExtras';
 import type { PreparedMesh } from './importProtocol';
 import type { GeometryEngine } from './geometryClient';
+import { nonFiniteError } from './stlSession';
 
 export type Progress = (fraction: number, stage: string) => void;
 
@@ -21,7 +21,7 @@ export function weldRawWithWasm(raw: RawMesh, engine: GeometryEngine): ImportedM
     }
   } catch (error) {
     if ((error as { code?: string } | null)?.code === 'NON_FINITE') {
-      throw new CodedError('non-finite', `${raw.name} has vertex coordinates that are not finite numbers (NaN or infinity); repair or re-export the model`);
+      throw nonFiniteError(raw.name);
     }
     throw error;
   }

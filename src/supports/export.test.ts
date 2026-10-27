@@ -1,4 +1,3 @@
-import { importStl } from '../state/import';
 import { describe, expect, it } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import { emptyScene, type PrintScene, type PrintUnit } from '../state/project';
@@ -7,6 +6,7 @@ import { meshBounds } from '../core/supports/meshQuery';
 import { applyTransform } from '../state/transform';
 import { currentBuilds, unitSupportMesh } from './unitSupports';
 import { defaultSupportSettings } from '../core/supports/settings';
+import { importStl } from '../../scripts/test-support/rustImport';
 
 const cube: TriangleMesh = {
   positions: new Float32Array([-2, -2, -2, 2, -2, -2, 2, -2, 2, -2, -2, 2, -2, 2, -2, 2, 2, -2, 2, 2, 2, -2, 2, 2]),

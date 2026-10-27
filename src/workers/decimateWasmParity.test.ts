@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { decimate_display } from '../../crates/geometry-wasm/pkg-node/mixo_geometry_wasm.js';
 import { decimate } from '../../scripts/test-support/legacyDecimate';
-import { StlWelder } from '../core/import/stl';
+import { StlWelder } from '../../scripts/test-support/ts-oracle/stl';
 import { decimateWithWasm } from './prepareImport';
 
 describe('display decimation WASM parity', () => {
