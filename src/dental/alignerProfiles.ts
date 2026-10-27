@@ -1,9 +1,10 @@
 import type { Lang } from '../i18n';
+import { REFERENCE_ALIGNER_PROFILE, type AlignerProfileData } from '../core/analysis/dentalProfile';
 
 /**
  * The aligner types the dental flow offers (Step 0). One entry is one card: add an aligner type
- * by adding an entry here, the flow needs no other UI code. The detector thresholds and defaults
- * of a profile live with the geometry (docs/SHIP-PLAN.md, Aligner profiles).
+ * by adding a profile data file, the flow needs no other UI code. The detector thresholds and
+ * defaults of a profile live in the same file, read by the geometry (docs/SHIP-PLAN.md, Aligner profiles).
  */
 export interface AlignerProfile {
   id: string;
@@ -18,28 +19,18 @@ export interface AlignerProfile {
   fixture: string;
 }
 
-export const ALIGNER_PROFILES: readonly AlignerProfile[] = [
-  {
-    id: 'reference-aligner',
-    name: { en: 'Reference aligner', 'zh-Hant': '標準牙套', ja: '標準アライナー' },
-    description: {
-      en: 'U-shaped aligner with a central opening, supported along its lower rim.',
-      'zh-Hant': '中央有開口的 U 形牙套，支撐加在下緣。',
-      ja: '中央に開口のあるU字型アライナー。下縁にサポートを付けます。',
-    },
-    opening: 'yes',
-    card: [
-      // Outer U outline, open at the top.
-      'M18 14 C18 14 14 50 24 68 C34 82 86 82 96 68 C106 50 102 14 102 14',
-      'M18 14 L34 14 M86 14 L102 14',
-      // Inner edge of the arch.
-      'M34 14 C34 14 32 46 40 58 C47 67 73 67 80 58 C88 46 86 14 86 14',
-      // Central opening.
-      'M50 36 C50 31 70 31 70 36 C70 44 66 50 60 50 C54 50 50 44 50 36 Z',
-    ],
-    fixture: 'docs/dental-reference/reference-aligner.stl',
-  },
-];
+/**
+ * One source of truth: each profile is the JSON data file the Rust core reads
+ * (`crates/geometry-core/src/dental/profiles/<id>.json`), so ids, names, descriptions, card art
+ * and the opening expectation here are exactly what detection is parameterised by. A new type is
+ * a new JSON file listed here and in the Rust `ALL`; `alignerProfiles.test.ts` fails if the lists differ.
+ */
+const fromData = (data: AlignerProfileData): AlignerProfile => ({
+  id: data.id, name: data.name, description: data.description, opening: data.opening as AlignerProfile['opening'],
+  card: data.card, fixture: data.fixture,
+});
+
+export const ALIGNER_PROFILES: readonly AlignerProfile[] = [fromData(REFERENCE_ALIGNER_PROFILE)];
 
 export const profileById = (id: string | undefined): AlignerProfile | undefined => ALIGNER_PROFILES.find((profile) => profile.id === id);
 

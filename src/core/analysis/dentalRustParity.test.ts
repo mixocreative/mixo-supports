@@ -19,6 +19,9 @@ import type { TriangleMesh } from './types';
  * synthetic aligners without a decidable central opening.
  */
 
+/** The tip ID the placement code derives from a unit-local position (`positionId`): 0.01 mm rounding. */
+const positionId = (position: Vector): string => `auto-${position.map((value) => Math.round(value * 100)).join('_')}`;
+
 const reference = (): TriangleMesh => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
   return parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);

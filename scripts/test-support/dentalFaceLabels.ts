@@ -3,7 +3,7 @@ import './useNodeEngine';
 // built from the production (Rust) detector. Regenerate with `npx vite-node scripts/dental-face-labels.ts`.
 // The labels are the allowed/forbidden face sets the dental tests rely on (dentalContactBand,
 // dentalPolicy, dentalContactFootprint): tips and secondary landings may sit only on `allowed`.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { proposeDentalSupportRegion } from '../../src/core/analysis/dentalRegion';
 import { defaultDentalTuning } from '../../src/core/analysis/dentalTuning';
 import { parseStl } from './rustImport';

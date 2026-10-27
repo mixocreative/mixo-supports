@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import labelData from '../../../docs/dental-reference/face-labels.json';
 import { buildLabels } from '../../../scripts/test-support/dentalFaceLabels';
 import { parseStl } from '../../../scripts/test-support/rustImport';
 import { proposeDentalContactFootprint } from './dentalContactFootprint';
@@ -9,7 +10,7 @@ import { defaultDentalTuning, dentalFootprintSettings } from './dentalTuning';
 
 /** Face labels of the reference aligner (docs/dental-reference/face-labels.json): tips and secondary landings on allowed faces only. */
 interface Labels { faceCount: number; forbiddenFaceRuns: number[]; allowedFaceRuns: number[] }
-const labels = JSON.parse(readFileSync('docs/dental-reference/face-labels.json', 'utf8')) as Labels;
+const labels = labelData as Labels;
 
 const expand = (runs: readonly number[], count: number): Uint8Array => {
   const mask = new Uint8Array(count);
