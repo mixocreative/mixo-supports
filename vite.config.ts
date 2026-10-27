@@ -10,5 +10,7 @@ export default defineConfig({
     setupFiles: ['scripts/test-support/useNodeEngine.ts'],
     // Heavy aligner fixtures and first WASM engine load exceed the 5 s default under load.
     testTimeout: 60000,
+    // Worker threads drop onTaskUpdate RPCs under heavy WASM load; forks do not.
+    pool: 'forks',
   },
 });
