@@ -53,6 +53,8 @@ describe('keyAction', () => {
     ['Tab is never a mode key in Edit Mode', 'Tab', 'edit', { hasSelection: true }, none],
     ['Tab is never a mode key in zones mode', 'Tab', 'zones', {}, none],
     ['Esc closes zones mode', 'Escape', 'zones', {}, { command: 'mode.exit', preventDefault: true }],
+    ['Esc leaves the dental flow', 'Escape', 'dental', {}, { command: 'dental.exit', preventDefault: true }],
+    ['Enter does nothing in the dental flow', 'Enter', 'dental', {}, none],
     ['Enter closes zones mode', 'Enter', 'zones', {}, { command: 'mode.exit', preventDefault: true }],
     ['Enter on a button stays in zones mode', 'Enter', 'zones', { target: element('BUTTON') }, none],
     ['Delete with a selection deletes it', 'Delete', 'edit', { hasSelection: true }, { command: 'edit.deleteSelection', preventDefault: true }],

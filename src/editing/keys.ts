@@ -77,6 +77,8 @@ function bound({ key, ctrl, shift, target, ui }: KeyInput): KeyAction {
   const done = key === 'Escape' || (key === 'Enter' && !enterActsOn(target));
   if (ctrl && lower === 'z') return run(shift ? 'history.redo' : 'history.undo');
   if (ctrl && lower === 'y') return run('history.redo');
+  // The dental flow's lock note promises Esc: it leaves with the aligner on the plate and no supports.
+  if (mode === 'dental' && key === 'Escape') return run('dental.exit');
   if (mode === 'zones' && done) return run('mode.exit');
   if (mode === 'edit' && hasSelection && (key === 'Delete' || key === 'Backspace')) return run('edit.deleteSelection');
   // Esc first drops the selection, then leaves the mode.

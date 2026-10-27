@@ -31,6 +31,49 @@ function slowMeshWorker() {
 }
 const FIRST_PORT = 5260;
 
+/** ASCII STL text of an indexed mesh (the walk's synthetic aligner stand-ins). */
+function asciiStl(name, positions, indices) {
+  const lines = [`solid ${name}`];
+  for (let at = 0; at < indices.length; at += 3) {
+    lines.push('facet normal 0 0 0', 'outer loop');
+    for (let k = 0; k < 3; k += 1) lines.push(`vertex ${[0, 1, 2].map((axis) => positions[indices[at + k] * 3 + axis]).join(' ')}`);
+    lines.push('endloop', 'endfacet');
+  }
+  lines.push(`endsolid ${name}`);
+  return lines.join('\n');
+}
+/** A closed unit cube: no cavity, so orientation fails. */
+function cubeStl() {
+  const p = [-1, -1, -1, 1, -1, -1, 1, 1, -1, -1, 1, -1, -1, -1, 1, 1, -1, 1, 1, 1, 1, -1, 1, 1];
+  const i = [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7];
+  return asciiStl('cube', p, i);
+}
+/** A closed, manifold thick cup: it has a cavity opening but no central opening, so a type that insists on one is offered a switch. */
+function cupStl() {
+  const segments = 16;
+  const positions = [0, -2, 0, 0, -4, 0];
+  // Rings: outer bottom, outer top, inner top, inner bottom.
+  for (const [radius, y] of [[10, -4], [10, 4], [8, 4], [8, -2]]) {
+    for (let segment = 0; segment < segments; segment += 1) {
+      const angle = segment * Math.PI * 2 / segments;
+      positions.push(radius * Math.cos(angle), y, radius * Math.sin(angle));
+    }
+  }
+  const at = (ring, segment) => 2 + ring * segments + ((segment + segments) % segments);
+  const indices = [];
+  const quad = (a, b, c, e) => indices.push(a, b, c, a, c, e);
+  for (let segment = 0; segment < segments; segment += 1) {
+    const next = segment + 1;
+    quad(at(0, segment), at(0, next), at(1, next), at(1, segment));
+    quad(at(1, segment), at(1, next), at(2, next), at(2, segment));
+    quad(at(2, segment), at(2, next), at(3, next), at(3, segment));
+    indices.push(0, at(3, segment), at(3, next));
+    indices.push(1, at(0, next), at(0, segment));
+  }
+  return asciiStl('cup', positions, indices);
+}
+
+
 /**
  * Numbers measured on `scripts/fixtures/knot.stl` at 1440x900 with the software GL below. They move
  * only when the support generator or the brush rules change on purpose; update them then.
@@ -553,20 +596,124 @@ async function walk(url, scratch, dentalFixture) {
     await d.idle(1000);
     check('i6 a newer file is refused with a message and the plate stays', /newer version/.test(await d.status()) && (await page.locator('footer').innerText()).includes('1 object'), `status "${await d.status()}"`);
 
+
+    // u. Dental flow, Step 0 to Step 2 (the repo's reference aligner; synthetic files for the failure branches).
+    {
+      const reference = path.join(ROOT, 'docs', 'dental-reference', 'reference-aligner.stl');
+      const cube = path.join(scratch, 'cube.stl');
+      const cup = path.join(scratch, 'cup.stl');
+      const badStl = path.join(scratch, 'broken.stl');
+      const notModel = path.join(scratch, 'notes.txt');
+      const holed = path.join(scratch, 'holed.stl');
+      writeFileSync(cube, cubeStl());
+      writeFileSync(cup, cupStl());
+      writeFileSync(badStl, 'solid x\nthis is not a mesh\n');
+      writeFileSync(notModel, 'not a model');
+      const whole = readFileSync(reference);
+      // Binary STL (84-byte head, 50 bytes a triangle): the last 40 triangles cut off leaves a hole.
+      const count = whole.readUInt32LE(80);
+      const cut = Buffer.from(whole.subarray(0, 84 + (count - 40) * 50));
+      cut.writeUInt32LE(count - 40, 80);
+      writeFileSync(holed, cut);
+      const drop = (file) => page.setInputFiles('input[aria-label="Choose aligner file"]', file);
+      const badge = () => page.locator('.edit-badge').innerText();
+      const objects = async () => (await page.locator('footer').innerText()).match(/(\d+) objects?/)?.[1];
+      const stepTo = async (text, ms = 20000) => page.waitForFunction((word) => document.querySelector('.edit-badge')?.innerText.includes(word), text, { timeout: ms });
+      const noticeShown = (text) => page.waitForFunction((word) => [...document.querySelectorAll('[role="alert"]')].some((node) => node.innerText.includes(word)), text, { timeout: 120000 });
+
+      await page.goto(url);
+      await d.button('Aligner Support Production').click();
+      await stepTo('Step 0 · Aligner type');
+      const inertLeft = await page.locator('.panel.left [inert]').count();
+      const inertRight = await page.locator('.panel.right [inert]').count();
+      check('u0 entering the dental flow dims both side panels and shows the type card', inertLeft >= 3 && inertRight >= 2 && await page.locator('.dental-card').count() === 1 && /Reference aligner/.test(await page.locator('.dental-card').innerText()) && await page.locator('.dental-card svg').count() === 1,
+        `inert left ${inertLeft}, right ${inertRight}, cards ${await page.locator('.dental-card').count()}`);
+      await page.screenshot({ path: path.join(scratch, 'ux-a-step0.png') });
+      await d.button('Exit').click();
+      await page.waitForFunction(() => !document.querySelector('.edit-badge'), null, { timeout: 5000 });
+      check('u1 Exit at Step 0 leaves the flow with the plate untouched', (await objects()) === '0' && (await page.locator('.panel.left [inert]').count()) === 0, `objects ${await objects()}`);
+
+      await d.button('Aligner Support Production').click();
+      await page.locator('.dental-card').click();
+      await stepTo('Step 1 · Aligner');
+      check('u2 one click on the card goes to Step 1, which asks for the aligner file', await page.getByText('Drop the aligner STL here').isVisible() && await d.button('Back').isVisible());
+      await page.screenshot({ path: path.join(scratch, 'ux-a-step1-drop.png') });
+
+      await drop(notModel);
+      await noticeShown('STL');
+      check('u3 a file that is no model is refused in place, Step 1 stays', (await badge()).includes('Step 1 · Aligner') && await page.getByText('Drop the aligner STL here').isVisible() && (await objects()) === '0', `status "${await d.status()}"`);
+      await drop(badStl);
+      await noticeShown('');
+      await d.idle(1500);
+      check('u4 a broken STL is refused in place, Step 1 stays, nothing is added', (await badge()).includes('Step 1 · Aligner') && await page.getByText('Drop the aligner STL here').isVisible() && (await objects()) === '0', `status "${await d.status()}", objects ${await objects()}`);
+
+      await drop(cube);
+      await noticeShown('could not be oriented automatically');
+      check('u5 failed orientation says so, keeps the dropped pose, and Back, Exit and Next stay available',
+        await d.button('Next').isEnabled() && await d.button('Back').isVisible() && await d.button('Exit').isVisible() && (await badge()).includes('Step 1 · Aligner'));
+      await d.button('Next').click();
+      await page.waitForFunction(() => /No aligner opening was found/.test(document.querySelector('footer strong')?.innerText ?? ''), null, { timeout: 10000 });
+      check('u5b Next without a detected opening explains itself and stays in Step 1', (await badge()).includes('Step 1 · Aligner'), `status "${await d.status()}"`);
+      await d.button('Back').click();
+      await stepTo('Step 0');
+      await page.locator('.dental-card').click();
+      await stepTo('Step 1 · Aligner');
+
+      await drop(holed);
+      await noticeShown('holes or non-manifold');
+      check('u6 a mesh with holes is warned about before detection is trusted', await page.getByText('holes or non-manifold').isVisible());
+      await d.button('Back').click();
+      await stepTo('Step 0');
+      await page.locator('.dental-card').click();
+      await stepTo('Step 1 · Aligner');
+      await drop(cup);
+      await noticeShown('different aligner type');
+      check('u7 a model with no central opening offers a type switch or Keep instead of silently continuing', await page.getByRole('button', { name: /^Keep / }).isVisible());
+      await page.getByRole('button', { name: /^Keep / }).click();
+      check('u7b Keep dismisses the type prompt', (await page.getByText('different aligner type').count()) === 0);
+      await d.button('Next').click();
+      await stepTo('Step 2 · Support area', 120000);
+      check('u8 no detected area: Step 2 opens with its message and Next stays off',
+        await page.getByText('No support area was detected').first().isVisible() && await d.button('Next').isDisabled(), `status "${await d.status()}"`);
+      await d.button('Back').click();
+      await stepTo('Step 1 · Aligner');
+      await d.button('Back').click();
+      await stepTo('Step 0');
+
+      await page.locator('.dental-card').click();
+      await stepTo('Step 1 · Aligner');
+      const dropped = Date.now();
+      await drop(reference);
+      await stepTo('Review the orientation', 180000);
+      note(`reference aligner read and oriented in ${Math.round((Date.now() - dropped) / 1000)} s`);
+      check('u9 the dropped aligner is oriented with no button pressed, and the mesh check is clean', (await page.getByText('holes or non-manifold').count()) === 0 && (await page.getByText('could not be oriented').count()) === 0 && await d.button('Next').isEnabled());
+      await d.button('Next').click();
+      await stepTo('Step 2 · Support area', 180000);
+      await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /Proposed support tips: [1-9]/.test(note.innerText)), null, { timeout: 240000 });
+      check('u10 Step 2 shows the detected area with tips, and Next is on', await d.button('Next').isEnabled() && (await page.getByText('No support area was detected').count()) === 0);
+      await page.screenshot({ path: path.join(scratch, 'ux-a-step2.png') });
+      await d.button('Back').click();
+      await stepTo('Step 1 · Aligner');
+      check('u11 Back from Step 2 returns to Step 1 with the oriented aligner kept', await d.button('Next').isEnabled() && (await page.getByText('Drop the aligner STL here').count()) === 0);
+      await d.button('Exit').click();
+      await page.waitForFunction(() => !document.querySelector('.edit-badge'), null, { timeout: 5000 });
+      const left = await d.counts();
+      check('u12 Exit leaves the aligners on the plate without supports', (await page.locator('.panel.left [inert]').count()) === 0 && Number(await objects()) >= 1 && left.auto === 0, `objects ${await objects()}, automatic supports ${left.auto}`);
+    }
+
     if (dentalFixture) {
       // The opt-in Dental lane never checks a patient model into the repository. The caller gives
       // its local fixture explicitly (for example, `DENTAL_WALK_FIXTURE=... npm run walk`).
       await page.goto(url);
-      await page.setInputFiles('.drop input[type=file]', dentalFixture);
-      const dentalName = path.basename(dentalFixture, path.extname(dentalFixture));
-      await page.waitForFunction((name) => document.body.innerText.includes(name), dentalName, { timeout: 60000 });
       await d.button('Aligner Support Production').click();
-      await page.waitForFunction(() => document.body.innerText.includes('Step 1 · Orientation'), null, { timeout: 90000 });
+      await page.locator('.dental-card').click();
+      await page.setInputFiles('input[aria-label="Choose aligner file"]', dentalFixture);
+      await page.waitForFunction(() => document.body.innerText.includes('Review the orientation'), null, { timeout: 180000 });
       await page.screenshot({ path: path.join(scratch, 'dental-orientation.png') });
       check('l0 Step 1 offers orientation and Next without premature Done',
-        await d.button('Auto orientation').isVisible() && await d.button('Next').isVisible() && await d.button('Done', false).count() === 0 && !/Esc or Done/.test(await page.locator('.panel.left').innerText()));
+        await d.button('Auto orientation').isVisible() && await d.button('Next').isVisible() && await d.button('Done', false).count() === 0);
       await d.button('Auto orientation').click();
-      check('l1 automatic orientation stays in Step 1', (await page.locator('.edit-badge').innerText()).includes('Step 1 · Orientation'));
+      check('l1 automatic orientation stays in Step 1', (await page.locator('.edit-badge').innerText()).includes('Step 1 · Aligner'));
       await d.button('Next').click();
       await page.waitForFunction(() => document.body.innerText.includes('Step 2 · Support area'), null, { timeout: 90000 });
       await d.idle(1000);
