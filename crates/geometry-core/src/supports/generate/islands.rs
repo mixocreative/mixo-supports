@@ -16,6 +16,9 @@ use crate::supports::remesh::hypot3;
 pub enum IslandStatus {
     Resolved,
     Unresolved,
+    /// Unresolved, and its lowest point lies on no face of the policy's permitted area: a support there
+    /// is one the policy forbids, so it is left to the shape, not offered as a fix.
+    OutsidePolicy,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -69,10 +72,12 @@ pub struct IslandInput<'a> {
     /// A contact within this distance of an island's lowest point serves it (mm).
     pub cover_mm: f64,
     pub expired: &'a dyn Fn() -> bool,
+    /// The policy's permitted area as a face predicate; `None` permits every face (the generic policy).
+    pub permitted_face: Option<&'a dyn Fn(u32) -> bool>,
 }
 
 pub fn island_verdict(input: IslandInput) -> IslandVerdict {
-    let IslandInput { positions, indices, contacts, grounds, verified, cover_mm, expired } = input;
+    let IslandInput { positions, indices, contacts, grounds, verified, cover_mm, expired, permitted_face } = input;
     if expired() {
         return IslandVerdict::Inconclusive("timeout");
     }
@@ -148,8 +153,14 @@ pub fn island_verdict(input: IslandInput) -> IslandVerdict {
         .filter(|(_, b)| b.plateau_vertices.iter().any(|&v| !upward[v as usize]))
         .map(|(k, b)| {
             let name = id(k);
-            let is_resolved = resolved.contains(&name);
-            Island { height: b.height, vertex: b.vertex, status: if is_resolved { IslandStatus::Resolved } else { IslandStatus::Unresolved }, manual_only: manual_resolved.contains(&name) }
+            let status = if resolved.contains(&name) {
+                IslandStatus::Resolved
+            } else if permitted_face.is_some_and(|inside| !star[k].iter().any(|&f| inside(f))) {
+                IslandStatus::OutsidePolicy
+            } else {
+                IslandStatus::Unresolved
+            };
+            Island { height: b.height, vertex: b.vertex, status, manual_only: manual_resolved.contains(&name) }
         })
         .collect();
     IslandVerdict::Ok(islands)

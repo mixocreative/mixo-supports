@@ -200,7 +200,7 @@ impl Generation {
     pub fn take_island_vertices(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.island_vertices)
     }
-    /// Per island: 0 resolved, 1 unresolved, 2 resolved only through manual support.
+    /// Per island: 0 resolved, 1 unresolved, 2 resolved only through manual support, 3 unresolved but outside the policy's permitted area.
     pub fn take_island_status(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.island_status)
     }
@@ -279,6 +279,7 @@ impl GeometrySession {
                         (IslandStatus::Resolved, false) => 0,
                         (IslandStatus::Unresolved, _) => 1,
                         (IslandStatus::Resolved, true) => 2,
+                        (IslandStatus::OutsidePolicy, _) => 3,
                     });
                 }
             }

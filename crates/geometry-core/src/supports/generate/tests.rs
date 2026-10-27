@@ -266,6 +266,27 @@ fn islands_resolve_through_built_supports_and_stay_unresolved_without_them() {
 }
 
 #[test]
+fn an_island_outside_the_permitted_area_is_classified_apart_from_unresolved() {
+    let fixture = Fixture::new(&[([-5.0, 5.0, -5.0], [5.0, 15.0, 5.0])]);
+    let status = |p: &PolicyResult| {
+        let out = fixture.run(Vec::new(), &plain_settings(&[]), p, &never);
+        let IslandVerdict::Ok(islands) = &out.islands else { panic!("{:?}", out.islands) };
+        islands.iter().map(|i| i.status).collect::<Vec<_>>()
+    };
+    // The generic policy permits everything: unchanged, even with an empty mask.
+    assert_eq!(status(&policy(fixture.faces(), Vec::new(), 0, AutomaticRule::AsGiven)), vec![IslandStatus::Unresolved]);
+    // An approved-area policy whose area misses the island's faces: outside, not unresolved.
+    let mut approved = policy(fixture.faces(), Vec::new(), 0, AutomaticRule::AsGiven);
+    approved.landing_rule = LandingRule::ApprovedFaces { stamps: Vec::new() };
+    assert_eq!(status(&approved), vec![IslandStatus::OutsidePolicy]);
+    // The same policy with the whole model permitted keeps it unresolved (listed with Fix).
+    for face in 0..fixture.faces() {
+        approved.permitted_faces.set(face, true);
+    }
+    assert_eq!(status(&approved), vec![IslandStatus::Unresolved]);
+}
+
+#[test]
 fn ring_coverage_counts_only_built_contacts_of_the_ring() {
     let fixture = Fixture::new(&[([-5.0, 20.0, -5.0], [5.0, 24.0, 5.0])]);
     let cand = |id: &str, x: f64| Candidate { id: CandidateId(id.into()), source_face: Some(0), point: [x, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };

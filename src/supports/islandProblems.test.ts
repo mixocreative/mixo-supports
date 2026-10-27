@@ -19,4 +19,18 @@ describe('islandProblems', () => {
     expect(islandProblems(undefined, positions)).toEqual([]);
     expect(islandProblems({ status: 'ok', islands: [{ height: 0, vertex: 9, status: 'unresolved' }] }, positions)).toEqual([]);
   });
+  it('collapses outside-policy islands into one informational entry, keeping unresolved ones as they are', () => {
+    const report = { status: 'ok' as const, islands: [
+      { height: 0, vertex: 1, status: 'outside-policy' as const },
+      { height: 1, vertex: 0, status: 'unresolved' as const },
+      { height: 2, vertex: 2, status: 'outside-policy' as const },
+    ] };
+    expect(islandProblems(report, positions)).toEqual([
+      { kind: 'island', position: [0, 0, 0], area: 0 },
+      { kind: 'outside', position: [1, 2, 3], area: 0, points: [[1, 2, 3], [4, 5, 6]] },
+    ]);
+  });
+  it('lists no outside entry when no island is outside the policy', () => {
+    expect(islandProblems({ status: 'ok', islands: [{ height: 0, vertex: 1, status: 'resolved' }] }, positions)).toEqual([]);
+  });
 });

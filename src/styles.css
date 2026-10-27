@@ -446,6 +446,7 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 .problem-kind { width: 10px; height: 10px; border-radius: 50%; }
 .problem-kind.island { background: #b3261e; }
 .problem-kind.overhang { background: #d97706; }
+.problem-kind.outside { background: #6b7280; }
 
 /* ---- Edit bar tools and selection ---------------------------------------- */
 /* Viewport tools keep the app's button sizes; segments get room for their words. */

@@ -99,7 +99,7 @@ const STATUS = ['clear', 'blocked', 'inconclusive'] as const;
 const NO_CONTACT = 0xffffffff;
 const ISSUE_STRIDE = 5;
 const ISSUE_ORIGIN = ['auto', 'manual', 'structural'] as const;
-const ISLAND_STATUS = ['resolved', 'unresolved', 'manual-only'] as const;
+const ISLAND_STATUS = ['resolved', 'unresolved', 'manual-only', 'outside-policy'] as const;
 
 function candidateRows(list: readonly PolicyCandidate[]): Float64Array {
   const rows = new Float64Array(list.length * 7);

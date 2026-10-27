@@ -432,8 +432,10 @@ export default function App() {
         // the re-check below runs once the build lands and lists what it finds.
         if (!mesh) return undefined;
         const unjudged = items.filter((problem) => problem.kind === 'unjudged').length;
+        // Low points outside the policy's area are informational: never a spot that may print unsupported.
+        const outside = items.filter((problem) => problem.kind === 'outside').length;
         const inZone = items.filter((problem) => problem.inZone).length;
-        return { spots: items.length - inZone - unjudged, inZone, unjudged };
+        return { spots: items.length - inZone - unjudged - outside, inZone, unjudged };
       }
     }));
     return tallyChecks(checked);
@@ -451,8 +453,8 @@ export default function App() {
       if (!entry) return [];
       const mesh = currentBuild(unit, built.get(unit.id));
       if (entry.unit === unit && entry.mesh === mesh) return entry.items;
-      // An unjudged island verdict has no spot a support could cover: it stays until the re-check replaces it.
-      const open = uncovered(entry.items, unitContacts(unit, mesh), resolveSettings(unit.settings).scatterSpacing, (problem) => problem.kind === 'unjudged' || isRechecking(problem));
+      // An unjudged verdict, and the outside-policy note, have no spot a support could cover: it stays until the re-check replaces it.
+      const open = uncovered(entry.items, unitContacts(unit, mesh), resolveSettings(unit.settings).scatterSpacing, (problem) => problem.kind === 'unjudged' || problem.kind === 'outside' || isRechecking(problem));
       stale ||= open.length > 0;
       return open;
     });

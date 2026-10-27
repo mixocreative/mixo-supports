@@ -20,7 +20,7 @@ use super::error::BuildError;
 use super::parts::column::ColumnContact;
 use super::parts::landing::Landing;
 use super::parts::model::Model;
-use super::policy::{AllowedStructures, PolicyResult};
+use super::policy::{AllowedStructures, LandingRule, PolicyResult};
 use super::safety::clearance::{BodyIssue, Status, review_body_clearance};
 use super::safety::conflicts::SupportMesh;
 use super::safety::index::CollisionIndex;
@@ -112,6 +112,8 @@ pub fn generate(input: GenerateInput) -> Result<Generated, BuildError> {
         }
         None => Verdict { status: Status::Clear, reason: None, issues: Vec::new() },
     };
+    // Only a policy with an approved-area landing rule has an outside; the generic one permits every face.
+    let permitted_area = matches!(policy.landing_rule, LandingRule::ApprovedFaces { .. }).then(|| |face: u32| policy.permitted_faces.get(face as usize));
     let islands = match model {
         Some(model) => {
             let blocked: Vec<bool> = (0..outcome.contacts.len())
@@ -125,6 +127,7 @@ pub fn generate(input: GenerateInput) -> Result<Generated, BuildError> {
                 verified: &|k| !blocked[k],
                 cover_mm: outcome.settings.scatter_spacing,
                 expired,
+                permitted_face: permitted_area.as_ref().map(|f| f as &dyn Fn(u32) -> bool),
             })
         }
         None => IslandVerdict::Ok(Vec::new()),

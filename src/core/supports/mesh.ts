@@ -90,7 +90,7 @@ export interface SupportVerdict {
 
 /** Island verdict from the built-path graph: `resolved` only when verified supports reach the plate. */
 export type IslandReport =
-  | { status: 'ok'; islands: Array<{ height: number; vertex: number; status: 'resolved' | 'unresolved' | 'manual-only' }> }
+  | { status: 'ok'; islands: Array<{ height: number; vertex: number; status: 'resolved' | 'unresolved' | 'manual-only' | 'outside-policy' }> }
   | { status: 'inconclusive'; reason: string };
 
 export interface DentalRimCoverageItem {

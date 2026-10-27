@@ -835,8 +835,10 @@ async function walk(url, scratch, dentalFixture) {
       await d.quiet();
       await d.idle(800);
       const listed = await page.locator('.dental-side .problems li').count();
-      check('x10 Check supports inside Step 3 reports into the problem list (each finding has Show me and Fix)', listed === 0 || (await page.locator('.dental-side .problems li button').count()) >= 2 * listed, `${listed} listed`);
-      if (listed > 0) {
+      // The one outside-the-support-area note is informational: Show me only, no Fix.
+      const notes = await page.locator('.dental-side .problems li:has(.problem-kind.outside)').count();
+      check('x10 Check supports inside Step 3 reports into the problem list (each finding has Show me and Fix; the outside-area note only Show me)', listed === 0 || (await page.locator('.dental-side .problems li button').count()) >= 2 * listed - notes, `${listed} listed, ${notes} outside-area note`);
+      if (listed > notes) {
         const addButton = page.locator('.dental-side').getByRole('button', { name: 'Add supports' });
         await page.locator('.dental-side').getByRole('button', { name: 'Select supports', exact: true }).click();
         await d.idle(300);

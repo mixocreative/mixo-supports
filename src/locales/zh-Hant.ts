@@ -503,6 +503,8 @@ export const zhHant: Dictionary = {
   'Nothing to export: no object in this export has supports left.': '沒有可匯出的內容：這次匯出的物件都已沒有支撐。',
   'The check did not finish for 1 object: run it again.': '有 1 個物件的檢查沒有完成：請再檢查一次。',
   'The check did not finish for {n} objects: run it again.': '有 {n} 個物件的檢查沒有完成：請再檢查一次。',
+  '1 low point lies outside the dental support area and is left to the aligner shape.': '有 1 個最低點位於牙套支撐區域外，並交由牙套形狀決定。',
+  '{n} low points lie outside the dental support area and are left to the aligner shape.': '有 {n} 個最低點位於牙套支撐區域外，並交由牙套形狀決定。',
   'Unsupported island': '未支撐孤島',
   'Could not judge islands on this mesh': '無法判斷此網格上的孤島',
   'This mesh has defects, such as edges shared by more than two faces, so no island is called supported. Repair the model, then check again.': '此網格存在缺陷（例如由兩個以上的面共用的邊），因此無法將任何孤島判定為已支撐。請修復模型後再檢查一次。',
