@@ -100,11 +100,25 @@ impl AsciiStlStream {
     }
 }
 
+/// The characters of a JavaScript regex `\s` (what the TS oracle and STLLoader accept between
+/// tokens): ASCII whitespace including vertical tab, NBSP, the Unicode space separators, line and
+/// paragraph separators and the byte order mark. Not U+0085, which `char::is_whitespace` includes.
+fn is_js_whitespace(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}'
+            | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}'
+    )
+}
+
 fn ascii_number_after_space(line: &str, start: usize) -> Option<(f64, usize)> {
     let bytes = line.as_bytes();
     let mut at = start;
-    while at < bytes.len() && bytes[at].is_ascii_whitespace() {
-        at += 1;
+    for (offset, c) in line[start..].char_indices() {
+        if !is_js_whitespace(c) {
+            break;
+        }
+        at = start + offset + c.len_utf8();
     }
     if at == start {
         return None;
@@ -273,6 +287,14 @@ mod tests {
             invalid.push(b"solid x\nvertex 1e999 0 0\n"),
             Err(StlError::NonFinite)
         ));
+    }
+
+    #[test]
+    fn ascii_stream_accepts_unicode_and_vertical_tab_whitespace_like_javascript() {
+        let mut stream = AsciiStlStream::new(0).unwrap();
+        let text = "solid x\nvertex\u{a0}0\u{2003}0\u{3000}0\nvertex\u{b}1 0 0\nvertex 0 0 1\n";
+        stream.push(text.as_bytes()).unwrap();
+        assert_eq!(stream.finish().unwrap().indices, [0, 1, 2]);
     }
 
     #[test]

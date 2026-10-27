@@ -1,0 +1,23 @@
+solid corpus
+facet normal 0 0 1
+outer loop
+VERTEX 0 0 0
+VERTEX 1 0 0
+VERTEX 0 1 0
+endloop
+endfacet
+facet normal 0 0 1
+outer loop
+VERTEX 1 0 0
+VERTEX 1 1 0
+VERTEX 0 1 0
+endloop
+endfacet
+facet normal 0 0 1
+outer loop
+VERTEX 0 0 0
+VERTEX 0 0 1
+VERTEX 1 0 0
+endloop
+endfacet
+endsolid corpus

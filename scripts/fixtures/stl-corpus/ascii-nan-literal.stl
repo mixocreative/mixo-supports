@@ -1,0 +1,23 @@
+solid corpus
+facet normal 0 0 1
+outer loop
+vertex 0 NaN 0
+vertex 1 NaN 0
+vertex 0 NaN 0
+endloop
+endfacet
+facet normal 0 0 1
+outer loop
+vertex 1 NaN 0
+vertex 1 NaN 0
+vertex 0 NaN 0
+endloop
+endfacet
+facet normal 0 0 1
+outer loop
+vertex 0 NaN 0
+vertex 0 NaN 1
+vertex 1 NaN 0
+endloop
+endfacet
+endsolid corpus
