@@ -104,7 +104,7 @@ Dental mode is a visible feature. Entering it dims the rest of the editor.
 
 | Unit | State | Commit | Note |
 |---|---|---|---|
-| U0 | partial | — | toolchain, version gate, mesh session done; inventory/baseline/guard open |
+| U0 | done | see git log | toolchain, version gate, mesh session; inventory (103 rows), `dentalwork/perf-baseline.json`, report-only `scripts/geometry-guard.mjs` + `src/geometryGuard.test.ts` |
 | U1 | partial | 3fdec6c | binary + ASCII STL, glTF weld, centering, decimation in Rust |
 | U2–U10 | not started | — | |
 
