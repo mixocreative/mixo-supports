@@ -174,6 +174,7 @@ function readProps() {
   const hash = (ids) => { let h = 2166136261; for (const ch of ids.join('|')) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0; return h.toString(16); };
   const mesh = out.meshes ? [...out.meshes.values()][0] : undefined;
   const unit = out.scene?.units?.[0];
+  const active = out.scene?.units?.find((candidate) => candidate.id === out.scene.activeUnitId);
   const drawn = mesh ? new Set(mesh.components.map((c) => c.contactId).filter(Boolean)) : new Set();
   return {
     selected: out.selection?.length ?? -1,
@@ -190,7 +191,7 @@ function readProps() {
     zones: unit ? unit.zones.length : -1,
     dentalBoundary: unit?.dental?.rim.boundaryKind ?? '',
     dentalKind: unit?.dental?.kind ?? '',
-    dentalOrigin: unit?.dental?.origin ?? '',
+    activeDental: active?.dental ? { kind: active.dental.kind ?? 'legacy', origin: active.dental.origin ?? '', stamps: active.dental.stamps.length } : undefined,
     dentalStamps: unit?.dental?.stamps.length ?? -1,
     dentalFaces: unit?.dental?.kind === 'two-contour' ? unit.dental.region.contactFaces?.reduce((sum, face) => sum + face, 0) ?? -1 : -1,
     dentalContacts: unit?.dental?.kind === 'two-contour' ? unit.dental.region.contacts?.length ?? -1 : -1,
@@ -687,8 +688,8 @@ async function walk(url, scratch, dentalFixture) {
       await stepTo('Step 2 · Support area', 120000);
       check('u8 no detected area: Step 2 opens with its message and Next stays off',
         await page.getByText('No support area was detected').first().isVisible() && await d.button('Next').isDisabled(), `status "${await d.status()}"`);
-      const unpainted = await d.props();
-      check('u8b no detected area: paint starts from an empty manual-area policy, not from the cavity footprint', unpainted.dentalKind === 'legacy' && unpainted.dentalOrigin === 'manual-area' && unpainted.dentalStamps === 0, `policy "${unpainted.dentalKind}" origin "${unpainted.dentalOrigin}" stamps ${unpainted.dentalStamps}`);
+      const unpainted = (await d.props()).activeDental;
+      check('u8b no detected area: paint starts from an empty manual-area policy, not from the cavity footprint', unpainted?.kind === 'legacy' && unpainted.origin === 'manual-area' && unpainted.stamps === 0, `policy ${JSON.stringify(unpainted)}`);
       await d.button('Back').click();
       await stepTo('Step 1 · Aligner');
       await d.button('Back').click();
