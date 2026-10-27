@@ -11,6 +11,8 @@ export type MeshMode = SupportJob['mode'];
  */
 export interface SupportJobPayload {
   unitId: string;
+  /** The request's revision: `generate` echoes it and the host drops any result that is not the newest. */
+  revision: number;
   sourceToken: number;
   source?: TriangleMesh;
   job: Omit<SupportJob, 'mesh'>;
@@ -29,6 +31,15 @@ export type MeshTask =
   /** The unit is gone: drop its model and caches. */
   | { kind: 'forget'; unitId: string };
 
+/** What one unit's export build says about itself; the host decides from it whether the files may be written. */
+export interface ExportUnitResult {
+  unitId: string;
+  /** The revision `generate` echoed for this unit's supports. */
+  revision: number;
+  verdict: 'clear' | 'blocked' | 'inconclusive';
+  islands: 'ok' | 'inconclusive';
+}
+
 export interface ExportedFile {
   fileName: string;
   buffer: ArrayBuffer;
@@ -36,7 +47,7 @@ export interface ExportedFile {
 
 export type MeshTaskResult =
   | { kind: 'mesh'; mesh: GeneratedSupportMesh }
-  | { kind: 'files'; files: ExportedFile[] }
+  | { kind: 'files'; files: ExportedFile[]; units: ExportUnitResult[] }
   /** The worker has no model for these units (a new worker, or evicted from its cache): send them again. */
   | { kind: 'need-source'; unitIds: string[] }
   | { kind: 'forgotten' };

@@ -64,6 +64,8 @@ export interface GenerateOptions {
   zones?: readonly ZoneStamp[];
   /** Ends the repair and the checks early with an inconclusive verdict. */
   timeoutMs?: number;
+  /** The request's revision: the engine echoes it so the host can drop a result that is not the newest. */
+  revision?: number;
   onProgress?: ProgressCallback;
 }
 
@@ -72,6 +74,7 @@ export interface GenerateOutput {
   rings: RingMeasure[];
   fallback: Array<'tree' | 'brace'>;
   trials: number;
+  revision: number;
 }
 
 interface Generation {
@@ -80,13 +83,13 @@ interface Generation {
   take_dropped(): string[]; take_dropped_by_zones(): string[]; take_fallback(): Uint8Array;
   status(): number; reason(): string; take_issues(): Uint32Array;
   take_island_heights(): Float64Array; take_island_vertices(): Uint32Array; take_island_status(): Uint8Array; island_reason(): string;
-  take_rings(): Float64Array; trials(): number; free(): void;
+  take_rings(): Float64Array; trials(): number; revision(): number; free(): void;
 }
 
 interface GenerateSession {
   load_mesh(positions: Float32Array, indices: Uint32Array): number;
   generate(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number,
-    labelText: string, zones: Float64Array, policy: PolicyDataHandle, timeoutMs: number): Generation;
+    labelText: string, zones: Float64Array, policy: PolicyDataHandle, timeoutMs: number, revision: number): Generation;
 }
 
 const PARTS: readonly SupportPart[] = [
@@ -130,7 +133,7 @@ export function generateSupports(contacts: readonly SupportContact[], settings: 
   const empty = (): GenerateOutput => ({
     mesh: { positions: new Float32Array(), indices: new Uint32Array(), parts: [], components: [], dropped: [], droppedByZones: [],
       verdict: { status: 'clear', issues: [] }, islands: { status: 'ok', islands: [] } },
-    rings: [], fallback: [], trials: 0,
+    rings: [], fallback: [], trials: 0, revision: options.revision ?? 0,
   });
   if (contacts.length === 0) return empty();
   const { model } = options;
@@ -151,7 +154,7 @@ export function generateSupports(contacts: readonly SupportContact[], settings: 
     let result: Generation;
     try {
       result = wasm.generate(handle, inputs.map((c) => c.id), packed.contacts, packed.shapes, packSettings(settings), options.mode === 'export' ? 1 : 0,
-        options.labelText ?? '', packZones(options.zones ?? []), data, options.timeoutMs ?? 0);
+        options.labelText ?? '', packZones(options.zones ?? []), data, options.timeoutMs ?? 0, options.revision ?? 0);
     } finally {
       data.free();
     }
@@ -182,11 +185,13 @@ export function generateSupports(contacts: readonly SupportContact[], settings: 
       for (let k = 0; k < rows.length; k += 5) {
         rings.push({ perimeterMm: rows[k]!, retained: rows[k + 1]!, maxGapMm: rows[k + 2]!, reviewGapMm: rows[k + 3]!, needsReview: rows[k + 4] === 1 });
       }
+      const revision = result.revision();
       const mesh: GeneratedSupportMesh = {
+        revision,
         positions: result.take_positions(), indices: result.take_indices(), parts, components,
         dropped: result.take_dropped(), droppedByZones: result.take_dropped_by_zones(), verdict, islands,
       };
-      return { mesh, rings, fallback: Array.from(result.take_fallback(), (f) => (f === 1 ? 'tree' as const : 'brace' as const)), trials: result.trials() };
+      return { mesh, rings, fallback: Array.from(result.take_fallback(), (f) => (f === 1 ? 'tree' as const : 'brace' as const)), trials: result.trials(), revision };
     } finally {
       result.free();
     }

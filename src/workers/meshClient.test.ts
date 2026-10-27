@@ -10,16 +10,19 @@ import type { WorkerLike } from './WorkerTask';
 class FakeWorker implements WorkerLike {
   onmessage: ((event: { data: unknown }) => void) | null = null;
   onerror: ((event: { message?: string }) => void) | null = null;
-  received: { id: number; payload: MeshTask }[] = [];
+  received: { id: number; payload: MeshTask; revision?: number }[] = [];
   terminated = false;
   postMessage(message: unknown): void {
-    this.received.push(message as { id: number; payload: MeshTask });
+    this.received.push(message as { id: number; payload: MeshTask; revision?: number });
   }
   terminate(): void {
     this.terminated = true;
   }
-  done(index: number, result: unknown): void {
-    this.onmessage?.({ data: { id: this.received[index]!.id, type: 'done', result } });
+  /** Answers request `index`, echoing its revision (as `serveTask` does) and, for a mesh, the one `generate` echoes. */
+  done(index: number, result: unknown, revision: number | undefined = this.received[index]!.revision): void {
+    const answer = result as { kind?: string; mesh?: object };
+    const stamped = answer.kind === 'mesh' && answer.mesh && !('revision' in answer.mesh) ? { ...answer, mesh: { ...answer.mesh, revision } } : result;
+    this.onmessage?.({ data: { id: this.received[index]!.id, type: 'done', result: stamped, ...(revision != null ? { revision } : {}) } });
   }
 }
 
@@ -61,7 +64,7 @@ describe('support mesh client', () => {
     expect(unitOf(worker.received[0]!.payload)?.source).toBe(model);
     expect(unitOf(worker.received[0]!.payload)?.job).not.toHaveProperty('mesh');
     worker.done(0, built);
-    await expect(first).resolves.toEqual(built.mesh);
+    await expect(first).resolves.toEqual({ ...built.mesh, revision: 1 });
     expect(idle).toEqual(['a preview']);
     await tick();
     void client.build('a', job(), label);
@@ -110,15 +113,46 @@ describe('support mesh client', () => {
     await expect(newer).resolves.toBeDefined();
   });
 
-  it('lets a build that just started finish', async () => {
+  it('lets a build that just started finish, but never delivers it once a newer one was requested', async () => {
     const now = vi.spyOn(performance, 'now').mockReturnValue(0);
     const { client, workers } = setup();
     const running = client.build('a', job(), label);
     now.mockReturnValue(100);
-    void client.build('a', job(), label);
+    const newer = client.build('a', job(), label);
     expect(workers[0]!.terminated).toBe(false);
     workers[0]!.done(0, built);
-    await expect(running).resolves.toBeDefined();
+    await expect(running).resolves.toBeUndefined();
+    await tick();
+    workers[0]!.done(1, built);
+    await expect(newer).resolves.toMatchObject({ revision: 2 });
+  });
+
+  it('drops a reply that echoes another revision or answers with a mesh of another revision', async () => {
+    const { client, workers } = setup();
+    const echoed = client.build('a', job(), label);
+    workers[0]!.done(0, built, 99);
+    await expect(echoed).resolves.toBeUndefined();
+    await tick();
+    const wrong = client.build('a', job(), label);
+    workers[0]!.done(1, { kind: 'mesh', mesh: { ...built.mesh, revision: 1 } });
+    await expect(wrong).resolves.toBeUndefined();
+  });
+
+  it('cancel stops the running build by replacing its worker, drops queued ones, and delivers nothing', async () => {
+    const { client, workers, idle } = setup();
+    const running = client.build('a', job(), label);
+    const queued = client.build('b', job(), label);
+    client.cancel('a');
+    await expect(running).resolves.toBeUndefined();
+    expect(workers[0]!.terminated).toBe(true);
+    // A late answer of the terminated worker is ignored; the next request gets a fresh worker and the model again.
+    workers[0]!.done(0, built);
+    await tick();
+    expect(workers).toHaveLength(2);
+    expect(unitOf(workers[1]!.received[0]!.payload)?.unitId).toBe('b');
+    workers[1]!.done(0, built);
+    await expect(queued).resolves.toMatchObject({ revision: 2 });
+    expect(idle).toContain('a preview');
   });
 
   it('forget frees the unit in the worker; a later build sends the model again', async () => {
@@ -202,8 +236,8 @@ describe('support mesh client', () => {
     const task = worker.received[0]!.payload;
     expect(task.kind === 'export' && task.units[0]!.source).toBe(model);
     expect(task.kind === 'export' && task.units[0]!.transform).toEqual({ position: [1, 2, 3], rotation: [0, 0, 0] });
-    worker.done(0, { kind: 'files', files: [{ fileName: 'a.stl', buffer: new ArrayBuffer(84) }] });
-    await expect(files).resolves.toHaveLength(1);
+    worker.done(0, { kind: 'files', files: [{ fileName: 'a.stl', buffer: new ArrayBuffer(84) }], units: [] });
+    await expect(files).resolves.toMatchObject({ revision: 1, files: [{ fileName: 'a.stl' }], units: [] });
     expect(worker.terminated).toBe(true);
   });
 

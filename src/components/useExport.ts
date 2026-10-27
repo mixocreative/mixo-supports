@@ -4,10 +4,15 @@ import { exportStatus, type CheckTally } from '../editing/check';
 import { plural, type Message } from '../i18n';
 import type { PrintScene, PrintUnit } from '../state/project';
 import { exportUnits, planExport, type ExportKind } from '../supports/export';
+import { exportRefusal } from '../supports/exportGate';
 import { currentBuilds, supportJobOf, unitContacts, type UnitBuild } from '../supports/unitSupports';
 import type { SupportMeshClient } from '../workers/meshClient';
 import { codedJobError } from '../workers/jobErrors';
 import { isAbort, type SetStatus } from './appShared';
+
+const REFUSED_STALE = 'Export refused: {name} changed while it was being exported, so the files would not match what you see. Nothing was written; export again.';
+const REFUSED_FAILED = 'Export refused: the supports of {name} were not built, so nothing was written. Generate again, then export.';
+const REFUSED_INCONCLUSIVE = 'Export refused: the safety check of {name} could not reach a verdict (it ran out of time or could not judge a crossing), so nothing was written. Generate again, or use fewer supports.';
 
 /**
  * Export: plans the files, builds them at full resolution in the export worker, hands them to the
@@ -44,9 +49,19 @@ export function useExport(host: {
     const label = { key: files.length === 1 ? 'Exporting {name}' : 'Exporting {n} files', vars: { name: files[0]!.fileName, n: files.length } };
     try {
       const jobs = units.map(([unit, index]) => ({ unitId: unit.id, job: supportJobOf(unit, index, 'export'), transform: unit.transform }));
-      const written = await exporter().exportFiles(jobs, files, label, () => {});
+      const outcome = await exporter().exportFiles(jobs, files, label, () => {});
+      const written = outcome.files;
       // Nothing came back (every file was empty, or the job was dropped): never report success.
       if (written.length === 0) return setStatus('Nothing to export for this mode.');
+      // Written only from the newest, finished and judged result: anything else says why and writes nothing.
+      const withSupports = files.flatMap((file) => file.parts.filter((part) => part.content === 'supports').map((part) => part.unitId));
+      const refusal = exportRefusal(outcome, [...new Set(withSupports)], (unitId) => sceneRef.current.units.find((candidate) => candidate.id === unitId) === units.find(([unit]) => unit.id === unitId)?.[0]);
+      if (refusal) {
+        const name = units.find(([unit]) => unit.id === refusal.unitId)?.[0].name ?? refusal.unitId;
+        if (refusal.reason === 'stale') return setStatus(REFUSED_STALE, { name });
+        if (refusal.reason === 'failed') return setStatus(REFUSED_FAILED, { name });
+        return setStatus(REFUSED_INCONCLUSIVE, { name });
+      }
       for (const file of written) {
         const url = URL.createObjectURL(new Blob([file.buffer], { type: 'model/stl' }));
         const anchor = document.createElement('a');

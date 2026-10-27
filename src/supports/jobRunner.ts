@@ -32,9 +32,9 @@ const EMPTY_MESH: GeneratedSupportMesh = { positions: new Float32Array(), indice
  * the automatic contacts it left out (`dropped`: policy, landing rule, zones, safety repair), the
  * body-clearance `verdict` and the `islands` verdict.
  */
-export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): GeneratedSupportMesh {
+export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback, revision = 0): GeneratedSupportMesh {
   const { frame } = job;
-  if (frame === null) return { ...EMPTY_MESH };
+  if (frame === null) return { ...EMPTY_MESH, revision };
   const dental = job.dental;
   const settings = dental ? dentalBuildSettings(job.settings, dental.kind === 'two-contour' ? dental.structure : undefined) : job.settings;
   const allContacts = jobContacts(job.contacts);
@@ -48,7 +48,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback): G
   const zones = job.contacts.zones.map((stamp) => ({ ...stamp, center: transformPoint(frame, stamp.center), normal: transformDirection(frame, stamp.normal) }));
   const policy = dental ? dentalPolicyInput(job, dental, settings, currentDental, frame) : genericPolicyInput;
   const out = generateSupports(contacts, settings, policy, {
-    mode: job.mode, model: applyTransform(job.mesh, frame), labelText: job.labelText, zones, timeoutMs: GENERATE_TIMEOUT_MS,
+    mode: job.mode, model: applyTransform(job.mesh, frame), labelText: job.labelText, zones, timeoutMs: GENERATE_TIMEOUT_MS, revision,
     ...(onProgress ? { onProgress } : {}),
   });
   const mesh = out.mesh;

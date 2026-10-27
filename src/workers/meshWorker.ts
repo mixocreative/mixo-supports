@@ -4,7 +4,7 @@ import { encodeStl, type ExportPart } from '../supports/export';
 import { runSupportJob } from '../supports/jobRunner';
 import { geometryReady } from './geometryClient';
 import { runAfterGeometryReady } from './geometryVersion';
-import type { ExportUnitPayload, MeshTask, MeshTaskResult, SupportJobPayload } from './meshProtocol';
+import type { ExportUnitPayload, ExportUnitResult, MeshTask, MeshTaskResult, SupportJobPayload } from './meshProtocol';
 import { serveTask, transferable, type TaskContext } from './serveTask';
 import { SourceCache } from './sourceCache';
 
@@ -44,10 +44,13 @@ function resolveSources(payloads: readonly SupportJobPayload[]): Map<string, Tri
 function exportFiles(task: Extract<MeshTask, { kind: 'export' }>, models: Map<string, TriangleMesh>, post: TaskContext['progress']) {
   // 80 % of the time goes to the full-resolution supports, the rest to writing files.
   const supports = new Map<string, GeneratedSupportMesh>();
+  const results: ExportUnitResult[] = [];
   const units = task.units.filter(({ unitId }) => task.files.some((file) => file.parts.some((part) => part.unitId === unitId && part.content === 'supports')));
-  units.forEach(({ unitId, job }, k) => {
+  units.forEach(({ unitId, job, revision }, k) => {
     const progress = throttled(post, (fraction) => 0.8 * (k + fraction) / units.length);
-    supports.set(unitId, runSupportJob({ ...job, mesh: models.get(unitId)! }, progress));
+    const built = runSupportJob({ ...job, mesh: models.get(unitId)! }, progress, revision);
+    supports.set(unitId, built);
+    results.push({ unitId, revision: built.revision ?? -1, verdict: built.verdict?.status ?? 'inconclusive', islands: built.islands?.status === 'inconclusive' ? 'inconclusive' : 'ok' });
   });
   const byId = new Map<string, ExportUnitPayload>(task.units.map((payload) => [payload.unitId, payload]));
   const files = task.files.flatMap((file, k) => {
@@ -60,7 +63,7 @@ function exportFiles(task: Extract<MeshTask, { kind: 'export' }>, models: Map<st
     const progress = throttled(post, (fraction) => 0.8 + 0.2 * (k + fraction) / task.files.length);
     return [{ fileName: file.fileName, buffer: encodeStl(parts, progress) }];
   });
-  return transferable<MeshTaskResult>({ kind: 'files', files }, files.map((file) => file.buffer));
+  return transferable<MeshTaskResult>({ kind: 'files', files, units: results }, files.map((file) => file.buffer));
 }
 
 serveTask<MeshTask, MeshTaskResult>((task, { progress }) => {
@@ -72,7 +75,7 @@ serveTask<MeshTask, MeshTaskResult>((task, { progress }) => {
     const models = resolveSources(task.kind === 'build' ? [task.unit] : task.units);
     if (Array.isArray(models)) return { kind: 'need-source', unitIds: models };
     if (task.kind === 'export') return exportFiles(task, models, progress);
-    const mesh = runSupportJob({ ...task.unit.job, mesh: models.get(task.unit.unitId)! }, throttled(progress));
+    const mesh = runSupportJob({ ...task.unit.job, mesh: models.get(task.unit.unitId)! }, throttled(progress), task.unit.revision);
     return transferable<MeshTaskResult>({ kind: 'mesh', mesh }, [mesh.positions.buffer, mesh.indices.buffer]);
   });
 });

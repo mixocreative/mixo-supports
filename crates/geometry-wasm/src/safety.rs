@@ -146,6 +146,7 @@ pub struct Generation {
     island_reason: String,
     rings: Vec<f64>,
     trials: u32,
+    revision: u32,
 }
 
 #[wasm_bindgen]
@@ -177,6 +178,10 @@ impl Generation {
     /// Structures the repair switched off: 1 tree, 2 brace.
     pub fn take_fallback(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.fallback)
+    }
+    /// The request revision, echoed so the host can drop a result that is not the newest.
+    pub fn revision(&self) -> u32 {
+        self.revision
     }
     /// 0 clear, 1 blocked, 2 inconclusive.
     pub fn status(&self) -> u32 {
@@ -229,6 +234,7 @@ impl GeometrySession {
         zones: &[f64],
         policy: &PolicyData,
         timeout_ms: f64,
+        revision: u32,
     ) -> Result<Generation, JsValue> {
         let settings = support_settings::SupportSettings::from_slice(settings).map_err(build_error)?;
         let contacts = flat::decode_contacts(&ids, contacts, shapes, &settings.shape).map_err(build_error)?;
@@ -301,6 +307,7 @@ impl GeometrySession {
             island_reason,
             rings: out.rings.iter().flat_map(|r| [r.perimeter_mm, f64::from(r.retained), r.max_gap_mm, r.review_gap_mm, f64::from(u8::from(r.needs_review))]).collect(),
             trials: out.trials,
+            revision,
         })
     }
 }

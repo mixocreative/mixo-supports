@@ -2,7 +2,7 @@ import type { TriangleMesh } from '../core/analysis/types';
 import type { JobTransform, SupportJob } from '../core/jobs';
 import type { GeneratedSupportMesh } from '../core/supports/mesh';
 import type { ExportFilePlan } from '../supports/export';
-import type { ExportedFile, ExportUnitPayload, MeshMode, MeshTask, MeshTaskResult, SupportJobPayload } from './meshProtocol';
+import type { ExportedFile, ExportUnitPayload, ExportUnitResult, MeshMode, MeshTask, MeshTaskResult, SupportJobPayload } from './meshProtocol';
 import type { TriangleGate } from '../core/jobGate';
 import type { JobLabel } from './jobActivity';
 import { REPLACED, WorkerTask, WorkerTaskError, type WorkerLike } from './WorkerTask';
@@ -21,9 +21,19 @@ export interface ExportUnit {
   transform: JobTransform;
 }
 
+/** What an export hands back: the files and what each unit's build said about itself (see `supports/exportGate`). */
+export interface ExportResult {
+  /** The revision the export asked for; every unit's result must echo it. */
+  revision: number;
+  files: ExportedFile[];
+  units: ExportUnitResult[];
+}
+
 interface Pending {
   /** `unitId|mode` for builds (a newer build replaces it), unique otherwise. */
   key: string;
+  /** The request's revision (client-wide, increasing). */
+  revision: number;
   /** The unit and mode of a build. */
   build?: { unitId: string; mode: MeshMode };
   task: MeshTask;
@@ -85,6 +95,9 @@ export class SupportMeshClient {
   private readonly sent = new Map<string, number>();
   private nextToken = 1;
   private nextKey = 1;
+  private nextRevision = 1;
+  /** The newest revision requested per build key: a result of any other is dropped. */
+  private readonly latest = new Map<string, number>();
 
   constructor(private readonly options: SupportMeshClientOptions) {
     this.perJob = options.mode === 'per-job';
@@ -96,11 +109,14 @@ export class SupportMeshClient {
     const queued = this.queue.findIndex((pending) => pending.key === key);
     if (queued >= 0) this.queue.splice(queued, 1)[0]!.settle(undefined);
     if (this.running?.key === key && performance.now() - this.running.started! >= RESTART_AFTER_MS) this.cutShort();
+    const revision = this.nextRevision++;
+    this.latest.set(key, revision);
     return new Promise<MeshTaskResult | undefined>((resolve, reject) => {
       this.enqueue({
         key,
+        revision,
         build: { unitId, mode: job.mode },
-        task: { kind: 'build', unit: this.payload(unitId, job) },
+        task: { kind: 'build', unit: this.payload(unitId, job, revision) },
         sources: new Map([[unitId, job.mesh]]),
         onProgress: (fraction, stage) => this.options.onProgress?.({ unitId, mode: job.mode, fraction, stage }),
         label,
@@ -111,11 +127,13 @@ export class SupportMeshClient {
     }).then((result) => (result?.kind === 'mesh' ? result.mesh : undefined));
   }
 
-  exportFiles(units: readonly ExportUnit[], files: ExportFilePlan[], label: JobLabel, onProgress: (fraction: number, stage: string) => void, signal?: AbortSignal): Promise<ExportedFile[]> {
-    const payloads: ExportUnitPayload[] = units.map(({ unitId, job, transform }) => ({ ...this.payload(unitId, job), transform }));
+  exportFiles(units: readonly ExportUnit[], files: ExportFilePlan[], label: JobLabel, onProgress: (fraction: number, stage: string) => void, signal?: AbortSignal): Promise<ExportResult> {
+    const revision = this.nextRevision++;
+    const payloads: ExportUnitPayload[] = units.map(({ unitId, job, transform }) => ({ ...this.payload(unitId, job, revision), transform }));
     return new Promise<MeshTaskResult | undefined>((resolve, reject) => {
       this.enqueue({
         key: `export|${this.nextKey++}`,
+        revision,
         task: { kind: 'export', units: payloads, files },
         sources: new Map(units.map(({ unitId, job }) => [unitId, job.mesh])),
         onProgress,
@@ -125,7 +143,24 @@ export class SupportMeshClient {
         timeoutMs: EXPORT_TIMEOUT_MS,
         settle: (result, error) => (error ? reject(error) : resolve(result)),
       });
-    }).then((result) => (result?.kind === 'files' ? result.files : []));
+    }).then((result): ExportResult => (result?.kind === 'files' ? { revision, files: result.files, units: result.units } : { revision, files: [], units: [] }));
+  }
+
+  /**
+   * Cancel the unit's support build: queued ones resolve undefined and never run, a running one is
+   * stopped by terminating its worker (a fresh one is created for the next job, which then gets
+   * the models again). Whatever the cancelled build would have answered is never delivered.
+   */
+  cancel(unitId: string): void {
+    for (let index = this.queue.length - 1; index >= 0; index -= 1) {
+      const pending = this.queue[index]!;
+      if (pending.build?.unitId !== unitId) continue;
+      this.queue.splice(index, 1);
+      this.finish(pending, undefined);
+    }
+    for (const key of [...this.latest.keys()]) if (key.startsWith(`${unitId}|`)) this.latest.set(key, this.nextRevision++);
+    if (this.running?.build?.unitId === unitId) this.cutShort();
+    this.pump();
   }
 
   /**
@@ -143,7 +178,7 @@ export class SupportMeshClient {
     if (this.running?.build?.unitId === unitId) this.cutShort();
     else if (this.sent.delete(unitId)) {
       // Ahead of every other job; nothing waits for the answer.
-      this.queue.unshift({ key: `forget|${this.nextKey++}`, task: { kind: 'forget', unitId }, sources: new Map(), label: { key: 'Freeing memory' }, cancellable: false, timeoutMs: BUILD_TIMEOUT_MS, settle: () => {} });
+      this.queue.unshift({ key: `forget|${this.nextKey++}`, revision: 0, task: { kind: 'forget', unitId }, sources: new Map(), label: { key: 'Freeing memory' }, cancellable: false, timeoutMs: BUILD_TIMEOUT_MS, settle: () => {} });
     }
     this.pump();
   }
@@ -155,11 +190,11 @@ export class SupportMeshClient {
     this.runner.terminate();
   }
 
-  private payload(unitId: string, job: SupportJob): SupportJobPayload {
+  private payload(unitId: string, job: SupportJob, revision: number): SupportJobPayload {
     let token = this.tokens.get(job.mesh);
     if (token === undefined) this.tokens.set(job.mesh, (token = this.nextToken++));
     const { mesh: _mesh, ...rest } = job;
-    return { unitId, sourceToken: token, job: rest };
+    return { unitId, revision, sourceToken: token, job: rest };
   }
 
   private enqueue(pending: Pending): void {
@@ -199,6 +234,7 @@ export class SupportMeshClient {
     this.runner.run(this.withSources(pending), {
       timeoutMs: pending.timeoutMs,
       signal: controller.signal,
+      revision: pending.revision,
       label: pending.label,
       context: pending.task.kind === 'export' ? 'export' : 'build',
       ...(this.options.gate && pending.task.kind !== 'forget' ? { admit: (signal: AbortSignal) => this.options.gate!.acquire(triangles(pending.sources), signal) } : {}),
@@ -213,8 +249,10 @@ export class SupportMeshClient {
         this.queue.unshift(pending);
         return;
       }
-      this.finish(pending, result);
+      this.finish(pending, this.current(pending, result) ? result : undefined);
     }, (error: unknown) => {
+      // The reply answered another request: dropped, the worker is fine.
+      if (error instanceof WorkerTaskError && error.code === 'stale') return this.finish(pending, undefined);
       // The worker was restarted (timeout, crash, cut short): it holds no models any more.
       if (error instanceof WorkerTaskError || pending.cut) this.sent.clear();
       if (pending.cut) this.finish(pending, undefined);
@@ -224,6 +262,12 @@ export class SupportMeshClient {
       this.runningAbort = undefined;
       this.pump();
     });
+  }
+
+  /** A build's result is delivered only if it answers the newest request of its unit and mode. */
+  private current(pending: Pending, result: MeshTaskResult): boolean {
+    if (!pending.build || result.kind !== 'mesh') return true;
+    return result.mesh.revision === pending.revision && this.latest.get(pending.key) === pending.revision;
   }
 
   private finish(pending: Pending, result: MeshTaskResult | undefined, error?: unknown): void {

@@ -119,6 +119,8 @@ export interface GeneratedSupportMesh extends TriangleMesh {
   droppedByPath?: string[];
   /** Exact body-clearance verdict of the final mesh (`generate`); absent on a mesh not built by it. */
   verdict?: SupportVerdict;
+  /** Revision of the request this mesh answers (`generate` echoes it); the host drops any other. */
+  revision?: number;
   /** Islands of the model against the built supports (`generate`). */
   islands?: IslandReport;
   /** Final built contacts on each dental rim; absent when the detector could not certify a contour. */
