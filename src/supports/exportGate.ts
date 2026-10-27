@@ -9,7 +9,7 @@ import type { ExportUnitResult } from '../workers/meshProtocol';
  *    cannot be judged), which is never treated as clear.
  * Not refusals: a `blocked` verdict lists where supports touch the model (every generic build is
  * blocked), and an inconclusive island verdict means the model's own mesh could not be analysed
- * (a degenerate triangle, as in `scripts/fixtures/knot.stl`, makes the topology refuse). Both are
+ * (non-manifold edges, as in `scripts/fixtures/knot.stl`, make the topology refuse; degenerate triangles are skipped). Both are
  * reported in the problem list (U10), not by stopping the export.
  */
 export interface ExportRefusal {

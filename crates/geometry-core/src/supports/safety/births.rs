@@ -25,6 +25,19 @@ pub enum BirthsResult {
 
 pub const NO_BIRTH: u32 = u32::MAX;
 
+/// A repeated vertex, or three distinct vertices with exactly zero area (f64 cross product).
+fn is_degenerate(positions: &[f32], a: u32, b: u32, c: u32) -> bool {
+    if a == b || b == c || c == a {
+        return true;
+    }
+    let p = |v: u32| [0, 1, 2].map(|axis| f64::from(positions[v as usize * 3 + axis]));
+    let (pa, pb, pc) = (p(a), p(b), p(c));
+    let u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
+    let w = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
+    let cross = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    cross == [0.0, 0.0, 0.0]
+}
+
 pub fn topology_births(positions: &[f32], indices: &[u32], height_tolerance: f64) -> BirthsResult {
     use BirthsResult::Inconclusive;
     let count = positions.len() / 3;
@@ -58,11 +71,23 @@ pub fn topology_births(positions: &[f32], indices: &[u32], height_tolerance: f64
             }
         }
     };
+    // Degenerate triangles (a repeated vertex, or zero area) carry no surface and no height event: a weld
+    // of a real scan leaves a few. They are skipped, never a reason to give up on the whole mesh; an index
+    // outside the vertex list is still a malformed mesh.
+    let mut kept: Vec<[u32; 3]> = Vec::with_capacity(indices.len() / 3);
     for t in indices.chunks_exact(3) {
         let (a, b, c) = (t[0], t[1], t[2]);
-        if a as usize >= count || b as usize >= count || c as usize >= count || a == b || b == c || c == a {
+        if a as usize >= count || b as usize >= count || c as usize >= count {
             return Inconclusive("invalid triangle index");
         }
+        if !is_degenerate(positions, a, b, c) {
+            kept.push([a, b, c]);
+        }
+    }
+    if kept.is_empty() {
+        return Inconclusive("no non-degenerate triangle");
+    }
+    for &[a, b, c] in &kept {
         if let Some(fault) = add_edge(a, b, c).or_else(|| add_edge(b, c, a)).or_else(|| add_edge(c, a, b)) {
             return Inconclusive(fault);
         }
@@ -76,7 +101,7 @@ pub fn topology_births(positions: &[f32], indices: &[u32], height_tolerance: f64
     }
     let mut neighbors = vec![0u32; degree[count] as usize];
     let mut next: Vec<u32> = degree[..count].to_vec();
-    for t in indices.chunks_exact(3) {
+    for t in &kept {
         let (a, b, c) = (t[0] as usize, t[1] as usize, t[2] as usize);
         for (v, p, q) in [(a, t[1], t[2]), (b, t[0], t[2]), (c, t[0], t[1])] {
             neighbors[next[v] as usize] = p;
@@ -234,6 +259,8 @@ mod tests {
         assert!(is_inconclusive(&[], &[]));
         assert!(is_inconclusive(&[0.0, f32::NAN, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0], &[0, 1, 2]));
         assert!(is_inconclusive(&[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0], &[0, 1, 3]));
+        // Only degenerate triangles: nothing to analyse.
+        assert!(is_inconclusive(&[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0], &[0, 0, 1]));
         assert!(matches!(topology_births(&[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0], &[0, 1, 2], -1.0), BirthsResult::Inconclusive("invalid height tolerance")));
     }
 
@@ -242,5 +269,19 @@ mod tests {
         let points = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0];
         assert_eq!(topology_births(&points, &[0, 1, 2, 1, 0, 3, 0, 1, 4], 1e-5), BirthsResult::Inconclusive("non-manifold edge"));
         assert_eq!(topology_births(&points, &[0, 1, 2, 2, 1, 0], 1e-5), BirthsResult::Inconclusive("duplicate triangle"));
+    }
+
+    #[test]
+    fn degenerate_triangles_are_skipped_not_fatal() {
+        let tetra = [-1.0f32, 5.0, -1.0, 1.0, 5.0, -1.0, 0.0, 5.0, 1.0, 0.0, 7.0, 0.0, 2.0, 5.0, -1.0];
+        let clean = [0, 1, 2, 0, 3, 1, 1, 3, 2, 2, 3, 0];
+        // A repeated vertex, and three collinear vertices (zero area), added to a closed tetrahedron.
+        let with_junk = [0, 1, 2, 0, 3, 1, 1, 3, 2, 2, 3, 0, 1, 1, 3, 0, 1, 4];
+        assert_eq!(births_of(&tetra, &with_junk), births_of(&tetra, &clean));
+        let (BirthsResult::Ok { component_birth: a, .. }, BirthsResult::Ok { component_birth: b, .. }) =
+            (topology_births(&tetra, &with_junk, 1e-5), topology_births(&tetra, &clean, 1e-5)) else { panic!("ok") };
+        // Vertex 4 is only used by the skipped triangle.
+        assert_eq!(&a[..4], &b[..4]);
+        assert_eq!(a[4], NO_BIRTH);
     }
 }
