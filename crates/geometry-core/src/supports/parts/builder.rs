@@ -12,8 +12,8 @@ pub const MIN_LENGTH: f64 = 1e-4;
 
 #[derive(Default)]
 pub struct MeshBuilder {
-    positions: Vec<f64>,
-    indices: Vec<u32>,
+    pub(super) positions: Vec<f64>,
+    pub(super) indices: Vec<u32>,
     components: Vec<Component>,
     current: Option<(Tag, u32)>,
 }
@@ -162,7 +162,7 @@ impl MeshBuilder {
         }
     }
 
-    fn vertex(&mut self, point: V3) -> u32 {
+    pub(super) fn vertex(&mut self, point: V3) -> u32 {
         self.positions.extend(point);
         (self.positions.len() / 3 - 1) as u32
     }
@@ -182,7 +182,7 @@ impl MeshBuilder {
     }
 }
 
-fn centroid(points: &[V3]) -> V3 {
+pub(super) fn centroid(points: &[V3]) -> V3 {
     let sum = points.iter().fold([0.0; 3], |total, &point| add(total, point));
     scale(sum, 1.0 / points.len() as f64)
 }

@@ -24,6 +24,20 @@ impl<'a> Model<'a> {
         Self { positions, indices, bvh, height: if low.is_finite() { high - low } else { 0.0 } }
     }
 
+    pub fn positions(&self) -> &'a [f32] {
+        self.positions
+    }
+
+    pub fn indices(&self) -> &'a [u32] {
+        self.indices
+    }
+
+    /// Highest vertex (plate Y), 0 for an empty model.
+    pub fn top(&self) -> f64 {
+        let top = self.positions.iter().skip(1).step_by(3).fold(f64::NEG_INFINITY, |m, y| m.max(f64::from(*y)));
+        if top.is_finite() { top } else { 0.0 }
+    }
+
     pub fn face_count(&self) -> usize {
         self.indices.len() / 3
     }

@@ -207,8 +207,10 @@ impl GeometrySession {
 
     /// Builds the support mesh for contacts over a loaded plate-space model (`model` = u32::MAX for
     /// none). `mode`: 0 preview, 1 export. `landings`: 0 casts them against the model, 1 takes them
-    /// from the contacts and `tree_landings` (the voxel-remeshed surface, until U5). Roof, Cage and
-    /// Raft fail with NOT_YET_PORTED (`detail` names it). Never returns a partial result.
+    /// from the contacts and `tree_landings` (the voxel-remeshed surface, until U5). The host also
+    /// passes the label text, the contact / tree indices it omitted (zones, landing rules: U7) and an
+    /// Auto Tree layout it computed (empty = Rust computes it; Safe Distance needs the remesh, U5, and
+    /// fails with NOT_YET_PORTED without one). Never returns a partial result.
     pub fn build_supports(
         &mut self,
         model: u32,
@@ -219,6 +221,10 @@ impl GeometrySession {
         mode: u32,
         landings: u32,
         tree_landings: &[f64],
+        label_text: &str,
+        omit_contacts: &[u32],
+        omit_trees: &[u32],
+        layout: &[f64],
     ) -> Result<SupportBuild, JsValue> {
         let settings = support_settings::SupportSettings::from_slice(settings).map_err(build_error)?;
         let contacts = support_flat::decode_contacts(&ids, contacts, shapes, &settings.shape).map_err(build_error)?;
@@ -233,13 +239,19 @@ impl GeometrySession {
             1 => support_build::LandingSource::Supplied { trees: &trees },
             _ => return Err(coded_error("BAD_INPUT")),
         };
+        let host = support_build::HostChoices {
+            label_text,
+            omit_contacts,
+            omit_trees,
+            layout: support_flat::decode_layout(layout, contacts.len()).map_err(build_error)?,
+        };
         let built = if model == u32::MAX {
-            support_build::build_supports(&contacts, &settings, mode, None, source)
+            support_build::build_supports(&contacts, &settings, mode, None, source, &host)
         } else {
             self.store.ensure_pick_index(model).map_err(mesh_error)?;
             let (positions, indices, bvh) = self.store.pick_view(model).map_err(mesh_error)?;
             let view = support_model::Model::new(positions, indices, bvh);
-            support_build::build_supports(&contacts, &settings, mode, Some(&view), source)
+            support_build::build_supports(&contacts, &settings, mode, Some(&view), source, &host)
         }
         .map_err(build_error)?;
         let table = support_flat::encode_components(&built);

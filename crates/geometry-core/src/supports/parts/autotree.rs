@@ -17,6 +17,7 @@ pub struct AutoTree {
     pub members: Vec<usize>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct AutoTreeLayout {
     pub trees: Vec<AutoTree>,
     /// Contacts the scatter deletes (welded into a junction): they build nothing.

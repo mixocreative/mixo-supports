@@ -2,12 +2,8 @@
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Structure {
+    /// Auto Tree layout with Safe Distance != 0 on a model: it reads the voxel remesh (U5); the host supplies the layout until then.
     Tree,
-    Brace,
-    Roof,
-    Cage,
-    Raft,
-    Label,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -16,7 +12,7 @@ pub enum BuildError {
     BadInput(&'static str),
     /// A setting is non-finite or outside the validated range (field name).
     SettingOutOfRange(&'static str),
-    /// The request enables a structure this core has not ported yet (U4b: Tree, Brace; U4c: others).
+    /// The request needs a structure computation this core has not ported yet (see `Structure`).
     NotYetPorted(Structure),
 }
 
