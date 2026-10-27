@@ -82,6 +82,35 @@ with sync_playwright() as playwright:
             })"""
         )
         assert import_result == {"center": [10, 1, 4], "positions": [-2, -3, 0, 2, -3, 0, -2, 3, 0], "indices": [0, 1, 2, 0, 1, 2]}, import_result
+        stl_import = page.evaluate(
+            """async () => new Promise((resolve, reject) => {
+              const bytes = new Uint8Array(134);
+              const view = new DataView(bytes.buffer);
+              view.setUint32(80, 1, true);
+              [0, 0, 0, 2, 0, 0, 0, 0, 2].forEach((value, index) => view.setFloat32(96 + index * 4, value, true));
+              const worker = new Worker('/mixo-supports/src/workers/importWorker.ts', { type: 'module' });
+              const timer = setTimeout(() => { worker.terminate(); reject(new Error('binary STL import timed out')); }, 15000);
+              worker.onmessage = ({ data }) => {
+                if (data.type !== 'done' && data.type !== 'error') return;
+                clearTimeout(timer);
+                worker.terminate();
+                if (data.type === 'error') reject(new Error(data.message));
+                else resolve({ center: data.result[0].centred.center,
+                  indices: Array.from(data.result[0].mesh.indices),
+                  vertices: data.result[0].mesh.positions.length / 3 });
+              };
+              worker.onerror = (event) => {
+                clearTimeout(timer);
+                worker.terminate();
+                reject(new Error(event.message));
+              };
+              worker.postMessage({ id: 4, type: 'run', payload: {
+                kind: 'stl', name: 'wasm-binary.stl', runtime: 'web', file: new Blob([bytes]),
+              }});
+            })"""
+        )
+        assert stl_import["indices"] == [0, 1, 2] and stl_import["vertices"] == 3, stl_import
+        assert stl_import["center"][0:2] == [1, 1], stl_import
         invalid_import = page.evaluate(
             """async () => new Promise((resolve, reject) => {
               const worker = new Worker('/mixo-supports/src/workers/importWorker.ts', { type: 'module' });

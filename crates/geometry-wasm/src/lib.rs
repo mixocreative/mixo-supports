@@ -1,6 +1,7 @@
 //! Thin WebAssembly bindings for the host-independent geometry core.
 
 use mixo_geometry_core::mesh::{MeshError, MeshStore};
+use mixo_geometry_core::stl::{BinaryStlStream, StlError};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
 #[wasm_bindgen]
@@ -25,6 +26,42 @@ pub fn center_positions_in_place(positions: &mut [f32]) -> Result<Vec<f64>, JsVa
 pub struct WeldResult {
     positions: Vec<f32>,
     indices: Vec<u32>,
+}
+
+#[wasm_bindgen]
+pub struct BinaryStlSession {
+    stream: Option<BinaryStlStream>,
+}
+
+#[wasm_bindgen]
+impl BinaryStlSession {
+    #[wasm_bindgen(constructor)]
+    pub fn new(triangles: u32) -> Result<Self, JsValue> {
+        Ok(Self {
+            stream: Some(BinaryStlStream::new(triangles).map_err(stl_error)?),
+        })
+    }
+
+    pub fn push(&mut self, chunk: &[u8]) -> Result<(), JsValue> {
+        self.stream
+            .as_mut()
+            .ok_or_else(|| coded_error("INVALID_HANDLE"))?
+            .push(chunk)
+            .map_err(stl_error)
+    }
+
+    pub fn finish(&mut self) -> Result<WeldResult, JsValue> {
+        let mesh = self
+            .stream
+            .take()
+            .ok_or_else(|| coded_error("INVALID_HANDLE"))?
+            .finish()
+            .map_err(stl_error)?;
+        Ok(WeldResult {
+            positions: mesh.positions,
+            indices: mesh.indices,
+        })
+    }
 }
 
 #[wasm_bindgen]
@@ -86,11 +123,24 @@ impl GeometrySession {
 }
 
 fn mesh_error(error: MeshError) -> JsValue {
-    let exception = js_sys::Error::new(error.code());
+    coded_error(error.code())
+}
+
+fn stl_error(error: StlError) -> JsValue {
+    coded_error(match error {
+        StlError::Format => "BAD_STL",
+        StlError::Empty => "NO_MESH",
+        StlError::NonFinite => "NON_FINITE",
+        StlError::Capacity => "CAPACITY",
+    })
+}
+
+fn coded_error(code: &str) -> JsValue {
+    let exception = js_sys::Error::new(code);
     let _ = js_sys::Reflect::set(
         exception.as_ref(),
         &JsValue::from_str("code"),
-        &JsValue::from_str(error.code()),
+        &JsValue::from_str(code),
     );
     exception.into()
 }

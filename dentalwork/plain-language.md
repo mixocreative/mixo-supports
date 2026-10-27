@@ -2,6 +2,8 @@
 
 The detected edges are the starting point. The software does **not** paint the whole surface between the outer edge and the middle hole as a support area. It uses that wide surface only to work out which side of each edge faces the opening. Then it makes a narrow strip beside the edges and places support tips in that strip.
 
+Import update: the browser now reads and joins the triangles of a **binary** STL in a self-contained Rust/WASM geometry engine, one file chunk at a time; ASCII STL still uses the older importer. This changes how the model enters the app, not which dental faces may receive supports or how orientation is chosen.
+
 ## The current method
 
 1. The software estimates which way the aligner opens and suggests a print orientation. You can adjust the orientation in Step 1.

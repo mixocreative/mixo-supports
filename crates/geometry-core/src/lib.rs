@@ -1,6 +1,7 @@
 //! Host-independent geometry engine. Geometry operations will migrate here.
 
 pub mod mesh;
+pub mod stl;
 pub mod transform;
 pub mod weld;
 

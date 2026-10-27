@@ -6,6 +6,45 @@ pub struct WeldedMesh {
     pub indices: Vec<u32>,
 }
 
+/// First-seen weld state shared by bulk glTF and chunked STL imports.
+pub struct VertexAccumulator {
+    seen: HashMap<[i32; 3], u32>,
+    positions: Vec<f32>,
+    multiplier: f64,
+    additive: f64,
+}
+
+impl VertexAccumulator {
+    pub fn new(expected: usize) -> Result<Self, MeshError> {
+        let multiplier = 10.0_f64.powf((1.0_f64 / 1e-4_f64).log10());
+        Ok(Self {
+            seen: HashMap::with_capacity(expected),
+            positions: Vec::with_capacity(expected.checked_mul(3).ok_or(MeshError::Capacity)?),
+            multiplier,
+            additive: 0.5e-4_f64 * multiplier,
+        })
+    }
+
+    pub fn add(&mut self, point: &[f32]) -> Result<u32, MeshError> {
+        let key = [
+            js_int32(f64::from(point[0]) * self.multiplier + self.additive),
+            js_int32(f64::from(point[1]) * self.multiplier + self.additive),
+            js_int32(f64::from(point[2]) * self.multiplier + self.additive),
+        ];
+        if let Some(index) = self.seen.get(&key) {
+            return Ok(*index);
+        }
+        let index = u32::try_from(self.positions.len() / 3).map_err(|_| MeshError::Capacity)?;
+        self.positions.extend_from_slice(point);
+        self.seen.insert(key, index);
+        Ok(index)
+    }
+
+    pub fn finish(self) -> Vec<f32> {
+        self.positions
+    }
+}
+
 pub fn weld_positions(
     positions: &mut [f32],
     indices: &[u32],
@@ -42,16 +81,13 @@ pub fn weld_positions(
         }
         point.copy_from_slice(&rounded);
     }
-    let multiplier = 10.0_f64.powf((1.0_f64 / 1e-4_f64).log10());
-    let additive = 0.5e-4_f64 * multiplier;
     let corners = if indices.is_empty() {
         vertices
     } else {
         indices.len()
     };
     let possible_unique = vertices.min(corners);
-    let mut seen = HashMap::<[i32; 3], u32>::with_capacity(possible_unique);
-    let mut welded = Vec::with_capacity(possible_unique.checked_mul(3).ok_or(MeshError::Capacity)?);
+    let mut welder = VertexAccumulator::new(possible_unique)?;
     let mut out_indices = Vec::with_capacity(corners);
     for corner in 0..corners {
         let vertex = if indices.is_empty() {
@@ -60,23 +96,10 @@ pub fn weld_positions(
             indices[corner] as usize
         };
         let point = &positions[vertex * 3..vertex * 3 + 3];
-        let key = [
-            js_int32(f64::from(point[0]) * multiplier + additive),
-            js_int32(f64::from(point[1]) * multiplier + additive),
-            js_int32(f64::from(point[2]) * multiplier + additive),
-        ];
-        let index = if let Some(index) = seen.get(&key) {
-            *index
-        } else {
-            let index = u32::try_from(welded.len() / 3).map_err(|_| MeshError::Capacity)?;
-            welded.extend_from_slice(point);
-            seen.insert(key, index);
-            index
-        };
-        out_indices.push(index);
+        out_indices.push(welder.add(point)?);
     }
     Ok(WeldedMesh {
-        positions: welded,
+        positions: welder.finish(),
         indices: out_indices,
     })
 }
