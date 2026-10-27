@@ -46,6 +46,10 @@ export interface EditSession {
   dentalProposal: Extract<DentalProposal, { kind: 'proposal' }> | undefined;
   dentalKind: DentalKind;
   dentalRadius: number;
+  /** Aligners finished in this visit of the flow (OK, or Add another aligner): Exit keeps them as they are. */
+  dentalFinished: readonly string[];
+  /** The aligner Steps 1 to 3 work on, once it is read (Exit clears only this one). */
+  dentalUnitId: string | undefined;
   /** Selected contact ids of the active object. */
   selection: ReadonlySet<string>;
 }
@@ -72,6 +76,8 @@ export const initialSession: EditSession = {
   dentalProposal: undefined,
   dentalKind: 'allow',
   dentalRadius: 2,
+  dentalFinished: [],
+  dentalUnitId: undefined,
   selection: NO_SELECTION,
 };
 
@@ -90,13 +96,18 @@ export type SessionEvent =
   | { type: 'enterDental' }
   | { type: 'chooseDentalProfile'; id: string }
   | { type: 'switchDentalProfile'; id: string }
-  | { type: 'dentalLoading' }
+  /** `unitId`: the aligner is read and on the plate (Step 1 is now working on it). */
+  | { type: 'dentalLoading'; unitId?: string }
   | { type: 'dentalOriented'; proposal: Extract<DentalProposal, { kind: 'proposal' }>; notices: readonly DentalNotice[] }
   | { type: 'dentalOrientFailed'; notices: readonly DentalNotice[] }
   | { type: 'dentalBadFile'; message: StatusMessage }
   | { type: 'dismissDentalNotice'; kind: DentalNotice['kind'] }
   | { type: 'acceptDentalOrientation'; noArea?: boolean }
   | { type: 'acceptDentalArea' }
+  /** OK in Step 3: this aligner is finished and the flow ends; it stays on the plate. */
+  | { type: 'finishDental'; unitId: string }
+  /** Add another aligner in Step 3: this one is finished, Step 1 opens again with the same type. */
+  | { type: 'addAnotherDental'; unitId: string }
   | { type: 'backDental' }
   | { type: 'exit' }
   | { type: 'leave' }
@@ -143,7 +154,7 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
     case 'enterDental':
       // Entry needs no object: Step 0 and the drop in Step 1 come first.
       return state.mode === 'off'
-        ? { ...withMode(state, 'dental'), dentalStage: 'type', dentalAligner: 'prompt', dentalNotices: [], dentalProposal: undefined }
+        ? { ...withMode(state, 'dental'), dentalStage: 'type', dentalAligner: 'prompt', dentalNotices: [], dentalProposal: undefined, dentalFinished: [], dentalUnitId: undefined }
         : state;
     case 'chooseDentalProfile':
       return state.mode === 'dental' && state.dentalStage === 'type'
@@ -155,7 +166,7 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
         : state;
     case 'dentalLoading':
       return state.mode === 'dental' && state.dentalStage === 'aligner'
-        ? { ...state, dentalAligner: 'loading', dentalNotices: [], dentalProposal: undefined }
+        ? { ...state, dentalAligner: 'loading', dentalNotices: [], dentalProposal: undefined, dentalUnitId: event.unitId }
         : state;
     case 'dentalOriented':
       return state.mode === 'dental' && state.dentalStage === 'aligner' && state.dentalAligner === 'loading'
@@ -179,14 +190,23 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
         : state;
     case 'acceptDentalArea':
       return state.mode === 'dental' && state.dentalStage === 'area'
-        ? { ...state, dentalStage: 'review', dentalNotices: [] }
+        // Step 3 starts on picking supports: a stray click adds none.
+        ? { ...state, dentalStage: 'review', dentalNotices: [], tool: 'select', selectStyle: 'click', addAction: 'add', selection: NO_SELECTION }
+        : state;
+    case 'finishDental':
+      return state.mode === 'dental' && state.dentalStage === 'review'
+        ? withMode({ ...state, dentalFinished: finished(state, event.unitId) }, 'off')
+        : state;
+    case 'addAnotherDental':
+      return state.mode === 'dental' && state.dentalStage === 'review'
+        ? { ...state, dentalStage: 'aligner', dentalAligner: 'prompt', dentalNotices: [], dentalProposal: undefined, dentalUnitId: undefined, dentalFinished: finished(state, event.unitId), selection: NO_SELECTION, shiftHeld: false }
         : state;
     case 'backDental':
       if (state.mode !== 'dental') return state;
       switch (state.dentalStage) {
-        case 'review': return { ...state, dentalStage: 'area' };
+        case 'review': return { ...state, dentalStage: 'area', selection: NO_SELECTION, shiftHeld: false };
         case 'area': return { ...state, dentalStage: 'aligner', dentalAligner: 'ready', dentalNotices: [] };
-        case 'aligner': return { ...state, dentalStage: 'type', dentalAligner: 'prompt', dentalProposal: undefined, dentalNotices: [] };
+        case 'aligner': return { ...state, dentalStage: 'type', dentalAligner: 'prompt', dentalProposal: undefined, dentalNotices: [], dentalUnitId: undefined };
         case 'type': return state;
       }
     case 'exit':
@@ -204,7 +224,7 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
     case 'setSelectStyle': return set(state, 'selectStyle', event.style);
     case 'setBrushMode':
       return set(state, 'brushMode', event.mode);
-    case 'shift': return state.mode === 'edit' ? set(state, 'shiftHeld', event.held) : state;
+    case 'shift': return editsSupports(state) ? set(state, 'shiftHeld', event.held) : state;
     case 'setBrushRadius': return set(state, 'brushRadius', event.radius);
     case 'setBrushSizing': return set(state, 'brushSizing', event.sizing);
     case 'setZoneKind': return set(state, 'zoneKind', event.kind);
@@ -212,14 +232,21 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
     case 'setDentalKind': return set(state, 'dentalKind', event.kind);
     case 'setDentalRadius': return set(state, 'dentalRadius', event.radius);
     case 'toggleContact':
-      return state.mode === 'edit' ? withSelection(state, toggleSelection(state.selection, event.id)) : state;
+      return editsSupports(state) ? withSelection(state, toggleSelection(state.selection, event.id)) : state;
     case 'paint':
-      return state.mode === 'edit' ? withSelection(state, paintSelection(state.selection, event.ids, event.mode)) : state;
+      return editsSupports(state) ? withSelection(state, paintSelection(state.selection, event.ids, event.mode)) : state;
     case 'restoreSelection':
-      return state.mode === 'edit' ? withSelection(state, new Set(event.ids)) : state;
+      return editsSupports(state) ? withSelection(state, new Set(event.ids)) : state;
     case 'clearSelection':
       return withSelection(state, state.selection.size === 0 ? state.selection : NO_SELECTION);
   }
+}
+
+const finished = (state: EditSession, unitId: string): readonly string[] => (state.dentalFinished.includes(unitId) ? state.dentalFinished : [...state.dentalFinished, unitId]);
+
+/** Supports can be picked, added and deleted: Support Edit Mode, and dental Step 3, which reuses its tools. */
+export function editsSupports(state: Pick<EditSession, 'mode' | 'dentalStage'>): boolean {
+  return state.mode === 'edit' || (state.mode === 'dental' && state.dentalStage === 'review');
 }
 
 /** There is an active object and it takes hand edits (it is not heavy). */

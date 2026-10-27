@@ -51,8 +51,9 @@ import type { GeneratedSupportMesh } from './core/supports/mesh';
 import { meshBounds } from './core/supports/meshQuery';
 import { problemInZone, type ZoneStamp } from './core/supports/zones';
 import type { DentalAllowStamp } from './core/analysis/dentalPolicy';
+import { defaultDentalStructure } from './core/supports/dentalSettings';
 import { deleteCommands } from './supports/selection';
-import { gesture, type GestureKind } from './editing/gesture';
+import { canvasGesture, gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, withShape, type LiveSupportSettings, type SettingKey, type ShapeKey } from './core/supports/settings';
 import { checkJobOf, currentBuild, hiddenByZones, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
@@ -62,9 +63,13 @@ import { keyAction } from './editing/keys';
 import { customisedAmong, liveSelection, scopeCounts, shapePatch, shapeView } from './editing/shapeEdit';
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
 import { contactToRemove } from './editing/removal';
-import { initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
+import { editsSupports, initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
 import { acceptsDentalDrop, type DentalNotice } from './editing/session';
 import { profileById } from './dental/alignerProfiles';
+import { arrangeAlignerCommands } from './dental/arrange';
+import { backNeedsConfirm, discardManualCommands, exitCommands, manualEditCounts } from './dental/flow';
+import { dentalLabelOf } from './dental/label';
+import type { DentalReview } from './components/DentalSupports';
 import { BUILDING_STATUS, busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
 import { checkStatus, joinRun, runToken, tallyChecks, uncovered, type CheckTally } from './editing/check';
@@ -159,6 +164,8 @@ export default function App() {
   const sessionRef = useRef(session);
   const { mode: editMode, selection } = session;
   const press = gesture(session);
+  /** Support Edit Mode, or dental Step 3 which reuses its tools. */
+  const editing = editsSupports(session);
   /** The tool as it is now, for canvas clicks (the canvas renders a step behind the DOM). */
   const liveTool = useCallback(() => sessionRef.current, []);
   // Like Blender's Support Edit Mode, undo inside the mode stops at the scene it was entered with.
@@ -177,6 +184,9 @@ export default function App() {
     if (startsEditing(previous, next)) undoFloor.current = historyRef.current.present;
     sessionRef.current = next;
     setSession(next);
+    // A new dental step starts clean: the last step's undo toast and notices do not follow.
+    if (next.mode === 'dental' && (next.dentalStage !== previous.dentalStage || next.dentalAligner !== previous.dentalAligner)) { setToast(undefined); setBackAsk(false); }
+    if (event.type === 'enterDental') setDoneHint(undefined);
     const message = sessionStatus(previous, next, event);
     if (message) setStatusMessage(message);
   }, []);
@@ -191,6 +201,10 @@ export default function App() {
   }, []);
   // Destructive actions run at once and offer Undo on a toast (editing/toast) instead of asking first.
   const [toast, setToast] = useState<UndoToastState>();
+  /** Back from Step 3 is waiting for the answer: it would discard hand work. */
+  const [backAsk, setBackAsk] = useState(false);
+  /** After OK: how many aligners were finished, until the hint is dismissed. */
+  const [doneHint, setDoneHint] = useState<number>();
   const toastSeq = useRef(0);
   const offerUndo = useCallback((action: UndoAction) => setToast(undoToast(++toastSeq.current, action)), []);
   const closeToast = useCallback(() => setToast(undefined), []);
@@ -250,7 +264,7 @@ export default function App() {
   const activeSettings = useMemo(() => resolveSettings(activeUnit?.settings), [activeUnit?.settings]);
   // The Support shape region and the header count (editing/shapeEdit): the supports selected in Support Edit Mode, else the defaults.
   const activeIds = useMemo(() => activeContacts.map((contact) => contact.id), [activeContacts]);
-  const selectedIds = useMemo(() => (editMode === 'edit' ? liveSelection(selection, activeIds) : []), [activeIds, editMode, selection]);
+  const selectedIds = useMemo(() => (editing ? liveSelection(selection, activeIds) : []), [activeIds, editing, selection]);
   const activeOverrides = activeUnit?.contactSettings ?? NO_OVERRIDES;
   const customisedActive = customisedAmong(activeOverrides, activeIds).length;
   const customisedSelected = customisedAmong(activeOverrides, selectedIds).length;
@@ -260,9 +274,9 @@ export default function App() {
   }), [activeOverrides, activeSettings, selectedIds]);
   /** The objects the header count speaks of: the selected objects, else the active one; in Support Edit Mode the active one. */
   const bandCounts = useMemo(() => {
-    const scoped = editMode !== 'edit' && scene.selectedUnitIds.length > 0 ? scene.units.filter((unit) => scene.selectedUnitIds.includes(unit.id)) : activeUnit ? [activeUnit] : [];
+    const scoped = !editing && scene.selectedUnitIds.length > 0 ? scene.units.filter((unit) => scene.selectedUnitIds.includes(unit.id)) : activeUnit ? [activeUnit] : [];
     return scopeCounts(scoped.map((unit) => ({ ids: unitContacts(unit, built.get(unit.id)?.mesh).map((contact) => contact.id), overrides: unit.contactSettings })));
-  }, [activeUnit, built, editMode, scene.selectedUnitIds, scene.units]);
+  }, [activeUnit, built, editing, scene.selectedUnitIds, scene.units]);
   const targets = useCallback((current: PrintScene) => {
     const selected = current.units.filter((unit) => current.selectedUnitIds.includes(unit.id));
     return selected.length > 0 ? selected : current.units;
@@ -295,10 +309,12 @@ export default function App() {
   const { generate, generateDental, generating, regenQueued, scheduleRegenerate, forgetPlacing } = useRegenerate({
     sceneRef, mode: editMode, targets, analysis, unitName, dispatch, offerUndo, setStatus, setStatusMessage,
   });
-  const dentalTuning = useDentalTuning(activeUnit, editMode === 'dental' && session.dentalStage === 'area', analysis, dispatch, unitName);
+  // A density change in Step 3 places the contacts again once the strip is retuned; hand edits are kept where they still fit.
+  const dentalTuning = useDentalTuning(activeUnit, editMode === 'dental' && (session.dentalStage === 'area' || session.dentalStage === 'review'), analysis, dispatch, unitName,
+    useCallback((unitId: string) => { if (sessionRef.current.mode === 'dental' && sessionRef.current.dentalStage === 'review') scheduleRegenerate([unitId]); }, [scheduleRegenerate]));
   const onDentalStructureChange = useCallback((structure: { treeEnabled: boolean; bracesEnabled: boolean }) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
-    if (unit?.dental?.kind !== 'two-contour' || sessionRef.current.dentalStage !== 'area') return;
+    if (unit?.dental?.kind !== 'two-contour' || (sessionRef.current.dentalStage !== 'area' && sessionRef.current.dentalStage !== 'review')) return;
     dispatch({ type: 'dental/set', unitId: unit.id, policy: { ...unit.dental, structure } });
   }, [dispatch, sceneRef, sessionRef]);
   const dentalPreviewState = useDentalPreview(activeUnit, editMode === 'dental' && session.dentalStage === 'area' && !dentalTuning.busy, analysis, unitName);
@@ -314,7 +330,7 @@ export default function App() {
   }, []);
 
   const { fix: fixProblem, noteAdded, isRechecking, stopRechecking } = useFixSpot({
-    sceneRef, sessionRef, units: scene.units, activeUnitId: scene.activeUnitId, editMode, built, problems, send, dispatch, setStatus, setStatusMessage, showProblem,
+    sceneRef, sessionRef, units: scene.units, activeUnitId: scene.activeUnitId, editMode: editing ? 'edit' : editMode, built, problems, send, dispatch, setStatus, setStatusMessage, showProblem,
   });
 
   /** A unit left the scene: stop its work and free what the workers hold for it. */
@@ -457,7 +473,7 @@ export default function App() {
   /** Mesh check, orientation and type check of the aligner on the plate, in the analysis worker; the result lands in the session. */
   const startDentalAligner = useCallback((unit: PrintUnit) => {
     const token = ++dentalOrientSeq.current;
-    send({ type: 'dentalLoading' });
+    send({ type: 'dentalLoading', unitId: unit.id });
     const stale = () => dentalOrientSeq.current !== token || sessionRef.current.dentalAligner !== 'loading' || sceneRef.current.activeUnitId !== unit.id;
     const failed = (notices: readonly DentalNotice[]) => send({ type: 'dentalOrientFailed', notices });
     void analysis().dentalOrient(`dental-orient:${unit.id}`, unit.source, { key: 'Orienting {name}', vars: { name: unit.name } }).then((result) => {
@@ -467,8 +483,12 @@ export default function App() {
       if (result.kind === 'failed') return failed([...notices, { kind: 'failed' }]);
       if (result.opening === 'absent' && profileById(sessionRef.current.dentalProfile)?.opening === 'yes') notices.push({ kind: 'mismatch' });
       const current = sceneRef.current.units.find((candidate) => candidate.id === unit.id);
-      if (result.rotation && current) dispatch({ type: 'transform/set', unitId: unit.id, transform: { ...current.transform, rotation: result.rotation } });
-      else notices.push({ kind: 'uncertain' });
+      // Every aligner of the session is laid out again without overlap: the turn changed this one's footprint.
+      const turned = result.rotation && current ? { ...current, transform: { ...current.transform, rotation: result.rotation } } : undefined;
+      if (!turned) notices.push({ kind: 'uncertain' });
+      const units = sceneRef.current.units.map((candidate) => (turned && candidate.id === unit.id ? turned : candidate));
+      const commands = [...(turned ? [{ type: 'transform/set' as const, unitId: unit.id, transform: turned.transform }] : []), ...arrangeAlignerCommands(units, [...sessionRef.current.dentalFinished, unit.id])];
+      if (commands.length > 0) dispatch({ type: 'batch', commands });
       setGizmoMode('rotate');
       requestView('fit');
       send({ type: 'dentalOriented', proposal: result.proposal, notices });
@@ -732,7 +752,7 @@ export default function App() {
   }, [eraseNear]);
 
   const onToggleContact = useCallback((unitId: string, contactId: string) => {
-    if (sessionRef.current.mode !== 'edit' || unitId !== sceneRef.current.activeUnitId) return;
+    if (!editsSupports(sessionRef.current) || unitId !== sceneRef.current.activeUnitId) return;
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
     // A support deleted a moment ago can still be under the cursor until the mesh rebuilds.
     if (!unit || !contactsOf(unit).some((contact) => contact.id === contactId)) return;
@@ -742,7 +762,7 @@ export default function App() {
   const onShift = useCallback((held: boolean) => send({ type: 'shift', held }), [send]);
   const onPaint = useCallback((unitId: string, ids: readonly string[], mode: BrushMode) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
-    if (sessionRef.current.mode !== 'edit' || !unit || unit.id !== sceneRef.current.activeUnitId) return;
+    if (!editsSupports(sessionRef.current) || !unit || unit.id !== sceneRef.current.activeUnitId) return;
     // A support deleted a moment ago can still be drawn until the mesh rebuilds.
     const alive = new Set(contactsOf(unit).map((contact) => contact.id));
     send({ type: 'paint', ids: ids.filter((id) => alive.has(id)), mode });
@@ -792,7 +812,7 @@ export default function App() {
   /** A committed Support shape value: the selected supports' own, or, with none selected, the object's defaults. */
   const onShapeChange = useCallback(<K extends SettingKey>(key: K, value: LiveSupportSettings[K], edit?: string) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
-    const ids = unit && sessionRef.current.mode === 'edit' ? liveSelection(sessionRef.current.selection, contactsOf(unit).map((contact) => contact.id)) : [];
+    const ids = unit && editsSupports(sessionRef.current) ? liveSelection(sessionRef.current.selection, contactsOf(unit).map((contact) => contact.id)) : [];
     if (!unit || ids.length === 0) return onSettingChange(key, value, edit);
     const patch = shapePatch(shapeView(resolveSettings(unit.settings), unit.contactSettings, ids), key as ShapeKey, value as never);
     if (patch) dispatch({ type: 'contactSettings/set', unitId: unit.id, contactIds: ids, patch }, edit);
@@ -800,7 +820,7 @@ export default function App() {
 
   const resetSelected = useCallback(() => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
-    if (!unit || sessionRef.current.mode !== 'edit') return;
+    if (!unit || !editsSupports(sessionRef.current)) return;
     const ids = customisedAmong(unit.contactSettings, liveSelection(sessionRef.current.selection, contactsOf(unit).map((contact) => contact.id)));
     if (ids.length === 0) return;
     dispatch({ type: 'contactSettings/reset', unitId: unit.id, contactIds: ids });
@@ -837,7 +857,7 @@ export default function App() {
     if (sessionRef.current.mode === 'off') send({ type: 'enterEdit' });
     // Undo inside the mode stops at the scene it began with: the one with this object active.
     if (change) undoFloor.current = reduceScene(historyRef.current.present, change);
-    if (sessionRef.current.mode !== 'edit') return;
+    if (!editsSupports(sessionRef.current)) return;
     send({ type: 'restoreSelection', ids });
     if (unit.id !== current.activeUnitId) {
       const vars = { n: ids.length, m: others, object: unit.name };
@@ -902,14 +922,48 @@ export default function App() {
         const reviewed = currentDentalPreview(unit, dentalPreview);
         if (!reviewed || reviewed.result.points.length === 0) return setStatus('No safe dental tips are ready. Review the marked area.');
         if (!generateDental(reviewed)) return setStatus('The model changed while dental tips were reviewed. Wait for the new preview.');
+        // The label starts as X (the field's default) and is stored with the aligner's settings.
+        dispatch({ type: 'settings/set', unitId: unit.id, settings: { ...resolveSettings(unit.settings), labelText: dentalLabelOf(resolveSettings(unit.settings).labelText) } as SupportSettings });
         return send({ type: 'acceptDentalArea' });
       }
-      case 'dental.back': return send({ type: 'backDental' });
+      case 'dental.back': {
+        // Going back from Step 3 throws its hand work away: ask first.
+        const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
+        if (sessionRef.current.dentalStage === 'review' && backNeedsConfirm(unit)) return setBackAsk(true);
+        return send({ type: 'backDental' });
+      }
       case 'dental.exit': {
-        // Whatever Step 1 or Step 2 still reads or detects is dropped; the aligner stays on the plate.
+        // Whatever Step 1 or Step 2 still reads or detects is dropped.
         dentalOrientSeq.current += 1;
         dentalDetectionSeq.current += 1;
+        // The aligner being worked on goes back to a normal model without supports; finished aligners stay as they are.
+        const { dentalUnitId, dentalFinished } = sessionRef.current;
+        const current = sceneRef.current.units.find((candidate) => candidate.id === dentalUnitId);
+        const cleanup = exitCommands(current, dentalFinished);
+        if (cleanup.length > 0) dispatch({ type: 'batch', commands: cleanup });
+        setBackAsk(false);
         return send({ type: 'exit' });
+      }
+      case 'dental.finish': case 'dental.addAnother': {
+        const { dentalUnitId, dentalFinished, dentalStage } = sessionRef.current;
+        const unit = sceneRef.current.units.find((candidate) => candidate.id === dentalUnitId);
+        if (!unit || dentalStage !== 'review' || !unit.supports) return;
+        const label = dentalLabelOf(resolveSettings(unit.settings).labelText);
+        const commands: SceneCommand[] = [
+          ...(resolveSettings(unit.settings).labelText === label ? [] : [{ type: 'settings/set' as const, unitId: unit.id, settings: { ...resolveSettings(unit.settings), labelText: label } as SupportSettings }]),
+          ...arrangeAlignerCommands(sceneRef.current.units, [...dentalFinished, unit.id]),
+        ];
+        if (commands.length > 0) dispatch({ type: 'batch', commands });
+        const count = new Set([...dentalFinished, unit.id]).size;
+        if (id === 'dental.addAnother') {
+          send({ type: 'addAnotherDental', unitId: unit.id });
+          requestView('fit');
+          return setStatus('{name} finished. Add the next aligner of the same type.', { name: unit.name });
+        }
+        send({ type: 'finishDental', unitId: unit.id });
+        requestView('fit');
+        setDoneHint(count);
+        return setStatus('Finished {n} aligner on the plate. Export STL or Save project to keep it.', { n: count }, 'Finished {n} aligners on the plate. Export STL or Save project to keep them.');
       }
       case 'mode.edit': {
         send({ type: 'enterEdit' });
@@ -965,9 +1019,33 @@ export default function App() {
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
     mode: editMode, activeName: activeUnit?.name, supported: scene.units.some((unit) => unit.supports), zones: activeUnit?.zones.length ?? 0, exporting, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction, method: session.selectStyle, dragAction: effectiveBrushMode(session.brushMode, session.shiftHeld),
-    selection: selection.size, customisedActive, customisedSelected, customisedTargeted: bandCounts.customised, customisedOthers: Math.max(0, bandCounts.customised - customisedActive), activeSupported: Boolean(activeUnit?.supports), generating, dentalPreviewReady: Boolean(dentalPreview?.result.points.length), dentalStage: session.dentalStage, dentalAlignerReady: session.dentalAligner === 'ready', dentalProposed: Boolean(session.dentalProposal), canUndo, canRedo: history.future.length > 0, undoStep, redoStep, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
+    selection: selection.size, customisedActive, customisedSelected, customisedTargeted: bandCounts.customised, customisedOthers: Math.max(0, bandCounts.customised - customisedActive), activeSupported: Boolean(activeUnit?.supports), generating, dentalPreviewReady: Boolean(dentalPreview?.result.points.length), dentalReviewReady: Boolean(activeUnit?.supports && built.get(activeUnit.id)?.unit === activeUnit), dentalStage: session.dentalStage, dentalAlignerReady: session.dentalAligner === 'ready', dentalProposed: Boolean(session.dentalProposal), canUndo, canRedo: history.future.length > 0, undoStep, redoStep, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
   };
   const command = (id: CommandId) => resolve(id, ui);
+  // Dental Step 3's settings, findings and the answer to Back (see components/DentalSupports).
+  const dentalReview: DentalReview | undefined = activeUnit?.dental?.kind === 'two-contour' ? {
+    settings: activeSettings,
+    onSetting: onSettingChange,
+    density: dentalTuning.tuning.density,
+    densityBusy: dentalTuning.busy,
+    onDensity: (density) => dentalTuning.change({ ...dentalTuning.tuning, density }),
+    structure: activeUnit.dental.structure ?? defaultDentalStructure,
+    onStructure: onDentalStructureChange,
+    clickReach: { value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) },
+    rimGap: dentalRimGap,
+    structureFallback: activeMesh?.dentalStructureFallback,
+    problems: listedProblems,
+    outOfDate,
+    rechecking: isRechecking,
+    unitName,
+    onShow: showProblem,
+    onFix: fixProblem,
+    onShowRim: () => requestView('bottom'),
+    finishedCount: session.dentalFinished.length,
+    backAsk: backAsk ? manualEditCounts(activeUnit) : undefined,
+    onBackConfirm: () => { setBackAsk(false); const commands = discardManualCommands(activeUnit); if (commands.length > 0) dispatch({ type: 'batch', commands }); send({ type: 'backDental' }); },
+    onBackCancel: () => setBackAsk(false),
+  } : undefined;
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const action = keyAction({
@@ -1070,7 +1148,7 @@ export default function App() {
           scene={scene}
           supportMeshes={supportMeshes}
           {...(dentalPreview ? { dentalTips: { unitId: dentalPreview.unitId, points: dentalPreview.localPoints } } : {})}
-          gesture={press}
+          gesture={canvasGesture(press)}
           gizmoMode={gizmoMode}
           modelVisible={modelVisible}
           wireframe={wireframe}
@@ -1101,18 +1179,22 @@ export default function App() {
           <CommandButton command={command('view.fit')} run={runCommand} />
           <CommandButton command={command('view.bottom')} run={runCommand} />
         </div>
-        <CirclePreview gesture={press} />
+        <CirclePreview gesture={canvasGesture(press)} />
         {isDraggingOver && <div className="viewport-drop-overlay">{t('Drop to import')}</div>}
         <JobActivityPanel />
         <div className="undo-toast-region" role="status" aria-live="polite">
           {toast && <UndoToast key={toast.id} toast={toast} onUndo={undoToastAction} onClose={closeToast} />}
+          {doneHint !== undefined && editMode === 'off' && <div className="dental-done" role="status">
+            <span>{plural(doneHint, '{n} aligner finished and ready on the plate. Export STL (right panel) or Save project to keep your work.', '{n} aligners finished and ready on the plate. Export STL (right panel) or Save project to keep your work.')}</span>
+            <button type="button" onClick={() => setDoneHint(undefined)} {...hint('Close this note')}>{t('Dismiss')}</button>
+          </div>}
         </div>
         {press.kind === 'none' ? <>
           <div className="viewport-object-status">{activeUnit ? activeUnit.name : t('Nothing selected')}</div>
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hidden={zonesHidden} ui={ui} send={send} run={runCommand} />
-          : press.kind === 'dental-type' || press.kind === 'dental-aligner' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} lang={lang} selectedName={activeUnit?.name} onFiles={(files) => void importFiles(files)} onUseSelected={useSelectedAligner} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview?.localPoints.length ?? 0} previewStatus={dentalPreviewState.kind} reviewReady={Boolean(activeUnit?.supports && built.get(activeUnit.id)?.unit === activeUnit)} rimGap={dentalRimGap} structureFallback={activeMesh?.dentalStructureFallback} tuning={dentalTuning.tuning} tuningBusy={dentalTuning.busy} tuningError={dentalTuning.error} onTuningChange={dentalTuning.change} structure={activeUnit?.dental?.kind === 'two-contour' ? activeUnit.dental.structure : undefined} onStructureChange={onDentalStructureChange} send={send} run={runCommand} />
+          : press.kind === 'dental-type' || press.kind === 'dental-aligner' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} lang={lang} selectedName={activeUnit && !session.dentalFinished.includes(activeUnit.id) ? activeUnit.name : undefined} onFiles={(files) => void importFiles(files)} onUseSelected={useSelectedAligner} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview?.localPoints.length ?? 0} previewStatus={dentalPreviewState.kind} reviewReady={ui.dentalReviewReady ?? false} review={dentalReview} tuning={dentalTuning.tuning} tuningBusy={dentalTuning.busy} tuningError={dentalTuning.error} onTuningChange={dentalTuning.change} send={send} run={runCommand} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>

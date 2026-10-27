@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DentalBar } from './DentalBar';
+import type { DentalReview } from './DentalSupports';
+import { defaultSupportSettings } from '../core/supports/settings';
 import type { Gesture } from '../editing/gesture';
 import type { UiState } from '../editing/commands';
 
@@ -66,21 +68,32 @@ describe('DentalBar', () => {
     expect(emptyHtml).toContain('No safe support tips');
     expect(emptyHtml).not.toContain('>Done');
 
-    const review = { kind: 'dental-review' } as Gesture & { kind: 'dental-review' };
-    const reviewHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={ui} reviewReady send={() => {}} run={() => {}} />);
+    const review = { kind: 'dental-review', edit: { kind: 'pick' } } as Gesture & { kind: 'dental-review' };
+    const stepUi = { mode: 'dental', dentalStage: 'review', dentalReviewReady: true, selection: 0, customisedActive: 0, addAction: 'add', tool: 'select', method: 'click', dragAction: 'select', canUndo: false, active: true, supported: true } as unknown as UiState;
+    const base = {
+      settings: defaultSupportSettings, onSetting: () => {}, density: 1, densityBusy: false, onDensity: () => {},
+      structure: { treeEnabled: true, bracesEnabled: true }, onStructure: () => {}, clickReach: { value: 1, onChange: () => {} },
+      rimGap: undefined, structureFallback: undefined, problems: [], outOfDate: false, rechecking: () => false, unitName: () => 'sample',
+      onShow: () => {}, onFix: () => {}, onShowRim: () => {}, finishedCount: 0, backAsk: undefined, onBackConfirm: () => {}, onBackCancel: () => {},
+    } satisfies DentalReview;
+    const reviewHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={stepUi} reviewReady review={base} send={() => {}} run={() => {}} />);
     expect(reviewHtml).toContain('Step 3');
-    expect(reviewHtml).toContain('Back');
-    expect(reviewHtml).toContain('Done');
-    const gapHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={ui} reviewReady
-      rimGap={{ outerMm: 4.2, openingMm: 8 }} send={() => {}} run={() => {}} />);
+    for (const word of ['Tip size', 'Support density', 'Lift height', 'Raft', 'Tree branches', 'Cross-braces', 'Add supports', 'Label', '>OK<', 'Add another aligner', 'Back', 'Exit']) expect(reviewHtml).toContain(word);
+    const gapHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={stepUi} reviewReady
+      review={{ ...base, rimGap: { outerMm: 4.2, openingMm: 8 } }} send={() => {}} run={() => {}} />);
     expect(gapHtml).toContain('8.0 mm');
     expect(gapHtml).toContain('Review the rim');
-    const fallbackHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={ui} reviewReady
-      structureFallback={['tree']} send={() => {}} run={() => {}} />);
+    expect(gapHtml).toContain('Show me');
+    const fallbackHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={stepUi} reviewReady
+      review={{ ...base, structureFallback: ['tree'] }} send={() => {}} run={() => {}} />);
     expect(fallbackHtml).toContain('Tree branches were omitted');
-    const buildingHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={ui} reviewReady={false} send={() => {}} run={() => {}} />);
-    expect(buildingHtml).not.toContain('Done');
+    const buildingHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={{ ...stepUi, dentalReviewReady: false } as UiState} reviewReady={false} review={base} send={() => {}} run={() => {}} />);
     expect(buildingHtml).toContain('Building supports');
+    expect(buildingHtml).toMatch(/<button[^>]*disabled[^>]*>OK</);
+    const askHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={stepUi} reviewReady
+      review={{ ...base, backAsk: { added: 2, removed: 1, customised: 0 } }} send={() => {}} run={() => {}} />);
+    expect(askHtml).toContain('2 added, 1 removed');
+    expect(askHtml).toContain('Discard and go back');
   });
 
   it('shows live strip width and density with rim position under advanced controls', () => {
@@ -93,8 +106,7 @@ describe('DentalBar', () => {
     expect(html).toContain('Rim setback');
     expect(html).toContain('Updating support area');
     expect(html).toContain('type="range"');
-    expect(html).toContain('Tree branches');
-    expect(html).toContain('Cross-braces');
-    expect(html).toContain('type="checkbox"');
+    // Tree and Brace moved to Step 3.
+    expect(html).not.toContain('Tree branches');
   });
 });

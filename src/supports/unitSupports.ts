@@ -1,5 +1,6 @@
 import { labelForIndex } from '../core/analysis/mesh';
 import type { PlacementResult, ProgressCallback, SupportPoint } from '../core/analysis/types';
+import { DEFAULT_DENTAL_LABEL } from '../dental/label';
 import { hidingRemovals, positionId, rekeyHandWork, type RekeyedHandWork } from '../core/analysis/placement';
 import { jobContacts, type CheckJob, type ContactInputs, type DentalPlacementJob, type JobTransform, type PlacementJob, type SupportJob } from '../core/jobs';
 import type { GeneratedSupportMesh, SupportContact } from '../core/supports/mesh';
@@ -156,7 +157,8 @@ export function supportJobOf(unit: PrintUnit, unitIndex: number, mode: 'preview'
     frame: unit.supports === undefined ? null : generationTransform(unit),
     settings,
     contacts: contactInputs(unit),
-    labelText: settings.labelText || labelForIndex(unitIndex),
+    // A dental aligner's label is its own field (default X); other objects are lettered A, B, …
+    labelText: settings.labelText || (unit.dental ? DEFAULT_DENTAL_LABEL : labelForIndex(unitIndex)),
     mode,
   };
 }

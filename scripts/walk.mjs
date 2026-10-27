@@ -195,6 +195,7 @@ function readProps() {
     dentalContacts: unit?.dental?.kind === 'two-contour' ? unit.dental.region.contacts?.length ?? -1 : -1,
     dentalTuning: unit?.dental?.kind === 'two-contour' ? unit.dental.tuning : undefined,
     ids: out.selection ?? [],
+    units: (out.scene?.units ?? []).map((u) => ({ id: u.id, label: u.settings?.labelText ?? '', supports: Boolean(u.supports), dental: Boolean(u.dental), pos: [...u.transform.position], manual: u.manual.length, deleted: u.deleted.length })),
   };
 }
 
@@ -297,6 +298,14 @@ function makeDriver(page) {
 function stlTriangles(buffer) {
   if (buffer.length >= 84 && 84 + 50 * buffer.readUInt32LE(80) === buffer.length) return buffer.readUInt32LE(80);
   return (buffer.toString('latin1').match(/facet normal/g) ?? []).length;
+}
+
+/** Every vertex x of a binary STL (the whole-plate export), for the arrangement checks. */
+function stlVertexXs(buffer) {
+  const count = buffer.readUInt32LE(80);
+  const xs = [];
+  for (let at = 0; at < count; at += 1) for (let k = 0; k < 3; k += 1) xs.push(buffer.readFloatLE(84 + at * 50 + 12 + k * 12));
+  return { count, xs };
 }
 
 async function exportSupports(d, dir) {
@@ -701,6 +710,158 @@ async function walk(url, scratch, dentalFixture) {
       check('u12 Exit leaves the aligners on the plate without supports', (await page.locator('.panel.left [inert]').count()) === 0 && Number(await objects()) >= 1 && left.auto === 0, `objects ${await objects()}, automatic supports ${left.auto}`);
     }
 
+    // x. Dental flow, Step 3 and finish: two aligners end to end (the repo's reference aligner twice).
+    {
+      const reference = path.join(ROOT, 'docs', 'dental-reference', 'reference-aligner.stl');
+      const drop = (file) => page.setInputFiles('input[aria-label="Choose aligner file"]', file);
+      const stepTo = async (text, ms = 20000) => page.waitForFunction((word) => document.querySelector('.edit-badge')?.innerText.includes(word), text, { timeout: ms });
+      const objects = async () => (await page.locator('footer').innerText()).match(/(\d+) objects?/)?.[1];
+      const label = page.locator('.dental-side input.dental-label');
+      const slider = (name) => page.locator('.dental-side label.tool-option').filter({ hasText: name }).locator('input');
+      /** One aligner from the type card (first) or Step 1 to Step 3, supports built. */
+      const toStep3 = async (first) => {
+        if (first) {
+          await page.goto(url);
+          await d.button('Aligner Support Production').click();
+          await stepTo('Step 0 · Aligner type');
+          await page.locator('.dental-card').click();
+        }
+        await stepTo('Step 1 · Aligner');
+        await drop(reference);
+        await stepTo('Review the orientation', 180000);
+        await d.button('Next').click();
+        await stepTo('Step 2 · Support area', 180000);
+        await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /Proposed support tips: [1-9]/.test(note.innerText)), null, { timeout: 240000 });
+        if (first) check('x0 Step 2 no longer carries the Tree and Brace toggles', (await page.getByText('Tree branches').count()) === 0 && (await page.getByText('Cross-braces').count()) === 0);
+        await d.button('Next').click();
+        await stepTo('Step 3 · Supports', 240000);
+        await page.waitForFunction(() => { const ok = [...document.querySelectorAll('button')].find((b) => b.innerText.trim() === 'OK'); return ok && !ok.disabled; }, null, { timeout: 300000 });
+        await d.quiet();
+      };
+      const wait = async (ok, what, ms = 240000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await ok()) return true; await d.idle(300); } throw new Error(`timed out: ${what}`); };
+
+      await toStep3(true);
+      await d.measureCanvas();
+      await page.screenshot({ path: path.join(scratch, 'ux-b-step3.png') });
+      const side = await page.locator('.dental-side').innerText();
+      check('x1 Step 3 lists tip size, density, lift height, raft, Tree, Brace, the support tools, problems, Label, OK and Add another aligner',
+        ['Tip size', 'Support density', 'Lift height', 'Raft', 'Tree branches', 'Cross-braces', 'Add supports', 'Problems', 'Label', 'OK', 'Add another aligner'].every((word) => side.includes(word)), side.replace(/\s+/g, ' ').slice(0, 200));
+      check('x2 the Label field is titled Label and starts as X', (await label.inputValue()) === 'X' && (await page.getByLabel('Label', { exact: true }).count()) >= 1, `value "${await label.inputValue()}"`);
+      await label.fill('');
+      await label.pressSequentially('a-1b_$%é .');
+      const typed = await label.inputValue();
+      await label.fill('abcdefghijkl');
+      const capped = await label.inputValue();
+      check('x3 the Label field takes only A-Z 0-9 and -, uppercases letters, and stops at 8 characters', typed === 'A-1B' && capped === 'ABCDEFGH', `typed "${typed}", long "${capped}"`);
+      await label.fill('L-1');
+      await d.idle(500);
+      check('x4 the typed label is stored with the aligner', (await d.props()).units[0]?.label === 'L-1', `label "${(await d.props()).units[0]?.label}"`);
+
+      // Delete a drag-selected group of supports, then add one by hand.
+      await d.button('Select supports').click();
+      await d.button('Drag over').click();
+      await d.idle(2500);
+      const before = await d.counts();
+      let picked = { selected: 0 };
+      for (const [from, to] of [[[0.2, 0.5], [0.55, 0.6]], [[0.2, 0.4], [0.5, 0.7]], [[0.15, 0.6], [0.5, 0.45]]]) {
+        await d.stroke(from, to, 24);
+        picked = await d.settle();
+        if (picked.selected > 0) break;
+      }
+      await page.screenshot({ path: path.join(scratch, 'ux-b-x6.png') });
+      note(`x6 edit-count "${(await page.locator('.edit-count').allInnerTexts()).join('|')}", status "${await d.status()}"`);
+      check('x6 Step 3 selects supports with the Support Edit Mode tools', picked.selected > 0, `selected ${picked.selected}`);
+      await d.button('Delete').click();
+      await d.idle(800);
+      const afterDelete = await d.counts();
+      check('x7 Delete removes the selected supports', afterDelete.removed > before.removed, `removed ${before.removed} -> ${afterDelete.removed}`);
+      await d.button('Add supports').click();
+      let added = false;
+      for (const point of [[0.5, 0.3], [0.5, 0.7], [0.3, 0.5], [0.7, 0.5], [0.4, 0.4], [0.6, 0.6], [0.35, 0.65], [0.65, 0.35]]) {
+        const [px, py] = d.at(...point);
+        await page.mouse.click(px, py);
+        await d.idle(500);
+        if ((await d.counts()).manual > afterDelete.manual) { added = true; break; }
+      }
+      const handWork = await d.counts();
+      check('x8 Add supports adds one by hand', added, `manual ${afterDelete.manual} -> ${handWork.manual}`);
+
+      const raft = page.locator('.dental-side label.check').filter({ hasText: 'Raft' }).locator('input');
+      await raft.uncheck();
+      check('x5 raft off says the label needs it', await page.getByText('Turn the raft on to print it').isVisible());
+      await raft.check();
+      await d.quiet();
+      // The raft switch rebuilt the supports: wait until the build is on screen before the brush needs it.
+      await page.waitForFunction(() => !document.querySelector('footer .building'), null, { timeout: 120000 });
+      await d.idle(2500);
+
+      // A setting change regenerates and keeps the hand work.
+      const yBefore = (await d.props()).units[0].pos[1];
+      await slider('Lift height').focus();
+      await slider('Lift height').press('ArrowRight');
+      await wait(async () => Math.abs((await d.props()).units[0].pos[1] - yBefore) > 0.2, 'lift regenerated');
+      await d.quiet();
+      const afterLift = await d.counts();
+      check('x9 a lift change regenerates the supports and keeps the manual edits', afterLift.manual === handWork.manual, `manual ${handWork.manual} -> ${afterLift.manual}, removed ${handWork.removed} -> ${afterLift.removed}, status "${await d.status()}"`);
+
+      // Problems: the check runs inside the step and lists what it finds with Show and Fix.
+      await d.button('Check for unsupported spots').click();
+      await d.quiet();
+      await d.idle(800);
+      const listed = await page.locator('.dental-side .problems li').count();
+      check('x10 Check supports inside Step 3 reports into the problem list (each finding has Show me and Fix)', listed === 0 || (await page.locator('.dental-side .problems li button').count()) >= 2 * listed, `${listed} listed`);
+      if (listed > 0) {
+        await page.locator('.dental-side .problems li').first().getByRole('button', { name: 'Fix' }).click();
+        await d.idle(400);
+        check('x11 Fix opens Add supports at the spot', (await page.locator('.dental-side').getByRole('button', { name: 'Add supports' }).getAttribute('aria-pressed')) !== 'false' || /Click the framed spot/.test(await d.status()), `status "${await d.status()}"`);
+      }
+
+      // Back asks first because hand work would be lost; Stay keeps it.
+      await d.button('Back').click();
+      check('x12 Back from Step 3 asks before discarding manual edits', await page.getByText('Discard and go back').isVisible());
+      await page.getByRole('button', { name: 'Stay' }).click();
+      check('x13 Stay keeps Step 3 and the edits', (await page.locator('.edit-badge').innerText()).includes('Step 3 · Supports') && (await d.counts()).manual === afterLift.manual);
+
+      // First aligner finished with Add another aligner: back to Step 1 with the same type.
+      await d.button('Add another aligner').click();
+      await stepTo('Step 1 · Aligner');
+      check('x14 Add another aligner returns to Step 1 and asks for the next file, same type',
+        await page.getByText('Drop the aligner STL here').isVisible() && (await page.getByRole('button', { name: 'Use the selected model' }).count()) === 0 && (await objects()) === '1');
+
+      // Second aligner.
+      await toStep3(false);
+      await label.fill('R-2');
+      await d.idle(500);
+      await page.screenshot({ path: path.join(scratch, 'ux-b-step3-second.png') });
+      await d.button('OK').click();
+      await page.waitForFunction(() => !document.querySelector('.edit-badge'), null, { timeout: 10000 });
+      await d.idle(800);
+      await d.quiet();
+      await page.getByRole('button', { name: 'Fit', exact: false }).first().click().catch(() => {});
+      await d.idle(1200);
+      await page.screenshot({ path: path.join(scratch, 'ux-b-plate.png') });
+      const finished = await d.props();
+      check('x15 OK ends the flow with both aligners on the plate as normal objects, each with supports',
+        (await objects()) === '2' && finished.units.length === 2 && finished.units.every((unit) => unit.supports && unit.dental) && (await page.locator('.panel.left [inert]').count()) === 0, `objects ${await objects()}`);
+      check('x16 both aligners carry their own label', finished.units[0].label === 'L-1' && finished.units[1].label === 'R-2', `labels ${finished.units.map((unit) => unit.label).join(', ')}`);
+      check('x17 OK points to Export STL and Save project', await page.locator('.dental-done').isVisible() && /Export STL/.test(await page.locator('.dental-done').innerText()));
+
+      // The whole-plate export holds both, with free space between them.
+      const download = page.waitForEvent('download', { timeout: 600000 });
+      await page.getByRole('button', { name: 'Whole plate in one file' }).click();
+      const plateFile = path.join(scratch, 'plate.stl');
+      await (await download).saveAs(plateFile);
+      const { count, xs } = stlVertexXs(readFileSync(plateFile));
+      const sorted = [...xs].sort((a, b) => a - b);
+      let widest = 0;
+      let at = 0;
+      for (let i = 1; i < sorted.length; i += 1) if (sorted[i] - sorted[i - 1] > widest) { widest = sorted[i] - sorted[i - 1]; at = i; }
+      const leftShare = at / sorted.length;
+      check('x18 the export holds both aligners side by side with free space between them (no overlap)', count > 1000 && widest >= 3 && leftShare > 0.2 && leftShare < 0.8, `triangles ${count}, widest empty gap ${widest.toFixed(2)} mm, left share ${(leftShare * 100).toFixed(0)}%`);
+      const [first, second] = finished.units;
+      check('x19 the two aligners sit apart on the plate', Math.abs(first.pos[0] - second.pos[0]) > 20 || Math.abs(first.pos[2] - second.pos[2]) > 20, `centres ${first.pos.map((v) => v.toFixed(0))} / ${second.pos.map((v) => v.toFixed(0))}`);
+    }
+
     if (dentalFixture) {
       // The opt-in Dental lane never checks a patient model into the repository. The caller gives
       // its local fixture explicitly (for example, `DENTAL_WALK_FIXTURE=... npm run walk`).
@@ -746,11 +907,7 @@ async function walk(url, scratch, dentalFixture) {
       check('l2d support density updates the live tip preview',
         denser.dentalContacts !== widened.dentalContacts,
         `candidate tips ${widened.dentalContacts} -> ${denser.dentalContacts}`);
-      const structure = page.locator('.dental-tuning details').filter({ hasText: 'Support structure' });
-      await structure.locator('summary').click();
-      check('l2f dental tree and braces default on with separate disable controls',
-        await structure.locator('label').filter({ hasText: 'Tree branches' }).locator('input').isChecked() &&
-        await structure.locator('label').filter({ hasText: 'Cross-braces' }).locator('input').isChecked());
+      check('l2f Tree and Brace moved out of Step 2 (they are in Step 3)', (await page.getByText('Tree branches').count()) === 0);
       check('l2g generic right-panel structure controls do not contradict dental Step 2',
         !/Roof \/ cage|Tree supports|Auto placement|Bracing/.test(await page.locator('.panel.right').innerText()));
       await page.locator('.dental-tuning details').filter({ hasText: 'Advanced position' }).locator('summary').click();
@@ -762,17 +919,17 @@ async function walk(url, scratch, dentalFixture) {
         shifted.dentalFaces !== denser.dentalFaces,
         `faces ${denser.dentalFaces} -> ${shifted.dentalFaces}`);
       await d.button('Next').click();
-      await page.waitForFunction(() => document.body.innerText.includes('Step 3 · Review supports'), null, { timeout: 240000 });
+      await page.waitForFunction(() => document.body.innerText.includes('Step 3 · Supports'), null, { timeout: 240000 });
       await page.waitForFunction(() => /[1-9][\d,]* automatic/.test(document.querySelector('footer')?.innerText ?? '') && ![...document.querySelectorAll('button')].some((b) => /Generating dental supports/.test(b.innerText)), null, { timeout: 240000 });
       await d.quiet();
-      await d.button('Done', false).waitFor({ state: 'visible', timeout: 300000 });
+      await d.button('OK').waitFor({ state: 'visible', timeout: 300000 });
       await page.screenshot({ path: path.join(scratch, 'dental-generated.png') });
       const dentalSupports = await d.counts();
       const placed = await d.props();
       check('l3 dental generation finishes a support mesh only after the approved-area stage',
         dentalSupports.auto > 0 && placed.dentalKind === 'two-contour' && placed.tris > 0 && placed.drawn > 0 && placed.droppedDrawn === 0 && Math.abs(placed.dentalReviewGap - 4 / 1.1) < 1e-6,
         `automatic ${dentalSupports.auto}, mesh triangles ${placed.tris}, drawn ${placed.drawn}, forbidden secondary landings dropped ${placed.dropped}, dropped still drawn ${placed.droppedDrawn}, tuned review gap ${placed.dentalReviewGap}`);
-      const rimWarning = await page.locator('.edit-bar [role="alert"]').filter({ hasText: 'Automatic rim gaps' }).innerText();
+      const rimWarning = await page.locator('.dental-side').getByText(/Automatic rim gaps/).innerText();
       check('l4 final dental rim gap is disclosed before Done',
         /Automatic rim gaps: outer [\d.]+ mm, opening [\d.]+ mm/.test(rimWarning) && /Review the rim/.test(rimWarning),
         `warning "${rimWarning}"`);

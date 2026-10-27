@@ -16,7 +16,7 @@ export const COMMAND_IDS = [
   'supports.generate', 'supports.dentalAuto', 'supports.clearManual', 'supports.remove', 'check.run',
   'mode.edit', 'mode.zones', 'mode.exit',
   'zones.clearAll',
-  'dental.useDetected', 'dental.next', 'dental.generate', 'dental.back', 'dental.exit',
+  'dental.useDetected', 'dental.next', 'dental.generate', 'dental.back', 'dental.exit', 'dental.finish', 'dental.addAnother',
   'edit.generate', 'edit.add', 'edit.remove', 'edit.dragSelect', 'edit.dragUnselect', 'edit.clearSelection', 'edit.deleteSelection',
   'setting.clickReach',
   'shape.reset', 'shape.selectCustomised',
@@ -83,6 +83,8 @@ export interface UiState {
   dentalProposed?: boolean;
   /** The dental step: Back is offered from Step 1 on. */
   dentalStage?: 'type' | 'aligner' | 'area' | 'review';
+  /** Dental Step 3: the supports are built for the current model and settings, so the aligner can be finished. */
+  dentalReviewReady?: boolean;
 }
 
 interface Command {
@@ -114,6 +116,8 @@ const REDO_HINTS: Record<StepKind, string> = {
   addObjects: 'Redo the import', deleteObjects: 'Redo deleting objects', generate: 'Redo generating supports', removeSupports: 'Redo removing the supports',
   clearManual: 'Redo clearing manual edits', addSupport: 'Redo adding a support', deleteSupports: 'Redo deleting supports', zones: 'Redo the zone change', move: 'Redo moving the object', settings: 'Redo the settings change', openProject: 'Redo opening the project',
 };
+/** Supports can be picked, added and deleted: Support Edit Mode, and dental Step 3 which reuses its tools. */
+const editing = (s: UiState) => s.mode === 'edit' || (s.mode === 'dental' && s.dentalStage === 'review');
 const editable = (s: UiState) => s.active && s.heavy === undefined;
 const always = () => true;
 const never = () => undefined;
@@ -268,11 +272,21 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     role: 'secondary', label: () => 'Exit', hint: () => 'Leave the dental flow. The aligner stays on the plate without supports',
     visible: (s) => s.mode === 'dental', enabled: always, disabledReason: never,
   },
+  'dental.finish': {
+    role: 'primary', label: () => 'OK', hint: () => 'Finish this aligner. It stays on the plate with its supports',
+    visible: (s) => s.mode === 'dental' && s.dentalStage === 'review', enabled: (s) => Boolean(s.dentalReviewReady) && !s.generating,
+    disabledReason: (s) => (s.generating ? generatingReason : s.dentalReviewReady ? undefined : { key: 'Wait until the supports are built.' }),
+  },
+  'dental.addAnother': {
+    role: 'secondary', label: () => 'Add another aligner', hint: () => 'Finish this aligner and add the next one of the same type',
+    visible: (s) => s.mode === 'dental' && s.dentalStage === 'review', enabled: (s) => Boolean(s.dentalReviewReady) && !s.generating,
+    disabledReason: (s) => (s.generating ? generatingReason : s.dentalReviewReady ? undefined : { key: 'Wait until the supports are built.' }),
+  },
   'edit.generate': {
     role: 'secondary',
     label: (s) => (s.generating ? 'Generating supports…' : 'Generate supports'),
     hint: () => 'Place automatic supports on this object without leaving the mode',
-    visible: (s) => s.mode === 'edit' && !s.activeSupported, enabled: (s) => !s.generating,
+    visible: (s) => editing(s) && !s.activeSupported, enabled: (s) => !s.generating,
     disabledReason: (s) => (s.generating ? generatingReason : undefined),
   },
   'edit.add': addChoice('add', 'Add', 'Each click adds a support on the model'),
@@ -292,7 +306,7 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     role: 'secondary',
     label: () => 'Reset to defaults',
     hint: () => 'Give the selected supports the default settings again. Undo brings their own values back',
-    visible: (s) => s.mode === 'edit' && s.selection > 0, enabled: (s) => s.customisedSelected > 0,
+    visible: (s) => editing(s) && s.selection > 0, enabled: (s) => s.customisedSelected > 0,
     disabledReason: (s) => (s.customisedSelected > 0 ? undefined : { key: 'None of the selected supports has settings of its own.' }),
   },
   /** The header count's action: outside Support Edit Mode it enters the mode with those supports selected. The mode edits one object: the active one, or when it has none, the first selected object that does (made active). */
@@ -313,12 +327,12 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
   'edit.clearSelection': {
     role: 'secondary', shortcut: 'Esc',
     label: () => 'Clear selection', hint: () => 'Unselect every support at once. Undo on the notice brings the selection back',
-    visible: (s) => s.mode === 'edit' && s.selection > 0, enabled: always, disabledReason: never,
+    visible: (s) => editing(s) && s.selection > 0, enabled: always, disabledReason: never,
   },
   'edit.deleteSelection': {
     role: 'destructive', shortcut: 'Delete',
     label: () => 'Delete', hint: () => 'Delete the selected supports. Undo brings them back',
-    visible: (s) => s.mode === 'edit', enabled: (s) => s.selection > 0, disabledReason: (s) => (s.selection > 0 ? undefined : { key: 'Select a support first.' }),
+    visible: (s) => editing(s), enabled: (s) => s.selection > 0, disabledReason: (s) => (s.selection > 0 ? undefined : { key: 'Select a support first.' }),
   },
   'export.active-printable': exportRow('Active object with model', 'One STL file: the active object and its supports'),
   'export.active-supports': exportRow('Active object, supports only', 'One STL file: only the supports of the active object'),
@@ -340,7 +354,7 @@ function exportRow(label: string, hint: string): Command {
 function addChoice(action: AddAction, label: string, hint: string): Command {
   return {
     role: 'secondary', label: () => label, hint: () => hint,
-    visible: (s) => s.mode === 'edit' && s.tool === 'add', enabled: always, disabledReason: never,
+    visible: (s) => editing(s) && s.tool === 'add', enabled: always, disabledReason: never,
     pressed: (s) => s.addAction === action,
   };
 }
@@ -349,7 +363,7 @@ function addChoice(action: AddAction, label: string, hint: string): Command {
 function dragChoice(action: BrushMode, label: string, hint: string): Command {
   return {
     role: 'secondary', label: () => label, hint: () => hint,
-    visible: (s) => s.mode === 'edit' && s.tool === 'select' && s.method === 'brush', enabled: always, disabledReason: never,
+    visible: (s) => editing(s) && s.tool === 'select' && s.method === 'brush', enabled: always, disabledReason: never,
     pressed: (s) => s.dragAction === action,
   };
 }

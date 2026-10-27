@@ -11,7 +11,7 @@ const GESTURE_STATUS = {
   'dental-type': 'Choose the aligner type to begin.',
   'dental-aligner': 'Drop an aligner STL, or choose one. It is oriented automatically; adjust with the gizmo, then press Next.',
   'dental-area': 'Mark where dental supports may grow; Remove clears permission. Drag on the model.',
-  'dental-review': 'Review the generated supports, then finish.',
+  'dental-review': 'Review the supports: change the settings, add or delete supports, fix the problems, then press OK.',
   add: 'Support Edit Mode: click the model to add, right-click a support to remove.',
   remove: 'Support Edit Mode: click a support, or the model next to one, to remove it.',
   pick: 'Support Edit Mode: click supports to select them, right-click a support to remove.',
@@ -45,7 +45,7 @@ export function editStatus(session: EditSession): StatusMessage | undefined {
 
 /** What the status line rests on in a mode: how Esc leaves while supports are selected, else the tool line. */
 function standingStatus(session: EditSession): StatusMessage | undefined {
-  return session.mode === 'edit' && session.selection.size > 0 ? keyed(ESC_AGAIN) : editStatus(session);
+  return (session.mode === 'edit' || session.dentalStage === 'review' && session.mode === 'dental') && session.selection.size > 0 ? keyed(ESC_AGAIN) : editStatus(session);
 }
 
 /**
@@ -65,6 +65,8 @@ export function sessionStatus(previous: EditSession, next: EditSession, event: S
     if (previous.mode === 'dental') return { key: 'Left the aligner on the plate without supports.' };
   }
   if (next.mode === 'off' || next === previous) return undefined;
+  // A new dental step starts with its own line: an error or result of the last step does not follow.
+  if (next.mode === 'dental' && (next.dentalStage !== previous.dentalStage || next.dentalAligner !== previous.dentalAligner)) return standingStatus(next);
   const now = standingStatus(next);
   return next.mode !== previous.mode || now?.key !== standingStatus(previous)?.key ? now : undefined;
 }

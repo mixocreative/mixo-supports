@@ -14,14 +14,28 @@ export type Gesture =
   | { kind: 'dental-type'; profile: string | undefined }
   | { kind: 'dental-aligner'; phase: EditSession['dentalAligner']; proposal: EditSession['dentalProposal']; notices: EditSession['dentalNotices']; profile: string | undefined }
   | { kind: 'dental-area'; brush: { radius: number; kind: DentalKind }; notices: EditSession['dentalNotices'] }
-  | { kind: 'dental-review' }
+  /** Step 3: the Support Edit Mode tools (`edit`) work inside the step. */
+  | { kind: 'dental-review'; edit: EditGesture }
   /** `remove`: a click removes the support it hits instead of adding one. */
   | { kind: 'add'; remove: boolean }
   | { kind: 'pick' }
   /** `brush.mode` is what a stroke does now: the switch (`base`) flipped while Shift is down (`flipped`). `sizing`: the circle's size slider is held or was just moved. */
   | { kind: 'drag'; brush: Brush; base: BrushMode; flipped: boolean; sizing: boolean };
 
+/** A Support Edit Mode gesture: Add supports, or Select supports by Click (`pick`) or Drag over (`drag`). */
+export type EditGesture = Extract<Gesture, { kind: 'add' | 'pick' | 'drag' }>;
+
 export type GestureKind = Gesture['kind'];
+
+/** The gesture the canvas acts on: Step 3 hands the canvas its Support Edit Mode tool. */
+export function canvasGesture(press: Gesture): Gesture {
+  return press.kind === 'dental-review' ? press.edit : press;
+}
+
+function editGesture(session: EditSession): EditGesture {
+  if (session.tool === 'add') return { kind: 'add', remove: session.addAction === 'remove' };
+  return session.selectStyle === 'click' ? { kind: 'pick' } : { kind: 'drag', brush: { radius: session.brushRadius, mode: effectiveBrushMode(session.brushMode, session.shiftHeld) }, base: session.brushMode, flipped: session.shiftHeld, sizing: session.brushSizing };
+}
 
 export function gesture(session: EditSession): Gesture {
   switch (session.mode) {
@@ -34,10 +48,9 @@ export function gesture(session: EditSession): Gesture {
           ? { kind: 'dental-aligner', phase: session.dentalAligner, proposal: session.dentalProposal, notices: session.dentalNotices, profile: session.dentalProfile }
           : session.dentalStage === 'area'
             ? { kind: 'dental-area', brush: { radius: session.dentalRadius, kind: session.dentalKind }, notices: session.dentalNotices }
-            : { kind: 'dental-review' };
+            : { kind: 'dental-review', edit: editGesture(session) };
     case 'edit':
-      if (session.tool === 'add') return { kind: 'add', remove: session.addAction === 'remove' };
-      return session.selectStyle === 'click' ? { kind: 'pick' } : { kind: 'drag', brush: { radius: session.brushRadius, mode: effectiveBrushMode(session.brushMode, session.shiftHeld) }, base: session.brushMode, flipped: session.shiftHeld, sizing: session.brushSizing };
+      return editGesture(session);
   }
 }
 

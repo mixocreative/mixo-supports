@@ -8,7 +8,7 @@ import type { Message } from '../i18n';
 import { memoryInfo } from '../state/runtime';
 import type { PrintScene, PrintUnit, SceneCommand } from '../state/project';
 import { landPlacements, type FinishedPlacement } from '../supports/landing';
-import { orientationOf, placementJobOf, resolveSettings } from '../supports/unitSupports';
+import { dentalPlacementJobOf, orientationOf, placementJobOf, resolveSettings } from '../supports/unitSupports';
 import type { AnalysisClient } from '../workers/analysisClient';
 import type { DentalTipPreview } from './useDentalPreview';
 import { codedJobError } from '../workers/jobErrors';
@@ -62,7 +62,12 @@ export function useRegenerate(host: {
       const orientation = orientationOf(unit);
       placing.current.add(unit.id);
       setGenerating(true);
-      return analysis().place(`place:${unit.id}`, placementJobOf(unit), { key: 'Placing contacts on {name}', vars: { name: unitName(unit.id) } }).then((result): FinishedPlacement | undefined => {
+      // A dental aligner places on its accepted area (Step 2); anything else on its overhangs.
+      const dentalJob = dentalPlacementJobOf(unit);
+      const placed = dentalJob
+        ? analysis().dentalPlace(`place:${unit.id}`, dentalJob, { key: 'Placing dental contacts on {name}', vars: { name: unitName(unit.id) } })
+        : analysis().place(`place:${unit.id}`, placementJobOf(unit), { key: 'Placing contacts on {name}', vars: { name: unitName(unit.id) } });
+      return placed.then((result): FinishedPlacement | undefined => {
         forgetPlacing(unit.id);
         return result ? { unitId: unit.id, orientation, settings, result } : undefined; // no result: replaced by a newer request for this unit
       }, (error: unknown) => {

@@ -275,7 +275,7 @@ export default function SettingsPanel({ settings, shape, ui, autoLabel, scope, d
           </div>
         </div>}
         <NumberField label={t('Lift height')} unit="mm" step={0.5} limits={settingLimits.liftHeight} value={settings.liftHeight} onChange={(value, edit) => onChange('liftHeight', value, edit)} onCancel={onCancelEdit} hint={t('Lowest model point above the plate')} />
-        {dentalMode && <p className="help" role="note">{t('Dental contact area, density, trees, and braces are controlled in Step 2.')}</p>}
+        {dentalMode && <p className="help" role="note">{t('Dental contact area is set in Step 2. Tip size, density, lift, raft, trees and braces are set in Step 3.')}</p>}
         {deferPlacement && <DeferNote />}
         {!dentalMode && <div className="field-row" title={t('Structure above or around the model. Each mode gets its defaults the first time it is used')}>
           <span>{t('Roof / cage')}</span>

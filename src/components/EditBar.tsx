@@ -1,5 +1,5 @@
 import { resolve, type CommandId, type UiState } from '../editing/commands';
-import type { Gesture } from '../editing/gesture';
+import type { EditGesture } from '../editing/gesture';
 import type { SessionEvent } from '../editing/session';
 import { settingLimits } from '../core/supports/settings';
 import { t } from '../i18n';
@@ -10,8 +10,7 @@ import { RangeField } from './RangeField';
 import { Segmented } from './Segmented';
 import { BrushIcon, PointerIcon } from './ToolIcons';
 
-/** A Support Edit Mode gesture: Add supports, or Select supports by Click (`pick`) or Drag over (`drag`). */
-export type EditGesture = Extract<Gesture, { kind: 'add' | 'pick' | 'drag' }>;
+export type { EditGesture };
 
 /** The edit bar's own actions, before Done. */
 const EDIT_BAR_COMMANDS = ['edit.generate', 'edit.clearSelection', 'edit.deleteSelection'] as const;
@@ -51,45 +50,62 @@ export function EditBar({ gesture, unitName, ui, clickReach, send, run }: {
       <b>{t(BADGE[gesture.kind === 'add' && gesture.remove ? 'remove' : gesture.kind === 'drag' && gesture.brush.mode === 'unselect' ? 'dragUnselect' : gesture.kind])}</b>
     </div>
     <div className="edit-bar">
-      <div className="edit-row">
-        <Segmented label={t('Edit tool')} value={gesture.kind === 'add' ? 'add' : 'select'} onChange={(tool) => send({ type: 'setTool', tool })} options={[
-          { value: 'add', label: t('Add supports'), hint: 'Click the model to add a support; right-click or Ctrl+click a support to remove it' },
-          { value: 'select', label: t('Select supports'), hint: 'Pick supports to delete several at once' },
-        ]} />
-        {gesture.kind !== 'add' && <Segmented className="tool-choice" label={t('How to select')} value={gesture.kind === 'drag' ? 'brush' : 'click'} onChange={(style) => send({ type: 'setSelectStyle', style })} options={[
-          { value: 'click', icon: <PointerIcon />, label: t('Click'), hint: 'Click supports one at a time to select them' },
-          {
-            value: 'brush', icon: <BrushIcon />, label: t('Drag over'), hint: 'Drag over the model or its supports to select many at once. A drag that starts on empty space turns the view',
-            // The tool's own size, under it: shown only while Drag over is the way to select.
-            under: gesture.kind === 'drag' && <div className="drag-under">
-              <DragActionSwitch ui={ui} run={run} />
-              <span className="drag-shift-hint">{t(gesture.flipped ? (gesture.base === 'select' ? 'Release Shift to select' : 'Release Shift to unselect') : gesture.base === 'select' ? 'Hold Shift to unselect' : 'Hold Shift to select')}</span>
-              <RangeField
-                layout="stack" label="Circle size" unit="{n} px" hint="Radius of the circle around the pointer, in screen pixels: supports it passes over are selected"
-                min={8} max={80} step={4} value={gesture.brush.radius}
-                onChange={(radius) => send({ type: 'setBrushRadius', radius })}
-                onAdjust={(sizing) => send({ type: 'setBrushSizing', sizing })}
-              />
-            </div>,
-          },
-        ]} />}
-      </div>
-      {gesture.kind === 'add' && <div className="edit-row">
-        <Segmented label={t('What a click does')} value={ui.addAction} onChange={(action) => run(action === 'add' ? 'edit.add' : 'edit.remove')} options={(['edit.add', 'edit.remove'] as const).map((id) => {
-          const { label, hint: text } = resolve(id, ui);
-          return { value: id === 'edit.add' ? 'add' as const : 'remove' as const, label: t(label), hint: text };
-        })} />
-        <ClickReachField ui={ui} {...clickReach} />
-      </div>}
-      <div className="edit-row">
-        {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
-        <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{gesture.kind === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
-        <span className="edit-hint"><KeyCaps shortcut={resolve('history.undo', ui).shortcut!} /> {t('undo')}</span>
-        {ui.customisedActive > 0 && <span className="edit-hint">{t('Supports with their own settings carry a ring.')}</span>}
-        {ui.selection > 0 && <span className="edit-count">{t('{n} selected', { n: ui.selection })}</span>}
-        {EDIT_BAR_COMMANDS.map((id) => resolve(id, ui)).filter((command) => command.visible).map((command) => <CommandButton key={command.id} command={command} run={run} />)}
-        <DoneButton ui={ui} run={run} />
-      </div>
+      <EditTools gesture={gesture} ui={ui} clickReach={clickReach} send={send} run={run}><DoneButton ui={ui} run={run} /></EditTools>
+    </div>
+  </>;
+}
+
+/**
+ * The tools of Support Edit Mode without its frame, badge or Done: the tool switch, how to select,
+ * what a click does, the selection's actions. Dental Step 3 reuses them; `children` end the last row.
+ */
+export function EditTools({ gesture, ui, clickReach, send, run, children }: {
+  gesture: EditGesture;
+  ui: UiState;
+  clickReach: { value: number; onChange: (value: number, edit?: string) => void };
+  send: (event: SessionEvent) => void;
+  run: (id: CommandId) => void;
+  children?: React.ReactNode;
+}) {
+  return <>
+    <div className="edit-row">
+      <Segmented label={t('Edit tool')} value={gesture.kind === 'add' ? 'add' : 'select'} onChange={(tool) => send({ type: 'setTool', tool })} options={[
+        { value: 'add', label: t('Add supports'), hint: 'Click the model to add a support; right-click or Ctrl+click a support to remove it' },
+        { value: 'select', label: t('Select supports'), hint: 'Pick supports to delete several at once' },
+      ]} />
+      {gesture.kind !== 'add' && <Segmented className="tool-choice" label={t('How to select')} value={gesture.kind === 'drag' ? 'brush' : 'click'} onChange={(style) => send({ type: 'setSelectStyle', style })} options={[
+        { value: 'click', icon: <PointerIcon />, label: t('Click'), hint: 'Click supports one at a time to select them' },
+        {
+          value: 'brush', icon: <BrushIcon />, label: t('Drag over'), hint: 'Drag over the model or its supports to select many at once. A drag that starts on empty space turns the view',
+          // The tool's own size, under it: shown only while Drag over is the way to select.
+          under: gesture.kind === 'drag' && <div className="drag-under">
+            <DragActionSwitch ui={ui} run={run} />
+            <span className="drag-shift-hint">{t(gesture.flipped ? (gesture.base === 'select' ? 'Release Shift to select' : 'Release Shift to unselect') : gesture.base === 'select' ? 'Hold Shift to unselect' : 'Hold Shift to select')}</span>
+            <RangeField
+              layout="stack" label="Circle size" unit="{n} px" hint="Radius of the circle around the pointer, in screen pixels: supports it passes over are selected"
+              min={8} max={80} step={4} value={gesture.brush.radius}
+              onChange={(radius) => send({ type: 'setBrushRadius', radius })}
+              onAdjust={(sizing) => send({ type: 'setBrushSizing', sizing })}
+            />
+          </div>,
+        },
+      ]} />}
+    </div>
+    {gesture.kind === 'add' && <div className="edit-row">
+      <Segmented label={t('What a click does')} value={ui.addAction} onChange={(action) => run(action === 'add' ? 'edit.add' : 'edit.remove')} options={(['edit.add', 'edit.remove'] as const).map((id) => {
+        const { label, hint: text } = resolve(id, ui);
+        return { value: id === 'edit.add' ? 'add' as const : 'remove' as const, label: t(label), hint: text };
+      })} />
+      <ClickReachField ui={ui} {...clickReach} />
+    </div>}
+    <div className="edit-row">
+      {/* Selecting: Ctrl+click selects like a plain click, so only right-click removes. */}
+      <span className="edit-hint"><kbd>{t('Right-click')}</kbd>{gesture.kind === 'add' && <> / <kbd>Ctrl</kbd>+<kbd>{t('Click')}</kbd></>} {t('remove')}</span>
+      <span className="edit-hint"><KeyCaps shortcut={resolve('history.undo', ui).shortcut!} /> {t('undo')}</span>
+      {ui.customisedActive > 0 && <span className="edit-hint">{t('Supports with their own settings carry a ring.')}</span>}
+      {ui.selection > 0 && <span className="edit-count">{t('{n} selected', { n: ui.selection })}</span>}
+      {EDIT_BAR_COMMANDS.map((id) => resolve(id, ui)).filter((command) => command.visible).map((command) => <CommandButton key={command.id} command={command} run={run} />)}
+      {children}
     </div>
   </>;
 }

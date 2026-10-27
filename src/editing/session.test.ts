@@ -276,3 +276,47 @@ describe('Drag over: Select | Unselect and Shift', () => {
     expect(run(dragging, { type: 'paint', ids: ['x'], mode: 'select' }).selection.has('x')).toBe(true);
   });
 });
+
+describe('reduceSession: dental Step 3 and finishing', () => {
+  const step3 = run(initialSession, { type: 'enterDental' }, { type: 'chooseDentalProfile', id: 'p' }, { type: 'dentalLoading', unitId: 'u1' },
+    { type: 'dentalOriented', proposal, notices: [] }, { type: 'acceptDentalOrientation' }, { type: 'acceptDentalArea' });
+
+  it('Step 3 reuses the Support Edit Mode tools: selecting works, the canvas gets the edit gesture', () => {
+    expect(step3).toMatchObject({ mode: 'dental', dentalStage: 'review', tool: 'select', selectStyle: 'click', dentalUnitId: 'u1' });
+    expect(gesture(step3)).toMatchObject({ kind: 'dental-review', edit: { kind: 'pick' } });
+    const picked = run(step3, { type: 'toggleContact', id: 'a' }, { type: 'toggleContact', id: 'b' });
+    expect([...picked.selection]).toEqual(['a', 'b']);
+    expect(gesture(run(step3, { type: 'setTool', tool: 'add' }))).toMatchObject({ kind: 'dental-review', edit: { kind: 'add', remove: false } });
+    // Outside Step 3 a dental step takes no support picks.
+    const area = run(step3, { type: 'backDental' });
+    expect(reduceSession(area, { type: 'toggleContact', id: 'a' })).toBe(area);
+  });
+
+  it('Back from Step 3 drops the selection', () => {
+    expect(run(step3, { type: 'toggleContact', id: 'a' }, { type: 'backDental' }).selection.size).toBe(0);
+  });
+
+  it('Add another aligner finishes this one and returns to Step 1 with the same type, ready for a drop', () => {
+    const again = run(step3, { type: 'addAnotherDental', unitId: 'u1' });
+    expect(again).toMatchObject({ mode: 'dental', dentalStage: 'aligner', dentalAligner: 'prompt', dentalProfile: 'p', dentalFinished: ['u1'], dentalUnitId: undefined, dentalProposal: undefined });
+    expect(acceptsDentalDrop(again)).toBe(true);
+    // The loop: the second aligner goes through the steps and finishes too.
+    const second = run(again, { type: 'dentalLoading', unitId: 'u2' }, { type: 'dentalOriented', proposal, notices: [] }, { type: 'acceptDentalOrientation' }, { type: 'acceptDentalArea' });
+    expect(second).toMatchObject({ dentalStage: 'review', dentalUnitId: 'u2', dentalFinished: ['u1'] });
+    const done = run(second, { type: 'finishDental', unitId: 'u2' });
+    expect(done).toMatchObject({ mode: 'off', dentalFinished: ['u1', 'u2'] });
+    // Finishing the same aligner twice lists it once.
+    expect(run(step3, { type: 'addAnotherDental', unitId: 'u1' }, { type: 'dentalLoading', unitId: 'u1' }).dentalFinished).toEqual(['u1']);
+  });
+
+  it('OK and Add another only work inside Step 3', () => {
+    const area = run(step3, { type: 'backDental' });
+    expect(reduceSession(area, { type: 'finishDental', unitId: 'u1' })).toBe(area);
+    expect(reduceSession(area, { type: 'addAnotherDental', unitId: 'u1' })).toBe(area);
+  });
+
+  it('a new visit to the flow forgets the finished list', () => {
+    const done = run(step3, { type: 'finishDental', unitId: 'u1' });
+    expect(run(done, { type: 'enterDental' }).dentalFinished).toEqual([]);
+  });
+});

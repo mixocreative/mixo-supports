@@ -4,18 +4,16 @@ import type { SessionEvent } from '../editing/session';
 import { profileById } from '../dental/alignerProfiles';
 import { t, type Lang } from '../i18n';
 import { defaultDentalTuning, type DentalTuning } from '../core/analysis/dentalTuning';
-import type { DentalStructure } from '../core/analysis/dentalPolicy';
-import { defaultDentalStructure } from '../core/supports/dentalSettings';
 import { CommandButton } from './CommandButton';
 import { DentalAlignerBar, DentalAlignerPrompt, DentalTypeStep, noticeText } from './DentalSteps';
-import { DoneButton } from './EditBar';
+import { DentalSupportsStep, type DentalReview } from './DentalSupports';
 import { RangeField } from './RangeField';
 import { SurfaceBrushBar } from './SurfaceBrushBar';
 
 /** Dental Auto Generate chrome: review the detector first, then mark only permitted support area. */
-export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus = 'loading', reviewReady = true, rimGap,
-  lang = 'en', selectedName, onFiles, onUseSelected, structureFallback, tuning = defaultDentalTuning, tuningBusy = false, tuningError = false, onTuningChange,
-  structure = defaultDentalStructure, onStructureChange, send, run }: {
+export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus = 'loading', reviewReady = true,
+  lang = 'en', selectedName, onFiles, onUseSelected, tuning = defaultDentalTuning, tuningBusy = false, tuningError = false, onTuningChange,
+  review, send, run }: {
   gesture: Extract<Gesture, { kind: 'dental-type' | 'dental-aligner' | 'dental-area' | 'dental-review' }>;
   lang?: Lang;
   /** Step 1: the object selected on the plate, offered as the aligner without a drop. */
@@ -27,14 +25,12 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
   tipCount?: number;
   previewStatus?: 'idle' | 'loading' | 'ready' | 'error';
   reviewReady?: boolean;
-  rimGap?: { outerMm: number; openingMm: number } | 'unavailable';
-  structureFallback?: readonly ('tree' | 'brace')[];
   tuning?: DentalTuning;
   tuningBusy?: boolean;
   tuningError?: boolean;
   onTuningChange?: (tuning: DentalTuning) => void;
-  structure?: Readonly<DentalStructure>;
-  onStructureChange?: (structure: DentalStructure) => void;
+  /** Step 3's settings, results and actions. */
+  review?: DentalReview;
   send: (event: SessionEvent) => void;
   run: (id: CommandId) => void;
 }) {
@@ -67,20 +63,10 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
   if (gesture.kind === 'dental-review') return <>
     <div className="edit-frame" aria-hidden="true" />
     <div className="edit-badge" role="status">
-      {t('Step 3 · Review supports')}<span>{unitName}</span>
-      <b>{t('Review the generated supports, then finish.')}</b>
+      {t('Step 3 · Supports')}<span>{unitName}</span>
+      <b>{t('Review the supports, adjust the settings, then press OK.')}</b>
     </div>
-    <div className="edit-bar"><div className="edit-row">
-      <CommandButton command={resolve('dental.back', ui)} run={run} />
-      {reviewReady ? <DoneButton ui={ui} run={run} /> : <span className="edit-hint" role="status">{t('Building supports…')}</span>}
-    </div>
-      {reviewReady && rimGap ? <p className="edit-note" role="alert">{rimGap === 'unavailable'
-        ? t('Rim coverage could not be verified. Review the rim and supports before finishing.')
-        : t('Automatic rim gaps: outer {outer} mm, opening {opening} mm. Review the rim; omitted contacts were not forced.',
-          { outer: rimGap.outerMm.toFixed(1), opening: rimGap.openingMm.toFixed(1) })}</p> : null}
-      {reviewReady && structureFallback?.includes('tree') ? <p className="edit-note" role="alert">{t('Tree branches were omitted because they crossed the model. Review the supports before finishing.')}</p> : null}
-      {reviewReady && structureFallback?.includes('brace') ? <p className="edit-note" role="alert">{t('Cross-braces were omitted because they crossed the model. Review the supports before finishing.')}</p> : null}
-    </div>
+    {review ? <DentalSupportsStep gesture={gesture.edit} ui={ui} review={review} ready={reviewReady} send={send} run={run} /> : null}
   </>;
   return <>
     <div className="edit-frame" aria-hidden="true" />
@@ -111,12 +97,6 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
             <RangeField layout="row" label="Rim setback" unit="{n} mm" hint="Move the strip away from the trim rim on its non-cavity side"
               min={0} max={1} step={0.1} value={tuning.setbackMm}
               onChange={(setbackMm) => onTuningChange?.({ ...tuning, setbackMm })} />
-          </details>
-          <details><summary>{t('Support structure')}</summary>
-            <label className="check"><input type="checkbox" checked={structure.treeEnabled}
-              onChange={(event) => onStructureChange?.({ ...structure, treeEnabled: event.target.checked })} />{t('Tree branches')}</label>
-            <label className="check"><input type="checkbox" checked={structure.bracesEnabled}
-              onChange={(event) => onStructureChange?.({ ...structure, bracesEnabled: event.target.checked })} />{t('Cross-braces')}</label>
           </details>
         </div>
         {tuningBusy && <p className="edit-note" role="status">{t('Updating support area and tips…')}</p>}

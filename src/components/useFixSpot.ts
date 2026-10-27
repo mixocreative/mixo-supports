@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { atSpot, coverRadius, recheckStatus, type FixSpot } from '../editing/check';
 import { busyStatus } from '../editing/status';
-import { FIX_TOOL_EVENTS, type EditSession, type SessionEvent } from '../editing/session';
+import { editsSupports, FIX_TOOL_EVENTS, type EditSession, type SessionEvent } from '../editing/session';
 import type { EditMode } from '../editing/types';
 import type { Message } from '../i18n';
 import type { GeneratedSupportMesh } from '../core/supports/mesh';
@@ -48,7 +48,7 @@ export function useFixSpot(host: {
     if (!unit) return;
     const spot: FixSpot = { unitId: unit.id, position: problem.position, radius: coverRadius(resolveSettings(unit.settings).scatterSpacing, problem.area) };
     // Inside Support Edit Mode on the same object the spot is framed and the Add tool waits for the click.
-    if (mode === 'edit' && sceneRef.current.activeUnitId === unit.id) {
+    if (editsSupports(sessionRef.current) && sceneRef.current.activeUnitId === unit.id) {
       fixSpot.current = spot;
       FIX_TOOL_EVENTS.forEach(send);
       return setStatus('Click the framed spot to add a support.');
