@@ -29,7 +29,20 @@ export function stlKind(head: Uint8Array, size: number): StlKind {
   for (let offset = 0; offset < 5; offset += 1) {
     if (head[offset] === 115 && head[offset + 1] === 111 && head[offset + 2] === 108 && head[offset + 3] === 105 && head[offset + 4] === 100) return 'ascii';
   }
+  // Owner rule (every STL must load): an all-caps SOLID file is ASCII when its head is text.
+  for (let offset = 0; offset < 5; offset += 1) {
+    if (head[offset] === 83 && head[offset + 1] === 79 && head[offset + 2] === 76 && head[offset + 3] === 73 && head[offset + 4] === 68) return looksLikeText(head) ? 'ascii' : 'binary';
+  }
   return 'binary';
+}
+
+function looksLikeText(head: Uint8Array): boolean {
+  const end = Math.min(head.length, HEADER_BYTES);
+  for (let i = 0; i < end; i += 1) {
+    const b = head[i];
+    if (b === 0 || (b < 32 && b !== 9 && b !== 10 && b !== 13) || b > 126) return false;
+  }
+  return true;
 }
 
 function headerCount(head: Uint8Array): number {

@@ -57,8 +57,10 @@ impl AsciiStlStream {
 
     fn process_block(&mut self, bytes: &[u8]) -> Result<(), StlError> {
         let line = String::from_utf8_lossy(bytes);
+        // Keywords are case-insensitive (owner: every STL must load); ASCII lowercasing keeps byte offsets.
+        let lower = line.to_ascii_lowercase();
         let mut search = 0;
-        while let Some(found) = line[search..].find("vertex") {
+        while let Some(found) = lower[search..].find("vertex") {
             let mut at = search + found + "vertex".len();
             let mut values = [0.0; 3];
             let mut complete = true;
@@ -303,6 +305,22 @@ mod tests {
         let mut stream = AsciiStlStream::new(file.len()).unwrap();
         stream.push(file).unwrap();
         assert_eq!(stream.finish().unwrap().indices, [0, 1, 2]);
+    }
+
+    #[test]
+    fn ascii_keywords_are_case_insensitive() {
+        let mut stream = AsciiStlStream::new(100).unwrap();
+        stream.push(b"SOLID X
+FACET NORMAL 0 0 1
+OUTER LOOP
+VERTEX 0 0 0
+Vertex 1 0 0
+vertex 0 0 1
+ENDLOOP
+ENDFACET
+ENDSOLID X
+").unwrap();
+        assert_eq!(stream.finish().unwrap().indices.len(), 3);
     }
 
     fn one_triangle() -> Vec<u8> {

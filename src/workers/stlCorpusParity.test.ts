@@ -13,9 +13,8 @@ import { finishStl, openStlSession, pushStl } from './stlSession';
  *
  * Found and fixed in Rust: non-ASCII whitespace (NBSP, U+2003, U+3000, vertical tab, BOM) between
  * ASCII tokens was dropped as no-mesh; Rust now accepts the same characters as JS regex \s.
- * Shared behaviour kept on purpose: keywords are lowercase-only (as three's STLLoader), so
- * uppercase VERTEX lines give no-mesh and an all-uppercase SOLID header is classified binary and
- * refused as bad-stl; both are clear errors, never a wrong mesh.
+ * Changed on purpose (U2 task 0, owner: every STL must load): keywords are case-insensitive and
+ * an all-caps SOLID text file is ASCII; see DISAGREEMENTS (the oracle keeps three's lowercase-only rule).
  */
 const DIR = 'scripts/fixtures/stl-corpus';
 const ON_DISK = Object.keys(import.meta.glob('../../scripts/fixtures/stl-corpus/*.stl')).map((path) => path.split('/').pop()!).sort();
@@ -52,7 +51,11 @@ function rust(bytes: Uint8Array, chunk = 0): TriangleMesh {
 const bits = (mesh: TriangleMesh) => ({ positions: Array.from(new Uint32Array(mesh.positions.slice().buffer)), indices: Array.from(mesh.indices) });
 
 /** Files where Rust and the oracle differ on purpose: name -> [oracle outcome code, rust outcome code, reason]. */
-const DISAGREEMENTS: Record<string, [string, string, string]> = {};
+const DISAGREEMENTS: Record<string, [string, string, string]> = {
+  // Owner rule "all STL must load": Rust keywords and the SOLID classifier are case-insensitive, the oracle's are not.
+  'ascii-uppercase-keywords.stl': ['no-mesh', 'mesh', 'uppercase VERTEX lines now parse'],
+  'ascii-uppercase-solid.stl': ['no-mesh', 'mesh', 'all-caps SOLID text file is ASCII now'],
+};
 
 describe('odd-STL corpus: committed files are what the generator makes', () => {
   it('matches generate.ts byte for byte and has no stray files', () => {
@@ -73,6 +76,7 @@ describe('odd-STL corpus: Rust equals the TS oracle', () => {
         if (known) {
           expect('code' in oracle ? oracle.code : 'mesh').toBe(known[0]);
           expect('code' in outcome ? outcome.code : 'mesh').toBe(known[1]);
+          if ('mesh' in outcome) expect(bits(outcome.mesh)).toEqual(bits((run(() => oracleParse(fileBytes('ascii-lf.stl').slice().buffer)) as { mesh: TriangleMesh }).mesh));
         } else if ('code' in oracle) {
           expect(outcome).toEqual({ code: oracle.code });
         } else {
