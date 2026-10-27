@@ -1,6 +1,6 @@
-import type { ContactIntent, SupportPart } from '../core/supports/mesh';
-import { SHAPE_KEYS, type LiveSupportSettings, type SettingKey, type ShapeOverride } from '../core/supports/settings';
-import type { Vector } from '../core/vec3';
+import type { ContactIntent, SupportPart } from '../../src/core/supports/mesh';
+import { SHAPE_KEYS, type LiveSupportSettings, type SettingKey, type ShapeOverride } from '../../src/core/supports/settings';
+import type { Vector } from '../../src/core/vec3';
 
 /*
  * Host adapter for the Rust `build_supports` call (U4): packs validated settings and contacts into

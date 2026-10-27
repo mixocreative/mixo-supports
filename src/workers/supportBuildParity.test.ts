@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { nodeEngine } from '../../scripts/test-support/rustImport';
 import type { SupportContact } from '../core/supports/mesh';
 import { defaultSupportSettings, updateSetting, type LiveSupportSettings } from '../core/supports/settings';
-import { SETTINGS_ORDER, buildSupportsWasm, engineSettingsLayout } from './supportBuildWasm';
-import { alignerScenario, compareBuilds, fixtureScenarios, remeshOf, rustBuild, rustInputs, tsBuild, withoutStructures, type Scenario } from './supportParityHarness';
+import { SETTINGS_ORDER, buildSupportsWasm, engineSettingsLayout } from '../../scripts/test-support/supportBuildWasm';
+import { alignerScenario, compareBuilds, fixtureScenarios, remeshOf, rustBuild, rustInputs, tsBuild, withoutStructures, type Scenario } from '../../scripts/test-support/supportParityHarness';
 
 /*
  * U4a: the Rust column builder (tip, neck, pillar, foot) against the TS builder fed the SAME

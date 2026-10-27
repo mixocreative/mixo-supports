@@ -1,16 +1,16 @@
 import { readFileSync } from 'node:fs';
-import { nodeEngine, parseStl } from '../../scripts/test-support/rustImport';
-import type { TriangleMesh } from '../core/analysis/types';
-import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
-import { jobContacts } from '../core/jobs';
-import { columnLanding, lineTarget, type Landing } from '../core/supports/landing';
-import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from '../core/supports/mesh';
-import { RemeshTarget } from '../core/supports/remesh';
-import { defaultSupportSettings, withShape, type LiveSupportSettings } from '../core/supports/settings';
-import { GOLDEN_FIXTURES } from '../goldens/fixtures';
-import { supportedUnit } from '../goldens/pipeline';
-import { applyTransform, transformDirection, transformPoint } from '../state/transform';
-import { supportJobOf, resolveSettings } from '../supports/unitSupports';
+import { nodeEngine, parseStl } from './rustImport';
+import type { TriangleMesh } from '../../src/core/analysis/types';
+import { proposeDentalSupportRegion } from '../../src/core/analysis/dentalRegion';
+import { jobContacts } from '../../src/core/jobs';
+import { columnLanding, lineTarget, type Landing } from '../../src/core/supports/landing';
+import { buildSupportMesh, type GeneratedSupportMesh, type SupportContact } from '../../src/core/supports/mesh';
+import { RemeshTarget } from '../../src/core/supports/remesh';
+import { defaultSupportSettings, withShape, type LiveSupportSettings } from '../../src/core/supports/settings';
+import { GOLDEN_FIXTURES } from '../../src/goldens/fixtures';
+import { supportedUnit } from '../../src/goldens/pipeline';
+import { applyTransform, transformDirection, transformPoint } from '../../src/state/transform';
+import { supportJobOf, resolveSettings } from '../../src/supports/unitSupports';
 import { buildSupportsWasm, type ColumnInput, type WasmSupportBuild } from './supportBuildWasm';
 
 /*
