@@ -19,8 +19,10 @@ describe('export gate', () => {
   it('refuses a unit with no result', () => {
     expect(exportRefusal({ revision: 3, units: [] }, ['a'], same)).toEqual({ reason: 'failed', unitId: 'a' });
   });
-  it('refuses an inconclusive verdict or island verdict', () => {
+  it('refuses an inconclusive body-clearance verdict', () => {
     expect(exportRefusal({ revision: 3, units: [result({ verdict: 'inconclusive' })] }, ['a'], same)).toEqual({ reason: 'inconclusive', unitId: 'a' });
-    expect(exportRefusal({ revision: 3, units: [result({ islands: 'inconclusive' })] }, ['a'], same)).toEqual({ reason: 'inconclusive', unitId: 'a' });
+  });
+  it('does not stop on an inconclusive island verdict (the model mesh itself could not be analysed)', () => {
+    expect(exportRefusal({ revision: 3, units: [result({ islands: 'inconclusive' })] }, ['a'], same)).toBeUndefined();
   });
 });
