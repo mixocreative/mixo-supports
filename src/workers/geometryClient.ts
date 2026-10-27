@@ -1,4 +1,4 @@
-import initWasm, { AsciiStlSession, BinaryStlSession, body_segments, center_positions_in_place, decimate_display, dental_contour_segments, dental_face_overlay, dental_footprint, dental_pose, dental_profile_ids, dental_sample_contacts, dental_side_bands, engine_version, GeometrySession, inspect_dental_opening, invert_matrix, manual_dental_area, orient_dental, placement_matrix, propose_dental_orientation, propose_dental_region, refine_for_overlay, retune_dental_region, transform_positions, transform_vectors, vertex_normals, weld_positions_in_place } from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm.js';
+import initWasm, { AsciiStlSession, BinaryStlSession, body_segments, center_positions_in_place, decimate_display, dental_contour_segments, dental_face_overlay, dental_footprint, dental_pose, dental_profile_ids, dental_sample_contacts, dental_side_bands, engine_version, GeometrySession, inspect_dental_opening, invert_matrix, manual_dental_area, manual_dental_area_from_stamps, orient_dental, placement_matrix, propose_dental_orientation, propose_dental_region, refine_for_overlay, retune_dental_region, transform_positions, transform_vectors, vertex_normals, weld_positions_in_place } from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm.js';
 import wasmUrl from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm_bg.wasm?url';
 import { setDentalEngine } from '../core/analysis/dentalEngine';
 import { setTransformEngine } from '../state/transformEngine';
@@ -25,6 +25,7 @@ export interface GeometryEngine {
   dental_side_bands: typeof dental_side_bands;
   inspect_dental_opening: typeof inspect_dental_opening;
   manual_dental_area: typeof manual_dental_area;
+  manual_dental_area_from_stamps: typeof manual_dental_area_from_stamps;
   orient_dental: typeof orient_dental;
   propose_dental_orientation: typeof propose_dental_orientation;
   propose_dental_region: typeof propose_dental_region;
@@ -67,7 +68,7 @@ export function sharedSession(): GeometrySession | undefined {
 export function geometryReady(): Promise<GeometryEngine> {
   ready ??= initWasm({ module_or_path: wasmUrl }).then(() => {
     assertGeometryVersion(engine_version());
-    loaded = { engine_version, GeometrySession, center_positions_in_place, weld_positions_in_place, decimate_display, BinaryStlSession, AsciiStlSession, body_segments, dental_contour_segments, dental_face_overlay, dental_footprint, dental_pose, dental_profile_ids, dental_sample_contacts, dental_side_bands, inspect_dental_opening, invert_matrix, manual_dental_area, orient_dental, placement_matrix, propose_dental_orientation, propose_dental_region, refine_for_overlay, retune_dental_region, transform_positions, transform_vectors, vertex_normals };
+    loaded = { engine_version, GeometrySession, center_positions_in_place, weld_positions_in_place, decimate_display, BinaryStlSession, AsciiStlSession, body_segments, dental_contour_segments, dental_face_overlay, dental_footprint, dental_pose, dental_profile_ids, dental_sample_contacts, dental_side_bands, inspect_dental_opening, invert_matrix, manual_dental_area, manual_dental_area_from_stamps, orient_dental, placement_matrix, propose_dental_orientation, propose_dental_region, refine_for_overlay, retune_dental_region, transform_positions, transform_vectors, vertex_normals };
     setTransformEngine(loaded);
     setSupportEngine(loaded);
     setDentalEngine(loaded);

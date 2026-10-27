@@ -509,3 +509,27 @@ pub fn dental_footprint(positions: &[f32], indices: &[u32], allowed_faces: &[u8]
         Err(reason) => DentalRegionResult { ok: false, reason: reason.into(), region: empty_region(), policy: None },
     })
 }
+
+/// Permission from an area painted from scratch, given as ordered brush stamps: 8 numbers each
+/// (center XYZ, radius, normal XYZ, 1 for add / 0 for remove). Same contract as
+/// `manual_dental_area`: throws `DETECTED_AREA_EXISTS` when detection found an area.
+#[wasm_bindgen]
+pub fn manual_dental_area_from_stamps(positions: &[f32], indices: &[u32], stamps: &[f64], detected: bool, profile: &str) -> Result<Vec<u8>, JsValue> {
+    use mixo_geometry_core::dental::policy::{Stamp, faces_painted_by_stamps};
+    let profile = profile_of(profile)?;
+    let mesh = mesh_of(positions, indices)?;
+    if stamps.len() % 8 != 0 {
+        return Err(error("INVALID_LENGTH"));
+    }
+    let stamps: Vec<Stamp> = stamps
+        .chunks_exact(8)
+        .map(|s| Stamp { center: [s[0], s[1], s[2]], radius: s[3], normal: [s[4], s[5], s[6]], allow: s[7] == 1.0 })
+        .collect();
+    let painted = faces_painted_by_stamps(&mesh, &stamps);
+    let detected_region = detected.then(empty_region);
+    match manual_area_policy(mesh.face_count(), &painted, detected_region.as_ref(), profile) {
+        Ok(policy) => Ok((0..mesh.face_count()).map(|f| u8::from(policy.result.permitted_faces.get(f))).collect()),
+        Err(ManualAreaError::DetectedAreaExists) => Err(error("DETECTED_AREA_EXISTS")),
+        Err(ManualAreaError::FaceOutOfRange(_)) => Err(error("INVALID_INDEX")),
+    }
+}

@@ -3,6 +3,7 @@
 //! logic lives here; the shared safety engine (U7) checks every candidate.
 
 use super::footprint::RimSide;
+use super::mesh::{Mesh, add, cross, dot, normalize, scale, sub};
 use super::profiles::AlignerProfile;
 use super::region::Region;
 use crate::supports::policy::{AllowedStructures, Candidate, CandidateId, FaceMask, Origin, PolicyResult};
@@ -83,6 +84,36 @@ pub fn manual_area_policy(face_count: usize, painted_faces: &[u32], detected: Op
     })
 }
 
+/// One brush dab: a sphere on the surface, the surface normal it was painted on, and whether it
+/// adds (`allow`) or removes the area. Stamps apply in order; the last one that reaches a face wins.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Stamp {
+    pub center: [f64; 3],
+    pub radius: f64,
+    pub normal: [f64; 3],
+    pub allow: bool,
+}
+
+/// Faces an ordered stroke list paints: a stamp reaches a face when its centroid is inside the
+/// sphere and the face normal points the same way as the stamp normal (a thin wall never paints
+/// its far side).
+pub fn faces_painted_by_stamps(mesh: &Mesh, stamps: &[Stamp]) -> Vec<u32> {
+    let mut painted = Vec::new();
+    for face in 0..mesh.face_count() {
+        let [a, b, c] = mesh.face_points(face);
+        let centroid = scale(add(add(add([0.0; 3], a), b), c), 1.0 / 3.0);
+        let normal = normalize(cross(sub(b, a), sub(c, a)));
+        let verdict = stamps.iter().rev().find(|stamp| {
+            let d = sub(centroid, stamp.center);
+            dot(d, d) <= stamp.radius * stamp.radius && dot(normal, stamp.normal) > 0.0
+        });
+        if verdict.is_some_and(|stamp| stamp.allow) {
+            painted.push(face as u32);
+        }
+    }
+    painted
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::profiles::reference_aligner;
@@ -112,4 +143,18 @@ mod tests {
         assert_eq!(manual_area_policy(10, &[2], Some(&tiny_region()), profile), Err(ManualAreaError::DetectedAreaExists));
         assert_eq!(manual_area_policy(10, &[10], None, profile), Err(ManualAreaError::FaceOutOfRange(10)));
     }
+
+    #[test]
+    fn stamps_paint_faces_in_order_and_ignore_the_far_side() {
+        // Two facing-up triangles and one facing down, all near the origin.
+        let positions: [f32; 27] = [0., 0., 0., 1., 0., 0., 0., 0., 1., 2., 0., 0., 3., 0., 0., 2., 0., 1., 0., 5., 0., 0., 5., 1., 1., 5., 0.];
+        let indices: [u32; 9] = [0, 2, 1, 3, 5, 4, 6, 7, 8];
+        let mesh = Mesh::new(&positions, &indices);
+        let up = Stamp { center: [0.3, 0.0, 0.3], radius: 5.0, normal: [0.0, 1.0, 0.0], allow: true };
+        let painted = faces_painted_by_stamps(&mesh, &[up]);
+        assert_eq!(painted, vec![0, 1]);
+        let erase = Stamp { center: [0.3, 0.0, 0.3], radius: 0.6, normal: [0.0, 1.0, 0.0], allow: false };
+        assert_eq!(faces_painted_by_stamps(&mesh, &[up, erase]), vec![1]);
+    }
 }
+

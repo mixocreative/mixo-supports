@@ -69,6 +69,7 @@ import { profileById } from './dental/alignerProfiles';
 import { arrangeAlignerCommands } from './dental/arrange';
 import { backNeedsConfirm, discardManualCommands, exitCommands, manualEditCounts } from './dental/flow';
 import { dentalLabelOf } from './dental/label';
+import { manualAreaPolicy } from './dental/manualArea';
 import type { DentalReview } from './components/DentalSupports';
 import { BUILDING_STATUS, busyStatus, heavyStatus, importRefusal, importStatus, missStatus, sessionStatus } from './editing/status';
 import { CodedError, errorStatus } from './editing/errors';
@@ -911,6 +912,8 @@ export default function App() {
             sessionRef.current.dentalStage !== 'aligner' || sessionRef.current.dentalProposal !== proposal) return;
           if (!region || region.kind !== 'proposal') {
             // No area detected: Step 2 opens empty, with its message; Next stays off until something is marked.
+            // Owner decision: paint may create the area from scratch, only because detection found none.
+            dispatch({ type: 'dental/set', unitId: unit.id, policy: manualAreaPolicy(proposal.rim, false) });
             send({ type: 'acceptDentalOrientation', noArea: true });
             requestView('bottom');
             return;

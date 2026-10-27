@@ -19,9 +19,13 @@ interface DentalPolicyBase {
   stamps: readonly DentalAllowStamp[];
 }
 
-/** Old saved policies stay readable but cannot inherit the two-contour permission implicitly. */
+/**
+ * Old saved policies stay readable but cannot inherit the two-contour permission implicitly.
+ * `origin: 'manual-area'` is the policy of an area painted from scratch because detection found
+ * none (`src/dental/manualArea.ts`): only the paint permits, never the cavity footprint.
+ */
 export type DentalPolicy =
-  | (DentalPolicyBase & { kind?: 'legacy' })
+  | (DentalPolicyBase & { kind?: 'legacy'; origin?: 'manual-area' })
   | (DentalPolicyBase & { kind: 'two-contour'; region: Extract<DentalRegionProposal, { kind: 'proposal' }>;
     /** Absent on older projects: reproduce the original defaults exactly. */
     tuning?: DentalTuning;
@@ -48,6 +52,11 @@ export function dentalRegionAllowedOnFace(policy: DentalPolicy, face: number, po
   return true;
 }
 
+/** Whether the permitted area is the operator's own paint (no area was detected). */
+export function isManualArea(policy: DentalPolicy): boolean {
+  return policy.kind !== 'two-contour' && policy.origin === 'manual-area';
+}
+
 /** Whether an automatic support contact is permitted by the baseline footprint and ordered edits. */
 export function dentalAllowedAt(policy: DentalPolicy, point: Vector, normal?: Vector): boolean {
   for (let index = policy.stamps.length - 1; index >= 0; index -= 1) {
@@ -59,17 +68,21 @@ export function dentalAllowedAt(policy: DentalPolicy, point: Vector, normal?: Ve
     if (normal && normal[0] * stamp.normal[0] + normal[1] * stamp.normal[1] + normal[2] * stamp.normal[2] <= 0) continue;
     return stamp.kind === 'allow';
   }
-  return rimContainsPoint(policy.rim, point);
+  return isManualArea(policy) ? false : rimContainsPoint(policy.rim, point);
 }
 
-/** The final automatic-contact gate: user approval is necessary but never bypasses cavity visibility. */
+/**
+ * The final automatic-contact gate: user approval is necessary but never bypasses cavity visibility.
+ * A painted-from-scratch area has no detected lower trim to certify, so it skips only that check;
+ * visibility and every later safety check still apply.
+ */
 export function dentalSupportAllowedAt(
   policy: DentalPolicy,
   opening: Pick<{ visible(point: Vector): boolean }, 'visible'>,
   point: Vector,
   normal?: Vector,
 ): boolean {
-  return policy.rim.boundaryKind === 'lower-edge-loop' && dentalAllowedAt(policy, point, normal) && opening.visible(point);
+  return (isManualArea(policy) || policy.rim.boundaryKind === 'lower-edge-loop') && dentalAllowedAt(policy, point, normal) && opening.visible(point);
 }
 
 /**

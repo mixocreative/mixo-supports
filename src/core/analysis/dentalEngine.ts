@@ -58,6 +58,7 @@ export interface DentalEngine {
     spacing: number, maxSearch: number, phaseMm: number): { free(): void; ok(): boolean; reason(): string; skipped_samples(): number;
     perimeter(): number; faces(): Uint32Array; points(): Float64Array; distances(): Float64Array };
   manual_dental_area(faceCount: number, painted: Uint32Array, detected: boolean, profile: string): Uint8Array;
+  manual_dental_area_from_stamps(positions: Float32Array, indices: Uint32Array, stamps: Float64Array, detected: boolean, profile: string): Uint8Array;
   dental_profile_ids(): string[];
 }
 
