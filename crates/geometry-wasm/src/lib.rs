@@ -10,6 +10,8 @@ use mixo_geometry_core::supports::parts::model as support_model;
 use mixo_geometry_core::supports::{build as support_build, error as support_error, flat as support_flat, settings as support_settings};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
+mod dental;
+
 #[wasm_bindgen]
 pub fn engine_version() -> u32 {
     mixo_geometry_core::engine_version()
