@@ -23,12 +23,14 @@ with sync_playwright() as playwright:
               );
               const bounds = Array.from(session.mesh_bounds(handle));
               session.release_mesh(handle);
+              let staleCode;
+              try { session.mesh_bounds(handle); } catch (error) { staleCode = error.code; }
               const used = session.used_bytes();
               session.free();
-              return { version: engine.engine_version(), bounds, used };
+              return { version: engine.engine_version(), bounds, used, staleCode };
             }"""
         )
-        assert result == {"version": 1, "bounds": [0, 0, 0, 2, 3, 0], "used": 0}, result
+        assert result == {"version": 1, "bounds": [0, 0, 0, 2, 3, 0], "used": 0, "staleCode": "INVALID_HANDLE"}, result
         worker_result = page.evaluate(
             """async () => new Promise((resolve, reject) => {
               const worker = new Worker('/mixo-supports/src/workers/meshWorker.ts', { type: 'module' });

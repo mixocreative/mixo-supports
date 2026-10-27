@@ -9,6 +9,18 @@ pub enum MeshError {
     InvalidHandle,
 }
 
+impl MeshError {
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidLength => "INVALID_LENGTH",
+            Self::NonFinite => "NON_FINITE",
+            Self::InvalidIndex => "INVALID_INDEX",
+            Self::Capacity => "CAPACITY",
+            Self::InvalidHandle => "INVALID_HANDLE",
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Bounds {
     pub min: [f32; 3],

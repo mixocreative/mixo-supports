@@ -9,3 +9,4 @@ crate-type = ["cdylib"]
 [dependencies]
 mixo-geometry-core = { path = "../geometry-core" }
 wasm-bindgen = "=0.2.129"
+js-sys = "=0.3.106"

@@ -20,16 +20,17 @@ assert.deepEqual(Array.from(session.mesh_bounds(handle)), [0, 0, 0, 2, 3, 0]);
 assert.equal(session.used_bytes(), 48);
 session.release_mesh(handle);
 assert.equal(session.used_bytes(), 0);
-assert.throws(() => session.mesh_bounds(handle), /InvalidHandle/);
-assert.throws(() => session.load_mesh(new Float32Array([0, 1]), new Uint32Array([0, 1, 2])), /InvalidLength/);
-assert.throws(() => session.load_mesh(new Float32Array([0, 0, NaN]), new Uint32Array([0, 0, 0])), /NonFinite/);
-assert.throws(() => session.load_mesh(new Float32Array([0, 0, 0]), new Uint32Array([0, 0, 1])), /InvalidIndex/);
+assert.throws(() => session.mesh_bounds(handle), { code: 'INVALID_HANDLE' });
+assert.throws(() => session.release_mesh(handle), { code: 'INVALID_HANDLE' });
+assert.throws(() => session.load_mesh(new Float32Array([0, 1]), new Uint32Array([0, 1, 2])), { code: 'INVALID_LENGTH' });
+assert.throws(() => session.load_mesh(new Float32Array([0, 0, NaN]), new Uint32Array([0, 0, 0])), { code: 'NON_FINITE' });
+assert.throws(() => session.load_mesh(new Float32Array([0, 0, 0]), new Uint32Array([0, 0, 1])), { code: 'INVALID_INDEX' });
 session.free();
 
 const limited = new GeometrySession(47);
 assert.throws(() => limited.load_mesh(
   new Float32Array([0, 0, 0, 2, 0, 0, 0, 3, 0]),
   new Uint32Array([0, 1, 2]),
-), /Capacity/);
+), { code: 'CAPACITY' });
 assert.equal(limited.used_bytes(), 0);
 limited.free();

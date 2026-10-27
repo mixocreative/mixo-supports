@@ -41,7 +41,13 @@ impl GeometrySession {
 }
 
 fn mesh_error(error: MeshError) -> JsValue {
-    JsValue::from_str(&format!("{error:?}"))
+    let exception = js_sys::Error::new(error.code());
+    let _ = js_sys::Reflect::set(
+        exception.as_ref(),
+        &JsValue::from_str("code"),
+        &JsValue::from_str(error.code()),
+    );
+    exception.into()
 }
 
 #[cfg(test)]
