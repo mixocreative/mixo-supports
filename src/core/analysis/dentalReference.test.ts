@@ -4,12 +4,13 @@ import { dot, subtract, type Vector } from '../vec3';
 import { applyToPoint, placementMatrix, transformPositions } from '../../../scripts/test-support/matrix';
 import { proposeDentalOrientation, rotationToDentalPose } from './dental';
 import { parseStl } from '../../../scripts/test-support/rustImport';
+import { REFERENCE_PROFILE } from '../../../scripts/test-support/referenceProfile';
 
 describe('owner-approved aligner reference', () => {
   it('never certifies a tiny local feature as the full lower trim', () => {
     const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
     const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-    const result = proposeDentalOrientation(mesh);
+    const result = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
     expect(result.kind).toBe('proposal');
     if (result.kind !== 'proposal' || result.rim.boundaryKind !== 'lower-edge-loop') return;
 
@@ -34,7 +35,7 @@ describe('owner-approved aligner reference', () => {
     const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
     for (const scramble of [[0.61, -0.83, 1.17], [-1.19, 0.31, -2.03], [2.45, -1.12, 0.54]] as Vector[]) {
       const turned = { positions: transformPositions(mesh.positions, placementMatrix({ position: [0, 0, 0], rotation: scramble })), indices: mesh.indices };
-      const proposal = proposeDentalOrientation(turned);
+      const proposal = proposeDentalOrientation(turned, REFERENCE_PROFILE);
       expect(proposal.kind).toBe('proposal');
       if (proposal.kind !== 'proposal') continue;
       const pose = rotationToDentalPose(turned, proposal.rim);

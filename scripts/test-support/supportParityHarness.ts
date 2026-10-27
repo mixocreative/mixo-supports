@@ -3,7 +3,7 @@ import { nodeEngine, parseStl } from './rustImport';
 import type { TriangleMesh } from '../../src/core/analysis/types';
 import { proposeDentalSupportRegion } from '../../src/core/analysis/dentalRegion';
 import { jobContacts } from '../../src/supports/genericPolicy';
-import { dentalBuildSettings } from '../../src/core/supports/dentalSettings';
+import { REFERENCE_PROFILE, referenceTuning } from './referenceProfile';
 import type { SupportContact } from '../../src/core/supports/mesh';
 import { defaultSupportSettings, setRoofMode, updateSetting, withShape, type LiveSupportSettings } from '../../src/core/supports/settings';
 import { approxArray, exactArray } from './golden';
@@ -164,7 +164,7 @@ export function fixtureScenarios(mode: 'preview' | 'export'): Scenario[] {
 export function alignerScenario(mode: 'preview' | 'export', lowPoly: boolean): Scenario | undefined {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
   const mesh = parseStl(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength), 'aligner');
-  const region = proposeDentalSupportRegion(mesh);
+  const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
   if (region.kind !== 'proposal' || !region.contacts) return undefined;
   let low = Infinity;
   for (let i = 1; i < mesh.positions.length; i += 3) low = Math.min(low, mesh.positions[i]!);
@@ -176,7 +176,8 @@ export function alignerScenario(mode: 'preview' | 'export', lowPoly: boolean): S
     contacts: region.contacts.map((c, i): SupportContact => ({
       id: `dental-${i}`, position: [c.position[0], c.position[1] + lift, c.position[2]], normal: [...c.normal], sourceFace: c.face,
     })),
-    settings: withStructures(dentalBuildSettings({ ...defaultSupportSettings, lowPolyMode: lowPoly })),
+    // What a dental build uses with the default switches: Tree and Brace on, Roof and Cage off.
+    settings: withStructures({ ...defaultSupportSettings, lowPolyMode: lowPoly, scatterAutoTree: true, trussEnabled: true, roofMode: 'OFF', roofSeededModes: [] }),
     mode,
     labelText: 'A',
   };

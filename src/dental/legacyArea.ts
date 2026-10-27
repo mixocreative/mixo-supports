@@ -1,4 +1,4 @@
-import { dentalEngine, rimScalars } from '../core/analysis/dentalEngine';
+import { dentalEngine, rimScalars, withDentalMesh, type LegacyFillLike } from '../core/analysis/dentalEngine';
 import { isManualArea, type DentalPolicy } from '../core/analysis/dentalPolicy';
 import type { PlacementResult, SupportPoint, TriangleMesh } from '../core/analysis/types';
 import type { DentalPlacementJob } from '../core/jobs';
@@ -13,7 +13,8 @@ import type { DentalPlacementJob } from '../core/jobs';
 
 type Legacy = Exclude<DentalPolicy, { kind: 'two-contour' }>;
 
-function stampRows(policy: DentalPolicy): Float64Array {
+/** The policy's area edits as the Rust calls take them (8 numbers each, in stroke order). */
+export function stampRows(policy: DentalPolicy): Float64Array {
   const rows = new Float64Array(policy.stamps.length * 8);
   policy.stamps.forEach((stamp, at) => rows.set([...stamp.center, stamp.radius, ...stamp.normal, stamp.kind === 'allow' ? 1 : 0], at * 8));
   return rows;
@@ -23,11 +24,17 @@ function stampRows(policy: DentalPolicy): Float64Array {
 export function legacyDentalPlacement(job: DentalPlacementJob & { dental: Legacy }, placement: PlacementResult): PlacementResult {
   const { mesh, orientation, dental: policy, settings } = job;
   const initial = placement.points;
-  const result = dentalEngine().dental_legacy_fill(
-    mesh.positions, mesh.indices, rimScalars(policy.rim), policy.rim.visibilityMask, isManualArea(policy), stampRows(policy),
-    Float64Array.from(orientation.rotation), settings.spacing, settings.overhangAngleDegrees,
-    Float64Array.from(initial.flatMap((point) => point.position)), Float64Array.from(initial.flatMap((point) => point.normal)),
-  );
+  return withDentalMesh(mesh, (session, model) => {
+    const result = session.dental_legacy_fill(model, policy.profileId,
+      rimScalars(policy.rim), policy.rim.visibilityMask, isManualArea(policy), stampRows(policy),
+      Float64Array.from(orientation.rotation), settings.spacing, settings.overhangAngleDegrees,
+      Float64Array.from(initial.flatMap((point) => point.position)), Float64Array.from(initial.flatMap((point) => point.normal)),
+    );
+    return fillOf(result, initial, placement);
+  });
+}
+
+function fillOf(result: LegacyFillLike, initial: readonly SupportPoint[], placement: PlacementResult): PlacementResult {
   try {
     const kept = Array.from(result.take_kept(), (k) => initial[k]!);
     const positions = result.take_positions();
@@ -55,5 +62,5 @@ export function legacyDentalPlacement(job: DentalPlacementJob & { dental: Legacy
  */
 export function legacyBaselineVertices(mesh: TriangleMesh, policy: DentalPolicy): Uint8Array {
   return dentalEngine().dental_allowed_vertices(
-    mesh.positions, mesh.indices, new Float32Array(), rimScalars(policy.rim), policy.rim.visibilityMask, isManualArea(policy), new Float64Array());
+    mesh.positions, mesh.indices, new Float32Array(), rimScalars(policy.rim), policy.rim.visibilityMask, isManualArea(policy), new Float64Array(), policy.profileId);
 }

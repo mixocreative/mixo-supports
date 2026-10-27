@@ -108,6 +108,7 @@ describe('reduceScene', () => {
 
   it('keeps an accepted dental policy and its ordered editable stamps through serialization', () => {
     const dental: DentalPolicy = {
+      profileId: 'reference-aligner',
       rim: {
         boundaryKind: 'lower-edge-loop',
         points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
@@ -134,7 +135,7 @@ describe('reduceScene', () => {
       visibilityMask: new Uint8Array([1, 0, 1, 1]), visibilityResolution: 2,
       visibilityMin: [-1, -1] as [number, number], visibilityMax: [1, 1] as [number, number],
     };
-    const policy: DentalPolicy = { kind: 'two-contour', rim, stamps: [], gapAlternateIds: ['auto-1_2_3'],
+    const policy: Extract<DentalPolicy, { kind: 'two-contour' }> = { kind: 'two-contour', profileId: 'reference-aligner', rim, stamps: [],
       structure: { treeEnabled: false, bracesEnabled: true },
       tuning: { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 }, region: {
       kind: 'proposal', allowedFaces: new Uint8Array([1]), contactFaces: new Uint8Array([1]),
@@ -157,8 +158,15 @@ describe('reduceScene', () => {
       region: { ...policy.region, contacts: [{ ...policy.region.contacts![0]!, rim: 'sideways' as 'outer' }] } } })).toThrow('dental contact rim');
     expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
       tuning: { setbackMm: 0.2, stripWidthMm: 0, density: 1 } } })).toThrow('Invalid dental strip');
+    // Older projects may still list provisional gap alternates: checked, then dropped (the policy offers its own).
+    const withOldAlternates = { ...policy, gapAlternateIds: ['auto-1_2_3'] } as DentalPolicy;
+    expect(reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: withOldAlternates }).units[0]!.dental).toEqual(policy);
     expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
-      gapAlternateIds: [42 as unknown as string] } })).toThrow('dental alternate IDs');
+      gapAlternateIds: [42 as unknown as string] } as DentalPolicy })).toThrow('dental alternate IDs');
+    // A project without an aligner profile was made with profile #1; an unknown one is refused.
+    const { profileId: _profile, ...unnamed } = policy;
+    expect(reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: unnamed as DentalPolicy }).units[0]!.dental?.profileId).toBe('reference-aligner');
+    expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy, profileId: 'retired' } })).toThrow('unknown aligner profile');
     expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
       structure: { treeEnabled: 1 as unknown as boolean, bracesEnabled: true } } })).toThrow('dental structure');
   });

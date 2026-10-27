@@ -100,7 +100,8 @@ assert.throws(() => limited.load_mesh(
 assert.equal(limited.used_bytes(), 0);
 limited.free();
 
-// U6a dental ABI: typed errors, abstention on a cube, profile registry, manual-area contract.
+// Dental ABI: session-handle calls, a profile named on every call, typed errors, abstention on a
+// cube, Rust-made policies; the internals and the profile list exist in this (test-abi) package only.
 {
   const dental = require(packageFile);
   const cube = {
@@ -108,16 +109,33 @@ limited.free();
     indices: new Uint32Array([0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7]),
   };
   assert.deepEqual(dental.dental_profile_ids(), ['reference-aligner']);
-  assert.throws(() => dental.orient_dental(cube.positions, cube.indices, 'nope'), { code: 'UNKNOWN_PROFILE' });
-  assert.throws(() => dental.orient_dental(cube.positions, new Uint32Array([0, 1, 99]), 'reference-aligner'), { code: 'INVALID_INDEX' });
-  assert.throws(() => dental.propose_dental_region(cube.positions, cube.indices, new Float64Array([0.2, 1]), 'reference-aligner'), { code: 'INVALID_LENGTH' });
-  const oriented = dental.orient_dental(cube.positions, cube.indices, 'reference-aligner');
+  assert.equal(dental.PolicyData, undefined, 'the host cannot assemble a policy');
+  const session = new dental.GeometrySession(1 << 20);
+  const model = session.load_mesh(cube.positions, cube.indices);
+  assert.throws(() => session.orient_dental(model, 'nope'), { code: 'UNKNOWN_PROFILE' });
+  assert.throws(() => session.propose_dental_region(model, new Float64Array([0.2, 1]), 'reference-aligner'), { code: 'INVALID_LENGTH' });
+  const oriented = session.orient_dental(model, 'reference-aligner');
   assert.equal(oriented.status(), 1, 'a cube has no cavity: orientation fails instead of inventing one');
   oriented.free();
-  const region = dental.propose_dental_region(cube.positions, cube.indices, new Float64Array([0.2, 1, 1]), 'reference-aligner');
+  const region = session.propose_dental_region(model, new Float64Array([0.2, 1, 1]), 'reference-aligner');
   assert.equal(region.ok(), false);
   assert.match(region.reason(), /^orientation-/);
   region.free();
+  const none = new Uint8Array(), noEdges = new Uint32Array(), still = new Float64Array(6), both = Uint8Array.of(1, 1);
+  assert.throws(() => session.dental_policy(model, 'nope', 2, new Float64Array([0.2, 1, 1]), new Float64Array(), none, none, noEdges, noEdges, both, still), { code: 'UNKNOWN_PROFILE' });
+  const closed = session.dental_policy(model, 'reference-aligner', 2, new Float64Array([0.2, 1, 1]), new Float64Array(), new Uint8Array(12), none, noEdges, noEdges, both, still);
+  assert.equal(closed.reproduced(), false, 'a saved area detection does not reproduce permits nothing');
+  assert.equal(closed.candidate_ids().length, 0);
+  assert.equal(closed.automatic(), 1);
+  assert.deepEqual(Array.from(closed.structures()), [1, 1, 1, 0, 0, 1]);
+  assert.equal(closed.profile_id(), 'reference-aligner');
+  closed.free();
+  const painted = session.dental_policy(model, 'reference-aligner', 1, new Float64Array([0.2, 1, 1]), new Float64Array([0, -1, 0, 5, 0, -1, 0, 1]), none, none, noEdges, noEdges, both, still);
+  assert.equal(painted.automatic(), 0, 'a painted area permits its own fill contacts');
+  assert.equal(painted.landing_rule(), 1);
+  assert.ok(Array.from(painted.permitted_faces()).some((f) => f === 1));
+  painted.free();
+  session.free();
   assert.deepEqual(Array.from(dental.manual_dental_area(4, new Uint32Array([1, 2]), false, 'reference-aligner')), [0, 1, 1, 0]);
   assert.throws(() => dental.manual_dental_area(4, new Uint32Array([1]), true, 'reference-aligner'), { code: 'DETECTED_AREA_EXISTS' });
   assert.throws(() => dental.manual_dental_area(4, new Uint32Array([4]), false, 'reference-aligner'), { code: 'INVALID_INDEX' });

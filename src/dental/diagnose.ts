@@ -41,13 +41,13 @@ interface Diagnosis {
 
 interface DiagnoseSession {
   load_mesh(positions: Float32Array, indices: Uint32Array): number;
-  diagnose(model: number, revision: number, contactFaces: Uint8Array, ridge: Uint32Array, connectors: Uint32Array, opening: Uint32Array,
+  diagnose(model: number, revision: number, profile: string, contactFaces: Uint8Array, ridge: Uint32Array, connectors: Uint32Array, opening: Uint32Array,
     bands: Uint8Array, outer: Float64Array, inner: Float64Array, supportPositions: Float32Array, supportIndices: Uint32Array, tips: Uint8Array): Diagnosis;
 }
 
 const contactRows = (contacts: readonly DiagnosticContourContact[] = []) => Float64Array.from(contacts.flatMap((c) => [...c.position, ...c.normal]));
 
-export function diagnose(mesh: TriangleMesh, input: DiagnoseInput, revision = 0): ReviewLayer[] {
+export function diagnose(mesh: TriangleMesh, input: DiagnoseInput, profile: string, revision = 0): ReviewLayer[] {
   const { region, bands, supports } = input;
   const faces = mesh.indices.length / 3;
   const tips = new Uint8Array((supports?.indices.length ?? 0) / 3);
@@ -57,7 +57,7 @@ export function diagnose(mesh: TriangleMesh, input: DiagnoseInput, revision = 0)
   return withSession((raw) => {
     const session = raw as unknown as DiagnoseSession;
     const result = session.diagnose(
-      session.load_mesh(Float32Array.from(mesh.positions), Uint32Array.from(mesh.indices)), revision,
+      session.load_mesh(Float32Array.from(mesh.positions), Uint32Array.from(mesh.indices)), revision, profile,
       region.contactFaces ?? new Uint8Array(), region.outerRidgeEdges, region.outerConnectorEdges, region.openingEdges,
       packedBands, contactRows(input.contacts?.outer), contactRows(input.contacts?.inner),
       supports?.positions ?? new Float32Array(), supports?.indices ?? new Uint32Array(), tips,

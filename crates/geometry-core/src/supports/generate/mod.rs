@@ -13,14 +13,14 @@ mod permit;
 mod repair;
 
 pub use islands::{Island, IslandStatus, IslandVerdict};
-pub use permit::{landing_allowed, permit, primary_source_face, same_primary};
+pub use permit::{chosen_settings, landing_allowed, permit, primary_source_face, same_primary};
 
 use super::build::{BuildMode, BuiltSupports, HostChoices};
 use super::error::BuildError;
 use super::parts::column::ColumnContact;
 use super::parts::landing::Landing;
 use super::parts::model::Model;
-use super::policy::{AllowedStructures, LandingRule, PolicyResult};
+use super::policy::{AllowedStructures, PolicyResult};
 use super::safety::clearance::{BodyIssue, Status, review_body_clearance};
 use super::safety::conflicts::SupportMesh;
 use super::safety::index::CollisionIndex;
@@ -94,7 +94,7 @@ pub(crate) fn empty_built() -> BuiltSupports {
 
 pub fn generate(input: GenerateInput) -> Result<Generated, BuildError> {
     let GenerateInput { contacts, settings, mode, model, label_text, zones, policy, expired } = input;
-    let settings = limit_structures(settings, &policy.structures);
+    let settings = limit_structures(&chosen_settings(settings, policy), &policy.structures);
     let permitted = permit(contacts, policy);
     let rejected = permitted.rejected.clone();
     let allowed = model.and_then(|m| landing_allowed(m, policy));
@@ -118,8 +118,8 @@ pub fn generate(input: GenerateInput) -> Result<Generated, BuildError> {
         None => Verdict { status: Status::Clear, reason: None, issues: Vec::new(), unattributed_crossing: false },
     };
     let mut verdict = verdict;
-    // Only a policy with an approved-area landing rule has an outside; the generic one permits every face.
-    let permitted_area = matches!(policy.landing_rule, LandingRule::ApprovedFaces { .. }).then(|| |face: u32| policy.permitted_faces.get(face as usize));
+    // Only a policy that says it has an outside reports islands there; the generic one permits every face.
+    let permitted_area = policy.islands_outside_permitted.then(|| |face: u32| policy.permitted_faces.get(face as usize));
     let islands = match model {
         Some(model) => {
             let blocked = withdrawn_contacts(&verdict.issues, outcome.contacts.len());

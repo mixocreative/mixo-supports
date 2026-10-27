@@ -6,7 +6,7 @@ use super::mesh::Mesh;
 use super::opening::{Opening, central_opening};
 use super::orient::{Diagnostics, Proposal, Reason, propose_orientation};
 use super::pose::rotation_to_dental_pose;
-use super::profiles::AlignerProfile;
+use super::profiles::{AlignerProfile, OpeningExpected};
 use super::rim::Rim;
 use super::topology::Context;
 
@@ -33,6 +33,13 @@ pub enum Orientation {
     Failed { reason: Reason, mesh_ok: bool },
 }
 
+/// Whether what Step 1 found fits the chosen aligner type: a type that expects a central opening
+/// does not match an aligner whose opening is absent, and one that expects none does not match a
+/// present opening. An ambiguous opening never decides a mismatch.
+pub fn matches_profile(opening: OpeningState, profile: &AlignerProfile) -> bool {
+    !matches!((profile.opening, opening), (OpeningExpected::Yes, OpeningState::Absent) | (OpeningExpected::No, OpeningState::Present))
+}
+
 pub fn orient_dental(mesh: &Mesh, profile: &AlignerProfile) -> Orientation {
     let (rim, diagnostics) = match propose_orientation(mesh, profile) {
         Proposal::Proposal { rim, diagnostics } => (rim, diagnostics),
@@ -48,4 +55,21 @@ pub fn orient_dental(mesh: &Mesh, profile: &AlignerProfile) -> Orientation {
     };
     let rotation = rotation_to_dental_pose(mesh, &rim);
     Orientation::Oriented { rim: Box::new(rim), diagnostics, rotation, opening, mesh_ok, opening_reason }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dental::profiles::reference_aligner;
+
+    #[test]
+    fn the_profile_decides_which_opening_is_a_mismatch() {
+        let mut profile = reference_aligner().clone();
+        assert!(!matches_profile(OpeningState::Absent, &profile));
+        assert!(matches_profile(OpeningState::Present, &profile) && matches_profile(OpeningState::Ambiguous, &profile));
+        profile.opening = OpeningExpected::No;
+        assert!(!matches_profile(OpeningState::Present, &profile) && matches_profile(OpeningState::Absent, &profile));
+        profile.opening = OpeningExpected::Either;
+        assert!(matches_profile(OpeningState::Present, &profile) && matches_profile(OpeningState::Absent, &profile));
+    }
 }

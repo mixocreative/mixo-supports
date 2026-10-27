@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { placementMatrix, transformPositions } from '../../../scripts/test-support/matrix';
 import { proposeDentalSupportRegion, retuneDentalSupportRegion } from './dentalRegion';
-import { defaultDentalTuning } from './dentalTuning';
 import { parseStl } from '../../../scripts/test-support/rustImport';
+import { REFERENCE_PROFILE, referenceTuning } from '../../../scripts/test-support/referenceProfile';
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
@@ -13,7 +13,7 @@ const reference = () => {
 describe('proposeDentalSupportRegion', () => {
   it('finds two closed contours and the underside candidate on the approved reference', () => {
     const mesh = reference();
-    const result = proposeDentalSupportRegion(mesh);
+    const result = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(result.kind).toBe('proposal');
     if (result.kind !== 'proposal') return;
     expect(result.outerEdges.length / 2).toBe(2665);
@@ -33,11 +33,11 @@ describe('proposeDentalSupportRegion', () => {
 
   it('returns the same face classification after rotating the input mesh', () => {
     const mesh = reference();
-    const original = proposeDentalSupportRegion(mesh);
+    const original = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     const rotated = proposeDentalSupportRegion({
       ...mesh,
       positions: transformPositions(mesh.positions, placementMatrix({ position: [0, 0, 0], rotation: [1.1, -2.2, 0.7] })),
-    });
+    }, referenceTuning, REFERENCE_PROFILE);
     expect(original.kind).toBe('proposal');
     expect(rotated.kind).toBe('proposal');
     if (original.kind !== 'proposal' || rotated.kind !== 'proposal') return;
@@ -46,9 +46,9 @@ describe('proposeDentalSupportRegion', () => {
 
   it('keeps exact contours while tuning the non-cavity strip and contact density', () => {
     const mesh = reference();
-    const baseline = proposeDentalSupportRegion(mesh);
-    const tuned = proposeDentalSupportRegion(mesh, { ...defaultDentalTuning, setbackMm: 0.5,
-      stripWidthMm: 0.4, density: 1.5 });
+    const baseline = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
+    const tuned = proposeDentalSupportRegion(mesh, { ...referenceTuning, setbackMm: 0.5,
+      stripWidthMm: 0.4, density: 1.5 }, REFERENCE_PROFILE);
     expect(baseline.kind).toBe('proposal');
     expect(tuned.kind).toBe('proposal');
     if (baseline.kind !== 'proposal' || tuned.kind !== 'proposal') return;
@@ -62,17 +62,17 @@ describe('proposeDentalSupportRegion', () => {
 
   it('retunes the accepted contours to the same exact face and tip proposal as fresh detection', () => {
     const mesh = reference();
-    const baseline = proposeDentalSupportRegion(mesh);
+    const baseline = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(baseline.kind).toBe('proposal');
     if (baseline.kind !== 'proposal') return;
     const tuning = { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 };
-    const retuned = retuneDentalSupportRegion(mesh, baseline, tuning);
-    const fresh = proposeDentalSupportRegion(mesh, tuning);
+    const retuned = retuneDentalSupportRegion(mesh, baseline, tuning, REFERENCE_PROFILE);
+    const fresh = proposeDentalSupportRegion(mesh, tuning, REFERENCE_PROFILE);
     expect(retuned).toEqual(fresh);
   }, 45000);
 
   it('keeps a thin, nonzero contact line on both reference rims at the minimum strip width', () => {
-    const region = proposeDentalSupportRegion(reference(), { ...defaultDentalTuning, stripWidthMm: 0.2 });
+    const region = proposeDentalSupportRegion(reference(), { ...referenceTuning, stripWidthMm: 0.2 }, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
     expect(region.contacts?.filter((contact) => contact.rim === 'outer').length).toBeGreaterThan(0);
@@ -91,6 +91,6 @@ describe('proposeDentalSupportRegion', () => {
         2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
       ]),
     };
-    expect(proposeDentalSupportRegion(mesh).kind).toBe('inconclusive');
+    expect(proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE).kind).toBe('inconclusive');
   });
 });

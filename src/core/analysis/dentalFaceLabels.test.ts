@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest';
 import labelData from '../../../docs/dental-reference/face-labels.json';
 import { buildLabels } from '../../../scripts/test-support/dentalFaceLabels';
 import { parseStl } from '../../../scripts/test-support/rustImport';
-import { proposeDentalContactFootprint } from './dentalContactFootprint';
-import { dentalRegionAllowedOnFace, type DentalPolicy } from './dentalPolicy';
+import { dentalPolicyOf } from '../../../scripts/test-support/dentalPolicyOf';
+import type { DentalPolicy } from './dentalPolicy';
 import { proposeDentalSupportRegion } from './dentalRegion';
-import { defaultDentalTuning, dentalFootprintSettings } from './dentalTuning';
+import { REFERENCE_PROFILE, referenceTuning } from '../../../scripts/test-support/referenceProfile';
 
 /** Face labels of the reference aligner (docs/dental-reference/face-labels.json): tips and secondary landings on allowed faces only. */
 interface Labels { faceCount: number; forbiddenFaceRuns: number[]; allowedFaceRuns: number[] }
@@ -23,7 +23,7 @@ describe('reference aligner face labels', () => {
   const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
   const forbidden = expand(labels.forbiddenFaceRuns, labels.faceCount);
   const allowed = expand(labels.allowedFaceRuns, labels.faceCount);
-  const region = proposeDentalSupportRegion(mesh);
+  const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
 
   it('are the labels the detector produces now (regenerate with scripts/dental-face-labels.ts)', () => {
     expect(labels.faceCount).toBe(mesh.indices.length / 3);
@@ -38,39 +38,37 @@ describe('reference aligner face labels', () => {
     expect(strip).toBeLessThan(labels.faceCount / 10);
   });
 
-  it('put every tip on an allowed face and none on a forbidden one', () => {
-    expect(region.kind).toBe('proposal');
-    if (region.kind !== 'proposal') return;
-    expect(region.contacts!.length).toBeGreaterThan(70);
-    const policy = { kind: 'two-contour', region, stamps: [] } as unknown as DentalPolicy;
-    for (const contact of region.contacts!) {
-      expect(allowed[contact.face], `tip on face ${contact.face}`).toBe(1);
-      expect(forbidden[contact.face]).toBe(0);
-      expect(dentalRegionAllowedOnFace(policy, contact.face, contact.position, contact.normal)).toBe(true);
-    }
-  });
+  const saved = (stamps: DentalPolicy['stamps'] = []): DentalPolicy => {
+    if (region.kind !== 'proposal') throw new Error('reference region');
+    return { kind: 'two-contour', profileId: REFERENCE_PROFILE, region, rim: { boundaryKind: 'projection-fallback', points: new Float32Array(),
+      openingDirection: [0, 1, 0], centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1], visibilityMask: new Uint8Array(),
+      visibilityResolution: 0, visibilityMin: [0, 0], visibilityMax: [0, 0] }, stamps };
+  };
 
-  it('put every secondary landing candidate (the phase-zero alternates) on an allowed face', () => {
+  it('put every tip the policy builds on an allowed face and none on a forbidden one', () => {
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
-    const phase = proposeDentalContactFootprint(mesh, region, { ...dentalFootprintSettings(defaultDentalTuning), samplePhaseFraction: 0 });
-    expect(phase.kind).toBe('proposal');
-    if (phase.kind !== 'proposal') return;
-    const policy = { kind: 'two-contour', region, stamps: [] } as unknown as DentalPolicy;
-    const candidates = [...phase.outerContacts, ...phase.innerContacts];
-    expect(candidates.length).toBeGreaterThan(70);
-    for (const contact of candidates) {
-      expect(allowed[contact.face], `landing on face ${contact.face}`).toBe(1);
-      expect(forbidden[contact.face]).toBe(0);
-      expect(dentalRegionAllowedOnFace(policy, contact.face, contact.position, contact.normal)).toBe(true);
+    const policy = dentalPolicyOf(mesh, saved());
+    expect(policy.candidates.length).toBe(region.contacts!.length);
+    expect(policy.candidates.length).toBeGreaterThan(70);
+    for (const { face } of policy.candidates) {
+      expect(allowed[face], `tip on face ${face}`).toBe(1);
+      expect(forbidden[face]).toBe(0);
+    }
+  }, 60000);
+
+  it('put every repair alternate (a phase-zero sample) on an allowed face', () => {
+    const { alternates } = dentalPolicyOf(mesh, saved());
+    expect(alternates.length).toBeGreaterThan(70);
+    for (const { face } of alternates) {
+      expect(allowed[face], `alternate on face ${face}`).toBe(1);
+      expect(forbidden[face]).toBe(0);
     }
   }, 60000);
 
   it('refuse a face on the forbidden side even under an allow stamp', () => {
-    expect(region.kind).toBe('proposal');
-    if (region.kind !== 'proposal') return;
-    const face = forbidden.indexOf(1);
-    const policy = { kind: 'two-contour', region, stamps: [{ center: [0, 0, 0], radius: 1e6, normal: [0, 0, 1], kind: 'allow' }] } as unknown as DentalPolicy;
-    expect(dentalRegionAllowedOnFace(policy, face, [0, 0, 0], [0, 0, 1])).toBe(false);
-  });
+    const policy = dentalPolicyOf(mesh, saved([{ center: [0, 0, 0], radius: 1e6, normal: [0, 0, 1], kind: 'allow' }]));
+    for (const face of [...policy.candidates, ...policy.alternates].map((c) => c.face)) expect(forbidden[face]).toBe(0);
+    policy.permittedFaces.forEach((flag, face) => { if (flag) expect(forbidden[face], `permitted face ${face}`).toBe(0); });
+  }, 60000);
 });

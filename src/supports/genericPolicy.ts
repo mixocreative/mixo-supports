@@ -4,6 +4,7 @@ import type { SupportContact } from '../core/supports/mesh';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
 import { packSettings, packZones } from './supportBuildWasm';
 import { supportEngine } from './supportEngine';
+import type { MakePolicy } from './generateSupports';
 
 /*
  * Host adapter of the Rust `generic_policy`: the final contacts of a unit (unit-local space) are its
@@ -32,6 +33,19 @@ function packPoints(points: readonly SupportPoint[]) {
     normals.set(p.normal, k * 3);
   });
   return { ids: points.map((p) => p.id), positions, normals, sources: Uint8Array.from(points, (p) => SOURCES.indexOf(p.source)) };
+}
+
+/**
+ * The generic policy of a unit for `generate`, made in Rust (`GeometrySession.generic_policy`) from
+ * the same edits: its contacts, every face permitted, the structures the settings ask for, report-only
+ * repair.
+ */
+export function genericPolicy(inputs: ContactInputs, settings: Readonly<LiveSupportSettings>): MakePolicy {
+  const auto = packPoints(inputs.points);
+  const manual = packPoints(inputs.manual);
+  return (session, model) => session.generic_policy(model, packSettings(settings),
+    auto.ids, auto.positions, auto.normals, auto.sources, manual.ids, manual.positions, manual.normals, manual.sources,
+    [...inputs.deleted], packZones(inputs.zones));
 }
 
 /**

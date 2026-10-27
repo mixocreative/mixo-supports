@@ -90,3 +90,19 @@ pub fn propose_footprint(mesh: &Mesh, allowed_faces: &[u8], outer: &[u32], openi
     let contact_faces = bands.outer_other_side.iter().zip(&bands.inner_other_side).map(|(a, b)| a | b).collect();
     Ok(Footprint { contact_faces, outer_contacts: outer_samples.contacts, inner_contacts: inner_samples.contacts })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dental::profiles::reference_aligner;
+
+    #[test]
+    fn the_strip_starts_after_the_setback_and_density_scales_both_spacings() {
+        let profile = reference_aligner();
+        let s = footprint_settings(&Tuning::defaults(profile), profile).unwrap();
+        assert_eq!((s.setback, s.width, s.outer_spacing, s.inner_spacing, s.max_search_distance), (0.2, 1.2, 3.0, 2.0, 1.5));
+        let s = footprint_settings(&Tuning { setback_mm: 0.5, strip_width_mm: 0.4, density: 1.5 }, profile).unwrap();
+        assert_eq!((s.setback, s.width, s.outer_spacing, s.inner_spacing), (0.5, 0.9, 2.0, 2.0 / 1.5));
+        assert!(footprint_settings(&Tuning { setback_mm: 0.2, strip_width_mm: 2.5, density: 1.0 }, profile).is_err());
+    }
+}

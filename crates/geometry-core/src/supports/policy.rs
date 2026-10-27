@@ -71,6 +71,14 @@ pub struct AllowedStructures {
     pub raft: bool,
 }
 
+/// Tree and Brace as a policy chooses them, replacing the settings' own (dental: the per-aligner
+/// switches of Step 3). Still bounded by `AllowedStructures`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StructureChoice {
+    pub tree: bool,
+    pub brace: bool,
+}
+
 /// One brush dab of a policy's area edit: a sphere on the surface, the normal it was painted on, and
 /// whether it adds (`allow`) or removes the area. Stamps apply in order; the last one that reaches a
 /// point wins.
@@ -93,14 +101,15 @@ pub enum LandingRule {
 }
 
 /// Which automatic contacts the engine may build.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum AutomaticRule {
     /// Every contact the host passes (the generic policy: the candidates are the contacts).
     #[default]
     AsGiven,
-    /// Only a contact that reproduces one of `candidates` (same spot within 0.03 mm, same side); it
-    /// takes the candidate's source face. Anything else is left out, not built.
-    MatchCandidates,
+    /// Only a contact that reproduces one of `candidates` (same spot within `tol_mm`, normals with a
+    /// dot product above `min_dot`); it takes the candidate's source face. Anything else is left out,
+    /// not built. The tolerances are policy data (dental: the aligner profile).
+    MatchCandidates { tol_mm: f64, min_dot: f64 },
 }
 
 /// A closed contour that wants a contact at about every `spacing_mm`; `arcs` give the arclength of
@@ -127,12 +136,28 @@ pub struct PolicyResult {
     pub automatic: AutomaticRule,
     /// Contact rings whose coverage the verdict reports (none for a policy without rings).
     pub rings: Vec<Ring>,
+    /// True when the policy has an outside: an island on a face outside `permitted_faces` is then
+    /// reported as outside the permitted area instead of unresolved (the generic policy has none).
+    pub islands_outside_permitted: bool,
+    /// The policy's own Tree/Brace choice; `None`: the settings decide (the generic policy).
+    pub structure_choice: Option<StructureChoice>,
 }
 
 impl PolicyResult {
-    /// A result with no landing rule, every contact as given and no rings.
+    /// A result with no landing rule, every contact as given, no rings and no outside.
     pub fn plain(permitted_faces: FaceMask, candidates: Vec<Candidate>, structures: AllowedStructures, repair_budget: u32) -> Self {
-        Self { permitted_faces, candidates, alternates: Vec::new(), structures, repair_budget, landing_rule: LandingRule::Unrestricted, automatic: AutomaticRule::AsGiven, rings: Vec::new() }
+        Self {
+            permitted_faces,
+            candidates,
+            alternates: Vec::new(),
+            structures,
+            repair_budget,
+            landing_rule: LandingRule::Unrestricted,
+            automatic: AutomaticRule::AsGiven,
+            rings: Vec::new(),
+            islands_outside_permitted: false,
+            structure_choice: None,
+        }
     }
 }
 
@@ -171,6 +196,8 @@ mod tests {
             landing_rule: LandingRule::Unrestricted,
             automatic: AutomaticRule::AsGiven,
             rings: Vec::new(),
+            islands_outside_permitted: false,
+            structure_choice: None,
         };
         assert_eq!(result.alternates[0].1.len(), 1);
         assert_eq!(Verdict::Inconclusive { reason: "timeout".into() }, Verdict::Inconclusive { reason: "timeout".into() });

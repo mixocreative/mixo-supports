@@ -4,6 +4,7 @@ import { dot, type Vector } from '../vec3';
 import { proposeDentalOrientation, rotationToDentalPose } from './dental';
 import { rimContainsPoint, rotationToPlateDown } from '../../../scripts/test-support/dentalExpect';
 import type { TriangleMesh } from './types';
+import { REFERENCE_PROFILE } from '../../../scripts/test-support/referenceProfile';
 
 describe('proposeDentalOrientation', () => {
   it('recovers a watertight cavity opening after an arbitrary rotation', () => {
@@ -12,7 +13,7 @@ describe('proposeDentalOrientation', () => {
     const mesh = rotateMesh(fixture, scramble);
     const expectedOpening = applyToDirection(placementMatrix({ position: [0, 0, 0], rotation: scramble }), 0, 1, 0);
 
-    const result = proposeDentalOrientation(mesh);
+    const result = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
 
     expect(result.kind).toBe('proposal');
     if (result.kind !== 'proposal') return;
@@ -33,17 +34,17 @@ describe('proposeDentalOrientation', () => {
   });
 
   it('refuses a cube and malformed geometry instead of inventing a dental bottom', () => {
-    expect(proposeDentalOrientation(cube()).kind).toBe('inconclusive');
+    expect(proposeDentalOrientation(cube(), REFERENCE_PROFILE).kind).toBe('inconclusive');
     expect(proposeDentalOrientation({
       positions: new Float32Array([0, 0, 0, Number.NaN, 0, 0, 0, 1, 0]),
       indices: new Uint32Array([0, 1, 2]),
-    })).toMatchObject({ kind: 'inconclusive', reason: 'invalid-mesh' });
+    }, REFERENCE_PROFILE)).toMatchObject({ kind: 'inconclusive', reason: 'invalid-mesh' });
   });
 
   it('is deterministic and keeps the rim in unit-local coordinates', () => {
     const mesh = rotateMesh(watertightCup(), [0.2, 0.9, -0.7]);
-    const first = proposeDentalOrientation(mesh);
-    const second = proposeDentalOrientation(mesh);
+    const first = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
+    const second = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
     expect(second).toEqual(first);
   });
 
@@ -53,7 +54,7 @@ describe('proposeDentalOrientation', () => {
 
   it('does not invent a signed front for a rotationally symmetric cavity', () => {
     const mesh = watertightCup();
-    const result = proposeDentalOrientation(mesh);
+    const result = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
     expect(result.kind).toBe('proposal');
     if (result.kind === 'proposal') expect(rotationToDentalPose(mesh, result.rim)).toBeUndefined();
   });

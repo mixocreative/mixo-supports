@@ -93,6 +93,7 @@ describe('unit supports', () => {
   it('only makes a dental placement job after its support area was accepted', () => {
     expect(dentalPlacementJobOf(unit)).toBeUndefined();
     const dental: DentalPolicy = {
+      profileId: 'reference-aligner',
       rim: {
         boundaryKind: 'lower-edge-loop', points: new Float32Array([0, -5, -1, 1, -5, -1, 0, -5, 1]),
         openingDirection: [0, -1, 0], centroid: [0, -5, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1],

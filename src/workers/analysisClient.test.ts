@@ -38,6 +38,7 @@ function pool() {
 const mesh = (): TriangleMesh => ({ positions: new Float32Array(9), indices: new Uint32Array([0, 1, 2]) });
 const job = (model = mesh()): PlacementJob => ({ mesh: model, orientation: { position: [0, 0, 0], rotation: [0, 0, 0] }, settings: {} as PlacementSettings });
 const dentalPolicy: DentalPolicy = {
+  profileId: 'reference-aligner',
   rim: {
     boundaryKind: 'lower-edge-loop', points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]),
     openingDirection: [0, -1, 0], centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1],
@@ -102,8 +103,9 @@ describe('analysis client', () => {
     const { workers, create } = pool();
     const client = new AnalysisClient(create, () => {}, 1);
     const source = mesh();
-    const pending = client.dentalRegion('dental-region:a', source, label);
+    const pending = client.dentalRegion('dental-region:a', source, 'reference-aligner', label);
     expect(workers[0]!.received[0]!.payload.kind).toBe('dental-region');
+    expect(workers[0]!.received[0]!.payload.job).toMatchObject({ profile: 'reference-aligner' });
     expect(workers[0]!.received[0]!.payload.job.mesh).not.toBe(source);
     const region = { kind: 'inconclusive' as const, reason: 'not-an-aligner' };
     workers[0]!.done(0, { kind: 'dental-region-result', region });
@@ -114,7 +116,7 @@ describe('analysis client', () => {
     const { workers, create } = pool();
     const client = new AnalysisClient(create, () => {}, 1);
     const source = mesh();
-    const pending = client.dentalOrient('dental-orient:a', source, label);
+    const pending = client.dentalOrient('dental-orient:a', source, 'reference-aligner', label);
     expect(workers[0]!.received[0]!.payload.kind).toBe('dental-orient');
     expect(workers[0]!.received[0]!.payload.job.mesh).not.toBe(source);
     const orientation = { kind: 'failed' as const, reason: 'no-cavity', meshOk: true };
@@ -128,11 +130,11 @@ describe('analysis client', () => {
     const source = mesh();
     const region = { kind: 'proposal' } as never;
     const tuning = { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 };
-    const pending = client.retuneDentalRegion('dental-retune:a', source, region, tuning, label);
+    const pending = client.retuneDentalRegion('dental-retune:a', source, region, tuning, 'reference-aligner', label);
     const task = workers[0]!.received[0]!.payload;
     expect(task.kind).toBe('dental-retune');
     expect(task.job.mesh).not.toBe(source);
-    expect(task.job).toMatchObject({ region, tuning });
+    expect(task.job).toMatchObject({ region, tuning, profile: 'reference-aligner' });
     const answer = { kind: 'inconclusive' as const, reason: 'invalid-contour' };
     workers[0]!.done(0, { kind: 'dental-region-result', region: answer });
     await expect(pending).resolves.toEqual(answer);

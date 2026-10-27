@@ -10,10 +10,10 @@ import type { DentalOrientation } from '../core/analysis/dentalOrient';
 export type AnalysisTask =
   | { kind: 'place'; job: PlacementJob }
   | { kind: 'dental-place'; job: DentalPlacementJob }
-  | { kind: 'dental-orient'; job: { mesh: TriangleMesh } }
-  | { kind: 'dental-region'; job: { mesh: TriangleMesh } }
+  | { kind: 'dental-orient'; job: { mesh: TriangleMesh; profile: string } }
+  | { kind: 'dental-region'; job: { mesh: TriangleMesh; profile: string } }
   | { kind: 'dental-retune'; job: { mesh: TriangleMesh;
-    region: Extract<DentalRegionProposal, { kind: 'proposal' }>; tuning: DentalTuning } }
+    region: Extract<DentalRegionProposal, { kind: 'proposal' }>; tuning: DentalTuning; profile: string } }
   | { kind: 'check'; job: CheckJob };
 
 export type AnalysisResult =

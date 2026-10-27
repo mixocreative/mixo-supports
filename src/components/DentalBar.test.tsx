@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DentalBar } from './DentalBar';
+import { profileData } from '../dental/alignerProfiles';
 import type { DentalReview } from './DentalSupports';
 import { defaultSupportSettings } from '../core/supports/settings';
 import type { Gesture } from '../editing/gesture';
@@ -100,7 +101,7 @@ describe('DentalBar', () => {
     const area = { kind: 'dental-area', brush: { kind: 'allow', radius: 2 }, notices: [] } as Gesture & { kind: 'dental-area' };
     const html = renderToStaticMarkup(<DentalBar gesture={area} unitName="sample"
       ui={{ mode: 'dental', dentalPreviewReady: true } as UiState} send={() => {}} run={() => {}}
-      tuning={{ setbackMm: 0.2, stripWidthMm: 1, density: 1 }} tuningBusy onTuningChange={() => {}} />);
+      tuning={{ setbackMm: 0.2, stripWidthMm: 1, density: 1 }} tuningLimits={profileData('reference-aligner').defaults} tuningBusy onTuningChange={() => {}} />);
     expect(html).toContain('Strip width');
     expect(html).toContain('Support density');
     expect(html).toContain('Rim setback');

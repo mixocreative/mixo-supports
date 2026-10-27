@@ -1,10 +1,11 @@
 import type { DentalRim } from './dental';
+import type { TriangleMesh } from './types';
 
 /*
- * The Rust dental calls the detectors run on (docs/SHIP-PLAN.md ABI: orient_dental,
- * propose_dental_region, retune_dental_region). The host registers its engine once it is ready
+ * The Rust dental calls (docs/SHIP-PLAN.md ABI). The host registers its engine once it is ready
  * (`geometryReady` in each realm; tests and Node scripts register the pkg-node build), like
- * `supports/supportEngine`: detection is synchronous from the caller's side.
+ * `supports/supportEngine`: detection is synchronous from the caller's side. Every production call
+ * works on a mesh loaded once in a `GeometrySession` and names its aligner profile.
  */
 export interface DentalOrientResultLike {
   free(): void;
@@ -17,6 +18,7 @@ export interface DentalOrientResultLike {
   rim_scalars(): Float64Array;
   take_rim_points(): Float32Array;
   take_visibility_mask(): Uint8Array;
+  matches_profile(): boolean;
 }
 
 export interface DentalRegionResultLike {
@@ -35,21 +37,64 @@ export interface DentalRegionResultLike {
   contact_points(): Float64Array;
   contact_distances(): Float64Array;
   contact_rims(): Uint8Array;
+}
+
+/** A `PolicyResult` Rust made; handed to `generate` as is (`crates/geometry-wasm/src/safety.rs`). */
+export interface PolicyHandle {
   candidate_ids(): string[];
+  candidate_points(): Float64Array;
+  candidate_faces(): Float64Array;
+  alternate_owners(): string[];
+  alternate_points(): Float64Array;
+  alternate_faces(): Float64Array;
   structures(): Uint8Array;
   repair_budget(): number;
-  area_origin(): number;
+  automatic(): number;
+  landing_rule(): number;
+  islands_outside_permitted(): boolean;
+  permitted_faces(): Uint8Array;
+  ring_count(): number;
+  reproduced(): boolean;
+  profile_id(): string;
+  free(): void;
+}
+
+export interface LegacyFillLike {
+  free(): void; take_kept(): Uint32Array; take_positions(): Float64Array; take_normals(): Float64Array; take_ids(): string[];
+}
+
+/** The dental calls of a `GeometrySession` (meshes by handle). */
+export interface DentalSession {
+  load_mesh(positions: Float32Array, indices: Uint32Array): number;
+  free(): void;
+  orient_dental(model: number, profile: string): DentalOrientResultLike;
+  propose_dental_region(model: number, tuning: Float64Array, profile: string): DentalRegionResultLike;
+  retune_dental_region(model: number, allowed: Uint8Array, outer: Uint32Array, opening: Uint32Array,
+    tuning: Float64Array, phaseFraction: number, profile: string): DentalRegionResultLike;
+  /** `kind` 0 older saved policy, 1 painted from scratch, 2 two-contour (see the Rust doc). */
+  dental_policy(model: number, profile: string, kind: number, tuning: Float64Array, stamps: Float64Array,
+    savedAllowed: Uint8Array, savedContact: Uint8Array, savedOuter: Uint32Array, savedOpening: Uint32Array,
+    structure: Uint8Array, frame: Float64Array): PolicyHandle;
+  dental_legacy_fill(model: number, profile: string, rim: Float64Array, visibilityMask: Uint8Array, manualArea: boolean,
+    stamps: Float64Array, rotation: Float64Array, spacing: number, overhangAngleDegrees: number,
+    initialPositions: Float64Array, initialNormals: Float64Array): LegacyFillLike;
 }
 
 export interface DentalEngine {
-  orient_dental(positions: Float32Array, indices: Uint32Array, profile: string): DentalOrientResultLike;
+  GeometrySession: new (maxBytes: number) => unknown;
+  dental_allowed_vertices(positions: Float32Array, indices: Uint32Array, normals: Float32Array, rim: Float64Array, visibilityMask: Uint8Array,
+    manualArea: boolean, stamps: Float64Array, profile: string): Uint8Array;
+}
+
+/**
+ * The dental internals of the Node test package (`--features test-abi`): tests and the review
+ * scripts only. The browser build does not have them.
+ */
+export interface DentalInternals {
   propose_dental_orientation(positions: Float32Array, indices: Uint32Array, profile: string): DentalOrientResultLike;
   dental_pose(positions: Float32Array, indices: Uint32Array, rim: Float64Array): Float64Array;
   inspect_dental_opening(positions: Float32Array, indices: Uint32Array, rim: Float64Array, profile: string): {
     free(): void; kind(): number; reason(): string; take_edges(): Uint32Array };
-  propose_dental_region(positions: Float32Array, indices: Uint32Array, tuning: Float64Array, profile: string): DentalRegionResultLike;
-  retune_dental_region(positions: Float32Array, indices: Uint32Array, allowed: Uint8Array, outer: Uint32Array, opening: Uint32Array,
-    tuning: Float64Array, phaseFraction: number, profile: string): DentalRegionResultLike;
   dental_footprint(positions: Float32Array, indices: Uint32Array, allowed: Uint8Array, outer: Uint32Array, opening: Uint32Array,
     settings: Float64Array): DentalRegionResultLike;
   dental_side_bands(positions: Float32Array, indices: Uint32Array, allowed: Uint8Array, outer: Uint32Array, opening: Uint32Array,
@@ -59,12 +104,6 @@ export interface DentalEngine {
     perimeter(): number; faces(): Uint32Array; points(): Float64Array; distances(): Float64Array };
   manual_dental_area(faceCount: number, painted: Uint32Array, detected: boolean, profile: string): Uint8Array;
   manual_dental_area_from_stamps(positions: Float32Array, indices: Uint32Array, stamps: Float64Array, detected: boolean, profile: string): Uint8Array;
-  dental_legacy_fill(positions: Float32Array, indices: Uint32Array, rim: Float64Array, visibilityMask: Uint8Array, manualArea: boolean,
-    stamps: Float64Array, rotation: Float64Array, spacing: number, overhangAngleDegrees: number,
-    initialPositions: Float64Array, initialNormals: Float64Array): {
-    free(): void; take_kept(): Uint32Array; take_positions(): Float64Array; take_normals(): Float64Array; take_ids(): string[] };
-  dental_allowed_vertices(positions: Float32Array, indices: Uint32Array, normals: Float32Array, rim: Float64Array, visibilityMask: Uint8Array,
-    manualArea: boolean, stamps: Float64Array): Uint8Array;
   dental_profile_ids(): string[];
 }
 
@@ -77,6 +116,26 @@ export function setDentalEngine(engine: DentalEngine): void {
 export function dentalEngine(): DentalEngine {
   if (!current) throw new Error('Geometry engine is not ready: await geometryReady() before dental detection');
   return current;
+}
+
+/** The internals; throws outside the Node test package. */
+export function dentalInternals(): DentalInternals {
+  const engine = dentalEngine() as unknown as Partial<DentalInternals>;
+  if (typeof engine.dental_footprint !== 'function') throw new Error('Dental internals exist only in the test-abi build (pkg-node)');
+  return engine as DentalInternals;
+}
+
+/** Mesh bytes a one-shot dental session may hold. */
+const SESSION_BYTES = 0x30000000;
+
+/** Runs `use` with `mesh` loaded once in a fresh session (freed afterwards, with every handle in it). */
+export function withDentalMesh<T>(mesh: TriangleMesh, use: (session: DentalSession, model: number) => T): T {
+  const session = new (dentalEngine().GeometrySession)(SESSION_BYTES) as DentalSession;
+  try {
+    return use(session, session.load_mesh(mesh.positions, mesh.indices));
+  } finally {
+    session.free();
+  }
 }
 
 /** The flat frame the pose and opening calls take: the layout of `DentalOrientResult.rim_scalars`. */

@@ -6,7 +6,8 @@ import { defaultSupportSettings, type LiveSupportSettings } from '../core/suppor
 import { alignerScenario } from '../../scripts/test-support/supportParityHarness';
 import { approxArray, exactArray, expectGolden, readGolden } from '../../scripts/test-support/golden';
 import { checkSupportProblems } from './checkSupports';
-import { generateSupports, type PolicyInput } from './generateSupports';
+import { generateSupports } from './generateSupports';
+import { testPolicy, type TestPolicy } from '../../scripts/test-support/testPolicy';
 import type { Vector } from '../core/vec3';
 
 /*
@@ -60,13 +61,12 @@ const lowPoly = (extra: Partial<LiveSupportSettings> = {}): LiveSupportSettings 
   ({ ...defaultSupportSettings, roofSeededModes: [], lowPolyMode: true, raftEnabled: false, scatterAutoTree: false, trussEnabled: false, ...extra }) as LiveSupportSettings;
 
 /** What the dental policy hands the engine for exactly these contacts: each automatic one is its own candidate. */
-function policyFor(contacts: readonly SupportContact[], settings: LiveSupportSettings, landing?: Uint8Array): PolicyInput {
+function policyFor(contacts: readonly SupportContact[], settings: LiveSupportSettings, landing?: Uint8Array): TestPolicy {
   return {
     repairBudget: 8, automatic: 'match-candidates',
     structures: { pillar: true, tree: settings.scatterAutoTree, brace: settings.trussEnabled, roof: false, cage: false, raft: true },
-    ...(landing ? { landing: { permittedFaces: landing, stamps: [] } } : {}),
+    ...(landing ? { landing } : {}),
     candidates: contacts.filter((c) => c.origin !== 'manual').map((c) => ({ id: `candidate-${c.id}`, position: c.position, normal: c.normal, ...(c.sourceFace === undefined ? {} : { face: c.sourceFace }) })),
-    alternates: [], rings: [],
   };
 }
 
@@ -80,7 +80,7 @@ const seen = { dropped: 0, braceFallback: 0, treeBuilt: 0, builds: 0 };
 const slug = (name: string) => `safety-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`;
 
 function parity(name: string, model: TriangleMesh, contacts: SupportContact[], settings: LiveSupportSettings, landingFaces?: Uint8Array, mode: 'preview' | 'export' = 'preview') {
-  const out = generateSupports(contacts, settings, policyFor(contacts, settings, landingFaces), { mode, model, labelText: 'A' });
+  const out = generateSupports(contacts, settings, testPolicy(policyFor(contacts, settings, landingFaces)), { mode, model, labelText: 'A' });
   const mesh = { ...out.mesh, ...(out.fallback.length > 0 ? { dentalStructureFallback: out.fallback } : {}) };
   // Contacts that were not moved or dropped keep their input order, so contact IDs and tags compare directly.
   expectGolden(slug(name), { ...summary(mesh), indices: exactArray(mesh.indices, 'u32'), positions: approxArray(mesh.positions, mesh.positions.length > 30000 ? 41 : 1) });

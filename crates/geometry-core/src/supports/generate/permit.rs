@@ -7,23 +7,21 @@ use crate::supports::parts::landing::Landing;
 use crate::supports::parts::model::Model;
 use crate::supports::parts::vec::{V3, cross, dot, sub};
 use crate::supports::policy::{AutomaticRule, Candidate, LandingRule, Origin, PolicyResult};
+use crate::supports::settings::SupportSettings;
 
-/// A contact reproduces a candidate within this distance (mm) and on the same side.
-pub const POSITION_TOLERANCE_MM: f64 = 0.03;
-pub const NORMAL_DOT_MINIMUM: f64 = 0.95;
-
-/// Preserve the placement/final-build match threshold for a face-anchored tip.
-pub fn same_primary(point: V3, normal: V3, candidate: &Candidate) -> bool {
+/// Whether a contact at `point` with `normal` reproduces `candidate`: within `tol_mm` and with
+/// normals whose dot product exceeds `min_dot` (the policy's `AutomaticRule::MatchCandidates`).
+pub fn same_primary(point: V3, normal: V3, candidate: &Candidate, tol_mm: f64, min_dot: f64) -> bool {
     let d = sub(candidate.point, point);
-    dot(d, d) < POSITION_TOLERANCE_MM * POSITION_TOLERANCE_MM && dot(candidate.normal, normal) > NORMAL_DOT_MINIMUM
+    dot(d, d) < tol_mm * tol_mm && dot(candidate.normal, normal) > min_dot
 }
 
 /// Exact source-face identity of an accepted primary contact, or `None` on ambiguity (two matching
 /// candidates on different faces) or when a match carries no face.
-pub fn primary_source_face(point: V3, normal: V3, candidates: &[Candidate]) -> Option<u32> {
+pub fn primary_source_face(point: V3, normal: V3, candidates: &[Candidate], tol_mm: f64, min_dot: f64) -> Option<u32> {
     let mut face: Option<u32> = None;
     for candidate in candidates {
-        if !same_primary(point, normal, candidate) {
+        if !same_primary(point, normal, candidate, tol_mm, min_dot) {
             continue;
         }
         let candidate_face = candidate.source_face?;
@@ -48,16 +46,21 @@ pub struct Permitted {
 pub fn permit(contacts: Vec<ColumnContact>, policy: &PolicyResult) -> Permitted {
     let mut out = Permitted { contacts: Vec::new(), candidate_of: Vec::new(), rejected: Vec::new() };
     for mut contact in contacts {
-        if contact.candidate.origin == Origin::Manual || policy.automatic == AutomaticRule::AsGiven {
+        let AutomaticRule::MatchCandidates { tol_mm, min_dot } = policy.automatic else {
+            out.contacts.push(contact);
+            out.candidate_of.push(None);
+            continue;
+        };
+        if contact.candidate.origin == Origin::Manual {
             out.contacts.push(contact);
             out.candidate_of.push(None);
             continue;
         }
         let (point, normal) = (contact.candidate.point, contact.candidate.normal);
-        let matched = policy.candidates.iter().position(|c| same_primary(point, normal, c));
+        let matched = policy.candidates.iter().position(|c| same_primary(point, normal, c, tol_mm, min_dot));
         match matched {
             Some(k) => {
-                contact.candidate.source_face = primary_source_face(point, normal, &policy.candidates);
+                contact.candidate.source_face = primary_source_face(point, normal, &policy.candidates, tol_mm, min_dot);
                 out.contacts.push(contact);
                 out.candidate_of.push(Some(k));
             }
@@ -65,6 +68,16 @@ pub fn permit(contacts: Vec<ColumnContact>, policy: &PolicyResult) -> Permitted 
         }
     }
     out
+}
+
+/// The settings with the policy's own Tree/Brace choice applied (`limit_structures` bounds them after).
+pub fn chosen_settings(settings: &SupportSettings, policy: &PolicyResult) -> SupportSettings {
+    let mut s = settings.clone();
+    if let Some(choice) = policy.structure_choice {
+        s.scatter_auto_tree = choice.tree;
+        s.truss_enabled = choice.brace;
+    }
+    s
 }
 
 /// The landing rule of the policy as a predicate over a landing on the model (plate space).

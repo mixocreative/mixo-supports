@@ -7,6 +7,7 @@ import { cross, dot, normalize, subtract, type Vector } from '../src/core/vec3';
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { parseStl } from './test-support/rustImport';
+import { REFERENCE_PROFILE } from './test-support/referenceProfile';
 
 const file = process.env.DENTAL_PROBE_FIXTURE;
 if (!file) throw new Error('DENTAL_PROBE_FIXTURE is required');
@@ -17,7 +18,7 @@ if (process.env.DENTAL_PROBE_ROTATION) {
   if (angles.length !== 3 || angles.some((angle) => !Number.isFinite(angle))) throw new Error('DENTAL_PROBE_ROTATION must be 3 comma-separated radians');
   mesh = { ...mesh, positions: transformPositions(mesh.positions, placementMatrix({ position: [0, 0, 0], rotation: angles as [number, number, number] })) };
 }
-const proposal = proposeDentalOrientation(mesh);
+const proposal = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
 if (proposal.kind !== 'proposal') throw new Error(`No opening proposal: ${proposal.reason}`);
 const { rim } = proposal;
 const centre = rim.centroid;

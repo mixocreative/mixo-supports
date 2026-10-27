@@ -6,6 +6,10 @@ edition = "2024"
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+# Dental internals for the Node test package only (docs/SHIP-PLAN.md, ABI); the browser build has none.
+test-abi = []
+
 [dependencies]
 mixo-geometry-core = { path = "../geometry-core" }
 wasm-bindgen = "=0.2.129"

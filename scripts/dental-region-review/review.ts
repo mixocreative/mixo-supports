@@ -8,6 +8,7 @@ import type { JobTransform } from '../../src/core/jobs';
 import { diagnose } from '../../src/dental/diagnose';
 import type { DentalDiagnosticBands } from '../../src/core/analysis/dentalContactBand';
 import type { DiagnosticContourContact } from '../../src/core/analysis/dentalContourContacts';
+import { REFERENCE_PROFILE } from './profile';
 
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
 type ReviewLayers = { supports: GeneratedSupportMesh; frame: JobTransform; bands?: DentalDiagnosticBands;
@@ -28,7 +29,7 @@ export async function exportDentalRegionReview(mesh: TriangleMesh, region: Regio
     region, ...(layers ? { supports: layers.supports } : {}),
     ...(layers?.bands ? { bands: layers.bands } : {}),
     ...(layers?.diagnosticContacts ? { contacts: { outer: layers.diagnosticContacts.outer.contacts, inner: layers.diagnosticContacts.inner.contacts } } : {}),
-  })) {
+  }, REFERENCE_PROFILE)) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(layer.positions, 3));
     if (layer.indices.length > 0) geometry.setIndex(new THREE.BufferAttribute(layer.indices, 1));
@@ -42,7 +43,7 @@ export async function exportDentalRegionReview(mesh: TriangleMesh, region: Regio
       source: 'app dental placement and support builder', approval: 'diagnostic only' };
   }
 
-  const orientation = proposeDentalOrientation(mesh);
+  const orientation = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
   if (orientation.kind !== 'proposal') throw new Error('Dental orientation is inconclusive');
   const rotation = rotationToDentalPose(mesh, orientation.rim);
   if (!rotation) throw new Error('Dental pose is inconclusive');

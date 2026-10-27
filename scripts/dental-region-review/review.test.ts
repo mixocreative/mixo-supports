@@ -7,6 +7,7 @@ import { proposeDentalSupportRegion } from '../../src/core/analysis/dentalRegion
 import { diagnose } from '../../src/dental/diagnose';
 import { exportDentalRegionReview } from './review';
 import { parseStl } from '../test-support/rustImport';
+import { REFERENCE_PROFILE, referenceTuning } from '../test-support/referenceProfile';
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
@@ -16,7 +17,7 @@ const reference = () => {
 describe('separate dental-region review exporter', () => {
   it('exports both detected edge loops and the two exact face regions from the detector result', async () => {
     const mesh = reference();
-    const region = proposeDentalSupportRegion(mesh);
+    const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
     expect(region.outerRidgeEdges.length / 2).toBe(2459);
@@ -40,8 +41,8 @@ describe('separate dental-region review exporter', () => {
     const source = reference();
     const mesh = { ...source, positions: transformPositions(source.positions,
       placementMatrix({ position: [0, 0, 0], rotation: [1.1, -2.2, 0.7] })) };
-    const region = proposeDentalSupportRegion(mesh);
-    const orientation = proposeDentalOrientation(mesh);
+    const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
+    const orientation = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     expect(orientation.kind).toBe('proposal');
     if (region.kind !== 'proposal' || orientation.kind !== 'proposal') return;
@@ -58,7 +59,7 @@ describe('separate dental-region review exporter', () => {
 
   it('colours every role per the contour spec, from the Rust diagnose layers', async () => {
     const mesh = reference();
-    const region = proposeDentalSupportRegion(mesh);
+    const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
     const expected: Record<string, number> = {
@@ -68,7 +69,7 @@ describe('separate dental-region review exporter', () => {
       'GREEN outer ridge connector paths': 0x16b34f,
       'RED central opening contour': 0xee1938,
     };
-    const layers = diagnose(mesh, { region }, 7);
+    const layers = diagnose(mesh, { region }, REFERENCE_PROFILE, 7);
     expect(layers.map((layer) => layer.name)).toEqual(Object.keys(expected));
     for (const layer of layers) expect(layer.color, layer.name).toBe(expected[layer.name]);
     const teal = layers.find((layer) => layer.color === 0x1aa998)!;

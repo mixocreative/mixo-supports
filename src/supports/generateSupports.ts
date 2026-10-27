@@ -1,52 +1,32 @@
 import type { ProgressCallback, TriangleMesh } from '../core/analysis/types';
+import type { PolicyHandle } from '../core/analysis/dentalEngine';
+import type { JobTransform } from '../core/jobs';
 import type { GeneratedSupportMesh, SupportContact, SupportIssue, SupportPart, SupportVerdict } from '../core/supports/mesh';
 import type { LiveSupportSettings } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
-import type { Vector } from '../core/vec3';
 import { decodeComponents, packContacts, packSettings, packZones, type ColumnInput } from './supportBuildWasm';
-import { supportEngine, withSession, type PolicyDataHandle } from './supportEngine';
+import { withSession, type SupportSession } from './supportEngine';
 
 /*
  * Host adapter of the Rust `generate` (U7): one call runs permit, build, the exact body check, the
- * bounded repair and the verdicts for either policy. A policy crosses as data (`PolicyInput`, what
- * `PolicyResult` holds); there is no callback and no retry loop here. Contacts and the model are in
- * plate space.
+ * bounded repair and the verdicts for either policy. The policy is made in Rust inside the same
+ * session (`dental_policy` / `generic_policy` on the unit's loaded mesh) and handed to `generate` as
+ * a handle: the host never assembles one. No callback into the host and no retry loop here.
  */
 
-export interface PolicyCandidate {
-  id: string;
-  position: Vector;
-  normal: Vector;
-  /** Exact source face of the contact, when the policy knows it. */
-  face?: number;
+/** The session calls a policy is made with (`crates/geometry-wasm/src/{dental,generic}.rs`). */
+export interface PolicySession extends SupportSession {
+  dental_policy(model: number, profile: string, kind: number, tuning: Float64Array, stamps: Float64Array,
+    savedAllowed: Uint8Array, savedContact: Uint8Array, savedOuter: Uint32Array, savedOpening: Uint32Array,
+    structure: Uint8Array, frame: Float64Array): PolicyHandle;
+  generic_policy(model: number, settings: Float64Array,
+    autoIds: string[], autoPositions: Float64Array, autoNormals: Float64Array, autoSources: Uint8Array,
+    manualIds: string[], manualPositions: Float64Array, manualNormals: Float64Array, manualSources: Uint8Array,
+    deleted: string[], zones: Float64Array): PolicyHandle;
 }
 
-export interface AreaStampInput {
-  center: Vector;
-  radius: number;
-  normal: Vector;
-  allow: boolean;
-}
-
-export interface PolicyInput {
-  /** Maximum repair rebuilds; 0 reports without repairing. */
-  repairBudget: number;
-  /** `match-candidates`: an automatic contact is built only if it reproduces a candidate. */
-  automatic: 'as-given' | 'match-candidates';
-  structures: { pillar: boolean; tree: boolean; brace: boolean; roof: boolean; cage: boolean; raft: boolean };
-  /** Secondary landings only on these source faces (1 = permitted), after the edits; absent: anywhere. */
-  landing?: { permittedFaces: Uint8Array; stamps: readonly AreaStampInput[] };
-  candidates: readonly PolicyCandidate[];
-  /** Repair options in trial order for the candidate `owner`. */
-  alternates: readonly { owner: string; candidate: PolicyCandidate }[];
-  rings: readonly { perimeterMm: number; spacingMm: number; arcs: readonly { id: string; arcMm: number }[] }[];
-}
-
-/** The generic policy: contacts as given, anything allowed, report only. */
-export const genericPolicyInput: PolicyInput = {
-  repairBudget: 0, automatic: 'as-given', candidates: [], alternates: [], rings: [],
-  structures: { pillar: true, tree: true, brace: true, roof: true, cage: true, raft: true },
-};
+/** Makes the unit's policy in `session`; `model` is the unit-local mesh handle. The caller frees the handle. */
+export type MakePolicy = (session: PolicySession, model: number) => PolicyHandle;
 
 export interface RingMeasure {
   perimeterMm: number;
@@ -58,8 +38,9 @@ export interface RingMeasure {
 
 export interface GenerateOptions {
   mode?: 'preview' | 'export';
-  /** The model in plate space. */
+  /** The unit-local model; `frame` places it on the plate (absent: it is already in plate space). */
   model: TriangleMesh;
+  frame?: JobTransform;
   labelText?: string;
   zones?: readonly ZoneStamp[];
   /** Ends the repair and the checks early with an inconclusive verdict. */
@@ -86,10 +67,10 @@ interface Generation {
   take_rings(): Float64Array; trials(): number; revision(): number; free(): void;
 }
 
-interface GenerateSession {
-  load_mesh(positions: Float32Array, indices: Uint32Array): number;
+interface GenerateSession extends PolicySession {
+  load_placed(model: number, frame: Float64Array): number;
   generate(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number,
-    labelText: string, zones: Float64Array, policy: PolicyDataHandle, timeoutMs: number, revision: number): Generation;
+    labelText: string, zones: Float64Array, policy: PolicyHandle, timeoutMs: number, revision: number): Generation;
 }
 
 const PARTS: readonly SupportPart[] = [
@@ -101,35 +82,11 @@ const ISSUE_STRIDE = 5;
 const ISSUE_ORIGIN = ['auto', 'manual', 'structural'] as const;
 const ISLAND_STATUS = ['resolved', 'unresolved', 'manual-only', 'outside-policy'] as const;
 
-function candidateRows(list: readonly PolicyCandidate[]): Float64Array {
-  const rows = new Float64Array(list.length * 7);
-  list.forEach((c, k) => rows.set([...c.position, ...c.normal, c.face ?? -1], k * 7));
-  return rows;
-}
+/** A placement as the session calls take it: position xyz then rotation xyz. */
+export const frameArray = (frame: JobTransform): Float64Array => Float64Array.of(...frame.position, ...frame.rotation);
 
-/** Fills the engine's `PolicyData` from a policy; the caller frees it. */
-function policyData(policy: PolicyInput): PolicyDataHandle {
-  const data = new (supportEngine().PolicyData)(policy.repairBudget, policy.automatic === 'match-candidates' ? 1 : 0, policy.landing ? 1 : 0);
-  try {
-    const s = policy.structures;
-    data.set_structures(Uint8Array.of(...[s.pillar, s.tree, s.brace, s.roof, s.cage, s.raft].map(Number)));
-    if (policy.landing) {
-      data.set_permitted_faces(policy.landing.permittedFaces);
-      const stamps = new Float64Array(policy.landing.stamps.length * 8);
-      policy.landing.stamps.forEach((st, k) => stamps.set([...st.center, st.radius, ...st.normal, st.allow ? 1 : 0], k * 8));
-      data.set_stamps(stamps);
-    }
-    data.set_candidates(policy.candidates.map((c) => c.id), candidateRows(policy.candidates));
-    data.set_alternates(policy.alternates.map((a) => a.owner), policy.alternates.map((a) => a.candidate.id), candidateRows(policy.alternates.map((a) => a.candidate)));
-    for (const ring of policy.rings) data.add_ring(ring.perimeterMm, ring.spacingMm, ring.arcs.map((a) => a.id), Float64Array.from(ring.arcs, (a) => a.arcMm));
-    return data;
-  } catch (error) {
-    data.free();
-    throw error;
-  }
-}
-
-export function generateSupports(contacts: readonly SupportContact[], settings: Readonly<LiveSupportSettings>, policy: PolicyInput, options: GenerateOptions): GenerateOutput {
+/** Contacts are in plate space (`options.frame` applied); the policy is made from the unit-local model. */
+export function generateSupports(contacts: readonly SupportContact[], settings: Readonly<LiveSupportSettings>, policy: MakePolicy, options: GenerateOptions): GenerateOutput {
   const empty = (): GenerateOutput => ({
     mesh: { positions: new Float32Array(), indices: new Uint32Array(), parts: [], components: [], dropped: [], droppedByZones: [],
       verdict: { status: 'clear', issues: [] }, islands: { status: 'ok', islands: [] } },
@@ -140,7 +97,9 @@ export function generateSupports(contacts: readonly SupportContact[], settings: 
   options.onProgress?.(0.05, 'Sampling surface normals');
   return withSession((session) => {
     const wasm = session as unknown as GenerateSession;
-    const handle = wasm.load_mesh(Float32Array.from(model.positions), Uint32Array.from(model.indices));
+    const source = wasm.load_mesh(Float32Array.from(model.positions), Uint32Array.from(model.indices));
+    const placed = options.frame && [...options.frame.position, ...options.frame.rotation].some((v) => v !== 0);
+    const handle = placed ? wasm.load_placed(source, frameArray(options.frame!)) : source;
     const inputs = contacts.map((contact): ColumnInput => ({
       id: contact.id,
       position: contact.position,
@@ -150,7 +109,7 @@ export function generateSupports(contacts: readonly SupportContact[], settings: 
       ...(contact.shape ? { shape: contact.shape } : {}),
     }));
     const packed = packContacts(inputs);
-    const data = policyData(policy);
+    const data = policy(wasm, source);
     let result: Generation;
     try {
       result = wasm.generate(handle, inputs.map((c) => c.id), packed.contacts, packed.shapes, packSettings(settings), options.mode === 'export' ? 1 : 0,

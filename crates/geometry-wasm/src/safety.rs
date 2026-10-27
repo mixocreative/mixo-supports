@@ -1,7 +1,7 @@
 //! WASM bindings of the shared safety engine (U7): `generate` runs the whole support pipeline for a
 //! `PolicyResult` (permit, build, exact body check, bounded repair, island and ring verdicts), and
-//! `check_support_problems` is the support check. A policy crosses the boundary as data in a `PolicyData`
-//! (no callback): the host fills it from the policy it produced and passes it to `generate`.
+//! `check_support_problems` is the support check. A policy never crosses the boundary as host data:
+//! Rust makes it (`dental_policy` / `generic_policy`) and the host passes the `PolicyHandle` on.
 
 use super::{GeometrySession, build_error, coded_error, mesh_error};
 use mixo_geometry_core::supports::build::BuildMode;
@@ -9,118 +9,89 @@ use mixo_geometry_core::supports::check::{CheckSettings, check_supports};
 use mixo_geometry_core::supports::flat::{self as support_flat, NO_CONTACT};
 use mixo_geometry_core::supports::generate::{Fallback, GenerateInput, IslandStatus, IslandVerdict, generate};
 use mixo_geometry_core::supports::parts::model as support_model;
-use mixo_geometry_core::supports::policy::{AllowedStructures, AreaStamp, AutomaticRule, Candidate, CandidateId, FaceMask, LandingRule, Origin, PolicyResult, Ring};
+use mixo_geometry_core::supports::policy::{AutomaticRule, LandingRule, PolicyResult};
 use mixo_geometry_core::supports::safety::clearance::{IssueOrigin, Status};
 use mixo_geometry_core::supports::zones::decode_zones;
 use mixo_geometry_core::supports::{flat, settings as support_settings};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
-/// Candidate / alternate rows: point xyz, normal xyz, source face (-1 none).
-pub const CANDIDATE_STRIDE: usize = 7;
-/// Stamp rows: centre xyz, radius, normal xyz, allow (0/1).
-pub const STAMP_STRIDE: usize = 8;
 /// Issue rows (u32): contact index (`NO_CONTACT` structural), part, model face, blocked (0/1), origin (0 auto, 1 manual, 2 structural).
 pub const ISSUE_STRIDE: usize = 5;
 
-/// The policy of a unit as data: what `PolicyResult` holds, in typed arrays.
+/// A `PolicyResult` made in Rust (`GeometrySession.dental_policy` / `generic_policy`) and handed
+/// straight to `generate`. The host never assembles one; it can only read what it needs to show.
 #[wasm_bindgen]
-pub struct PolicyData {
-    result: PolicyResult,
+pub struct PolicyHandle {
+    pub(crate) result: PolicyResult,
+    pub(crate) reproduced: bool,
+    pub(crate) profile_id: String,
 }
 
-fn rows(values: &[f64], stride: usize) -> Result<std::slice::ChunksExact<'_, f64>, JsValue> {
-    if values.len() % stride != 0 || values.iter().any(|v| !v.is_finite()) {
-        return Err(coded_error("BAD_INPUT"));
+impl PolicyHandle {
+    pub(crate) fn new(result: PolicyResult) -> Self {
+        Self { result, reproduced: true, profile_id: String::new() }
     }
-    Ok(values.chunks_exact(stride))
-}
-
-fn candidates_of(ids: &[String], values: &[f64], origin: Origin) -> Result<Vec<Candidate>, JsValue> {
-    let rows = rows(values, CANDIDATE_STRIDE)?;
-    if rows.len() != ids.len() {
-        return Err(coded_error("BAD_INPUT"));
-    }
-    Ok(ids
-        .iter()
-        .zip(rows)
-        .map(|(id, r)| Candidate { id: CandidateId(id.clone()), source_face: (r[6] >= 0.0).then_some(r[6] as u32), point: [r[0], r[1], r[2]], normal: [r[3], r[4], r[5]], origin })
-        .collect())
 }
 
 #[wasm_bindgen]
-impl PolicyData {
-    /// `automatic`: 0 every contact as given, 1 only contacts that reproduce a candidate.
-    /// `landing_rule`: 0 unrestricted, 1 approved faces (`set_permitted_faces` + stamps).
-    #[wasm_bindgen(constructor)]
-    pub fn new(repair_budget: u32, automatic: u32, landing_rule: u32) -> Result<PolicyData, JsValue> {
-        let mut result = PolicyResult::plain(FaceMask::new(0), Vec::new(), AllowedStructures { pillar: true, tree: true, brace: true, roof: true, cage: true, raft: true }, repair_budget);
-        result.automatic = match automatic {
-            0 => AutomaticRule::AsGiven,
-            1 => AutomaticRule::MatchCandidates,
-            _ => return Err(coded_error("BAD_INPUT")),
-        };
-        result.landing_rule = match landing_rule {
-            0 => LandingRule::Unrestricted,
-            1 => LandingRule::ApprovedFaces { stamps: Vec::new() },
-            _ => return Err(coded_error("BAD_INPUT")),
-        };
-        Ok(PolicyData { result })
+impl PolicyHandle {
+    /// Candidate ids, in order.
+    pub fn candidate_ids(&self) -> Vec<String> {
+        self.result.candidates.iter().map(|c| c.id.0.clone()).collect()
     }
-
-    /// pillar, tree, brace, roof, cage, raft as 0/1.
-    pub fn set_structures(&mut self, flags: &[u8]) -> Result<(), JsValue> {
-        let [pillar, tree, brace, roof, cage, raft] = flags else { return Err(coded_error("BAD_INPUT")) };
-        self.result.structures = AllowedStructures { pillar: *pillar != 0, tree: *tree != 0, brace: *brace != 0, roof: *roof != 0, cage: *cage != 0, raft: *raft != 0 };
-        Ok(())
+    /// Point xyz then normal xyz per candidate (the frame the policy was made in).
+    pub fn candidate_points(&self) -> Vec<f64> {
+        self.result.candidates.iter().flat_map(|c| c.point.into_iter().chain(c.normal)).collect()
     }
-
+    /// Source face per candidate (-1 none).
+    pub fn candidate_faces(&self) -> Vec<f64> {
+        self.result.candidates.iter().map(|c| c.source_face.map_or(-1.0, f64::from)).collect()
+    }
+    /// Per repair alternate: the candidate id it stands in for, in trial order.
+    pub fn alternate_owners(&self) -> Vec<String> {
+        self.result.alternates.iter().flat_map(|(owner, list)| list.iter().map(|_| owner.0.clone())).collect()
+    }
+    /// Point xyz then normal xyz per repair alternate, in the order of `alternate_owners`.
+    pub fn alternate_points(&self) -> Vec<f64> {
+        self.result.alternates.iter().flat_map(|(_, list)| list.iter().flat_map(|c| c.point.into_iter().chain(c.normal))).collect()
+    }
+    /// Source face per repair alternate (-1 none), in the order of `alternate_owners`.
+    pub fn alternate_faces(&self) -> Vec<f64> {
+        self.result.alternates.iter().flat_map(|(_, list)| list.iter().map(|c| c.source_face.map_or(-1.0, f64::from))).collect()
+    }
+    /// pillar, tree, brace, roof, cage, raft (1 = allowed).
+    pub fn structures(&self) -> Vec<u8> {
+        let s = self.result.structures;
+        [s.pillar, s.tree, s.brace, s.roof, s.cage, s.raft].map(u8::from).to_vec()
+    }
+    pub fn repair_budget(&self) -> u32 {
+        self.result.repair_budget
+    }
+    /// 0 every contact as given, 1 only contacts that reproduce a candidate.
+    pub fn automatic(&self) -> u32 {
+        u32::from(matches!(self.result.automatic, AutomaticRule::MatchCandidates { .. }))
+    }
+    /// 1 when secondary landings are limited to the permitted faces.
+    pub fn landing_rule(&self) -> u32 {
+        u32::from(matches!(self.result.landing_rule, LandingRule::ApprovedFaces { .. }))
+    }
+    pub fn islands_outside_permitted(&self) -> bool {
+        self.result.islands_outside_permitted
+    }
     /// One 0/1 byte per source face.
-    pub fn set_permitted_faces(&mut self, mask: &[u8]) {
-        let mut faces = FaceMask::new(mask.len());
-        for (face, &flag) in mask.iter().enumerate() {
-            faces.set(face, flag != 0);
-        }
-        self.result.permitted_faces = faces;
+    pub fn permitted_faces(&self) -> Vec<u8> {
+        (0..self.result.permitted_faces.len()).map(|f| u8::from(self.result.permitted_faces.get(f))).collect()
     }
-
-    /// Area edits applied at a landing point (`STAMP_STRIDE` f64 each, in order).
-    pub fn set_stamps(&mut self, values: &[f64]) -> Result<(), JsValue> {
-        let stamps: Vec<AreaStamp> = rows(values, STAMP_STRIDE)?.map(|r| AreaStamp { center: [r[0], r[1], r[2]], radius: r[3], normal: [r[4], r[5], r[6]], allow: r[7] != 0.0 }).collect();
-        if matches!(self.result.landing_rule, LandingRule::ApprovedFaces { .. }) {
-            self.result.landing_rule = LandingRule::ApprovedFaces { stamps };
-        }
-        Ok(())
+    pub fn ring_count(&self) -> u32 {
+        self.result.rings.len() as u32
     }
-
-    pub fn set_candidates(&mut self, ids: Vec<String>, values: &[f64]) -> Result<(), JsValue> {
-        self.result.candidates = candidates_of(&ids, values, Origin::Auto)?;
-        Ok(())
+    /// False when a saved dental area could not be reproduced from the mesh (no automatic support).
+    pub fn reproduced(&self) -> bool {
+        self.reproduced
     }
-
-    /// Repair options in trial order: `owners[k]` is the candidate ID alternate `k` stands in for.
-    pub fn set_alternates(&mut self, owners: Vec<String>, ids: Vec<String>, values: &[f64]) -> Result<(), JsValue> {
-        if owners.len() != ids.len() {
-            return Err(coded_error("BAD_INPUT"));
-        }
-        let options = candidates_of(&ids, values, Origin::Auto)?;
-        let mut grouped: Vec<(CandidateId, Vec<Candidate>)> = Vec::new();
-        for (owner, option) in owners.into_iter().zip(options) {
-            match grouped.iter_mut().find(|(id, _)| id.0 == owner) {
-                Some((_, list)) => list.push(option),
-                None => grouped.push((CandidateId(owner), vec![option])),
-            }
-        }
-        self.result.alternates = grouped;
-        Ok(())
-    }
-
-    /// A contact ring: `arcs` is one arclength (mm) per candidate in `candidate_ids`.
-    pub fn add_ring(&mut self, perimeter_mm: f64, spacing_mm: f64, candidate_ids: Vec<String>, arcs: &[f64]) -> Result<(), JsValue> {
-        if candidate_ids.len() != arcs.len() || !perimeter_mm.is_finite() || !spacing_mm.is_finite() || arcs.iter().any(|a| !a.is_finite()) {
-            return Err(coded_error("BAD_INPUT"));
-        }
-        self.result.rings.push(Ring { perimeter_mm, spacing_mm, arcs: candidate_ids.into_iter().map(CandidateId).zip(arcs.iter().copied()).collect() });
-        Ok(())
+    /// The aligner profile a dental policy was made with (empty for the generic policy).
+    pub fn profile_id(&self) -> String {
+        self.profile_id.clone()
     }
 }
 
@@ -220,7 +191,7 @@ impl Generation {
 #[wasm_bindgen]
 impl GeometrySession {
     /// The support pipeline for a plate-space model: `contacts` and `shapes` as `build_supports`,
-    /// `policy` the data of the unit's policy. `timeout_ms` > 0 ends the repair and checks early with
+    /// `policy` the unit's policy as Rust made it (same frame as the model). `timeout_ms` > 0 ends the repair and checks early with
     /// an inconclusive verdict (never a clear one) once that much time has passed.
     pub fn generate(
         &mut self,
@@ -232,7 +203,7 @@ impl GeometrySession {
         mode: u32,
         label_text: &str,
         zones: &[f64],
-        policy: &PolicyData,
+        policy: &PolicyHandle,
         timeout_ms: f64,
         revision: u32,
     ) -> Result<Generation, JsValue> {
@@ -349,18 +320,59 @@ pub fn check_support_problems(positions: &[f32], indices: &[u32], contacts: &[f6
     Ok(out)
 }
 
-/// Length of a contour given as vertex-index pairs (a ring's perimeter).
+/// Test-only: a policy assembled from data (synthetic engine tests and their recorded goldens). The
+/// browser build cannot assemble a policy; production policies come from `dental_policy` / `generic_policy`.
+#[cfg(feature = "test-abi")]
 #[wasm_bindgen]
-pub fn contour_perimeter(positions: &[f32], edges: &[u32]) -> Result<f64, JsValue> {
-    if edges.len() % 2 != 0 || positions.len() % 3 != 0 || edges.iter().any(|&v| v as usize * 3 + 2 >= positions.len()) {
-        return Err(coded_error("INVALID_LENGTH"));
+impl PolicyHandle {
+    /// `automatic`: 0 as given, 1 reproduce a candidate (0.03 mm, dot 0.95). `landing_rule`: 0
+    /// unrestricted, 1 approved faces. `islands_outside`: whether the policy has an outside.
+    #[wasm_bindgen(constructor)]
+    pub fn new_for_test(repair_budget: u32, automatic: u32, landing_rule: u32, islands_outside: bool) -> Result<PolicyHandle, JsValue> {
+        use mixo_geometry_core::supports::policy::{AllowedStructures, FaceMask};
+        let mut result = PolicyResult::plain(FaceMask::new(0), Vec::new(), AllowedStructures { pillar: true, tree: true, brace: true, roof: true, cage: true, raft: true }, repair_budget);
+        result.automatic = match automatic {
+            0 => AutomaticRule::AsGiven,
+            1 => AutomaticRule::MatchCandidates { tol_mm: 0.03, min_dot: 0.95 },
+            _ => return Err(coded_error("BAD_INPUT")),
+        };
+        result.landing_rule = match landing_rule {
+            0 => LandingRule::Unrestricted,
+            1 => LandingRule::ApprovedFaces { stamps: Vec::new() },
+            _ => return Err(coded_error("BAD_INPUT")),
+        };
+        result.islands_outside_permitted = islands_outside;
+        Ok(PolicyHandle::new(result))
     }
-    let at = |v: u32| {
-        let o = v as usize * 3;
-        [f64::from(positions[o]), f64::from(positions[o + 1]), f64::from(positions[o + 2])]
-    };
-    Ok(edges.chunks_exact(2).fold(0.0, |sum, e| {
-        let (a, b) = (at(e[0]), at(e[1]));
-        sum + mixo_geometry_core::supports::remesh::hypot3([a[0] - b[0], a[1] - b[1], a[2] - b[2]])
-    }))
+
+    /// pillar, tree, brace, roof, cage, raft as 0/1.
+    pub fn set_structures(&mut self, flags: &[u8]) -> Result<(), JsValue> {
+        use mixo_geometry_core::supports::policy::AllowedStructures;
+        let [pillar, tree, brace, roof, cage, raft] = flags else { return Err(coded_error("BAD_INPUT")) };
+        self.result.structures = AllowedStructures { pillar: *pillar != 0, tree: *tree != 0, brace: *brace != 0, roof: *roof != 0, cage: *cage != 0, raft: *raft != 0 };
+        Ok(())
+    }
+
+    /// One 0/1 byte per source face.
+    pub fn set_permitted_faces(&mut self, mask: &[u8]) {
+        let mut faces = mixo_geometry_core::supports::policy::FaceMask::new(mask.len());
+        for (face, &flag) in mask.iter().enumerate() {
+            faces.set(face, flag != 0);
+        }
+        self.result.permitted_faces = faces;
+    }
+
+    /// Candidate rows: point xyz, normal xyz, source face (-1 none).
+    pub fn set_candidates(&mut self, ids: Vec<String>, values: &[f64]) -> Result<(), JsValue> {
+        use mixo_geometry_core::supports::policy::{Candidate, CandidateId, Origin};
+        if values.len() != ids.len() * 7 || values.iter().any(|v| !v.is_finite()) {
+            return Err(coded_error("BAD_INPUT"));
+        }
+        self.result.candidates = ids
+            .into_iter()
+            .zip(values.chunks_exact(7))
+            .map(|(id, r)| Candidate { id: CandidateId(id), source_face: (r[6] >= 0.0).then_some(r[6] as u32), point: [r[0], r[1], r[2]], normal: [r[3], r[4], r[5]], origin: Origin::Auto })
+            .collect();
+        Ok(())
+    }
 }

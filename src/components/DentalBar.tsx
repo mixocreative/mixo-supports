@@ -3,7 +3,8 @@ import type { Gesture } from '../editing/gesture';
 import type { SessionEvent } from '../editing/session';
 import { profileById } from '../dental/alignerProfiles';
 import { t, type Lang } from '../i18n';
-import { defaultDentalTuning, type DentalTuning } from '../core/analysis/dentalTuning';
+import type { DentalTuning } from '../core/analysis/dentalTuning';
+import type { ProfileDefaults } from '../dental/alignerProfiles';
 import { CommandButton } from './CommandButton';
 import { DentalAlignerBar, DentalAlignerPrompt, DentalTypeStep, noticeText } from './DentalSteps';
 import { DentalSupportsStep, type DentalReview } from './DentalSupports';
@@ -12,7 +13,7 @@ import { SurfaceBrushBar } from './SurfaceBrushBar';
 
 /** Dental Auto Generate chrome: review the detector first, then mark only permitted support area. */
 export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus = 'loading', reviewReady = true,
-  lang = 'en', selectedName, onFiles, onUseSelected, tuning = defaultDentalTuning, tuningBusy = false, tuningError = false, onTuningChange,
+  lang = 'en', selectedName, onFiles, onUseSelected, tuning, tuningLimits, tuningBusy = false, tuningError = false, onTuningChange,
   review, send, run }: {
   gesture: Extract<Gesture, { kind: 'dental-type' | 'dental-aligner' | 'dental-area' | 'dental-review' }>;
   lang?: Lang;
@@ -25,7 +26,9 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
   tipCount?: number;
   previewStatus?: 'idle' | 'loading' | 'ready' | 'error';
   reviewReady?: boolean;
-  tuning?: DentalTuning;
+  /** The area's strip controls and their limits (the aligner profile); absent: no controls. */
+  tuning?: DentalTuning | undefined;
+  tuningLimits?: Readonly<ProfileDefaults> | undefined;
   tuningBusy?: boolean;
   tuningError?: boolean;
   onTuningChange?: (tuning: DentalTuning) => void;
@@ -86,19 +89,19 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
       radius={gesture.brush.radius}
       onRadiusChange={(radius) => send({ type: 'setDentalRadius', radius })}
       note={<>
-        <div className="edit-row dental-tuning" role="group" aria-label={t('Aligner contact strip')}>
+        {tuning && tuningLimits && <div className="edit-row dental-tuning" role="group" aria-label={t('Aligner contact strip')}>
           <RangeField layout="row" label="Strip width" unit="{n} mm" hint="Width of the permitted strip beside each rim"
-            min={0.2} max={2.4} step={0.1} value={tuning.stripWidthMm}
+            min={tuningLimits.stripWidthMinMm} max={tuningLimits.stripWidthMaxMm} step={0.1} value={tuning.stripWidthMm}
             onChange={(stripWidthMm) => onTuningChange?.({ ...tuning, stripWidthMm })} />
           <RangeField layout="row" label="Support density" unit="{n}×" hint="Higher density places proposed tips closer together"
-            min={0.5} max={2} step={0.1} value={tuning.density}
+            min={tuningLimits.densityMin} max={tuningLimits.densityMax} step={0.1} value={tuning.density}
             onChange={(density) => onTuningChange?.({ ...tuning, density })} />
           <details><summary>{t('Advanced position')}</summary>
             <RangeField layout="row" label="Rim setback" unit="{n} mm" hint="Move the strip away from the trim rim on its non-cavity side"
-              min={0} max={1} step={0.1} value={tuning.setbackMm}
+              min={0} max={tuningLimits.setbackMaxMm} step={0.1} value={tuning.setbackMm}
               onChange={(setbackMm) => onTuningChange?.({ ...tuning, setbackMm })} />
           </details>
-        </div>
+        </div>}
         {tuningBusy && <p className="edit-note" role="status">{t('Updating support area and tips…')}</p>}
         {tuningError && <p className="edit-note" role="alert">{t('Could not update the support strip. The previous area is still active.')}</p>}
         {gesture.notices.map((notice) => <p key={notice.kind} className="edit-note" role="alert">{noticeText(notice)}</p>)}

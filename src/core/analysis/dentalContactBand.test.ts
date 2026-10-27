@@ -4,6 +4,7 @@ import { placementMatrix, transformPositions } from '../../../scripts/test-suppo
 import { proposeDentalSupportRegion } from './dentalRegion';
 import { diagnosticDentalSideBands } from './dentalContactBand';
 import { parseStl } from '../../../scripts/test-support/rustImport';
+import { REFERENCE_PROFILE, referenceTuning } from '../../../scripts/test-support/referenceProfile';
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
@@ -13,7 +14,7 @@ const reference = () => {
 describe('diagnosticDentalSideBands', () => {
   it('traces separate narrow 3D surface strips on both sides of both contours', () => {
     const mesh = reference();
-    const region = proposeDentalSupportRegion(mesh);
+    const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
     const result = diagnosticDentalSideBands(mesh, region, { setback: 0.2, width: 1.2 });

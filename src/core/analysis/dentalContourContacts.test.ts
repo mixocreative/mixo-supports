@@ -5,6 +5,7 @@ import { diagnosticDentalSideBands } from './dentalContactBand';
 import { proposeDentalSupportRegion } from './dentalRegion';
 import { sampleDiagnosticContourContacts } from './dentalContourContacts';
 import { parseStl } from '../../../scripts/test-support/rustImport';
+import { REFERENCE_PROFILE, referenceTuning } from '../../../scripts/test-support/referenceProfile';
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
@@ -41,7 +42,7 @@ describe('sampleDiagnosticContourContacts', () => {
 
   it('samples exact source faces in a selected contour-side strip without granting production permission', () => {
     const mesh = reference();
-    const region = proposeDentalSupportRegion(mesh);
+    const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
     const bands = diagnosticDentalSideBands(mesh, region, { setback: 0.2, width: 1.2 });
@@ -71,7 +72,7 @@ describe('sampleDiagnosticContourContacts', () => {
 
   it('abstains on an invalid loop, wrong-sized mask, and invalid sampling settings', () => {
     const mesh = reference();
-    const region = proposeDentalSupportRegion(mesh);
+    const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
     const band = new Uint8Array(mesh.indices.length / 3);

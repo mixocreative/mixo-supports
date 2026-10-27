@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { defaultDentalTuning, type DentalTuning } from '../core/analysis/dentalTuning';
+import type { DentalTuning } from '../core/analysis/dentalTuning';
+import { defaultDentalTuning } from '../dental/tuning';
+import { profileData } from '../dental/alignerProfiles';
 import type { PrintUnit, SceneCommand } from '../state/project';
 import type { AnalysisClient } from '../workers/analysisClient';
 
@@ -14,7 +16,9 @@ export function useDentalTuning(unit: PrintUnit | undefined, active: boolean, an
   const [error, setError] = useState(false);
   const policy = unit?.dental;
   const busy = active && draft?.unitId === unit?.id;
-  const tuning = busy && draft ? draft.tuning : policy?.kind === 'two-contour' ? policy.tuning ?? defaultDentalTuning : defaultDentalTuning;
+  // The aligner type's own defaults and slider limits (profile data).
+  const tuning = busy && draft ? draft.tuning : policy ? (policy.kind === 'two-contour' ? policy.tuning : undefined) ?? defaultDentalTuning(policy.profileId) : undefined;
+  const limits = policy ? profileData(policy.profileId).defaults : undefined;
   const change = useCallback((next: DentalTuning) => {
     if (!active || !unit || unit.dental?.kind !== 'two-contour') return;
     setError(false);
@@ -32,7 +36,7 @@ export function useDentalTuning(unit: PrintUnit | undefined, active: boolean, an
     const key = `dental-retune:${unit.id}`;
     const timer = window.setTimeout(() => {
       client = analysis();
-      void client.retuneDentalRegion(key, unit.source, policy.region, draft.tuning,
+      void client.retuneDentalRegion(key, unit.source, policy.region, draft.tuning, policy.profileId,
         { key: 'Updating dental support area on {name}', vars: { name: unitName(unit.id) } }).then((region) => {
         if (!live) return;
         if (region?.kind !== 'proposal') { setDraft(null); setError(true); return; }
@@ -44,5 +48,5 @@ export function useDentalTuning(unit: PrintUnit | undefined, active: boolean, an
     }, 180);
     return () => { live = false; window.clearTimeout(timer); client?.cancel(key); };
   }, [analysis, busy, dispatch, draft, policy, unit, unitName]);
-  return { tuning, busy, error, change };
+  return { tuning, limits, busy, error, change };
 }

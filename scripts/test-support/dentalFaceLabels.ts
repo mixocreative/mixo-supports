@@ -5,7 +5,7 @@ import './useNodeEngine';
 // dentalPolicy, dentalContactFootprint): tips and secondary landings may sit only on `allowed`.
 import { readFileSync } from 'node:fs';
 import { proposeDentalSupportRegion } from '../../src/core/analysis/dentalRegion';
-import { defaultDentalTuning } from '../../src/core/analysis/dentalTuning';
+import { REFERENCE_PROFILE, referenceTuning } from './referenceProfile';
 import { parseStl } from './rustImport';
 
 const fixture = 'docs/dental-reference/reference-aligner.stl';
@@ -24,12 +24,12 @@ export function runs(mask: ArrayLike<number>): number[] {
 export function buildLabels() {
   const bytes = readFileSync(fixture);
   const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-  const region = proposeDentalSupportRegion(mesh, defaultDentalTuning);
+  const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
   if (region.kind !== 'proposal' || !region.contactFaces) throw new Error(`reference must yield a region: ${JSON.stringify(region)}`);
   return {
     fixture,
     faceCount: mesh.indices.length / 3,
-    tuning: defaultDentalTuning,
+    tuning: referenceTuning,
     meaning: {
       forbidden: 'Opening-facing (fitting) side of the two contours. No tip and no secondary landing may sit on it.',
       allowed: 'Narrow strip on the non-fitting side, between the setback and the strip width from a contour. Every tip and every secondary landing must sit on it.',

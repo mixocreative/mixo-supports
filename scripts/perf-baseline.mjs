@@ -19,6 +19,7 @@ await import('./test-support/useNodeEngine'); // registers the Rust engine the t
 const { binaryStlTriangles, stlKind } = await import('../src/core/import/stlHeader');
 const { prepare, centerImportedWithWasm, decimateWithWasm } = await import('../src/workers/prepareImport');
 const { proposeDentalSupportRegion } = await import('../src/core/analysis/dentalRegion');
+const { REFERENCE_PROFILE, referenceTuning } = await import('./test-support/referenceProfile');
 const { runSupportJob } = await import('../src/supports/jobRunner');
 const { filterDentalPlacement } = await import('../src/dental/placement');
 const { defaultSupportSettings } = await import('../src/core/supports/settings');
@@ -80,10 +81,10 @@ for (let at = 1; at < alignerMesh.positions.length; at += 3) lowest = Math.min(l
 const frame = { position: [0, defaultSupportSettings.liftHeight - lowest, 0], rotation: [0, 0, 0] };
 
 const dental = time('aligner dental Generate (region + filter + runSupportJob)', () => {
-  const region = proposeDentalSupportRegion(alignerMesh);
+  const region = proposeDentalSupportRegion(alignerMesh, referenceTuning, REFERENCE_PROFILE);
   if (region.kind !== 'proposal') throw new Error(`aligner region ${region.reason}`);
   const policy = {
-    kind: 'two-contour', region, stamps: [],
+    kind: 'two-contour', profileId: REFERENCE_PROFILE, region, stamps: [],
     rim: {
       boundaryKind: 'projection-fallback', points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]), openingDirection: [0, 1, 0],
       centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1], visibilityMask: new Uint8Array([0]),

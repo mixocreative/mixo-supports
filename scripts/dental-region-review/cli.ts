@@ -3,6 +3,7 @@ import { proposeDentalSupportRegion } from '../../src/core/analysis/dentalRegion
 import { exportDentalRegionReview } from './review';
 import { buildDentalReview } from './build';
 import { parseStl } from '../test-support/rustImport';
+import { REFERENCE_PROFILE, referenceTuning } from './profile';
 
 const argument = (name: string): string | undefined => {
   const at = process.argv.indexOf(name);
@@ -15,7 +16,7 @@ if (!input || !output) throw new Error('Usage: npx vite-node --script scripts/de
 const bytes = readFileSync(input);
 const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
 const review = withSupports ? buildDentalReview(mesh) : undefined;
-const result = review ?? proposeDentalSupportRegion(mesh);
+const result = review ?? proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
 if (result.kind === 'inconclusive') {
   process.stderr.write(`Dental region inconclusive: ${result.reason}\n`);
   process.exitCode = 2;

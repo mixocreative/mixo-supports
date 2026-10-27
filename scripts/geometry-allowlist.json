@@ -5,6 +5,9 @@
  "src/components/ObjectViewport.tsx": {
   "label": "host-adapter"
  },
+ "src/components/useDentalFlow.ts": {
+  "label": "host-adapter"
+ },
  "src/components/useFixSpot.ts": {
   "label": "host-adapter"
  },
@@ -29,9 +32,6 @@
   "label": "host-adapter"
  },
  "src/core/analysis/dentalOrient.ts": {
-  "label": "host-adapter"
- },
- "src/core/analysis/dentalPolicy.ts": {
   "label": "host-adapter"
  },
  "src/core/analysis/supportCheck.ts": {
@@ -65,9 +65,6 @@
  "src/dental/arrange.ts": {
   "label": "host-adapter"
  },
- "src/dental/placement.ts": {
-  "label": "host-adapter"
- },
  "src/editing/check.ts": {
   "label": "host-math",
   "maxMath": 3,
@@ -94,9 +91,6 @@
   "label": "host-adapter"
  },
  "src/supports/export.ts": {
-  "label": "host-adapter"
- },
- "src/supports/generateSupports.ts": {
   "label": "host-adapter"
  },
  "src/supports/jobRunner.ts": {

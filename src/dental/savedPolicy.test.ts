@@ -6,7 +6,10 @@ import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
 import type { PlacementResult } from '../core/analysis/types';
 import { filterDentalPlacement } from './placement';
+import { decodeProject, encodeProject } from '../state/projectFile';
+import { emptyScene, identityTransform, reduceScene, type PrintUnit } from '../state/project';
 import { parseStl } from '../../scripts/test-support/rustImport';
+import { REFERENCE_PROFILE, referenceTuning } from '../../scripts/test-support/referenceProfile';
 
 /** A saved two-contour policy is recomputed from the mesh when it is used; it is never trusted as saved. */
 const rim: DentalRim = {
@@ -19,11 +22,11 @@ const settings = { overhangAngleDegrees: 45, spacing: 2, edgeInset: 0, sharpEdge
 describe('saved dental policy on load', () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
   const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-  const region = proposeDentalSupportRegion(mesh);
+  const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
   if (region.kind !== 'proposal') throw new Error('reference must yield a region');
   const job = (dental: DentalPolicy): DentalPlacementJob => ({ mesh, orientation: { position: [0, 0, 0], rotation: [0, 0, 0] }, settings, dental });
   const saved = (patch: Partial<Extract<DentalPolicy, { kind: 'two-contour' }>> = {}): DentalPolicy =>
-    ({ kind: 'two-contour', rim, region, stamps: [], ...patch });
+    ({ kind: 'two-contour', profileId: REFERENCE_PROFILE, rim, region, stamps: [], ...patch });
 
   it('accepts a saved policy that matches what the mesh yields now', () => {
     const result = filterDentalPlacement(job(saved()), empty);
@@ -43,5 +46,27 @@ describe('saved dental policy on load', () => {
 
   it('rejects a saved footprint that no longer matches the tuning it is used with', () => {
     expect(filterDentalPlacement(job(saved({ tuning: { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 } })), empty).points).toEqual([]);
+  }, 60000);
+
+  it('loads an old-format project (no aligner profile, stored gap alternates) and recomputes it on use', () => {
+    const unit = { id: 'unit-a', name: 'A', source: mesh, transform: identityTransform, settings: { preset: 'CUSTOM' },
+      placement: empty, manual: [], deleted: [], contactSettings: {}, zones: [] } as unknown as PrintUnit;
+    // A rim the project loader accepts (the placement itself does not read it for a two-contour area).
+    const storedRim: DentalRim = { ...rim, points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]), visibilityMask: new Uint8Array([1]),
+      visibilityResolution: 1, visibilityMin: [-1, -1], visibilityMax: [1, 1] };
+    const scene = reduceScene(reduceScene(emptyScene, { type: 'unit/add', unit }), { type: 'dental/set', unitId: 'unit-a', policy: saved({ rim: storedRim }) });
+    // Write the file the way projects were saved before profiles: no profileId, provisional alternates listed.
+    const file = JSON.parse(encodeProject(scene)) as { scene: { units: { dental: Record<string, unknown> }[] } };
+    const dental = file.scene.units[0]!.dental;
+    expect(dental.profileId).toBe(REFERENCE_PROFILE);
+    delete dental.profileId;
+    dental.gapAlternateIds = ['auto-1_2_3'];
+    const loaded = decodeProject(JSON.stringify(file)).units[0]!.dental!;
+    expect(loaded.profileId).toBe(REFERENCE_PROFILE);
+    expect('gapAlternateIds' in loaded).toBe(false);
+    expect(filterDentalPlacement(job(loaded), empty).points.length).toBe(region.contacts!.length);
+    // An aligner type no profile file defines is refused, not guessed.
+    dental.profileId = 'retired-aligner';
+    expect(() => decodeProject(JSON.stringify(file))).toThrow('unknown aligner profile');
   }, 60000);
 });

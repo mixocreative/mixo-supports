@@ -1,8 +1,7 @@
 import type { TriangleMesh } from './types';
 import type { DentalRegionProposal } from './dentalRegion';
-import { dentalEngine } from './dentalEngine';
+import { dentalInternals } from './dentalEngine';
 import { decodeContacts, type DiagnosticContourContact } from './dentalContourContacts';
-import { REFERENCE_ALIGNER_PROFILE } from './dentalProfile';
 
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
 
@@ -16,28 +15,21 @@ export interface DentalContactFootprintSettings {
   samplePhaseFraction?: number;
 }
 
-const { defaults } = REFERENCE_ALIGNER_PROFILE;
-
-/** Current one-reference defaults, read from the aligner profile data. */
-export const defaultDentalContactFootprintSettings: Readonly<DentalContactFootprintSettings> = {
-  setback: defaults.setbackMm, width: defaults.setbackMm + 1, outerSpacing: defaults.outerSpacingMm,
-  innerSpacing: defaults.innerSpacingMm, maxSearchDistance: defaults.maxSearchMm,
-};
-
 export type DentalContactFootprint =
   | { kind: 'proposal'; contactFaces: Uint8Array; outerContacts: DiagnosticContourContact[];
     innerContacts: DiagnosticContourContact[] }
   | { kind: 'inconclusive'; reason: string };
 
 /**
- * The narrow contact candidate for a region's contours (Rust `dental_footprint`). The old broad
+ * The narrow contact candidate for a region's contours (Rust `dental_footprint`, Node test package
+ * only; production takes it inside `dental_policy`). The old broad
  * face cut only distinguishes the two sides of each ridge. This proposal is not a production
  * permission: contact approach, secondary landings, and body paths still need to be checked
  * before a support is built.
  */
 export function proposeDentalContactFootprint(mesh: TriangleMesh, region: Region,
   settings: DentalContactFootprintSettings): DentalContactFootprint {
-  const result = dentalEngine().dental_footprint(mesh.positions, mesh.indices, region.allowedFaces, region.outerEdges, region.openingEdges,
+  const result = dentalInternals().dental_footprint(mesh.positions, mesh.indices, region.allowedFaces, region.outerEdges, region.openingEdges,
     Float64Array.of(settings.setback, settings.width, settings.outerSpacing, settings.innerSpacing, settings.maxSearchDistance,
       settings.samplePhaseFraction ?? Number.NaN));
   try {

@@ -13,6 +13,7 @@ import { placementSnapshot } from '../../scripts/test-support/dentalSnapshots';
 import { filterDentalPlacement } from './placement';
 import { legacyBaselineVertices } from './legacyArea';
 import { manualAreaPolicy } from './manualArea';
+import { REFERENCE_PROFILE } from '../../scripts/test-support/referenceProfile';
 
 /*
  * U8: the legacy (non two-contour) dental placement in Rust against the recorded TypeScript oracle
@@ -47,12 +48,12 @@ describe('legacy dental area (Rust against the recorded oracle)', () => {
   const job = (dental: DentalPolicy, mesh: TriangleMesh = plate): DentalPlacementJob => ({ mesh, orientation: still, settings, dental });
 
   it('a detected legacy area fills the visible footprint', () => {
-    const result = both('detected', job({ rim, stamps: [] }));
+    const result = both('detected', job({ profileId: REFERENCE_PROFILE, rim, stamps: [] }));
     expect(result.points.length).toBeGreaterThan(0);
   });
 
   it('a painted-from-scratch area permits nothing until painted, and an erase stamp removes it again', () => {
-    const manual = manualAreaPolicy(rim, false);
+    const manual = manualAreaPolicy(rim, false, REFERENCE_PROFILE);
     expect(both('manual-empty', job(manual)).points).toEqual([]);
     const painted: DentalPolicy = { ...manual, stamps: [{ center: [5, -2, 5], radius: 30, normal: down, kind: 'allow' }] };
     expect(both('painted', job(painted)).points.length).toBeGreaterThan(0);
@@ -61,35 +62,35 @@ describe('legacy dental area (Rust against the recorded oracle)', () => {
   });
 
   it('a projection-fallback rim never authorises a detected area, paint on it still counts only for a manual area', () => {
-    const fallback: DentalPolicy = { rim: { ...rim, boundaryKind: 'projection-fallback' }, stamps: [] };
+    const fallback: DentalPolicy = { profileId: REFERENCE_PROFILE, rim: { ...rim, boundaryKind: 'projection-fallback' }, stamps: [] };
     expect(both('fallback', job(fallback)).points).toEqual([]);
   });
 
   it('the overlay mask is the same gate as the generated contacts', () => {
-    const mask = legacyBaselineVertices(plate, { rim, stamps: [] });
+    const mask = legacyBaselineVertices(plate, { profileId: REFERENCE_PROFILE, rim, stamps: [] });
     expectGolden('legacy-overlay-mask', exactArray(mask, 'u8'));
     expect(mask.some((v) => v === 1)).toBe(true);
   });
 
   it('generic contacts the area permits are kept ahead of the fill, in order', () => {
     const generic = placeGeneric(applyTransform(plate, still), settings);
-    const result = both('with-generic', job({ rim, stamps: [] }), generic);
+    const result = both('with-generic', job({ profileId: REFERENCE_PROFILE, rim, stamps: [] }), generic);
     expect(result.points.length).toBeGreaterThan(0);
   });
 
   it('matches the oracle on the reference aligner (detected legacy rim and a painted area)', () => {
     const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
     const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-    const orientation = proposeDentalOrientation(mesh);
+    const orientation = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
     expect(orientation.kind).toBe('proposal');
     if (orientation.kind !== 'proposal') return;
     const rotation = rotationToDentalPose(mesh, orientation.rim)!;
     const turn = { position: [0, 0, 0] as [number, number, number], rotation };
     const generic = placeGeneric(applyTransform(mesh, turn), settings);
     const aligner = (dental: DentalPolicy): DentalPlacementJob => ({ mesh, orientation: turn, settings, dental });
-    const detected = both('aligner-detected', aligner({ rim: orientation.rim, stamps: [] }), generic);
+    const detected = both('aligner-detected', aligner({ profileId: REFERENCE_PROFILE, rim: orientation.rim, stamps: [] }), generic);
     const centre = Array.from(orientation.rim.points.subarray(0, 3)) as [number, number, number];
-    const manual = manualAreaPolicy(orientation.rim, false);
+    const manual = manualAreaPolicy(orientation.rim, false, REFERENCE_PROFILE);
     const painted = both('aligner-painted', aligner({ ...manual, stamps: [{ center: centre, radius: 25, normal: orientation.rim.openingDirection, kind: 'allow' }] }), generic);
     // The comparison must not be vacuous.
     expect(detected.points.length + painted.points.length).toBeGreaterThan(0);

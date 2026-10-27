@@ -1,5 +1,4 @@
-import { dentalEngine } from '../core/analysis/dentalEngine';
-import { DEFAULT_PROFILE_ID } from '../core/analysis/dentalProfile';
+import { dentalInternals } from '../core/analysis/dentalEngine';
 import type { DentalRim } from '../core/analysis/dental';
 import type { DentalAllowStamp, DentalPolicy } from '../core/analysis/dentalPolicy';
 import type { TriangleMesh } from '../core/analysis/types';
@@ -19,21 +18,22 @@ export class DetectedAreaExistsError extends Error {
   }
 }
 
-/** The policy of an empty painted-from-scratch area. Refuses when detection found an area. */
-export function manualAreaPolicy(rim: DentalRim, detectedArea: boolean): DentalPolicy {
+/** The policy of an empty painted-from-scratch area of an aligner type. Refuses when detection found an area. */
+export function manualAreaPolicy(rim: DentalRim, detectedArea: boolean, profileId: string): DentalPolicy {
   if (detectedArea) throw new DetectedAreaExistsError();
-  return { kind: 'legacy', origin: 'manual-area', rim, stamps: [] };
+  return { kind: 'legacy', origin: 'manual-area', profileId, rim, stamps: [] };
 }
 
 /**
  * The permitted-face mask of a painted-from-scratch area (1 byte per source face): the faces the
- * ordered brush stamps cover, computed in Rust. Throws `DetectedAreaExistsError` for a detected area.
+ * ordered brush stamps cover, computed in Rust (Node test package; production gets the same mask
+ * inside `dental_policy`). Throws `DetectedAreaExistsError` for a detected area.
  */
-export function manualAreaFaces(mesh: TriangleMesh, stamps: readonly DentalAllowStamp[], detectedArea: boolean, profile: string = DEFAULT_PROFILE_ID): Uint8Array {
+export function manualAreaFaces(mesh: TriangleMesh, stamps: readonly DentalAllowStamp[], detectedArea: boolean, profile: string): Uint8Array {
   const flat = new Float64Array(stamps.length * 8);
   stamps.forEach((stamp, at) => flat.set([...stamp.center, stamp.radius, ...stamp.normal, stamp.kind === 'allow' ? 1 : 0], at * 8));
   try {
-    return dentalEngine().manual_dental_area_from_stamps(mesh.positions, mesh.indices, flat, detectedArea, profile);
+    return dentalInternals().manual_dental_area_from_stamps(mesh.positions, mesh.indices, flat, detectedArea, profile);
   } catch (error) {
     if ((error as { code?: string }).code === 'DETECTED_AREA_EXISTS') throw new DetectedAreaExistsError();
     throw error;

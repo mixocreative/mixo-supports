@@ -12,6 +12,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
 mod dental;
+#[cfg(feature = "test-abi")]
+mod dental_test_abi;
 mod generic;
 mod safety;
 
@@ -250,6 +252,20 @@ impl GeometrySession {
 
     pub fn used_bytes(&self) -> u32 {
         self.store.used_bytes() as u32
+    }
+
+    /// A copy of a loaded mesh placed by `frame` (`[position xyz, rotation xyz]`), loaded as a new
+    /// handle in this session: a unit's plate-space model without sending its positions again.
+    pub fn load_placed(&mut self, handle: u32, frame: &[f64]) -> Result<u32, JsValue> {
+        let frame: [f64; 6] = frame.try_into().map_err(|_| coded_error("INVALID_LENGTH"))?;
+        if frame.iter().any(|v| !v.is_finite()) {
+            return Err(coded_error("NON_FINITE"));
+        }
+        let placement = matrix::placement_matrix([frame[0], frame[1], frame[2]], [frame[3], frame[4], frame[5]]);
+        let (positions, indices) = self.store.mesh_arrays(handle).map_err(mesh_error)?;
+        let placed = matrix::transform_positions(positions, &placement, Handedness::Right);
+        let indices = indices.to_vec();
+        self.load_mesh(placed, indices)
     }
 
     /// The mesh's positions through `matrix` (f64[16], column-major); `handedness` 0 keeps the

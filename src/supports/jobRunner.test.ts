@@ -4,12 +4,12 @@ import type { ContactInputs, DentalPlacementJob, JobTransform, SupportJob } from
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { DentalPolicy } from '../core/analysis/dentalPolicy';
-import { dentalRegionAllowedOnFace } from '../core/analysis/dentalPolicy';
 import { proposeDentalSupportRegion } from '../core/analysis/dentalRegion';
 import { readFileSync } from 'node:fs';
 import { runSupportJob } from './jobRunner';
 import { filterDentalPlacement } from '../dental/placement';
 import { parseStl } from '../../scripts/test-support/rustImport';
+import { REFERENCE_PROFILE, referenceTuning } from '../../scripts/test-support/referenceProfile';
 
 type V = [number, number, number];
 
@@ -71,7 +71,7 @@ describe('runSupportJob: dental secondary contacts', () => {
   const mask = new Uint8Array(model.indices.length / 3).fill(1);
   mask[6] = 0;
   mask[7] = 0;
-  const dental: DentalPolicy = { kind: 'two-contour', stamps: [], rim: {
+  const dental: DentalPolicy = { kind: 'two-contour', profileId: REFERENCE_PROFILE, stamps: [], rim: {
     boundaryKind: 'projection-fallback', points: new Float32Array(), openingDirection: [0, -1, 0],
     centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1], visibilityMask: new Uint8Array(),
     visibilityResolution: 0, visibilityMin: [0, 0], visibilityMax: [0, 0],
@@ -106,19 +106,10 @@ describe('runSupportJob: dental secondary contacts', () => {
     expect(built.components.some((component) => component.contactId === 'manual-shelf')).toBe(true);
   });
 
-  it('marks a forbidden secondary landing face as disallowed', () => {
-    // The TS landing ray of the shelf contact (recorded oracle result): it lands on the slab top, face 6.
-    const landing = { point: [0, 9, 0] as V, normal: [0, 1, 0] as V, faceIndex: 6, sourcePoint: undefined as V | undefined };
-    expect(landing?.faceIndex).toBeDefined();
-    expect(mask[landing!.faceIndex!]).toBe(0);
-    expect(dentalRegionAllowedOnFace(dental, landing!.faceIndex!, landing!.sourcePoint ?? landing!.point, [0, 1, 0])).toBe(false);
-  });
-
-  it('does not trust an all-ones mask even if its local secondary landing gate allows a face', () => {
+  // Which faces a secondary landing may use (strip and paint) is Rust `area_allows` / `landing_allowed`, tested there.
+  it('does not trust an all-ones mask: the saved strip is recomputed, so the shelf contact is left out', () => {
     const allowed: DentalPolicy = { ...dental, region: { ...dental.region,
       contactFaces: new Uint8Array(mask.length).fill(1) } };
-    const landing = { point: [0, 9, 0] as V, normal: [0, 1, 0] as V, faceIndex: 6, sourcePoint: undefined as V | undefined };
-    expect(dentalRegionAllowedOnFace(allowed, landing!.faceIndex!, landing!.sourcePoint ?? landing!.point, [0, 1, 0])).toBe(true);
     expect(runSupportJob({ ...job(model, still, contacts), dental: allowed }).dropped).toEqual(['auto-shelf']);
   });
 });
@@ -145,10 +136,10 @@ describe('filterDentalPlacement', () => {
   it('samples the approved two-contour faces without requiring an opening-ray hit', () => {
     const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
     const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-    const region = proposeDentalSupportRegion(mesh);
+    const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
-    const dental: DentalPolicy = { kind: 'two-contour', region, stamps: [], rim: {
+    const dental: DentalPolicy = { kind: 'two-contour', profileId: REFERENCE_PROFILE, region, stamps: [], rim: {
       boundaryKind: 'projection-fallback', points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]),
       openingDirection: [0, 1, 0], centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1],
       visibilityMask: new Uint8Array([0]), visibilityResolution: 1, visibilityMin: [-1, -1], visibilityMax: [1, 1],
@@ -165,7 +156,7 @@ describe('filterDentalPlacement', () => {
     const forgedBand: DentalPolicy = { ...dental, region: { ...region, contactFaces: new Uint8Array(region.allowedFaces.length).fill(1) } };
     expect(filterDentalPlacement({ ...job, dental: forgedBand }, empty).points).toEqual([]);
     const tuning = { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 };
-    const tuned = proposeDentalSupportRegion(mesh, tuning);
+    const tuned = proposeDentalSupportRegion(mesh, tuning, REFERENCE_PROFILE);
     expect(tuned.kind).toBe('proposal');
     if (tuned.kind !== 'proposal') return;
     const tunedPolicy: DentalPolicy = { ...dental, region: tuned, tuning };
@@ -174,6 +165,7 @@ describe('filterDentalPlacement', () => {
   }, 60000);
   const triangle: TriangleMesh = { positions: new Float32Array([-2, 0, -2, 2, 0, -2, 0, 0, 2]), indices: new Uint32Array([0, 1, 2]) };
   const policy: DentalPolicy = {
+    profileId: REFERENCE_PROFILE,
     rim: {
       boundaryKind: 'lower-edge-loop', points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]),
       openingDirection: [0, 1, 0], centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1],
@@ -227,13 +219,13 @@ describe('filterDentalPlacement', () => {
 it('rejects an automatic primary tip not present in the recomputed dental contact samples', () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
   const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-  const region = proposeDentalSupportRegion(mesh);
+  const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
   expect(region.kind).toBe('proposal');
   if (region.kind !== 'proposal') return;
   const source = region.contacts![0]!;
   const forged: SupportPoint = point('auto-forged',
     [source.position[0] + 5, source.position[1], source.position[2]], source.normal);
-  const policy: DentalPolicy = { kind: 'two-contour', region, stamps: [], rim: {
+  const policy: DentalPolicy = { kind: 'two-contour', profileId: REFERENCE_PROFILE, region, stamps: [], rim: {
     boundaryKind: 'projection-fallback', points: new Float32Array(), openingDirection: [0, -1, 0],
     centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1], visibilityMask: new Uint8Array(),
     visibilityResolution: 0, visibilityMin: [0, 0], visibilityMax: [0, 0],

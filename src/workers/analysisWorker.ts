@@ -2,6 +2,7 @@ import { runCheckJob, runPlacementJob } from '../supports/jobRunner';
 import { filterDentalPlacement } from '../dental/placement';
 import { orientDentalAligner } from '../core/analysis/dentalOrient';
 import { proposeDentalSupportRegion, retuneDentalSupportRegion } from '../core/analysis/dentalRegion';
+import { defaultDentalTuning } from '../dental/tuning';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
 import { geometryReady } from './geometryClient';
 import { serveTask, transferable } from './serveTask';
@@ -21,15 +22,16 @@ serveTask<AnalysisTask, AnalysisResult>((task, { progress: post }) => runAfterGe
   if (task.kind === 'check') return { kind: 'checked', problems: runCheckJob(task.job, progress) };
   if (task.kind === 'dental-orient') {
     progress(0, 'Checking and orienting the aligner');
-    const orientation = orientDentalAligner(task.job.mesh);
+    const orientation = orientDentalAligner(task.job.mesh, task.job.profile);
     progress(1, 'Aligner oriented');
     return { kind: 'dental-orient-result', orientation };
   }
   if (task.kind === 'dental-region' || task.kind === 'dental-retune') {
     progress(0, 'Detecting dental contours');
+    const { mesh, profile } = task.job;
     const region = task.kind === 'dental-region'
-      ? proposeDentalSupportRegion(task.job.mesh)
-      : retuneDentalSupportRegion(task.job.mesh, task.job.region, task.job.tuning);
+      ? proposeDentalSupportRegion(mesh, defaultDentalTuning(profile), profile)
+      : retuneDentalSupportRegion(mesh, task.job.region, task.job.tuning, profile);
     progress(1, 'Dental region ready');
     return region.kind === 'proposal'
       ? transferable({ kind: 'dental-region-result', region }, [region.allowedFaces.buffer, region.outerEdges.buffer,

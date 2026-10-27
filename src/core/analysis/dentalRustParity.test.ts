@@ -10,6 +10,7 @@ import { inspectDentalCentralOpening } from './dentalContours';
 import { orientDentalAligner } from './dentalOrient';
 import { proposeDentalSupportRegion, retuneDentalSupportRegion, type DentalRegionProposal } from './dentalRegion';
 import type { TriangleMesh } from './types';
+import { REFERENCE_PROFILE, referenceTuning } from '../../../scripts/test-support/referenceProfile';
 
 /*
  * U6a: the Rust dental detectors against the recorded TypeScript oracle results (scripts/fixtures/golden; rule 7: IDs, masks and edge sets
@@ -42,21 +43,21 @@ describe('Rust dental region vs the recorded TS oracle', () => {
   for (const tuning of tunings) {
     it(`matches mask, contours, tips and IDs at ${JSON.stringify(tuning)}`, () => {
       const mesh = reference();
-      expectSameRegion(`dental-region-${tunings.indexOf(tuning)}`, proposal(proposeDentalSupportRegion(mesh, tuning)));
+      expectSameRegion(`dental-region-${tunings.indexOf(tuning)}`, proposal(proposeDentalSupportRegion(mesh, tuning, REFERENCE_PROFILE)));
     }, 120000);
   }
 
   it('retunes to the recorded result and to fresh detection', () => {
     const mesh = reference();
-    const base = proposal(proposeDentalSupportRegion(mesh));
+    const base = proposal(proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE));
     const tuning = { setbackMm: 0.35, stripWidthMm: 0.8, density: 1.25 };
-    const retuned = proposal(retuneDentalSupportRegion(mesh, base, tuning));
+    const retuned = proposal(retuneDentalSupportRegion(mesh, base, tuning, REFERENCE_PROFILE));
     expectSameRegion('dental-region-retuned', retuned);
-    expect(retuned).toEqual(proposal(proposeDentalSupportRegion(mesh, tuning)));
+    expect(retuned).toEqual(proposal(proposeDentalSupportRegion(mesh, tuning, REFERENCE_PROFILE)));
   }, 120000);
 
   it('reproduces the pinned reference counts', () => {
-    const region = proposal(proposeDentalSupportRegion(reference()));
+    const region = proposal(proposeDentalSupportRegion(reference(), referenceTuning, REFERENCE_PROFILE));
     expect(region.outerEdges.length / 2).toBe(2665);
     expect(region.openingEdges.length / 2).toBe(339);
     expect(region.diagnostics.regionFaces).toEqual([254344, 119612]);
@@ -84,9 +85,9 @@ describe('Rust orientation vs the recorded TS oracle', () => {
     [[0, 0, 0], [0.61, -0.83, 1.17]].forEach((rotation, at) => {
       const turned = rotation.every((value) => value === 0) ? mesh
         : { positions: transformPositions(mesh.positions, placementMatrix({ position: [0, 0, 0], rotation: rotation as Vector })), indices: mesh.indices };
-      const found = proposeDentalOrientation(turned);
+      const found = proposeDentalOrientation(turned, REFERENCE_PROFILE);
       const actual = orientationSnapshots(found, found.kind === 'proposal' ? rotationToDentalPose(turned, found.rim) : undefined,
-        found.kind === 'proposal' ? inspectDentalCentralOpening(turned, found.rim) : { kind: 'none' });
+        found.kind === 'proposal' ? inspectDentalCentralOpening(turned, found.rim, REFERENCE_PROFILE) : { kind: 'none' });
       expectGolden(`dental-orient-${at}`, actual.tight, 1e-9);
       expectGolden(`dental-orient-${at}-points`, actual.points, 1e-4);
       expect(actual.tight.pose).not.toBeNull();
@@ -104,7 +105,7 @@ describe('100 random poses restore within 0.02 mm (seeded)', () => {
     for (let trial = 0; trial < 100; trial += 1) {
       const scramble: Vector = [(random() * 2 - 1) * Math.PI, (random() * 2 - 1) * Math.PI, (random() * 2 - 1) * Math.PI];
       const turned = { positions: transformPositions(mesh.positions, placementMatrix({ position: [0, 0, 0], rotation: scramble })), indices: mesh.indices };
-      const found = proposeDentalOrientation(turned);
+      const found = proposeDentalOrientation(turned, REFERENCE_PROFILE);
       if (found.kind !== 'proposal') continue;
       const pose = rotationToDentalPose(turned, found.rim);
       if (!pose) continue;
@@ -147,7 +148,7 @@ function withPlate(mesh: TriangleMesh, extra: TriangleMesh): TriangleMesh {
 describe('synthetic aligners without a decidable central opening abstain', () => {
   const frame = () => {
     const mesh = reference();
-    const found = proposeDentalOrientation(mesh);
+    const found = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
     if (found.kind !== 'proposal') throw new Error('reference must orient');
     const { rim } = found;
     return { mesh, rim, min: rim.visibilityMin, max: rim.visibilityMax };
@@ -156,18 +157,18 @@ describe('synthetic aligners without a decidable central opening abstain', () =>
   it('a covered opening is absent: Step 1 reports absent and no region is proposed', () => {
     const { mesh, rim, min, max } = frame();
     const covered = withPlate(mesh, plate(rim, [min[0] - 1, max[0] + 1], [min[1] - 1, max[1] + 1], 0.4));
-    expect(orientDentalAligner(covered)).toMatchObject({ kind: 'oriented', opening: 'absent' });
-    expect(proposeDentalSupportRegion(covered)).toEqual({ kind: 'inconclusive', reason: 'central-opening-absent' });
+    expect(orientDentalAligner(covered, REFERENCE_PROFILE)).toMatchObject({ kind: 'oriented', opening: 'absent' });
+    expect(proposeDentalSupportRegion(covered, referenceTuning, REFERENCE_PROFILE)).toEqual({ kind: 'inconclusive', reason: 'central-opening-absent' });
   }, 120000);
 
   it('a bar that splits the opening is ambiguous, never absent, and no region is proposed', () => {
     const { mesh, rim, min, max } = frame();
     const middle = (min[0] + max[0]) / 2;
     const split = withPlate(mesh, plate(rim, [middle - 1.5, middle + 1.5], [min[1] - 1, max[1] + 1], 0.4));
-    const oriented = orientDentalAligner(split);
+    const oriented = orientDentalAligner(split, REFERENCE_PROFILE);
     expect(oriented).toMatchObject({ kind: 'oriented', meshOk: true });
     if (oriented.kind === 'oriented') expect(oriented.opening).not.toBe('absent');
-    const region = proposeDentalSupportRegion(split);
+    const region = proposeDentalSupportRegion(split, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('inconclusive');
     if (region.kind === 'inconclusive') expect(region.reason).not.toBe('central-opening-absent');
   }, 120000);
@@ -177,7 +178,7 @@ describe('synthetic aligners without a decidable central opening abstain', () =>
       positions: Float32Array.from([-1, -1, -1, 1, -1, -1, 1, 1, -1, -1, 1, -1, -1, -1, 1, 1, -1, 1, 1, 1, 1, -1, 1, 1]),
       indices: Uint32Array.from([0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7]),
     };
-    expect(orientDentalAligner(cube).kind).toBe('failed');
-    expect(proposeDentalSupportRegion(cube).kind).toBe('inconclusive');
+    expect(orientDentalAligner(cube, REFERENCE_PROFILE).kind).toBe('failed');
+    expect(proposeDentalSupportRegion(cube, referenceTuning, REFERENCE_PROFILE).kind).toBe('inconclusive');
   });
 });

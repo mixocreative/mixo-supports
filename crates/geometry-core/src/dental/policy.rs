@@ -1,12 +1,16 @@
-//! Dental policy as data: the detected region becomes a `PolicyResult` (permitted faces, primary
-//! candidates, structures with roof and cage off, repair budget). No collision, landing or repair
-//! logic lives here; the shared safety engine (U7) checks every candidate.
+//! Dental policy as data: `dental_policy` turns the saved dental area of a unit into the
+//! `PolicyResult` the shared engine consumes (permitted faces, primary candidates and their repair
+//! alternates, contact rings, structures with roof and cage off, the profile's repair budget and
+//! match tolerances, the landing rule). The saved area is recomputed on use, never grandfathered.
+//! No collision, landing or repair logic lives here; the shared safety engine checks every contact.
 
-use super::footprint::RimSide;
+use super::footprint::{RimSide, Tuning, footprint_settings};
 use super::mesh::{Mesh, add, cross, dot, normalize, scale, sub};
 use super::profiles::AlignerProfile;
-use super::region::Region;
-use crate::supports::policy::{AllowedStructures, AreaStamp, AutomaticRule, Candidate, CandidateId, FaceMask, LandingRule, Origin, PolicyResult};
+use super::region::{Region, propose_region, retune_region};
+use crate::core::matrix::{Matrix4, apply_to_direction, apply_to_point};
+use crate::supports::policy::{AllowedStructures, AreaStamp, AutomaticRule, Candidate, CandidateId, FaceMask, LandingRule, Origin, PolicyResult, Ring, StructureChoice};
+use crate::supports::remesh::hypot3;
 
 /// Where the permitted area came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -15,56 +19,239 @@ pub enum AreaOrigin {
     Detected,
     /// Detection found no area and the operator painted one from scratch.
     ManualArea,
+    /// An older saved policy without a two-contour area: it permits no automatic support.
+    Legacy,
 }
 
-/// A policy together with the origin of its permitted area.
+/// The dental-only structure switches (Step 3). Roof and Cage are never allowed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DentalStructure {
+    pub tree: bool,
+    pub brace: bool,
+}
+
+/// A policy together with the origin of its area and the profile it was made with.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DentalPolicy {
     pub result: PolicyResult,
     pub area_origin: AreaOrigin,
+    pub profile_id: String,
+    /// False when a saved two-contour area could not be reproduced from this mesh: the policy then
+    /// has no candidates and no permitted face, so no automatic support is built.
+    pub reproduced: bool,
 }
 
-/// Dental allows pillars, Tree, Brace and raft; Roof and Cage stay off.
-pub fn dental_structures() -> AllowedStructures {
-    AllowedStructures { pillar: true, tree: true, brace: true, roof: false, cage: false, raft: true }
+/// The two-contour area as it was saved, compared with what detection gives now.
+pub struct SavedRegion<'a> {
+    pub allowed_faces: &'a [u8],
+    pub contact_faces: &'a [u8],
+    pub outer_edges: &'a [u32],
+    pub opening_edges: &'a [u32],
 }
 
-/// The shared result shape of both dental areas: only a contact that reproduces a candidate is built,
-/// secondary landings stay on the approved faces, and the engine repairs within the profile budget.
-fn dental_result(permitted: FaceMask, candidates: Vec<Candidate>, profile: &AlignerProfile) -> PolicyResult {
-    PolicyResult {
-        landing_rule: LandingRule::ApprovedFaces { stamps: Vec::new() },
-        automatic: AutomaticRule::MatchCandidates,
-        ..PolicyResult::plain(permitted, candidates, dental_structures(), profile.defaults.repair_budget)
-    }
+/// What the unit's saved dental policy says the area is.
+pub enum DentalArea<'a> {
+    TwoContour { tuning: Tuning, saved: SavedRegion<'a> },
+    /// Painted from scratch because detection found no area: the paint is the area.
+    ManualArea,
+    Legacy,
+}
+
+pub struct DentalPolicyInput<'a> {
+    /// The unit-local source mesh.
+    pub mesh: &'a Mesh<'a>,
+    pub profile: &'a AlignerProfile,
+    pub area: DentalArea<'a>,
+    /// The operator's area edits, unit-local, in stroke order.
+    pub stamps: &'a [AreaStamp],
+    pub structure: DentalStructure,
+    /// Unit-local to the frame the result is in (plate space for `generate`).
+    pub frame: &'a Matrix4,
+}
+
+/// Dental allows pillars and raft, Tree and Brace by the operator's switches; Roof and Cage stay off.
+pub fn dental_structures(structure: DentalStructure) -> AllowedStructures {
+    AllowedStructures { pillar: true, tree: structure.tree, brace: structure.brace, roof: false, cage: false, raft: true }
 }
 
 /// Candidate id for the n-th contact of a rim, stable for a given mesh and tuning.
 pub fn candidate_id(rim: RimSide, index: usize) -> CandidateId {
-    CandidateId(format!("dental-{}-{index}", if rim == RimSide::Outer { "outer" } else { "opening" }))
+    CandidateId(format!("dental-{}-{index}", rim_name(rim)))
 }
 
-/// Policy of a detected region. `alternates` are empty here; the host adds repair options when it assembles the policy.
-pub fn policy_from_region(region: &Region, profile: &AlignerProfile) -> DentalPolicy {
-    let mut permitted = FaceMask::new(region.contact_faces.len());
-    for (face, &flag) in region.contact_faces.iter().enumerate() {
-        permitted.set(face, flag == 1);
+/// Id of the n-th phase-zero sample of a rim, offered as a repair alternate.
+pub fn alternate_id(rim: RimSide, index: usize) -> CandidateId {
+    CandidateId(format!("dental-{}-alt-{index}", rim_name(rim)))
+}
+
+fn rim_name(rim: RimSide) -> &'static str {
+    if rim == RimSide::Outer { "outer" } else { "opening" }
+}
+
+/// Exact face gate: a contact may stand on a strip face unless a later area edit reaching it says
+/// otherwise (add paint may restore an erased spot, never cross a contour).
+pub fn area_allows(contact_faces: &[u8], stamps: &[AreaStamp], face: u32, point: [f64; 3], normal: [f64; 3]) -> bool {
+    if contact_faces.get(face as usize) != Some(&1) {
+        return false;
     }
-    let (mut outer, mut opening) = (0, 0);
-    let candidates = region
-        .contacts
+    for stamp in stamps.iter().rev() {
+        let d = sub(point, stamp.center);
+        if dot(d, d) > stamp.radius * stamp.radius || dot(normal, stamp.normal) <= 0.0 {
+            continue;
+        }
+        return stamp.allow;
+    }
+    true
+}
+
+fn mask_of(flags: impl Iterator<Item = bool>, len: usize) -> FaceMask {
+    let mut mask = FaceMask::new(len);
+    for (face, flag) in flags.enumerate() {
+        mask.set(face, flag);
+    }
+    mask
+}
+
+fn through(frame: &Matrix4, point: [f64; 3], normal: [f64; 3]) -> ([f64; 3], [f64; 3]) {
+    (apply_to_point(frame, point[0], point[1], point[2]), apply_to_direction(frame, normal[0], normal[1], normal[2]))
+}
+
+/// Length of a contour given as vertex pairs (the ring perimeter).
+pub fn contour_length(mesh: &Mesh, edges: &[u32]) -> f64 {
+    edges.chunks_exact(2).fold(0.0, |sum, e| sum + hypot3(sub(mesh.point(e[0]), mesh.point(e[1]))))
+}
+
+/// The policy of a unit's dental area. Never fails: an area that cannot be reproduced (or an older
+/// saved policy) permits nothing automatic.
+pub fn dental_policy(input: &DentalPolicyInput) -> DentalPolicy {
+    let DentalPolicyInput { mesh, profile, stamps, structure, frame, .. } = input;
+    let faces = mesh.face_count();
+    let d = &profile.defaults;
+    let matching = AutomaticRule::MatchCandidates { tol_mm: d.match_tolerance_mm, min_dot: d.match_min_dot };
+    let framed_stamps: Vec<AreaStamp> = stamps
         .iter()
-        .map(|c| {
-            let counter = if c.rim == RimSide::Outer { &mut outer } else { &mut opening };
-            let id = candidate_id(c.rim, *counter);
-            *counter += 1;
-            Candidate { id, source_face: Some(c.contact.face), point: c.contact.position, normal: c.contact.normal, origin: Origin::Auto }
+        .map(|s| {
+            let (center, normal) = through(frame, s.center, s.normal);
+            AreaStamp { center, normal, ..*s }
         })
         .collect();
-    DentalPolicy {
-        result: dental_result(permitted, candidates, profile),
-        area_origin: AreaOrigin::Detected,
+    // The switches decide Tree and Brace (whatever the generic settings say); Roof and Cage stay off.
+    let choice = Some(StructureChoice { tree: structure.tree, brace: structure.brace });
+    let base = PolicyResult { structure_choice: choice, ..PolicyResult::plain(FaceMask::new(faces), Vec::new(), dental_structures(*structure), d.repair_budget) };
+    let finish = |result, area_origin, reproduced| DentalPolicy { result, area_origin, profile_id: profile.id.clone(), reproduced };
+    match &input.area {
+        DentalArea::Legacy => finish(PolicyResult { automatic: matching, ..base }, AreaOrigin::Legacy, true),
+        DentalArea::ManualArea => {
+            // The painted faces are the area; the contacts the host passes were filled inside it
+            // (`legacy::fill_legacy_dental`), so they are permitted as given. Secondary landings
+            // stay on the painted faces and every contact still passes the safety checks.
+            let painted = faces_painted_by_stamps(mesh, stamps);
+            let mut permitted = FaceMask::new(faces);
+            for face in painted {
+                permitted.set(face as usize, true);
+            }
+            let result = PolicyResult {
+                permitted_faces: permitted,
+                landing_rule: LandingRule::ApprovedFaces { stamps: framed_stamps },
+                islands_outside_permitted: true,
+                ..base
+            };
+            finish(result, AreaOrigin::ManualArea, true)
+        }
+        DentalArea::TwoContour { tuning, saved } => {
+            let closed = PolicyResult {
+                automatic: matching,
+                landing_rule: LandingRule::ApprovedFaces { stamps: framed_stamps.clone() },
+                islands_outside_permitted: true,
+                ..base.clone()
+            };
+            let Some(region) = reproduce(mesh, tuning, saved, profile) else { return finish(closed, AreaOrigin::Detected, false) };
+            let (candidates, alternates, rings) = contacts_of(input, &region, tuning);
+            let result = PolicyResult {
+                permitted_faces: mask_of(region.contact_faces.iter().map(|&f| f == 1), faces),
+                candidates,
+                alternates,
+                rings,
+                ..closed
+            };
+            finish(result, AreaOrigin::Detected, true)
+        }
     }
+}
+
+/// The region detection gives now, only when it is exactly the saved one.
+fn reproduce(mesh: &Mesh, tuning: &Tuning, saved: &SavedRegion, profile: &AlignerProfile) -> Option<Region> {
+    let region = propose_region(mesh, tuning, profile).ok()?;
+    let same = region.allowed_faces == saved.allowed_faces
+        && region.contact_faces == saved.contact_faces
+        && region.contours.outer_edges == saved.outer_edges
+        && region.contours.opening_edges == saved.opening_edges;
+    same.then_some(region)
+}
+
+type Alternates = Vec<(CandidateId, Vec<Candidate>)>;
+
+/// Gated primary candidates (in the output frame), their phase-zero repair alternates and the two
+/// contact rings.
+fn contacts_of(input: &DentalPolicyInput, region: &Region, tuning: &Tuning) -> (Vec<Candidate>, Alternates, Vec<Ring>) {
+    let DentalPolicyInput { mesh, profile, stamps, frame, .. } = input;
+    let gate = |c: &super::sampling::ContourContact| area_allows(&region.contact_faces, stamps, c.face, c.position, c.normal);
+    let candidate = |id: CandidateId, c: &super::sampling::ContourContact| {
+        let (point, normal) = through(frame, c.position, c.normal);
+        Candidate { id, source_face: Some(c.face), point, normal, origin: Origin::Auto }
+    };
+    // (rim, id, arc) of every gated primary, in region order (outer rim first).
+    let mut primaries: Vec<(RimSide, Candidate, f64)> = Vec::new();
+    let mut counters = [0usize; 2];
+    for c in &region.contacts {
+        let counter = &mut counters[usize::from(c.rim == RimSide::Opening)];
+        let id = candidate_id(c.rim, *counter);
+        *counter += 1;
+        if gate(&c.contact) {
+            primaries.push((c.rim, candidate(id, &c.contact), c.contact.distance_along_contour));
+        }
+    }
+    // Phase-zero samples sit half a spacing before each primary; each is offered to the primary
+    // that follows it on its rim (within one spacing), so no two contacts can move to one spot.
+    let settings = footprint_settings(tuning, profile).ok();
+    let phase_zero = retune_region(mesh, region.clone(), tuning, profile, Some(0.0)).map(|r| r.contacts).unwrap_or_default();
+    let mut alternates: Alternates = Vec::new();
+    let mut alternate_arcs: Vec<(RimSide, CandidateId, f64)> = Vec::new();
+    let mut alt_counters = [0usize; 2];
+    for c in &phase_zero {
+        let counter = &mut alt_counters[usize::from(c.rim == RimSide::Opening)];
+        let id = alternate_id(c.rim, *counter);
+        *counter += 1;
+        let spacing = settings.map_or(0.0, |s| if c.rim == RimSide::Outer { s.outer_spacing } else { s.inner_spacing });
+        if !gate(&c.contact) {
+            continue;
+        }
+        let arc = c.contact.distance_along_contour;
+        let owner = primaries.iter().filter(|(rim, _, at)| *rim == c.rim && *at >= arc && *at - arc <= spacing).min_by(|a, b| a.2.total_cmp(&b.2));
+        let Some((_, owner, _)) = owner else { continue };
+        alternate_arcs.push((c.rim, id.clone(), arc));
+        let option = candidate(id, &c.contact);
+        match alternates.iter_mut().find(|(o, _)| *o == owner.id) {
+            Some((_, list)) => list.push(option),
+            None => alternates.push((owner.id.clone(), vec![option])),
+        }
+    }
+    let rings = settings
+        .map(|s| {
+            let ring = |rim: RimSide, edges: &[u32], spacing_mm: f64| Ring {
+                perimeter_mm: contour_length(mesh, edges),
+                spacing_mm,
+                arcs: primaries
+                    .iter()
+                    .filter(|(r, ..)| *r == rim)
+                    .map(|(_, c, arc)| (c.id.clone(), *arc))
+                    .chain(alternate_arcs.iter().filter(|(r, ..)| *r == rim).map(|(_, id, arc)| (id.clone(), *arc)))
+                    .collect(),
+            };
+            vec![ring(RimSide::Outer, &region.contours.outer_edges, s.outer_spacing), ring(RimSide::Opening, &region.contours.opening_edges, s.inner_spacing)]
+        })
+        .unwrap_or_default();
+    (primaries.into_iter().map(|(_, c, _)| c).collect(), alternates, rings)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -75,11 +262,10 @@ pub enum ManualAreaError {
     FaceOutOfRange(u32),
 }
 
-/// Policy from an area the operator painted from scratch. Allowed only when detection found no
-/// area (`detected` is `None`); a detected area is never overridden by paint. The contacts are not
-/// chosen here and every one still goes through the shared safety checks.
-pub fn manual_area_policy(face_count: usize, painted_faces: &[u32], detected: Option<&Region>, profile: &AlignerProfile) -> Result<DentalPolicy, ManualAreaError> {
-    if detected.is_some() {
+/// The permitted faces of an area painted from scratch. Allowed only when detection found no area
+/// (`detected` false); a detected area is never overridden by paint.
+pub fn manual_area_faces(face_count: usize, painted_faces: &[u32], detected: bool) -> Result<FaceMask, ManualAreaError> {
+    if detected {
         return Err(ManualAreaError::DetectedAreaExists);
     }
     let mut permitted = FaceMask::new(face_count);
@@ -88,10 +274,7 @@ pub fn manual_area_policy(face_count: usize, painted_faces: &[u32], detected: Op
             return Err(ManualAreaError::FaceOutOfRange(face));
         }
     }
-    Ok(DentalPolicy {
-        result: dental_result(permitted, Vec::new(), profile),
-        area_origin: AreaOrigin::ManualArea,
-    })
+    Ok(permitted)
 }
 
 /// One brush dab (shared with the engine's landing rule); see `AreaStamp`.
@@ -118,46 +301,5 @@ pub fn faces_painted_by_stamps(mesh: &Mesh, stamps: &[Stamp]) -> Vec<u32> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::super::profiles::reference_aligner;
-    use super::*;
-
-    fn tiny_region() -> Region {
-        Region { contours: Default::default(), allowed_faces: vec![0; 4], region_faces: [0, 0], connector_lengths: [0.0; 2], contact_faces: vec![0, 1, 0, 0], contacts: Vec::new() }
-    }
-
-    #[test]
-    fn detected_region_becomes_a_policy_with_roof_and_cage_off() {
-        let policy = policy_from_region(&tiny_region(), reference_aligner());
-        assert_eq!(policy.area_origin, AreaOrigin::Detected);
-        assert!(policy.result.permitted_faces.get(1) && !policy.result.permitted_faces.get(0));
-        assert!(!policy.result.structures.roof && !policy.result.structures.cage);
-        assert!(policy.result.alternates.is_empty());
-        assert_eq!(policy.result.repair_budget, reference_aligner().defaults.repair_budget);
-    }
-
-    #[test]
-    fn a_painted_area_is_manual_area_and_only_when_nothing_was_detected() {
-        let profile = reference_aligner();
-        let policy = manual_area_policy(10, &[2, 3], None, profile).unwrap();
-        assert_eq!(policy.area_origin, AreaOrigin::ManualArea);
-        assert_eq!(policy.result.permitted_faces.count(), 2);
-        assert!(policy.result.candidates.is_empty());
-        assert_eq!(manual_area_policy(10, &[2], Some(&tiny_region()), profile), Err(ManualAreaError::DetectedAreaExists));
-        assert_eq!(manual_area_policy(10, &[10], None, profile), Err(ManualAreaError::FaceOutOfRange(10)));
-    }
-
-    #[test]
-    fn stamps_paint_faces_in_order_and_ignore_the_far_side() {
-        // Two facing-up triangles and one facing down, all near the origin.
-        let positions: [f32; 27] = [0., 0., 0., 1., 0., 0., 0., 0., 1., 2., 0., 0., 3., 0., 0., 2., 0., 1., 0., 5., 0., 0., 5., 1., 1., 5., 0.];
-        let indices: [u32; 9] = [0, 2, 1, 3, 5, 4, 6, 7, 8];
-        let mesh = Mesh::new(&positions, &indices);
-        let up = Stamp { center: [0.3, 0.0, 0.3], radius: 5.0, normal: [0.0, 1.0, 0.0], allow: true };
-        let painted = faces_painted_by_stamps(&mesh, &[up]);
-        assert_eq!(painted, vec![0, 1]);
-        let erase = Stamp { center: [0.3, 0.0, 0.3], radius: 0.6, normal: [0.0, 1.0, 0.0], allow: false };
-        assert_eq!(faces_painted_by_stamps(&mesh, &[up, erase]), vec![1]);
-    }
-}
-
+#[path = "policy_tests.rs"]
+mod tests;

@@ -314,6 +314,36 @@ pub fn generic_policy_contacts(
     Ok(out)
 }
 
+#[wasm_bindgen]
+impl GeometrySession {
+    /// The generic policy of a unit as a `PolicyHandle` for `generate`: its contacts (automatic
+    /// minus deleted and zoned, plus manual; unit-local), every face of `model` permitted, the
+    /// structures the settings ask for, report-only repair. Arguments as `generic_policy_contacts`.
+    pub fn generic_policy(
+        &self,
+        model: u32,
+        settings: &[f64],
+        auto_ids: Vec<String>,
+        auto_positions: &[f64],
+        auto_normals: &[f64],
+        auto_sources: &[u8],
+        manual_ids: Vec<String>,
+        manual_positions: &[f64],
+        manual_normals: &[f64],
+        manual_sources: &[u8],
+        deleted: Vec<String>,
+        zones: &[f64],
+    ) -> Result<super::safety::PolicyHandle, JsValue> {
+        let (_, indices) = self.store.mesh_arrays(model).map_err(mesh_error)?;
+        let settings = support_settings::SupportSettings::from_slice(settings).map_err(build_error)?;
+        let auto = points_of(&auto_ids, auto_positions, auto_normals, auto_sources)?;
+        let manual = points_of(&manual_ids, manual_positions, manual_normals, manual_sources)?;
+        let zones = decode_zones(zones).ok_or_else(|| coded_error("BAD_INPUT"))?;
+        let input = GenericInput { face_count: indices.len() / 3, auto: &auto, manual: &manual, deleted: &deleted, zones: &zones };
+        Ok(super::safety::PolicyHandle::new(generic_policy(&input, &settings).result))
+    }
+}
+
 /// The ID each position encodes on the 0.01 mm grid (`auto-X_Y_Z`).
 #[wasm_bindgen]
 pub fn position_ids(positions: &[f64]) -> Result<Vec<String>, JsValue> {

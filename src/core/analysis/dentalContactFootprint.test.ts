@@ -4,6 +4,7 @@ import { placementMatrix, transformPositions } from '../../../scripts/test-suppo
 import { proposeDentalSupportRegion } from './dentalRegion';
 import { proposeDentalContactFootprint } from './dentalContactFootprint';
 import { parseStl } from '../../../scripts/test-support/rustImport';
+import { REFERENCE_PROFILE, referenceTuning } from '../../../scripts/test-support/referenceProfile';
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
@@ -13,7 +14,7 @@ const reference = () => {
 describe('proposeDentalContactFootprint', () => {
   it('keeps ridge contacts on exact narrow exterior-side faces, never the broad cavity region', () => {
     const mesh = reference();
-    const region = proposeDentalSupportRegion(mesh);
+    const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
     const result = proposeDentalContactFootprint(mesh, region, {
@@ -35,7 +36,7 @@ describe('proposeDentalContactFootprint', () => {
 
   it('preserves selected source face IDs after arbitrary rotation', () => {
     const mesh = reference();
-    const region = proposeDentalSupportRegion(mesh);
+    const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
     const settings = { setback: 0.2, width: 1.2, outerSpacing: 3, innerSpacing: 5, maxSearchDistance: 1.5 };
@@ -53,7 +54,7 @@ describe('proposeDentalContactFootprint', () => {
 
   it('recomputes a distinct phase-zero contact set only on the same approved strip', () => {
     const mesh = reference();
-    const region = proposeDentalSupportRegion(mesh);
+    const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
     const settings = { setback: 0.2, width: 1.2, outerSpacing: 3, innerSpacing: 2, maxSearchDistance: 1.5 };

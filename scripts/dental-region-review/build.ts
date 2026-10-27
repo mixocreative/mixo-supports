@@ -10,6 +10,7 @@ import { defaultSupportSettings, toPlacementSettings } from '../../src/core/supp
 import { runSupportJob } from '../../src/supports/jobRunner';
 import { filterDentalPlacement } from '../../src/dental/placement';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint } from '../../src/state/transform';
+import { REFERENCE_PROFILE, referenceTuning } from './profile';
 
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
 export type DiagnosticReviewContacts = {
@@ -23,7 +24,7 @@ export type DentalReviewBuild =
 
 /** Runs the same detector, dental placement filter, and support builder used by the app. */
 export function buildDentalReview(mesh: TriangleMesh): DentalReviewBuild {
-  const region = proposeDentalSupportRegion(mesh);
+  const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
   if (region.kind !== 'proposal') return region;
   const bands = diagnosticDentalSideBands(mesh, region, { setback: 0.2, width: 1.2 });
   if (bands.kind !== 'proposal') return { kind: 'inconclusive', reason: `diagnostic-band-${bands.reason}` };
@@ -34,7 +35,7 @@ export function buildDentalReview(mesh: TriangleMesh): DentalReviewBuild {
   if (outer.kind !== 'proposal' || inner.kind !== 'proposal') {
     return { kind: 'inconclusive', reason: `diagnostic-contact-${outer.kind !== 'proposal' ? outer.reason : inner.kind !== 'proposal' ? inner.reason : 'unknown'}` };
   }
-  const orientation = proposeDentalOrientation(mesh);
+  const orientation = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
   if (orientation.kind !== 'proposal') return { kind: 'inconclusive', reason: `orientation-${orientation.reason}` };
   const rotation = rotationToDentalPose(mesh, orientation.rim);
   if (!rotation) return { kind: 'inconclusive', reason: 'dental-pose-inconclusive' };
@@ -47,7 +48,7 @@ export function buildDentalReview(mesh: TriangleMesh): DentalReviewBuild {
   const frame: JobTransform = {
     position: [0, defaultSupportSettings.liftHeight - lowestY, 0], rotation,
   };
-  const dental = { kind: 'two-contour' as const, rim: orientation.rim, region, stamps: [] };
+  const dental = { kind: 'two-contour' as const, profileId: REFERENCE_PROFILE, rim: orientation.rim, region, stamps: [] };
   const empty: PlacementResult = { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() };
   const placement = filterDentalPlacement({ mesh, orientation: orientationOnly,
     settings: toPlacementSettings(defaultSupportSettings), dental }, empty);

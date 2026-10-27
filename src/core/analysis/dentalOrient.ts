@@ -1,6 +1,5 @@
 import type { DentalProposal } from './dental';
-import { dentalEngine, rimOf } from './dentalEngine';
-import { DEFAULT_PROFILE_ID } from './dentalProfile';
+import { rimOf, withDentalMesh, type DentalOrientResultLike } from './dentalEngine';
 import type { TriangleMesh } from './types';
 import type { Vector } from '../vec3';
 
@@ -12,13 +11,18 @@ import type { Vector } from '../vec3';
  */
 export type DentalOrientation =
   | { kind: 'oriented'; proposal: Extract<DentalProposal, { kind: 'proposal' }>; rotation: Vector | undefined;
-    opening: 'present' | 'absent' | 'ambiguous'; meshOk: boolean }
+    opening: 'present' | 'absent' | 'ambiguous'; meshOk: boolean;
+    /** False when the opening found contradicts the chosen aligner type (decided in Rust from the profile). */
+    matchesProfile: boolean }
   | { kind: 'failed'; reason: string; meshOk: boolean };
 
 const OPENING = ['present', 'absent', 'ambiguous'] as const;
 
-export function orientDentalAligner(mesh: TriangleMesh, profile: string = DEFAULT_PROFILE_ID): DentalOrientation {
-  const result = dentalEngine().orient_dental(mesh.positions, mesh.indices, profile);
+export function orientDentalAligner(mesh: TriangleMesh, profile: string): DentalOrientation {
+  return withDentalMesh(mesh, (session, model) => decode(session.orient_dental(model, profile)));
+}
+
+function decode(result: DentalOrientResultLike): DentalOrientation {
   try {
     const meshOk = result.mesh_ok();
     if (result.status() !== 0) return { kind: 'failed', reason: result.reason(), meshOk };
@@ -30,6 +34,7 @@ export function orientDentalAligner(mesh: TriangleMesh, profile: string = DEFAUL
       rotation: rotation.length === 3 ? [rotation[0]!, rotation[1]!, rotation[2]!] : undefined,
       opening: OPENING[result.opening()] ?? 'ambiguous',
       meshOk,
+      matchesProfile: result.matches_profile(),
     };
   } finally {
     result.free();

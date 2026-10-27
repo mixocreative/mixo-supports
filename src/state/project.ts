@@ -3,7 +3,8 @@ import { contactsHiddenByMarkers, rekeyPoints, remapDeleted } from '../supports/
 import { defaultSupportSettings, parseShapeOverride, type ShapeOverride } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { DentalAllowStamp, DentalPolicy } from '../core/analysis/dentalPolicy';
-import { parseDentalTuning } from '../core/analysis/dentalTuning';
+import { parseDentalTuning } from '../dental/tuning';
+import { DEFAULT_PROFILE_ID, profileData } from '../dental/alignerProfiles';
 import type { ModelTransform } from './transform';
 
 export { identityTransform } from './transform';
@@ -345,13 +346,21 @@ function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPoli
   const visibilityMax = normalizePair(rim.visibilityMax, 'dental visibility maximum');
   if (visibilityMax[0] <= visibilityMin[0] || visibilityMax[1] <= visibilityMin[1]) throw new TypeError('dental visibility bounds must have area');
   for (const value of rim.points) if (!Number.isFinite(value)) throw new TypeError('dental rim points must be finite');
-  const base: Pick<DentalPolicy, 'rim' | 'stamps'> = {
+  // Projects saved before aligner profiles carry none: they were made with profile #1. An id no
+  // profile file defines is refused (its thresholds and limits are unknown).
+  const profileId = (policy as { profileId?: unknown }).profileId ?? DEFAULT_PROFILE_ID;
+  if (typeof profileId !== 'string') throw new TypeError('dental aligner profile must be an id');
+  profileData(profileId);
+  const base: Pick<DentalPolicy, 'profileId' | 'rim' | 'stamps'> = {
+    profileId,
     rim: { boundaryKind: rim.boundaryKind === 'lower-edge-loop' ? 'lower-edge-loop' : 'projection-fallback', points: new Float32Array(rim.points), openingDirection, centroid, tangent, bitangent, visibilityMask: new Uint8Array(rim.visibilityMask), visibilityResolution: rim.visibilityResolution, visibilityMin, visibilityMax },
     stamps: policy.stamps.map(cloneDentalStamp),
   };
   if (policy.kind === 'two-contour') {
     const { region } = policy;
-    const gapAlternateIds = policy.gapAlternateIds;
+    // Older projects may list provisional gap alternates; the policy now offers its repair
+    // alternates itself (recomputed on use, never saved), so the list is checked and dropped.
+    const gapAlternateIds = (policy as { gapAlternateIds?: unknown }).gapAlternateIds;
     const structure = policy.structure;
     if (structure !== undefined && (typeof structure !== 'object' || structure === null ||
       typeof structure.treeEnabled !== 'boolean' || typeof structure.bracesEnabled !== 'boolean')) {
@@ -390,7 +399,7 @@ function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPoli
     }
     for (const value of [...region.outerEdges, ...region.outerRidgeEdges, ...region.outerConnectorEdges, ...region.openingEdges]) if (value >= mesh.positions.length / 3) throw new TypeError('dental region edge is outside the mesh');
     return { ...base, kind: 'two-contour',
-      ...(policy.tuning ? { tuning: parseDentalTuning(policy.tuning) } : {}),
+      ...(policy.tuning ? { tuning: parseDentalTuning(policy.tuning, profileId) } : {}),
       ...(structure ? { structure: { treeEnabled: structure.treeEnabled, bracesEnabled: structure.bracesEnabled } } : {}), region: {
       kind: 'proposal', allowedFaces: new Uint8Array(region.allowedFaces), outerEdges: new Uint32Array(region.outerEdges),
       outerRidgeEdges: new Uint32Array(region.outerRidgeEdges), outerConnectorEdges: new Uint32Array(region.outerConnectorEdges),
@@ -404,7 +413,7 @@ function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPoli
       diagnostics: {
         regionFaces: [...region.diagnostics.regionFaces], connectorLengths: [...region.diagnostics.connectorLengths],
       },
-    }, ...(gapAlternateIds ? { gapAlternateIds: [...gapAlternateIds] } : {}) };
+    } };
   }
   if (policy.kind !== undefined && policy.kind !== 'legacy') throw new TypeError('unknown dental policy kind');
   if (policy.origin !== undefined && policy.origin !== 'manual-area') throw new TypeError('unknown dental policy origin');

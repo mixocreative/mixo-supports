@@ -1,6 +1,5 @@
 import type { Vector } from '../vec3';
-import { DEFAULT_PROFILE_ID } from './dentalProfile';
-import { dentalEngine, rimOf, rimScalars } from './dentalEngine';
+import { dentalInternals, rimOf, rimScalars } from './dentalEngine';
 import type { TriangleMesh } from './types';
 
 export interface DentalRim {
@@ -31,11 +30,11 @@ export type DentalProposal =
   | { kind: 'inconclusive'; reason: 'invalid-mesh' | 'no-cavity' | 'ambiguous-cavity'; diagnostics: DentalDiagnostics };
 
 /**
- * Finds a candidate cavity opening from a thick shell (Rust `propose_dental_orientation`).
- * Returned geometry is unit-local.
+ * Finds a candidate cavity opening from a thick shell (Rust `propose_dental_orientation`, Node
+ * test package only: the app gets this from `orient_dental`). Returned geometry is unit-local.
  */
-export function proposeDentalOrientation(mesh: TriangleMesh, profile: string = DEFAULT_PROFILE_ID): DentalProposal {
-  const result = dentalEngine().propose_dental_orientation(mesh.positions, mesh.indices, profile);
+export function proposeDentalOrientation(mesh: TriangleMesh, profile: string): DentalProposal {
+  const result = dentalInternals().propose_dental_orientation(mesh.positions, mesh.indices, profile);
   try {
     const [confidence, terminalAreaRatio, axialVarianceRatio] = result.diagnostics();
     const diagnostics: DentalDiagnostics = { confidence: confidence ?? 0, terminalAreaRatio: terminalAreaRatio ?? 0, axialVarianceRatio: axialVarianceRatio ?? 0 };
@@ -48,10 +47,10 @@ export function proposeDentalOrientation(mesh: TriangleMesh, profile: string = D
 
 /**
  * Experimental aligner preset calibrated to the owner-approved, already-correct reference pose
- * (Rust `dental_pose`). Returns undefined for ambiguous arches. A convenience proposal, not a
- * universal clinical print orientation.
+ * (Rust `dental_pose`, Node test package only: the app uses the rotation `orient_dental` returns).
+ * Returns undefined for ambiguous arches.
  */
 export function rotationToDentalPose(mesh: TriangleMesh, rim: DentalRim): Vector | undefined {
-  const pose = dentalEngine().dental_pose(mesh.positions, mesh.indices, rimScalars(rim));
+  const pose = dentalInternals().dental_pose(mesh.positions, mesh.indices, rimScalars(rim));
   return pose.length === 3 ? [pose[0]!, pose[1]!, pose[2]!] : undefined;
 }

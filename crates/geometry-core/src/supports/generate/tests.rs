@@ -112,7 +112,7 @@ fn two_walls_block_a_pillar_that_fits_neither_gap() {
 fn repair_leaves_a_crossing_automatic_contact_out_but_never_a_manual_one() {
     let fixture = two_walls();
     let candidate = Candidate { id: CandidateId("cand".into()), source_face: Some(0), point: [0.0, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };
-    let p = policy(fixture.faces(), vec![candidate], 8, AutomaticRule::MatchCandidates);
+    let p = policy(fixture.faces(), vec![candidate], 8, AutomaticRule::MatchCandidates { tol_mm: 0.03, min_dot: 0.95 });
     let manual = contact("hand", [3.0, 20.0, 0.0], Origin::Manual);
     let out = fixture.run(vec![contact("auto-0", [0.0, 20.0, 0.0], Origin::Auto), manual], &plain_settings(&[]), &p, &never);
     assert!(out.dropped.contains(&"auto-0".to_string()), "{:?}", out.dropped);
@@ -126,7 +126,7 @@ fn repair_leaves_a_crossing_automatic_contact_out_but_never_a_manual_one() {
 fn an_automatic_contact_that_reproduces_no_candidate_is_left_out_and_a_match_takes_its_source_face() {
     let fixture = Fixture::new(&[([-5.0, 20.0, -5.0], [5.0, 24.0, 5.0])]);
     let candidate = Candidate { id: CandidateId("cand".into()), source_face: Some(3), point: [0.0, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };
-    let p = policy(fixture.faces(), vec![candidate], 8, AutomaticRule::MatchCandidates);
+    let p = policy(fixture.faces(), vec![candidate], 8, AutomaticRule::MatchCandidates { tol_mm: 0.03, min_dot: 0.95 });
     let forged = contact("forged", [5.0, 20.0, 0.0], Origin::Auto);
     let near = contact("near", [0.01, 20.0, 0.0], Origin::Auto);
     let out = fixture.run(vec![near, forged], &plain_settings(&[]), &p, &never);
@@ -142,7 +142,7 @@ fn a_crossing_contact_moves_to_the_policy_alternate_instead_of_being_dropped() {
     let fixture = Fixture::new(&[([-5.0, 20.0, -5.0], [5.0, 24.0, 5.0]), ([-20.0, 0.0, -5.0], [-0.3, 12.0, 5.0]), ([0.3, 0.0, -5.0], [2.0, 12.0, 5.0])]);
     // Faces 4 and 5 are the shelf underside (the bottom quad of the first box).
     let cand = |id: &str, x: f64| Candidate { id: CandidateId(id.into()), source_face: Some(4), point: [x, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };
-    let mut p = policy(fixture.faces(), vec![cand("primary", 0.0)], 8, AutomaticRule::MatchCandidates);
+    let mut p = policy(fixture.faces(), vec![cand("primary", 0.0)], 8, AutomaticRule::MatchCandidates { tol_mm: 0.03, min_dot: 0.95 });
     p.alternates = vec![(CandidateId("primary".into()), vec![cand("alt", 4.0)])];
     let out = fixture.run(vec![contact("auto-0", [0.0, 20.0, 0.0], Origin::Auto)], &plain_settings(&[]), &p, &never);
     // Moved, not dropped: the contact list now holds the alternate.
@@ -275,9 +275,12 @@ fn an_island_outside_the_permitted_area_is_classified_apart_from_unresolved() {
     };
     // The generic policy permits everything: unchanged, even with an empty mask.
     assert_eq!(status(&policy(fixture.faces(), Vec::new(), 0, AutomaticRule::AsGiven)), vec![IslandStatus::Unresolved]);
-    // An approved-area policy whose area misses the island's faces: outside, not unresolved.
+    // A policy with an outside whose area misses the island's faces: outside, not unresolved. The
+    // landing rule alone does not make an outside; the explicit field does.
     let mut approved = policy(fixture.faces(), Vec::new(), 0, AutomaticRule::AsGiven);
     approved.landing_rule = LandingRule::ApprovedFaces { stamps: Vec::new() };
+    assert_eq!(status(&approved), vec![IslandStatus::Unresolved]);
+    approved.islands_outside_permitted = true;
     assert_eq!(status(&approved), vec![IslandStatus::OutsidePolicy]);
     // The same policy with the whole model permitted keeps it unresolved (listed with Fix).
     for face in 0..fixture.faces() {
@@ -290,7 +293,7 @@ fn an_island_outside_the_permitted_area_is_classified_apart_from_unresolved() {
 fn ring_coverage_counts_only_built_contacts_of_the_ring() {
     let fixture = Fixture::new(&[([-5.0, 20.0, -5.0], [5.0, 24.0, 5.0])]);
     let cand = |id: &str, x: f64| Candidate { id: CandidateId(id.into()), source_face: Some(0), point: [x, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };
-    let mut p = policy(fixture.faces(), vec![cand("c0", -3.0), cand("c1", 3.0)], 8, AutomaticRule::MatchCandidates);
+    let mut p = policy(fixture.faces(), vec![cand("c0", -3.0), cand("c1", 3.0)], 8, AutomaticRule::MatchCandidates { tol_mm: 0.03, min_dot: 0.95 });
     p.rings = vec![Ring { perimeter_mm: 20.0, spacing_mm: 3.0, arcs: vec![(CandidateId("c0".into()), 2.0), (CandidateId("c1".into()), 12.0)] }];
     let out = fixture.run(vec![contact("a", [-3.0, 20.0, 0.0], Origin::Auto), contact("b", [3.0, 20.0, 0.0], Origin::Auto)], &plain_settings(&[]), &p, &never);
     assert_eq!(out.rings.len(), 1);
@@ -331,12 +334,12 @@ fn the_repair_never_spends_more_than_its_budget() {
     let fixture = two_walls();
     let candidate = Candidate { id: CandidateId("cand".into()), source_face: Some(0), point: [0.0, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };
     for budget in 1..=4 {
-        let p = policy(fixture.faces(), vec![candidate.clone()], budget, AutomaticRule::MatchCandidates);
+        let p = policy(fixture.faces(), vec![candidate.clone()], budget, AutomaticRule::MatchCandidates { tol_mm: 0.03, min_dot: 0.95 });
         let out = fixture.run(vec![contact("auto-0", [0.0, 20.0, 0.0], Origin::Auto)], &plain_settings(&[]), &p, &never);
         assert!(out.trials <= budget, "budget {budget} spent {}", out.trials);
     }
     // A budget of 1 still gets the one rebuild that leaves the crossing contact out.
-    let p = policy(fixture.faces(), vec![candidate], 1, AutomaticRule::MatchCandidates);
+    let p = policy(fixture.faces(), vec![candidate], 1, AutomaticRule::MatchCandidates { tol_mm: 0.03, min_dot: 0.95 });
     let out = fixture.run(vec![contact("auto-0", [0.0, 20.0, 0.0], Origin::Auto)], &plain_settings(&[]), &p, &never);
     assert_eq!(out.trials, 1);
     assert!(out.dropped.contains(&"auto-0".to_string()));

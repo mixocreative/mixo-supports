@@ -5,6 +5,7 @@ import { inspectDentalCentralOpening } from './dentalContours';
 import { proposeDentalOrientation } from './dental';
 import { proposeDentalSupportRegion } from './dentalRegion';
 import { parseStl } from '../../../scripts/test-support/rustImport';
+import { REFERENCE_PROFILE, referenceTuning } from '../../../scripts/test-support/referenceProfile';
 
 const reference = () => {
   const bytes = readFileSync('docs/dental-reference/reference-aligner.stl');
@@ -14,29 +15,29 @@ const reference = () => {
 describe('dental contours (Rust propose_dental_region)', () => {
   it('finds the same exact edge sets after rotating the input mesh', () => {
     const mesh = reference();
-    const contours = proposeDentalSupportRegion(mesh);
+    const contours = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(contours.kind).toBe('proposal');
     if (contours.kind !== 'proposal') return;
     expect(contours.outerEdges.length / 2).toBe(2665);
     expect(contours.openingEdges.length / 2).toBe(339);
     const rotated = { ...mesh, positions: transformPositions(mesh.positions,
       placementMatrix({ position: [0, 0, 0], rotation: [1.1, -2.2, 0.7] })) };
-    expect(proposeDentalSupportRegion(rotated)).toMatchObject({ kind: 'proposal',
+    expect(proposeDentalSupportRegion(rotated, referenceTuning, REFERENCE_PROFILE)).toMatchObject({ kind: 'proposal',
       outerEdges: contours.outerEdges, outerRidgeEdges: contours.outerRidgeEdges,
       outerConnectorEdges: contours.outerConnectorEdges, openingEdges: contours.openingEdges });
   }, 30000);
 
   it('abstains on a non-aligner mesh', () => {
     const mesh = { positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]) };
-    expect(proposeDentalSupportRegion(mesh).kind).toBe('inconclusive');
+    expect(proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE).kind).toBe('inconclusive');
   });
 
   it('distinguishes the reference opening from a clean projected no-hole solid', () => {
     const mesh = reference();
-    const orientation = proposeDentalOrientation(mesh);
+    const orientation = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
     expect(orientation.kind).toBe('proposal');
     if (orientation.kind !== 'proposal') return;
-    const present = inspectDentalCentralOpening(mesh, orientation.rim);
+    const present = inspectDentalCentralOpening(mesh, orientation.rim, REFERENCE_PROFILE);
     expect(present.kind).toBe('present');
     if (present.kind === 'present') expect(present.edges.length / 2).toBe(339);
 
@@ -51,8 +52,8 @@ describe('dental contours (Rust propose_dental_region)', () => {
         2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
       ]),
     };
-    expect(inspectDentalCentralOpening(cube, orientation.rim)).toEqual({ kind: 'absent' });
+    expect(inspectDentalCentralOpening(cube, orientation.rim, REFERENCE_PROFILE)).toEqual({ kind: 'absent' });
     const broken = { ...cube, indices: cube.indices.slice(3) };
-    expect(inspectDentalCentralOpening(broken, orientation.rim)).toEqual({ kind: 'ambiguous', reason: 'invalid-mesh' });
+    expect(inspectDentalCentralOpening(broken, orientation.rim, REFERENCE_PROFILE)).toEqual({ kind: 'ambiguous', reason: 'invalid-mesh' });
   }, 30000);
 });

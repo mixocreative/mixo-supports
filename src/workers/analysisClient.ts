@@ -64,20 +64,21 @@ export class AnalysisClient {
   }
 
   /** Step 1 of the dental flow: orientation, opening and mesh check of a dropped aligner, off the main thread. */
-  dentalOrient(key: string, mesh: TriangleMesh, label: JobLabel): Promise<DentalOrientation | undefined> {
-    return this.submit(key, { kind: 'dental-orient', job: { mesh } }, label).then((result) =>
+  dentalOrient(key: string, mesh: TriangleMesh, profile: string, label: JobLabel): Promise<DentalOrientation | undefined> {
+    return this.submit(key, { kind: 'dental-orient', job: { mesh, profile } }, label).then((result) =>
       result?.kind === 'dental-orient-result' ? result.orientation : undefined);
   }
 
-  dentalRegion(key: string, mesh: TriangleMesh, label: JobLabel): Promise<DentalRegionProposal | undefined> {
-    return this.submit(key, { kind: 'dental-region', job: { mesh } }, label).then((result) =>
+  /** Step 2: the two contours and the strip at the profile's default tuning. */
+  dentalRegion(key: string, mesh: TriangleMesh, profile: string, label: JobLabel): Promise<DentalRegionProposal | undefined> {
+    return this.submit(key, { kind: 'dental-region', job: { mesh, profile } }, label).then((result) =>
       result?.kind === 'dental-region-result' ? result.region : undefined);
   }
 
   retuneDentalRegion(key: string, mesh: TriangleMesh,
-    region: Extract<DentalRegionProposal, { kind: 'proposal' }>, tuning: DentalTuning,
+    region: Extract<DentalRegionProposal, { kind: 'proposal' }>, tuning: DentalTuning, profile: string,
     label: JobLabel): Promise<DentalRegionProposal | undefined> {
-    return this.submit(key, { kind: 'dental-retune', job: { mesh, region, tuning } }, label).then((result) =>
+    return this.submit(key, { kind: 'dental-retune', job: { mesh, region, tuning, profile } }, label).then((result) =>
       result?.kind === 'dental-region-result' ? result.region : undefined);
   }
 

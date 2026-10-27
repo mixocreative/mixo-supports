@@ -11,12 +11,13 @@ import { inverseTransformPoint } from '../src/state/transform';
 import { applyToDirection, applyToPoint, placementMatrix, transformPositions } from './test-support/matrix';
 import type { Vector } from '../src/core/vec3';
 import { parseStl } from './test-support/rustImport';
+import { REFERENCE_PROFILE } from './test-support/referenceProfile';
 
 const file = process.env.DENTAL_PROBE_FIXTURE;
 if (!file) throw new Error('DENTAL_PROBE_FIXTURE is required');
 const bytes = readFileSync(file);
 const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-const base = proposeDentalOrientation(mesh);
+const base = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
 if (base.kind !== 'proposal') throw new Error(`Original pose inconclusive: ${base.reason}`);
 const angle = (a: Vector, b: Vector) => Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))) * 180 / Math.PI;
 const original = base.rim.openingDirection;
@@ -90,7 +91,7 @@ if (process.env.DENTAL_PROBE_MODE === 'pose100') {
   for(let trial=0;trial<100;trial++){
     const scramble:Vector=[(random()*2-1)*Math.PI,(random()*2-1)*Math.PI,(random()*2-1)*Math.PI];
     const turned={positions:transformPositions(mesh.positions,placementMatrix({position:[0,0,0],rotation:scramble})),indices:mesh.indices};
-    const found=proposeDentalOrientation(turned);
+    const found=proposeDentalOrientation(turned, REFERENCE_PROFILE);
     if(found.kind!=='proposal'){abstentions++;continue;}
     const pose=rotationToDentalPose(turned,found.rim);
     if(!pose){abstentions++;continue;}
@@ -115,7 +116,7 @@ for (let index=0; index<12; index++) {
   const rotation: Vector = [(rand()*2-1)*Math.PI,(rand()*2-1)*Math.PI,(rand()*2-1)*Math.PI];
   const matrix = placementMatrix({position:[0,0,0],rotation});
   const turned = {positions:transformPositions(mesh.positions,matrix),indices:mesh.indices};
-  const found = proposeDentalOrientation(turned);
+  const found = proposeDentalOrientation(turned, REFERENCE_PROFILE);
   const expected = applyToDirection(matrix,...original);
   if (found.kind === 'proposal') { errors.push(angle(expected,found.rim.openingDirection)); fronts.push(angle(applyToDirection(matrix,...baselineFront.front),frontAxis(turned,found.rim).front)); }
   else failures.push(index);
