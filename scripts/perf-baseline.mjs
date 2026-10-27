@@ -56,7 +56,7 @@ function importAligner(bytes) {
   } finally { stream.free(); }
   const center = (item) => centerImportedWithWasm(item, engine);
   const simplify = (m, max) => decimateWithWasm(m, engine, max);
-  const prepared = prepare({ name: 'reference-aligner', mesh }, 'desktop', () => {}, 0.75, 1, center, simplify);
+  const prepared = prepare({ name: 'reference-aligner', mesh }, 'desktop', () => {}, center, simplify);
   return { triangles: prepared.mesh.indices.length / 3, vertices: prepared.mesh.positions.length / 3 };
 }
 

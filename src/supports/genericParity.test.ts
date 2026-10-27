@@ -105,3 +105,15 @@ describe('contact IDs and the manual-edit bookkeeping against the oracle', () =>
     expect(contacts.map((c) => c.origin)).toEqual(['auto', 'auto', 'manual']);
   });
 });
+
+const sources = import.meta.glob<string>(['../workers/geometryClient.ts', './genericPolicy.ts', './contactEdits.ts', './genericPlacement.ts', './supportBuildWasm.ts'], { query: '?raw', import: 'default', eager: true });
+
+describe('browser engine registration', () => {
+  it('geometryClient hands the adapters every call they use (the browser build lists its exports by name)', () => {
+    const client = sources['../workers/geometryClient.ts']!;
+    const adapters = Object.entries(sources).filter(([file]) => file.startsWith('./')).map(([, text]) => text).join(' ');
+    const calls = [...adapters.matchAll(/^  ([a-z][a-z_]+)\(/gm)].map((m) => m[1]!).filter((name) => name.includes('_') && !['build_supports', 'probe_landings', 'generic_place', 'cast_down', 'load_mesh', 'support_settings_layout'].includes(name));
+    expect(calls.length).toBeGreaterThan(5);
+    for (const name of new Set(calls)) expect(client, name).toContain(`${name}: typeof ${name}`);
+  });
+});
