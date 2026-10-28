@@ -332,7 +332,8 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
             }
         }
         if !(run.expired)() && !crossing_structures(run, &mut memo, &built, &slots, &effective).is_empty() && spend(&mut trials, budget) {
-            // Graduated (D20): first Tree and Brace off, every contact kept.
+            // Graduated (D20): first Tree and Brace off, every contact kept. Only a structure that was on is reported.
+            let was_on = [(Fallback::Tree, effective.scatter_auto_tree), (Fallback::Brace, effective.truss_enabled)];
             effective.scatter_auto_tree = false;
             effective.truss_enabled = false;
             built = rebuild(run, &slots, &effective, &mut memo, "structures-off", 0)?;
@@ -340,8 +341,8 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
             let mut kept = Ids::of(mesh_dropped.iter().filter(|id| !slots.iter().any(|s| id_of(s) == id.as_str())).cloned().collect());
             kept.extend(ids(&built, &slots));
             mesh_dropped = kept.list;
-            for f in [Fallback::Tree, Fallback::Brace] {
-                if !fallback.contains(&f) {
+            for (f, on) in was_on {
+                if on && !fallback.contains(&f) {
                     fallback.push(f);
                 }
             }

@@ -82,7 +82,7 @@ const EXPECTED: [&str; 4] = [
 ];
 
 /// D20: a brace that first appears after the contact repairs (an alternate brings two pillars within
-/// brace reach across a thin wall) is switched off with the tree, keeping every contact.
+/// brace reach across a thin wall) is switched off, keeping every contact; Tree was off, so only Brace is reported.
 #[test]
 fn a_structure_that_still_crosses_after_the_contact_repairs_goes_off_and_the_contacts_stay() {
     // A shelf; a block under the far primary's pillar; a thin wall between the left contact and the alternate.
@@ -95,7 +95,7 @@ fn a_structure_that_still_crosses_after_the_contact_repairs_goes_off_and_the_con
     let out = fixture.run(vec![contact("left", [-6.0, 20.0, 0.0], Origin::Auto), contact("auto-0", [20.0, 20.0, 0.0], Origin::Auto)], &s, &p, &never);
     let steps: Vec<&str> = trace::take().iter().map(|t| t.step).collect();
     assert_eq!(steps, ["alternates", "structures-off"], "{out:?}", out = (&out.dropped, &out.fallback, &out.verdict));
-    assert_eq!(out.fallback, [Fallback::Tree, Fallback::Brace]);
+    assert_eq!(out.fallback, [Fallback::Brace], "only the structure that was on is reported");
     assert!(out.dropped.is_empty(), "{:?}", out.dropped);
     assert_eq!(out.contact_ids.len(), 2, "both contacts are kept: {:?}", out.contact_ids);
     assert!(!out.built.components.iter().any(|c| c.tag.part == Part::Brace));

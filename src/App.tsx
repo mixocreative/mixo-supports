@@ -1086,13 +1086,16 @@ export default function App() {
     setStartScreen(null);
     send({ type: 'startDental', profile, ...(file ? { file } : {}) });
   };
-  // Closing the last model returns to the start.
+  // Closing the last model returns to the start and leaves any step, so the next type choice starts afresh.
   const unitCount = scene.units.length;
   const lastUnitCount = useRef(unitCount);
   useEffect(() => {
-    if (lastUnitCount.current > 0 && unitCount === 0) setStartScreen('task');
+    if (lastUnitCount.current > 0 && unitCount === 0) {
+      send({ type: 'exit' });
+      setStartScreen('task');
+    }
     lastUnitCount.current = unitCount;
-  }, [unitCount]);
+  }, [unitCount, send]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
