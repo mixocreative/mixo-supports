@@ -9,7 +9,8 @@ fn fingerprint(out: &Generated) -> String {
     let log = trace::take();
     assert!(log.iter().all(|t| t.build_ms >= 0.0 && t.check_ms >= 0.0), "{log:?}");
     let steps: Vec<String> = log.iter().map(|t| format!("{}:{}{}", t.step, t.touched, if t.same { ":same" } else { "" })).collect();
-    let hash = out.built.positions.iter().fold(0xcbf29ce484222325u64, |h, p| (h ^ u64::from(p.to_bits())).wrapping_mul(0x100000001b3));
+    // Rounded to 0.1 µm: float bits differ across platforms' maths libraries.
+    let hash = out.built.positions.iter().fold(0xcbf29ce484222325u64, |h, p| (h ^ ((f64::from(*p) * 1e4).round() as i64 as u64)).wrapping_mul(0x100000001b3));
     format!("trials={} steps={:?} dropped={:?} fallback={:?} ids={:?} verdict={:?} positions={}:{:016x}", out.trials, steps, out.dropped, out.fallback, out.contact_ids, out.verdict.status, out.built.positions.len(), hash)
 }
 
@@ -74,8 +75,8 @@ fn a_clean_first_build_spends_no_trial() {
 }
 
 const EXPECTED: [&str; 4] = [
-    r#"trials=1 steps=["reaim-normal:1"] dropped=[] fallback=[] ids=["auto-0"] verdict=Clear positions=168:f98baab8b753253e"#,
-    r#"trials=2 steps=["reaim-normal:1", "leave-out:1"] dropped=["auto-0"] fallback=[] ids=["hand"] verdict=Blocked positions=138:10942e1373d5e880"#,
-    r#"trials=3 steps=["reaim-normal:1", "reaim-down:1", "leave-out:1"] dropped=["auto-0"] fallback=[] ids=["hand"] verdict=Clear positions=102:ca3d46b34a88b6b4"#,
-    r#"trials=1 steps=["alternates:1"] dropped=[] fallback=[] ids=["auto-400_2000_0"] verdict=Clear positions=168:792419d77bd441af"#,
+    r#"trials=1 steps=["reaim-normal:1"] dropped=[] fallback=[] ids=["auto-0"] verdict=Clear positions=168:3182c8676da1f1d5"#,
+    r#"trials=2 steps=["reaim-normal:1", "leave-out:1"] dropped=["auto-0"] fallback=[] ids=["hand"] verdict=Blocked positions=138:281c208904fc1ef1"#,
+    r#"trials=3 steps=["reaim-normal:1", "reaim-down:1", "leave-out:1"] dropped=["auto-0"] fallback=[] ids=["hand"] verdict=Clear positions=102:71aaedf8353dcc7d"#,
+    r#"trials=1 steps=["alternates:1"] dropped=[] fallback=[] ids=["auto-400_2000_0"] verdict=Clear positions=168:a2828132e78a9955"#,
 ];
