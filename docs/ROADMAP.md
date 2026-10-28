@@ -32,6 +32,7 @@ Decided (by the owner unless noted):
 | D11 | A lift change keeps the generated tips, necks and landings exactly and only moves what reaches the plate (lead decision, reversible). Two fresh generates at different lifts differ (the landing remesh grid follows the build frame: tips up to 2.1 mm apart), so "equal to a fresh generate" holds only on the exact surface. | L |
 | D12 | No synthetic test aligners: the generated shapes are too unrealistic to use (owner, 2026-10-28). The V1 generator (f717d61) was removed. Its one finding, kept for P2 and real files: the outer-ridge detector needs a trim that is sharp along part of its length; a trim that is sharp all the way round (two closed sharp loops) is refused with `outer-ridge-not-closed`. | V |
 | D13 | Folder review: with the camera below the floor (the bottom of the supports and raft) the viewer shows only the aligner and its support tips (owner, 2026-10-28; built). | review |
+| D14 | F is built in full: scan, stable band, slider and the automatic pick with its confirm and retries, slenderness limits 20/35 (owner, 2026-10-28, Q6). | F |
 
 Open (owner; Q1, release timing, was answered: pull request #2 merged to `main` as fbac47f on 2026-10-28):
 
@@ -40,7 +41,6 @@ Open (owner; Q1, release timing, was answered: pull request #2 merged to `main` 
 | Q2 | Shells from public teeth scans (Teeth3DS+) as extra test files: the data licence is "Other, see license.txt" on OSF. Read it and say whether derived local-only files are allowed.  | V (optional) |
 | Q3 | Dental landings without the remesh (P3b): only if a measurement shows the remesh is a problem. | P3b |
 | Q4 | Switch the reference type to a curvature contour detector: only if a real file defeats the current one. | P2 |
-| Q6 | Split F: build the angle scan, the stable band and the slider now (F1), and defer the automatic pick, its retry and the slenderness limits until prints show the start tilt failing? The scope review's case: those thresholds are guesses until V's prints (principle 6). Today F builds all of it. | F |
 
 `dentalwork/open-decisions.md` explains D7–D10 in plain language for the owner.
 
