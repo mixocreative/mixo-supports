@@ -51,7 +51,8 @@ export function diagnose(mesh: TriangleMesh, input: DiagnoseInput, profile: stri
   const { region, bands, supports } = input;
   const faces = mesh.indices.length / 3;
   const tips = new Uint8Array((supports?.indices.length ?? 0) / 3);
-  for (const component of supports?.components ?? []) if (component.part === 'tip') tips.fill(1, component.start / 3, (component.start + component.count) / 3);
+  // The tip of a support is its tip and neck parts, as in the app's tips view (`meshQuery.ts`).
+  for (const component of supports?.components ?? []) if (component.part === 'tip' || component.part === 'neck') tips.fill(1, component.start / 3, (component.start + component.count) / 3);
   const packedBands = new Uint8Array(bands ? faces * 4 : 0);
   if (bands) [bands.outerOpeningSide, bands.outerOtherSide, bands.innerOpeningSide, bands.innerOtherSide].forEach((mask, k) => packedBands.set(mask, k * faces));
   return withSession((raw) => {

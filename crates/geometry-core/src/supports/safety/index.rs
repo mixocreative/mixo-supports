@@ -3,6 +3,7 @@
 
 use super::tri::Tri;
 use crate::core::vec::V3;
+use std::cell::OnceCell;
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -45,6 +46,8 @@ pub struct CollisionIndex<'a> {
     pub cell_mm: f64,
     cells: HashMap<(i64, i64), Vec<u32>>,
     pub face_bounds: Vec<Bounds>,
+    /// Faces around each vertex (CSR: `first[v]..first[v + 1]` into `faces`), built on first use.
+    vertex_faces: OnceCell<(Vec<u32>, Vec<u32>)>,
 }
 
 impl<'a> CollisionIndex<'a> {
@@ -59,7 +62,7 @@ impl<'a> CollisionIndex<'a> {
         }
         let extent = if min_x.is_finite() { (max_x - min_x).max(max_z - min_z) } else { 0.0 };
         let cell_mm = 0.5f64.max(extent / 64.0);
-        let mut index = Self { positions, indices, valid, cell_mm, cells: HashMap::new(), face_bounds: Vec::new() };
+        let mut index = Self { positions, indices, valid, cell_mm, cells: HashMap::new(), face_bounds: Vec::new(), vertex_faces: OnceCell::new() };
         if !valid || positions.iter().any(|v| !v.is_finite()) || indices.iter().any(|&i| i as usize * 3 + 2 >= positions.len()) {
             index.valid = false;
             return index;
@@ -92,6 +95,30 @@ impl<'a> CollisionIndex<'a> {
 
     pub fn triangle(&self, face: usize) -> Tri {
         triangle_of(self.positions, self.indices, face)
+    }
+
+    /// Faces that use indexed vertex `vertex` (ascending). Faces joined only by equal coordinates on
+    /// different vertices are not neighbours.
+    pub fn faces_at(&self, vertex: u32) -> &[u32] {
+        let (first, faces) = self.vertex_faces.get_or_init(|| {
+            let count = self.positions.len() / 3;
+            let mut first = vec![0u32; count + 1];
+            for &v in self.indices {
+                first[v as usize + 1] += 1;
+            }
+            for v in 0..count {
+                first[v + 1] += first[v];
+            }
+            let mut fill = first.clone();
+            let mut faces = vec![0u32; self.indices.len()];
+            for (at, &v) in self.indices.iter().enumerate() {
+                faces[fill[v as usize] as usize] = (at / 3) as u32;
+                fill[v as usize] += 1;
+            }
+            (first, faces)
+        });
+        let v = vertex as usize;
+        if v + 1 >= first.len() { &[] } else { &faces[first[v] as usize..first[v + 1] as usize] }
     }
 }
 

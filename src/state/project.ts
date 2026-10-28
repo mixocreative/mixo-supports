@@ -3,7 +3,7 @@ import { contactsHiddenByMarkers, rekeyPoints, remapDeleted } from '../supports/
 import { defaultSupportSettings, parseShapeOverride, type ShapeOverride } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
 import type { DentalAllowStamp, DentalPolicy } from '../core/analysis/dentalPolicy';
-import { parseDentalTuning } from '../dental/tuning';
+import { UNSAVED_TUNING, parseDentalTuning } from '../dental/tuning';
 import { DEFAULT_PROFILE_ID, profileData } from '../dental/alignerProfiles';
 import type { ModelTransform } from './transform';
 
@@ -399,7 +399,8 @@ function cloneDentalPolicy(policy: DentalPolicy, mesh: TriangleMesh): DentalPoli
     }
     for (const value of [...region.outerEdges, ...region.outerRidgeEdges, ...region.outerConnectorEdges, ...region.openingEdges]) if (value >= mesh.positions.length / 3) throw new TypeError('dental region edge is outside the mesh');
     return { ...base, kind: 'two-contour',
-      ...(policy.tuning ? { tuning: parseDentalTuning(policy.tuning, profileId) } : {}),
+      // Saved without a tuning: the defaults of the time, so the saved strip still reproduces.
+      tuning: policy.tuning ? parseDentalTuning(policy.tuning, profileId) : { ...UNSAVED_TUNING },
       ...(structure ? { structure: { treeEnabled: structure.treeEnabled, bracesEnabled: structure.bracesEnabled } } : {}), region: {
       kind: 'proposal', allowedFaces: new Uint8Array(region.allowedFaces), outerEdges: new Uint32Array(region.outerEdges),
       outerRidgeEdges: new Uint32Array(region.outerRidgeEdges), outerConnectorEdges: new Uint32Array(region.outerConnectorEdges),

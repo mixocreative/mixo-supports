@@ -34,9 +34,9 @@ export function decodeContacts(faces: Uint32Array, points: Float64Array, distanc
  * first-layer island.
  */
 export function sampleDiagnosticContourContacts(mesh: TriangleMesh, contour: Uint32Array,
-  sideBand: Uint8Array, settings: { spacing: number; maxSearchDistance: number; phaseMm?: number }): DiagnosticContactSample {
+  sideBand: Uint8Array, settings: { spacing: number; maxSearchDistance: number; phaseMm?: number; minSeparation?: number }): DiagnosticContactSample {
   const result = dentalInternals().dental_sample_contacts(mesh.positions, mesh.indices, contour, sideBand,
-    settings.spacing, settings.maxSearchDistance, settings.phaseMm ?? Number.NaN);
+    settings.spacing, settings.maxSearchDistance, settings.phaseMm ?? Number.NaN, settings.minSeparation ?? 0);
   try {
     if (!result.ok()) return { kind: 'inconclusive', reason: result.reason() };
     return { kind: 'proposal', contacts: decodeContacts(result.faces(), result.points(), result.distances()),

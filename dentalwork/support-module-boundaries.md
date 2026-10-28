@@ -21,9 +21,10 @@ If you are about to write a collision test, a landing check, a retry loop or a m
 
 | Decision | Owner | Where |
 |---|---|---|
-| Aligner orientation, outer trim loop, central opening (`present` / `absent` / `ambiguous`), face cut, strips, contact sampling, tuning, the contour cache | dental policy | `dental/{orient,orientation,rim,pose,topology,contour,opening,region,bands,sampling,footprint,incidence,cache,mesh}.rs` |
+| Aligner orientation, outer trim loop, central opening (`present` / `absent` / `ambiguous`), face cut, contour distance field and area, contact sampling, tuning, the contour and field cache | dental policy | `dental/{orient,orientation,rim,pose,topology,contour,opening,region,bands,field,sampling,footprint,incidence,cache,mesh}.rs` |
 | Which faces are permitted, the candidates, the gap alternates, structure flags and the Tree/Brace choice, rings, landing rule, match tolerances, repair budget | dental policy, as data, made in Rust (`dental_policy`) | `dental/policy.rs` -> `PolicyResult` |
-| Thresholds, default strip width, density, setback, spacing, repair budget, match tolerance and normal dot, card art, names | aligner profile (serde JSON, unknown keys are an error) | `dental/profiles/<id>.json` |
+| Thresholds, default area position, width and density and their limits, spacing, repair budget, match tolerance and normal dot, card art, names | aligner profile (serde JSON, unknown keys are an error) | `dental/profiles/<id>.json` |
+| Painted faces and the paint fill (paint anywhere on a detected area), shared by the older fill | dental policy | `dental/paint.rs` |
 | Paint-from-scratch area when detection finds none, the older fill | dental policy | `dental/legacy.rs`, host stamps in `src/dental/manualArea.ts` |
 | Diagnostic review layers and their colors | dental, review only | `dental/review.rs` (`diagnose`) |
 | Generic placement: downward faces, regions, Poisson field, island minima, ridges, edge anchors, deterministic `auto-X_Y_Z` IDs; the generic `PolicyResult` (`generic_policy`) | generic policy | `generic/placement/`, `generic/policy.rs` -> `PolicyResult` |

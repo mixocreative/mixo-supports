@@ -1,7 +1,6 @@
 //! Outer contour: the two long sharp ridge chains of the aligner joined by two connector routes
 //! into one closed loop.
 
-use crate::core::vec::distance;
 use super::profiles::AlignerProfile;
 use super::topology::{Component, Context, components, shortest_route};
 use std::collections::{HashMap, HashSet};
@@ -30,9 +29,11 @@ fn open_chain(context: &Context, component: &Component) -> bool {
 
 pub fn outer_contour(context: &Context, profile: &AlignerProfile) -> Option<OuterContour> {
     let t = &profile.thresholds;
-    let candidates = components(context, &context.sharp_edges(t.sharp_angle_deg));
+    // The two longest (mm) open sharp chains are the ridges. Closed sharp loops (a plate edge, a
+    // cavity trim) are not ridge candidates, however long; a count of edges never ranks them.
+    let candidates: Vec<Component> = components(context, &context.sharp_edges(t.sharp_angle_deg)).into_iter().filter(|c| open_chain(context, c)).collect();
     let (first, second) = (candidates.first()?, candidates.get(1)?);
-    if first.edges.len() < t.ridge_first_min_edges || second.edges.len() < t.ridge_second_min_edges || !open_chain(context, first) || !open_chain(context, second) {
+    if first.length < t.ridge_first_min_mm || second.length < t.ridge_second_min_mm {
         return None;
     }
     let mut extent = [0.0; 2];
@@ -55,7 +56,7 @@ pub fn outer_contour(context: &Context, profile: &AlignerProfile) -> Option<Oute
             continue;
         }
         let e = &context.edges[edge];
-        let length = distance(context.vertices[e.a as usize], context.vertices[e.b as usize]);
+        let length = context.edge_length(edge);
         graph.entry(e.a).or_default().push((e.b, length));
         graph.entry(e.b).or_default().push((e.a, length));
     }

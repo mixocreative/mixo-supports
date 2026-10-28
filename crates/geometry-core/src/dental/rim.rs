@@ -3,7 +3,7 @@
 
 use super::mesh::{Mesh, sum_points};
 
-use crate::core::vec::{V3, cross, dot, length, normalize, scale, sub};
+use crate::core::vec::{V3, cross, distance, dot, length, normalize, scale, sub};
 use crate::core::jsnum::hypot3;
 use super::profiles::AlignerProfile;
 use std::collections::HashMap;
@@ -167,8 +167,12 @@ fn lower_feature_loop(
                 }
             }
         }
-        if component.len() >= t.loop_min_vertices && component.iter().all(|v| graph[v].len() == 2) {
-            loops.push(component);
+        // A closed loop (every vertex of degree 2) long enough to be a trim, not a crease.
+        if component.iter().all(|v| graph[v].len() == 2) {
+            let perimeter = component.iter().flat_map(|v| graph[v].iter().map(move |n| (*v, *n))).fold(0.0, |sum, (a, b)| sum + distance(vertices[a as usize], vertices[b as usize])) / 2.0;
+            if perimeter >= t.loop_min_perimeter_mm {
+                loops.push(component);
+            }
         }
     }
     if loops.is_empty() {

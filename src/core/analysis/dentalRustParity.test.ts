@@ -36,9 +36,9 @@ function expectSameRegion(name: string, actual: Region): void {
 
 describe('Rust dental region vs the recorded TS oracle', () => {
   const tunings = [
-    { setbackMm: 0.2, stripWidthMm: 1, density: 1 },
-    { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 },
-    { setbackMm: 0, stripWidthMm: 0.2, density: 0.5 },
+    { positionMm: 0.7, stripWidthMm: 1, density: 1 },
+    { positionMm: 0.7, stripWidthMm: 0.4, density: 1.5 },
+    { positionMm: 0.1, stripWidthMm: 0.2, density: 0.5 },
   ];
   for (const tuning of tunings) {
     it(`matches mask, contours, tips and IDs at ${JSON.stringify(tuning)}`, () => {
@@ -50,7 +50,7 @@ describe('Rust dental region vs the recorded TS oracle', () => {
   it('retunes to the recorded result and to fresh detection', () => {
     const mesh = reference();
     const base = proposal(proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE));
-    const tuning = { setbackMm: 0.35, stripWidthMm: 0.8, density: 1.25 };
+    const tuning = { positionMm: 0.75, stripWidthMm: 0.8, density: 1.25 };
     const retuned = proposal(retuneDentalSupportRegion(mesh, base, tuning, REFERENCE_PROFILE));
     expectSameRegion('dental-region-retuned', retuned);
     expect(retuned).toEqual(proposal(proposeDentalSupportRegion(mesh, tuning, REFERENCE_PROFILE)));
@@ -86,7 +86,7 @@ describe('Rust orientation vs the recorded TS oracle', () => {
       const turned = rotation.every((value) => value === 0) ? mesh
         : { positions: transformPositions(mesh.positions, placementMatrix({ position: [0, 0, 0], rotation: rotation as Vector })), indices: mesh.indices };
       const found = proposeDentalOrientation(turned, REFERENCE_PROFILE);
-      const actual = orientationSnapshots(found, found.kind === 'proposal' ? rotationToDentalPose(turned, found.rim) : undefined,
+      const actual = orientationSnapshots(found, found.kind === 'proposal' ? rotationToDentalPose(turned, found.rim, REFERENCE_PROFILE) : undefined,
         found.kind === 'proposal' ? inspectDentalCentralOpening(turned, found.rim, REFERENCE_PROFILE) : { kind: 'none' });
       expectGolden(`dental-orient-${at}`, actual.tight, 1e-9);
       expectGolden(`dental-orient-${at}-points`, actual.points, 1e-4);
@@ -107,7 +107,7 @@ describe('100 random poses restore within 0.02 mm (seeded)', () => {
       const turned = { positions: transformPositions(mesh.positions, placementMatrix({ position: [0, 0, 0], rotation: scramble })), indices: mesh.indices };
       const found = proposeDentalOrientation(turned, REFERENCE_PROFILE);
       if (found.kind !== 'proposal') continue;
-      const pose = rotationToDentalPose(turned, found.rim);
+      const pose = rotationToDentalPose(turned, found.rim, REFERENCE_PROFILE);
       if (!pose) continue;
       proposals += 1;
       const restored = placementMatrix({ position: [0, 0, 0], rotation: pose });

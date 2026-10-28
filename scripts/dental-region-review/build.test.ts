@@ -70,7 +70,8 @@ describe('complete dental GLB review', () => {
     expect(supports).toBeDefined();
     const modelBounds = new THREE.Box3().setFromObject(model!);
     const supportBounds = new THREE.Box3().setFromObject(supports!);
-    expect(modelBounds.min.y).toBeGreaterThan(4.9);
+    // The profile's Step 3 lift height (3.5 mm).
+    expect(modelBounds.min.y).toBeGreaterThan(3.4);
     expect(supportBounds.min.y).toBeLessThan(1);
     expect(supportBounds.max.y).toBeGreaterThan(modelBounds.min.y);
   }, 180000);

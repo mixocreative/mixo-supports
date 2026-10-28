@@ -11,7 +11,7 @@ import { runSupportJob } from './jobRunner';
 import { filterDentalPlacement } from '../dental/placement';
 import { parseStl } from '../../scripts/test-support/rustImport';
 import { dentalPolicyOf } from '../../scripts/test-support/dentalPolicyOf';
-import { REFERENCE_PROFILE, footprintSettings, referenceTuning } from '../../scripts/test-support/referenceProfile';
+import { REFERENCE_PROFILE, footprintSettings, fromBelow, referenceTuning } from '../../scripts/test-support/referenceProfile';
 
 /*
  * Gap alternates are the policy's repair options (`PolicyResult.alternates`, made by Rust
@@ -29,9 +29,11 @@ function reference() {
   const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
   const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
   if (region.kind !== 'proposal') throw new Error(`Reference region ${region.reason}`);
-  const phase = proposeDentalContactFootprint(mesh, region, { ...footprintSettings(), samplePhaseFraction: 0 });
-  if (phase.kind !== 'proposal') throw new Error(`Reference phase ${phase.reason}`);
-  return { mesh, region, phase };
+  // The policy samples for its frame's plate normal (+Y for the still frame used here).
+  const phase = proposeDentalContactFootprint(mesh, region, { ...footprintSettings(), samplePhaseFraction: 0, fromBelow: fromBelow() });
+  const primaries = proposeDentalContactFootprint(mesh, region, { ...footprintSettings(), fromBelow: fromBelow() });
+  if (phase.kind !== 'proposal' || primaries.kind !== 'proposal') throw new Error('Reference footprint');
+  return { mesh, region, phase, primaries: [...primaries.outerContacts, ...primaries.innerContacts] };
 }
 function fixture() { return cached ??= reference(); }
 function policy(region: ReturnType<typeof fixture>['region']): Extract<DentalPolicy, { kind: 'two-contour' }> {
@@ -58,7 +60,7 @@ describe('dental gap alternates are repair options, not primaries', () => {
       settings: { overhangAngleDegrees: 45, spacing: 4, edgeInset: 0, sharpEdgeAngleDegrees: 45, includeIslands: false } };
     const empty = { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() };
     const preview = filterDentalPlacement(job, empty);
-    expect(preview.points).toHaveLength(region.contacts!.length);
+    expect(preview.points).toHaveLength(fixture().primaries.length);
     const alternateIds = new Set(made.alternates.map((a) => positionId(a.position as [number, number, number])));
     expect(preview.points.some((p) => alternateIds.has(p.id))).toBe(false);
   }, 60000);
@@ -73,7 +75,7 @@ describe('dental gap alternates are repair options, not primaries', () => {
       runSupportJob({ mesh, frame, settings, dental,
         contacts: { points: [candidate], manual: [], deleted: [], zones: [], contactSettings: {} },
         labelText: 'A', mode: 'preview' } satisfies SupportJob);
-    const primary = region.contacts![10]!;
+    const primary = fixture().primaries[10]!;
     const exact = point(positionId(primary.position), primary.position, primary.normal);
     const built = build(exact);
     expect(built.dropped).not.toContain(exact.id);

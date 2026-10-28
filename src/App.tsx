@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Object3D } from 'three';
 import { labelForIndex } from './core/analysis/mesh';
 import type { SupportProblem } from './core/analysis/supportCheck';
-import type { SupportPoint } from './core/analysis/types';
+import type { PlacementResult, SupportPoint } from './core/analysis/types';
 import type { Vector } from './core/vec3';
 import JobActivityPanel from './components/JobActivity';
 import { AnalysisClient } from './workers/analysisClient';
@@ -51,7 +51,7 @@ import type { GeneratedSupportMesh } from './core/supports/mesh';
 import { meshBounds } from './core/supports/meshQuery';
 import { type ZoneStamp } from './core/supports/zones';
 import { problemInZone } from './supports/zoneCheck';
-import type { DentalAllowStamp } from './core/analysis/dentalPolicy';
+import type { DentalAllowStamp, DentalPolicy } from './core/analysis/dentalPolicy';
 import { defaultDentalStructure } from './core/analysis/dentalPolicy';
 import { deleteCommands } from './supports/selection';
 import { canvasGesture, gesture, type GestureKind } from './editing/gesture';
@@ -59,7 +59,7 @@ import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, withShape, type LiveSupportSettings, type SettingKey, type ShapeKey } from './core/supports/settings';
 import { islandProblems } from './supports/islandProblems';
 import { omittedProblems } from './supports/omittedProblem';
-import { checkJobOf, currentBuild, hiddenByZones, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
+import { checkJobOf, currentBuild, hiddenByZones, liftCommands, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { COMMAND_IDS, resolve, type CommandId, type UiState } from './editing/commands';
 import { effectiveBrushMode } from './editing/selection';
 import { keyAction } from './editing/keys';
@@ -313,12 +313,19 @@ export default function App() {
     p?.dispose(); e?.dispose(); a?.dispose();
   }, []);
 
-  const { generate, generateDental, generating, regenQueued, scheduleRegenerate, forgetPlacing } = useRegenerate({
+  const { generate, generateDental, landRetuned, generating, regenQueued, scheduleRegenerate, forgetPlacing } = useRegenerate({
     sceneRef, mode: editMode, targets, analysis, unitName, dispatch, offerUndo, setStatus, setStatusMessage,
   });
-  // A density change in Step 3 places the contacts again once the strip is retuned; hand edits are kept where they still fit.
+  // A density change in Step 3 lands the contacts the retune placed with the new strip, in one batch
+  // (one rebuild); hand edits are kept where they still fit. Step 2 shows them as the tip preview.
   const dentalTuning = useDentalTuning(activeUnit, editMode === 'dental' && (session.dentalStage === 'area' || session.dentalStage === 'review'), analysis, dispatch, unitName,
-    useCallback((unitId: string) => { if (sessionRef.current.mode === 'dental' && sessionRef.current.dentalStage === 'review') scheduleRegenerate([unitId]); }, [scheduleRegenerate]));
+    useCallback((unit: PrintUnit, policy: DentalPolicy, placement: PlacementResult | undefined) => {
+      if (sessionRef.current.mode !== 'dental' || sessionRef.current.dentalStage !== 'review') return false;
+      if (placement && landRetuned(unit, policy, placement)) return true;
+      dispatch({ type: 'dental/set', unitId: unit.id, policy });
+      scheduleRegenerate([unit.id]);
+      return true;
+    }, [dispatch, landRetuned, scheduleRegenerate]));
   const onDentalStructureChange = useCallback((structure: { treeEnabled: boolean; bracesEnabled: boolean }) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
     if (unit?.dental?.kind !== 'two-contour' || (sessionRef.current.dentalStage !== 'area' && sessionRef.current.dentalStage !== 'review')) return;
@@ -620,9 +627,29 @@ export default function App() {
     if (regenerate && sessionRef.current.mode !== 'edit') scheduleRegenerate(units.filter((unit) => unit.supports).map((unit) => unit.id));
   }, [forTargets, scheduleRegenerate, targets]);
 
+  /**
+   * Lift height outside Support Edit Mode: placement never depends on it, so a placed unit is only
+   * raised or lowered, in the batch that sets it (one rebuild, no placement job); a unit with other
+   * placement changes pending is placed again as before.
+   */
+  const changeLift = useCallback((value: number, edit?: string) => {
+    const commands: SceneCommand[] = [];
+    const again: string[] = [];
+    for (const unit of targets(sceneRef.current)) {
+      const settings = updateSetting(resolveSettings(unit.settings), 'liftHeight', value);
+      commands.push({ type: 'settings/set', unitId: unit.id, settings: settings as SupportSettings });
+      const lifted = liftCommands(unit, settings);
+      if (lifted) commands.push(...lifted);
+      else if (unit.supports) again.push(unit.id);
+    }
+    if (commands.length > 0) dispatch({ type: 'batch', commands }, edit);
+    scheduleRegenerate(again);
+  }, [dispatch, scheduleRegenerate, targets]);
+
   const onSettingChange = useCallback(<K extends SettingKey>(key: K, value: LiveSupportSettings[K], edit?: string) => {
+    if (key === 'liftHeight' && sessionRef.current.mode !== 'edit') return changeLift(value as number, edit);
     changeSettings((settings) => updateSetting(settings, key, value), PLACEMENT_KEYS.includes(key), edit);
-  }, [changeSettings]);
+  }, [changeLift, changeSettings]);
 
   const removeSupports = () => {
     send({ type: 'leave' });
@@ -661,7 +688,7 @@ export default function App() {
   const onDentalStroke = useCallback((unitId: string, stamps: DentalAllowStamp[]) => {
     if (sessionRef.current.mode !== 'dental' || sessionRef.current.dentalStage !== 'area' || unitId !== sceneRef.current.activeUnitId || stamps.length === 0) return;
     dispatch({ type: 'dental/stamps/add', unitId, stamps });
-    setStatus(stamps[stamps.length - 1]!.kind === 'allow' ? 'Dental support area allowed.' : 'Dental support permission removed.');
+    setStatus(stamps[stamps.length - 1]!.kind === 'allow' ? 'Dental support area painted.' : 'Dental support area erased.');
   }, [dispatch, setStatus]);
   const clearActiveZones = useCallback(() => {
     const unitId = sceneRef.current.activeUnitId;

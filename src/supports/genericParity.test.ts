@@ -79,7 +79,7 @@ describe('browser engine registration', () => {
     const adapters = Object.entries(sources).filter(([file]) => file.startsWith('./')).map(([, text]) => text).join(' ');
     const calls = [...adapters.matchAll(/^  ([a-z][a-z_]+)\(/gm)].map((m) => m[1]!).filter((name) => name.includes('_') && !/^(take|set|add)_/.test(name) && !['generic_place', 'load_mesh', 'island_reason',
       // GeometrySession methods (the class is registered below), not free exports.
-      'load_placed', 'dental_policy', 'generic_policy'].includes(name));
+      'load_placed', 'release_mesh', 'dental_policy', 'generic_policy'].includes(name));
     expect(calls.length).toBeGreaterThan(5);
     for (const name of new Set(calls)) expect(client, name).toContain(`${name}: typeof ${name}`);
     // Classes have no snake_case call name to find: name them (`generate` and the policies are session methods).

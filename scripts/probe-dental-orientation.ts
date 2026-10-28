@@ -93,7 +93,7 @@ if (process.env.DENTAL_PROBE_MODE === 'pose100') {
     const turned={positions:transformPositions(mesh.positions,placementMatrix({position:[0,0,0],rotation:scramble})),indices:mesh.indices};
     const found=proposeDentalOrientation(turned, REFERENCE_PROFILE);
     if(found.kind!=='proposal'){abstentions++;continue;}
-    const pose=rotationToDentalPose(turned,found.rim);
+    const pose=rotationToDentalPose(turned,found.rim,REFERENCE_PROFILE);
     if(!pose){abstentions++;continue;}
     proposals++;
     const restored=placementMatrix({position:[0,0,0],rotation:pose});

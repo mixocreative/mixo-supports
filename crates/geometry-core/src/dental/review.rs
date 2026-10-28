@@ -184,8 +184,12 @@ pub fn review_layers(input: &ReviewInput) -> Result<Vec<Layer>, ReviewError> {
         let pick = |tip: bool| -> Vec<u32> {
             support.tip_flags.iter().enumerate().filter(|(_, f)| (**f != 0) == tip).flat_map(|(t, _)| support.indices[t * 3..t * 3 + 3].to_vec()).collect()
         };
-        layers.push(Layer { name: "GOLD app-generated support mesh", color: GOLD, positions: support.positions.to_vec(), indices: pick(false) });
-        layers.push(Layer { name: "ORANGE final support tips", color: ORANGE, positions: support.positions.to_vec(), indices: pick(true) });
+        // An empty pick is left out: a layer with positions and no indices is read as loose triangles.
+        for (name, color, indices) in [("GOLD app-generated support mesh", GOLD, pick(false)), ("ORANGE final support tips", ORANGE, pick(true))] {
+            if !indices.is_empty() {
+                layers.push(Layer { name, color, positions: support.positions.to_vec(), indices });
+            }
+        }
     }
     Ok(layers)
 }

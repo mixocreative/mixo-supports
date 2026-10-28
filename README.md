@@ -80,7 +80,7 @@ npm test         # Vitest suite, including the Blender parity tests
 npm run build    # type-check and production build into dist/
 ```
 
-Every push to `main` is deployed to GitHub Pages.
+CI (`.github/workflows/ci.yml`) runs on every push and pull request: Rust tests, app tests, the production build and the browser walk. A push to `main` is deployed to GitHub Pages only after the tests and the walk pass. Dependabot (`.github/dependabot.yml`) opens one pull request a month when a CI action has a new version.
 
 ### Browser walk
 

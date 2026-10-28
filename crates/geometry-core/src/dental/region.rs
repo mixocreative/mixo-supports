@@ -3,7 +3,8 @@
 
 use super::cache;
 use super::contour::outer_contour;
-use super::footprint::{Contact, Footprint, RimSide, Tuning, footprint_settings, propose_footprint};
+use super::footprint::{Contact, Facing, Footprint, RimSide, Tuning, footprint_settings, propose_footprint};
+use crate::core::vec::V3;
 use super::mesh::Mesh;
 use crate::core::vec::dot;
 use super::opening::{Opening, central_opening};
@@ -112,8 +113,14 @@ fn classify_faces(context: &Context, outer: &[usize], opening: &[usize], profile
 /// found no area (never a silent empty area). The detection is kept in `cache` (same mesh bits and
 /// profile), the tuning is applied on top each time.
 pub fn propose_region(mesh: &Mesh, tuning: &Tuning, profile: &AlignerProfile) -> Result<Region, Inconclusive> {
+    propose_region_facing(mesh, tuning, profile, None)
+}
+
+/// [`propose_region`] with the print pose's plate normal `up` (mesh frame) known: tips a support
+/// cannot reach from below move (`footprint::Facing`). The masks do not depend on `up`.
+pub fn propose_region_facing(mesh: &Mesh, tuning: &Tuning, profile: &AlignerProfile, up: Option<V3>) -> Result<Region, Inconclusive> {
     let detected = cache::detection(cache::Key::of(mesh.positions, mesh.indices, &profile.id), || detect_region(mesh, profile))?;
-    retune_region(mesh, detected, tuning, profile, None)
+    retune_region(mesh, detected, tuning, profile, None, up)
 }
 
 /// The contours and the face cut, before any strip is tuned (a function of the mesh and the profile).
@@ -149,10 +156,11 @@ fn detect_region(mesh: &Mesh, profile: &AlignerProfile) -> Result<Region, Inconc
 }
 
 /// Recomputes only the narrow strip and exact contacts after operator tuning (or at another
-/// sampling phase), keeping the accepted contours.
-pub fn retune_region(mesh: &Mesh, region: Region, tuning: &Tuning, profile: &AlignerProfile, phase_fraction: Option<f64>) -> Result<Region, Inconclusive> {
+/// sampling phase), keeping the accepted contours. `up`: see [`propose_region_facing`].
+pub fn retune_region(mesh: &Mesh, region: Region, tuning: &Tuning, profile: &AlignerProfile, phase_fraction: Option<f64>, up: Option<V3>) -> Result<Region, Inconclusive> {
     let mut settings = footprint_settings(tuning, profile).map_err(|reason| format!("contact-footprint-{reason}"))?;
     settings.sample_phase_fraction = phase_fraction;
+    settings.from_below = up.and_then(|up| Facing::of(up, profile));
     let Footprint { contact_faces, outer_contacts, inner_contacts } =
         propose_footprint(mesh, &region.allowed_faces, &region.contours.outer_edges, &region.contours.opening_edges, &settings)
             .map_err(|reason| format!("contact-footprint-{reason}"))?;

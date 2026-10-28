@@ -137,7 +137,7 @@ describe('reduceScene', () => {
     };
     const policy: Extract<DentalPolicy, { kind: 'two-contour' }> = { kind: 'two-contour', profileId: 'reference-aligner', rim, stamps: [],
       structure: { treeEnabled: false, bracesEnabled: true },
-      tuning: { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 }, region: {
+      tuning: { positionMm: 0.7, stripWidthMm: 0.4, density: 1.5 }, region: {
       kind: 'proposal', allowedFaces: new Uint8Array([1]), contactFaces: new Uint8Array([1]),
       contacts: [{ face: 0, rim: 'outer', position: [0, 0, 0], normal: [0, -1, 0], distanceAlongContour: 0.5, distanceFromContour: 0.2 }],
       outerEdges: new Uint32Array([0, 1, 1, 2, 2, 0]),
@@ -157,7 +157,7 @@ describe('reduceScene', () => {
     expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
       region: { ...policy.region, contacts: [{ ...policy.region.contacts![0]!, rim: 'sideways' as 'outer' }] } } })).toThrow('dental contact rim');
     expect(() => reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: { ...policy,
-      tuning: { setbackMm: 0.2, stripWidthMm: 0, density: 1 } } })).toThrow('Invalid dental strip');
+      tuning: { positionMm: 0.2, stripWidthMm: 0, density: 1 } } })).toThrow('Invalid dental strip');
     // Older projects may still list provisional gap alternates: checked, then dropped (the policy offers its own).
     const withOldAlternates = { ...policy, gapAlternateIds: ['auto-1_2_3'] } as DentalPolicy;
     expect(reduceScene(scene, { type: 'dental/set', unitId: 'unit-a', policy: withOldAlternates }).units[0]!.dental).toEqual(policy);

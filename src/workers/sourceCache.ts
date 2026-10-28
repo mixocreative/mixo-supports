@@ -7,10 +7,10 @@ export function meshBytes(mesh: TriangleMesh): number {
 
 /**
  * The support-mesh worker's models, one per unit under the token of the source it came from, so
- * repeated builds reuse the model and its remesh and raft caches (WeakMaps keyed on the model
- * object). Freed explicitly when the unit is removed (`delete`), and kept under a total byte cap
- * (`trim` evicts the least recently used models a running job does not need; the client sends an
- * evicted model again when a later job asks for it).
+ * a later job need not send the model again (the WASM side of a unit, its build session, is in
+ * `buildSessions`). Freed explicitly when the unit is removed (`delete`), and kept under a total
+ * byte cap (`trim` evicts the least recently used models a running job does not need; the client
+ * sends an evicted model again when a later job asks for it).
  */
 export class SourceCache {
   /** Insertion order is use order: the first entry is the least recently used. */

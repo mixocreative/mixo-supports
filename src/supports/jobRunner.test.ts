@@ -9,7 +9,8 @@ import { readFileSync } from 'node:fs';
 import { runSupportJob } from './jobRunner';
 import { filterDentalPlacement } from '../dental/placement';
 import { parseStl } from '../../scripts/test-support/rustImport';
-import { REFERENCE_PROFILE, referenceTuning } from '../../scripts/test-support/referenceProfile';
+import { REFERENCE_PROFILE, footprintSettings, fromBelow, referenceTuning } from '../../scripts/test-support/referenceProfile';
+import { proposeDentalContactFootprint } from '../core/analysis/dentalContactFootprint';
 
 type V = [number, number, number];
 
@@ -150,17 +151,22 @@ describe('filterDentalPlacement', () => {
     const result = filterDentalPlacement(job, empty);
     expect(result.points.length).toBeGreaterThan(0);
     expect(result.points.length).toBeLessThan(130);
-    expect(result.points.length).toBe(region.contacts?.length);
+    // The policy places the contour samples, moved where a support reaches them from below (+Y here).
+    const placed = (r: typeof region, tuning = referenceTuning) => {
+      const footprint = proposeDentalContactFootprint(mesh, r, { ...footprintSettings(tuning), fromBelow: fromBelow() });
+      return footprint.kind === 'proposal' ? footprint.outerContacts.length + footprint.innerContacts.length : -1;
+    };
+    expect(result.points.length).toBe(placed(region));
     const forged: DentalPolicy = { ...dental, region: { ...region, allowedFaces: new Uint8Array(region.allowedFaces.length).fill(1) } };
     expect(filterDentalPlacement({ ...job, dental: forged }, empty).points).toEqual([]);
     const forgedBand: DentalPolicy = { ...dental, region: { ...region, contactFaces: new Uint8Array(region.allowedFaces.length).fill(1) } };
     expect(filterDentalPlacement({ ...job, dental: forgedBand }, empty).points).toEqual([]);
-    const tuning = { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 };
+    const tuning = { positionMm: 0.7, stripWidthMm: 0.4, density: 1.5 };
     const tuned = proposeDentalSupportRegion(mesh, tuning, REFERENCE_PROFILE);
     expect(tuned.kind).toBe('proposal');
     if (tuned.kind !== 'proposal') return;
     const tunedPolicy: DentalPolicy = { ...dental, region: tuned, tuning };
-    expect(filterDentalPlacement({ ...job, dental: tunedPolicy }, empty).points).toHaveLength(tuned.contacts!.length);
+    expect(filterDentalPlacement({ ...job, dental: tunedPolicy }, empty).points).toHaveLength(placed(tuned, tuning));
     expect(filterDentalPlacement({ ...job, dental: { ...tunedPolicy, tuning: undefined } }, empty).points).toEqual([]);
   }, 60000);
   const triangle: TriangleMesh = { positions: new Float32Array([-2, 0, -2, 2, 0, -2, 0, 0, 2]), indices: new Uint32Array([0, 1, 2]) };

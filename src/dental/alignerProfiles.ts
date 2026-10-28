@@ -10,10 +10,11 @@ import type { Lang } from '../i18n';
 const FILES = import.meta.glob<unknown>('../../crates/geometry-core/src/dental/profiles/*.json', { eager: true, import: 'default' });
 
 export interface ProfileDefaults {
-  setbackMm: number;
+  positionMm: number;
   stripWidthMm: number;
   density: number;
-  setbackMaxMm: number;
+  positionMinMm: number;
+  positionMaxMm: number;
   stripWidthMinMm: number;
   stripWidthMaxMm: number;
   densityMin: number;
@@ -24,6 +25,29 @@ export interface ProfileDefaults {
   repairBudget: number;
   matchToleranceMm: number;
   matchMinDot: number;
+  minTipSeparationMm: number;
+  tipMinFromUpDeg: number;
+  tipMoveMaxMm: number;
+}
+
+/** The target print pose (Rust `profiles::Pose`; only the geometry uses it). */
+export interface ProfilePose {
+  tiltDeg: number;
+  headingDeg: number;
+  rollDeg: number;
+}
+
+/**
+ * The Step 3 support settings a new aligner of this type starts with (Rust `profiles::SupportDefaults`);
+ * `src/dental/supportPreset.ts` applies them, and the operator can change every one.
+ */
+export interface ProfileSupports {
+  pillarDiameterMm: number;
+  tipDiameterMm: number;
+  liftHeightMm: number;
+  tree: boolean;
+  brace: boolean;
+  raft: boolean;
 }
 
 /** One profile file as the host reads it (thresholds are the geometry's; the host only checks the keys). */
@@ -38,19 +62,25 @@ export interface AlignerProfileData {
   /** The reference scan this type is tuned and tested with. */
   fixture: string;
   thresholds: Readonly<Record<string, number>>;
+  pose: Readonly<ProfilePose>;
   defaults: Readonly<ProfileDefaults>;
+  supports: Readonly<ProfileSupports>;
 }
 
 const LANGS: readonly Lang[] = ['en', 'ja', 'zh-Hant'];
-const TOP_KEYS = ['id', 'name', 'description', 'opening', 'card', 'fixture', 'thresholds', 'defaults'];
+const TOP_KEYS = ['id', 'name', 'description', 'opening', 'card', 'fixture', 'thresholds', 'pose', 'defaults', 'supports'];
 const THRESHOLD_KEYS = ['axialVarianceMax', 'terminalAreaRatioMin', 'terminalBandFraction', 'confidenceMin', 'sharpAngleDeg',
-  'loopMinVertices', 'loopBandFraction', 'loopBandMinMm', 'loopRadiusRatioMin', 'loopExtentMin', 'ridgeFirstMinEdges',
-  'ridgeSecondMinEdges', 'ridgeExtentMin', 'connectorAngleDeg', 'openingResolutionLow', 'openingResolutionHigh',
-  'openingHoleMinFraction', 'openingLoopMinEdges', 'regionAllowedMeanMin', 'regionForbiddenMeanMax',
-  'regionAllowedFractionMin', 'regionAllowedFractionMax'];
-const DEFAULT_KEYS: readonly (keyof ProfileDefaults)[] = ['setbackMm', 'stripWidthMm', 'density', 'setbackMaxMm', 'stripWidthMinMm',
+  'loopMinPerimeterMm', 'loopBandFraction', 'loopBandMinMm', 'loopRadiusRatioMin', 'loopExtentMin', 'ridgeFirstMinMm',
+  'ridgeSecondMinMm', 'ridgeExtentMin', 'connectorAngleDeg', 'openingResolutionLow', 'openingResolutionHigh',
+  'openingHoleMinFraction', 'openingNearHoleMm', 'openingLoopMinMm', 'openingSideLoopMaxMm', 'regionAllowedMeanMin',
+  'regionForbiddenMeanMax', 'regionAllowedFractionMin', 'regionAllowedFractionMax', 'archFrontMinAnisotropy',
+  'archFrontGridCells', 'archFrontSideFraction', 'archFrontEndBandFraction', 'archFrontMinAreaFraction', 'archFrontEndRatioMin'];
+const POSE_KEYS: readonly (keyof ProfilePose)[] = ['tiltDeg', 'headingDeg', 'rollDeg'];
+const DEFAULT_KEYS: readonly (keyof ProfileDefaults)[] = ['positionMm', 'stripWidthMm', 'density', 'positionMinMm', 'positionMaxMm', 'stripWidthMinMm',
   'stripWidthMaxMm', 'densityMin', 'densityMax', 'outerSpacingMm', 'innerSpacingMm', 'maxSearchMm', 'repairBudget',
-  'matchToleranceMm', 'matchMinDot'];
+  'matchToleranceMm', 'matchMinDot', 'minTipSeparationMm', 'tipMinFromUpDeg', 'tipMoveMaxMm'];
+const SUPPORT_NUMBERS = ['pillarDiameterMm', 'tipDiameterMm', 'liftHeightMm'] as const;
+const SUPPORT_SWITCHES = ['tree', 'brace', 'raft'] as const;
 
 function object(value: unknown, keys: readonly string[], where: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new TypeError(`${where} must be an object`);
@@ -64,6 +94,13 @@ function numbers<K extends string>(value: unknown, keys: readonly K[], where: st
   const record = object(value, keys, where);
   for (const key of keys) if (typeof record[key] !== 'number' || !Number.isFinite(record[key])) throw new TypeError(`${where}.${key} must be a number`);
   return record as Record<K, number>;
+}
+
+function supports(value: unknown, where: string): ProfileSupports {
+  const record = object(value, [...SUPPORT_NUMBERS, ...SUPPORT_SWITCHES], where);
+  for (const key of SUPPORT_NUMBERS) if (typeof record[key] !== 'number' || !Number.isFinite(record[key]) || (record[key] as number) <= 0) throw new TypeError(`${where}.${key} must be a positive number`);
+  for (const key of SUPPORT_SWITCHES) if (typeof record[key] !== 'boolean') throw new TypeError(`${where}.${key} must be true or false`);
+  return record as unknown as ProfileSupports;
 }
 
 function texts(value: unknown, where: string): Record<Lang, string> {
@@ -84,7 +121,9 @@ export function parseAlignerProfile(value: unknown, where = 'aligner profile'): 
     id, opening, card: [...card] as string[], fixture,
     name: texts(record.name, `${where}.name`), description: texts(record.description, `${where}.description`),
     thresholds: numbers(record.thresholds, THRESHOLD_KEYS, `${where}.thresholds`),
+    pose: numbers(record.pose, POSE_KEYS, `${where}.pose`),
     defaults: numbers(record.defaults, DEFAULT_KEYS, `${where}.defaults`),
+    supports: supports(record.supports, `${where}.supports`),
   };
 }
 

@@ -97,14 +97,20 @@ describe('DentalBar', () => {
     expect(askHtml).toContain('Discard and go back');
   });
 
-  it('shows live strip width and density with rim position under advanced controls', () => {
+  it('shows live area width, area position and density, and Paint / Erase anywhere', () => {
     const area = { kind: 'dental-area', brush: { kind: 'allow', radius: 2 }, notices: [] } as Gesture & { kind: 'dental-area' };
     const html = renderToStaticMarkup(<DentalBar gesture={area} unitName="sample"
       ui={{ mode: 'dental', dentalPreviewReady: true } as UiState} send={() => {}} run={() => {}}
-      tuning={{ setbackMm: 0.2, stripWidthMm: 1, density: 1 }} tuningLimits={profileData('reference-aligner').defaults} tuningBusy onTuningChange={() => {}} />);
-    expect(html).toContain('Strip width');
+      tuning={{ positionMm: 0.7, stripWidthMm: 1, density: 1 }} tuningLimits={profileData('reference-aligner').defaults} tuningBusy onTuningChange={() => {}} />);
+    expect(html).toContain('Area width');
+    expect(html).toContain('Area position');
     expect(html).toContain('Support density');
-    expect(html).toContain('Rim setback');
+    expect(html).not.toContain('Rim setback');
+    expect(html).not.toContain('<details');
+    // The position may cross the edge: its slider starts below zero (the profile's limit).
+    expect(html).toContain('min="-0.4"');
+    expect(html).toContain('Paint');
+    expect(html).toContain('Erase');
     expect(html).toContain('Updating support area');
     expect(html).toContain('type="range"');
     // Tree and Brace moved to Step 3.

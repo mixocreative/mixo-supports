@@ -38,7 +38,7 @@ describe('owner-approved aligner reference', () => {
       const proposal = proposeDentalOrientation(turned, REFERENCE_PROFILE);
       expect(proposal.kind).toBe('proposal');
       if (proposal.kind !== 'proposal') continue;
-      const pose = rotationToDentalPose(turned, proposal.rim);
+      const pose = rotationToDentalPose(turned, proposal.rim, REFERENCE_PROFILE);
       expect(pose).toBeDefined();
       if (!pose) continue;
       const restored = placementMatrix({ position: [0, 0, 0], rotation: pose });

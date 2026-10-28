@@ -33,7 +33,7 @@ export function supportEngine(): SupportEngine {
   return current;
 }
 
-/** Mesh bytes a one-shot session may hold. */
+/** Mesh bytes a session may hold. */
 export const SESSION_BYTES = 0x30000000;
 
 /** Runs `use` with a fresh one-shot session and frees it afterwards. */

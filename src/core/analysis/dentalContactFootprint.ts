@@ -6,13 +6,18 @@ import { decodeContacts, type DiagnosticContourContact } from './dentalContourCo
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
 
 export interface DentalContactFootprintSettings {
-  setback: number;
-  width: number;
+  /** The area: faces whose signed contour distance lies in `[low, high]` mm (negative across the edge). */
+  low: number;
+  high: number;
   outerSpacing: number;
   innerSpacing: number;
   maxSearchDistance: number;
   /** 0 samples at the contour origin; omitted keeps the usual half-spacing phase. */
   samplePhaseFraction?: number;
+  /** No two contacts (either contour) closer than this, 3D mm; 0 turns it off. */
+  minTipSeparation: number;
+  /** Tips a support cannot reach from below `up` (the plate normal, mesh frame) move up to `moveMm` past the area (Rust `footprint::Facing`). */
+  fromBelow?: { up: [number, number, number]; maxUp: number; moveMm: number };
 }
 
 export type DentalContactFootprint =
@@ -30,8 +35,9 @@ export type DentalContactFootprint =
 export function proposeDentalContactFootprint(mesh: TriangleMesh, region: Region,
   settings: DentalContactFootprintSettings): DentalContactFootprint {
   const result = dentalInternals().dental_footprint(mesh.positions, mesh.indices, region.allowedFaces, region.outerEdges, region.openingEdges,
-    Float64Array.of(settings.setback, settings.width, settings.outerSpacing, settings.innerSpacing, settings.maxSearchDistance,
-      settings.samplePhaseFraction ?? Number.NaN));
+    Float64Array.of(settings.low, settings.high, settings.outerSpacing, settings.innerSpacing, settings.maxSearchDistance,
+      settings.samplePhaseFraction ?? Number.NaN, settings.minTipSeparation,
+      ...(settings.fromBelow ? [...settings.fromBelow.up, settings.fromBelow.maxUp, settings.fromBelow.moveMm] : [])));
   try {
     if (!result.ok()) return { kind: 'inconclusive', reason: result.reason() };
     const contacts = decodeContacts(result.contact_faces_of(), result.contact_points(), result.contact_distances(), result.contact_rims());

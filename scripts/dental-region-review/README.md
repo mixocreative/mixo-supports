@@ -1,6 +1,6 @@
 # Repeatable dental region review
 
-This isolated test runner takes any STL through the app's STL importer and the production candidate detector. It writes an auto-oriented GLB showing the two strong outer ridge chains in blue, the weaker connector paths in green, the central opening in red, candidate support faces in teal, and all other faces in neutral white. It changes neither the STL nor the app's support settings. An `inconclusive` result exits with code 2 and writes no GLB. On Windows, use the prompt-based [batch script](../../dentalwork/run-review.bat).
+This isolated test runner takes any STL through the app's STL importer and the production candidate detector. It writes an auto-oriented GLB showing the two strong outer ridge chains in blue, the weaker connector paths in green, the central opening in red, candidate support faces in teal, and all other faces in neutral white. It changes neither the STL nor the app's support settings. An `inconclusive` result exits with code 2 and writes no GLB. On Windows, use the prompt-based [batch script](../../dentalwork/run-review.bat). To run a whole folder of STLs and inspect the results in a viewer, use the [folder review](../../dentalwork/batch-review/README.md), which uses the same build and export code.
 
 From the repository root, in PowerShell:
 

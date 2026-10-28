@@ -46,11 +46,11 @@ export function proposeDentalOrientation(mesh: TriangleMesh, profile: string): D
 }
 
 /**
- * Experimental aligner preset calibrated to the owner-approved, already-correct reference pose
- * (Rust `dental_pose`, Node test package only: the app uses the rotation `orient_dental` returns).
+ * The rotation to the profile's target pose (its `pose` block: tilt, heading, roll) (Rust
+ * `dental_pose`, Node test package only: the app uses the rotation `orient_dental` returns).
  * Returns undefined for ambiguous arches.
  */
-export function rotationToDentalPose(mesh: TriangleMesh, rim: DentalRim): Vector | undefined {
-  const pose = dentalInternals().dental_pose(mesh.positions, mesh.indices, rimScalars(rim));
+export function rotationToDentalPose(mesh: TriangleMesh, rim: DentalRim, profile: string): Vector | undefined {
+  const pose = dentalInternals().dental_pose(mesh.positions, mesh.indices, rimScalars(rim), profile);
   return pose.length === 3 ? [pose[0]!, pose[1]!, pose[2]!] : undefined;
 }

@@ -53,7 +53,7 @@ pub fn orient_dental(mesh: &Mesh, profile: &AlignerProfile) -> Orientation {
             Opening::Ambiguous(reason) => (OpeningState::Ambiguous, true, Some(reason)),
         },
     };
-    let rotation = rotation_to_dental_pose(mesh, &rim);
+    let rotation = rotation_to_dental_pose(mesh, &rim, profile);
     Orientation::Oriented { rim: Box::new(rim), diagnostics, rotation, opening, mesh_ok, opening_reason }
 }
 

@@ -6,14 +6,14 @@
 //! chooses a support structure (docs/SHIP-PLAN.md rule 1).
 
 use super::mesh::Mesh;
+use super::paint::{Spacer, face_samples};
 
-use crate::core::vec::{V3, cross, dot, length, normalize, sub};
+use crate::core::vec::{V3, cross, dot, normalize, sub};
 use super::rim::{BoundaryKind, Rim};
 use crate::core::matrix::{Handedness, apply_to_direction, apply_to_point, invert_matrix, placement_matrix, transform_positions};
 use crate::supports::overhang::{classify_downward_faces, face_overhang_limit};
 use crate::supports::contact_id::position_id;
 use crate::supports::policy::AreaStamp;
-use std::collections::HashMap;
 
 /// The permitted area of a legacy policy.
 pub struct LegacyArea<'a> {
@@ -162,37 +162,6 @@ pub struct Fill {
     pub ids: Vec<String>,
 }
 
-struct Spacer {
-    spacing: f64,
-    radius2: f64,
-    cells: HashMap<(i64, i64, i64), Vec<V3>>,
-}
-
-impl Spacer {
-    fn cell(&self, p: V3) -> (i64, i64, i64) {
-        let c = |v: f64| (v / self.spacing).floor() as i64;
-        (c(p[0]), c(p[1]), c(p[2]))
-    }
-    /// Accepts the point unless one already accepted lies within the spacing.
-    fn add(&mut self, point: V3) -> bool {
-        let at = self.cell(point);
-        for x in at.0 - 1..=at.0 + 1 {
-            for y in at.1 - 1..=at.1 + 1 {
-                for z in at.2 - 1..=at.2 + 1 {
-                    for prior in self.cells.get(&(x, y, z)).into_iter().flatten() {
-                        let (dx, dy, dz) = (point[0] - prior[0], point[1] - prior[1], point[2] - prior[2]);
-                        if dx * dx + dy * dy + dz * dz < self.radius2 {
-                            return false;
-                        }
-                    }
-                }
-            }
-        }
-        self.cells.entry(at).or_default().push(point);
-        true
-    }
-}
-
 fn triple(values: &[f64], k: usize) -> V3 {
     [values[k * 3], values[k * 3 + 1], values[k * 3 + 2]]
 }
@@ -203,7 +172,7 @@ pub fn fill_legacy_dental(area: &LegacyArea, input: &FillInput) -> Fill {
     let turn = placement_matrix([0.0; 3], input.rotation);
     let unturn = invert_matrix(&turn);
     let opening = OpeningRaycaster::new(mesh, area.rim);
-    let mut spacer = Spacer { spacing: input.spacing, radius2: input.spacing * input.spacing, cells: HashMap::new() };
+    let mut spacer = Spacer::new(input.spacing);
     let mut out = Fill::default();
     for k in 0..input.initial_positions.len() / 3 {
         let (position, normal) = (triple(input.initial_positions, k), triple(input.initial_normals, k));
@@ -221,30 +190,18 @@ pub fn fill_legacy_dental(area: &LegacyArea, input: &FillInput) -> Fill {
         if !normal[0].is_finite() {
             continue;
         }
-        let longest = length(sub(p1, p0)).max(length(sub(p2, p1))).max(length(sub(p0, p2)));
-        let divisions = ((longest / input.spacing).ceil()).max(1.0) as usize;
-        for row in 0..divisions {
-            for column in 0..divisions - row {
-                let b = (row as f64 + 1.0 / 3.0) / divisions as f64;
-                let c = (column as f64 + 1.0 / 3.0) / divisions as f64;
-                let a = 1.0 - b - c;
-                let unit = [
-                    a * p0[0] + b * p1[0] + c * p2[0],
-                    a * p0[1] + b * p1[1] + c * p2[1],
-                    a * p0[2] + b * p1[2] + c * p2[2],
-                ];
-                if !area.support_allowed_at(&opening, unit, Some(normal)) {
-                    continue;
-                }
-                let position = apply_to_point(&turn, unit[0], unit[1], unit[2]);
-                if !spacer.add(position) {
-                    continue;
-                }
-                let turned_normal = apply_to_direction(&turn, normal[0], normal[1], normal[2]);
-                out.ids.push(position_id(position));
-                out.positions.extend(position);
-                out.normals.extend(turned_normal);
+        for unit in face_samples([p0, p1, p2], input.spacing) {
+            if !area.support_allowed_at(&opening, unit, Some(normal)) {
+                continue;
             }
+            let position = apply_to_point(&turn, unit[0], unit[1], unit[2]);
+            if !spacer.add(position) {
+                continue;
+            }
+            let turned_normal = apply_to_direction(&turn, normal[0], normal[1], normal[2]);
+            out.ids.push(position_id(position));
+            out.positions.extend(position);
+            out.normals.extend(turned_normal);
         }
     }
     out
@@ -284,7 +241,7 @@ mod tests {
         let points: Vec<V3> = fill.positions.chunks_exact(3).map(|p| [p[0], p[1], p[2]]).collect();
         for (i, a) in points.iter().enumerate() {
             for b in &points[i + 1..] {
-                assert!(length(sub(*a, *b)) >= 3.0 - 1e-9);
+                assert!(crate::core::vec::length(sub(*a, *b)) >= 3.0 - 1e-9);
             }
         }
     }

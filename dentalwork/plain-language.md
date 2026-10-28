@@ -8,7 +8,7 @@ This page is for dentists and technicians. It has no code. For the engineering d
 
 You give it a scan of an aligner. It finds the trim edge of the aligner. It then places small support tips along that edge, builds the supports, and checks that the supports do not cut through the aligner.
 
-The supports are placed only on a narrow strip next to the trim edge, on the outside face. They are never placed in the inner surface that touches the teeth.
+By default the supports are placed only on a narrow area next to the trim edge, on the outside face. The software never puts them on the inner surface that touches the teeth by itself. You can move that area, widen it, and paint more area anywhere (see Step 2); painting is your decision.
 
 ## The four steps
 
@@ -24,15 +24,15 @@ Dental mode dims the rest of the editor so you can focus on one aligner at a tim
 - If the software is not sure about the position, it says so and keeps the pose you dropped it in. You then turn it yourself.
 - If the file is wrong, broken or too large, you get a clear message and stay in Step 1.
 
-**Step 2. Support area.** The detected strip is shown in teal.
-- **Strip width** makes the strip wider or narrower.
-- **Support density** changes how close together the tips are.
-- **Rim setback** moves the strip away from the trim edge.
-- **Add area** and **Remove area** let you paint. You can only paint inside what the software already allows. Paint cannot make a face safe if the software has rejected it.
+**Step 2. Support area.** The support area is shown in teal: by default a narrow band along each detected edge, on its outer side. The proposed support tips are shown as dots and follow every change within about a second.
+- **Area width** makes the area wider or narrower around its middle line (0.2 to 2.4 mm; default 0.5 mm). Widening never spreads the area across the edge onto the inner surface.
+- **Area position** moves the area's middle line: higher values move it farther onto the outer surface, lower values toward the edge and, below 0, across it (from -0.4 to 2.5 mm; default 0.25 mm, so the tips sit about 0.25 mm onto the outer face). The tips sit on the middle line, so they move with the area.
+- **Support density** changes how close together the tips are (0.5 to 2 times; at 1 the tips are about 3 mm apart on the outer edge and 4 mm apart on the central opening).
+- **Paint** adds support area anywhere on the aligner, inside or outside the band. The tips follow about half a second after you let go of the mouse. Painted area away from the band gets its own tips, spaced like the band's tips (about 3 mm at density 1) and kept that far from the band's tips. Only faces that face down in the print position get tips. **Erase** removes area anywhere, and the tips on it. The last stroke over a place wins. **Brush size** is the brush radius.
 - If the software found no area, it says so, and you paint an area from scratch. Next stays off until something is painted. The software still checks every tip you create this way.
 
-**Step 3. Supports.** Supports are built with default settings.
-- You can change tip size, density, lift height, raft on or off, and Tree and Brace on or off. Supports are rebuilt after each change. Supports you added by hand are kept. A message tells you what was kept and what was reset.
+**Step 3. Supports.** Supports are built with the settings of the aligner type. For the reference aligner these are: straight columns 1.4 mm thick, a tip 0.45 mm across where it touches the aligner, the aligner 3.5 mm above the plate, a raft, and Tree and Brace off, so every column goes straight down to the plate. These are reasonable starting values, close to an example of good supports on the reference aligner, not a copy of it.
+- You can change tip size, density, lift height, raft on or off, and Tree and Brace on or off. Your changes are kept for this aligner. Supports are rebuilt after each change. Supports you added by hand are kept. A message tells you what was kept and what was reset.
 - You can add a support or delete a selected one.
 - The **Label** field is text printed on the support base. The default is `X`. It holds up to 8 characters: letters A to Z, digits 0 to 9 and `-`. Other characters are dropped and letters become capitals.
 - **OK** finishes this aligner. **Add another aligner** also finishes it, and sends you back to Step 1 with the same type.
@@ -47,7 +47,8 @@ The review script writes a 3D file you can open in Blender or another glTF viewe
 - **Red**: the edge of the central opening, if the aligner has one.
 - **Teal**: the narrow strip where tips may go.
 - **White**: all other faces.
-- **Gold**: the supports, without their tips. **Orange**: the final support tips. These two layers appear only when the review is made with supports.
+- **Gold**: the supports, without their tips. **Orange**: the final support tips (the thin end that touches the aligner). These two layers appear only when the review is made with supports.
+- **Red markers** (folder review only): a place where a support cuts through the aligner. **Amber markers**: a crossing the check could not judge. **Purple markers**: a low point with no support.
 
 Look at the file from every side. A good-looking file does not prove the supports are safe.
 
@@ -56,8 +57,11 @@ Look at the file from every side. A good-looking file does not prove the support
 1. The software works out which way the aligner opens.
 2. It follows the outer trim edge along the mesh. If the model has a central opening, it follows that edge as well.
 3. It cuts the surface along these lines. This tells it which side of each line faces the opening.
-4. It grows a thin strip from each line, along the mesh, on the other side. By default the strip starts 0.2 mm from the line and ends 1.2 mm from it.
-5. It places tips along the strip, by default about every 3 mm on the outer edge and every 2 mm on the central opening. Each tip is moved onto a real face of the scan.
+4. It measures, along the surface, how far every face is from each line, on both sides. The support area is the faces whose distance is within half the area width of the area position. By default that is from the line to 0.5 mm from it, on the outer side.
+5. It places tips along each line, by default about every 3 mm on the outer edge and every 4 mm on the central opening. Each tip goes to the face of the area that lies on the area's middle line, straight off the line (by default 0.25 mm from it). Two tips are never closer than 0.6 mm.
+6. A support comes from below, so a tip must sit on a face that looks down in the print position. If the face on the middle line looks up or only sideways (less than 20 degrees below horizontal), the tip moves to the nearest face that looks down enough, within 1 mm of the area, on either side of the edge. Such a tip can sit just across the edge, on the inner side (up to about 0.7 mm from the edge on the reference aligner). If there is no such face, the tip stays where it was and the safety check decides. The Area sliders and Paint and Erase work as before: a moved tip moves with the area, and Erase over it removes it.
+
+On the reference aligner at default settings this gives 71 tips on the outer edge (about 217 mm long) and 23 on the central opening (about 90 mm long). An earlier version put 45 tips on the central opening, 2 mm apart. On one stretch of the central opening the outer side faces up in the print position; its tips now move just across the edge, as the example of good supports for this aligner does there too.
 
 The wide face between the two lines is used only to tell which side is which. It is not a support area. An earlier version used it as one, and it put tips on the wrong surfaces.
 
@@ -67,10 +71,12 @@ After the supports are built, the software checks the finished 3D shape against 
 
 The answer is always one of three:
 - **Clear**: nothing wrong was found.
-- **Blocked**: a support cuts through the model. The result records which part, which contact (if one owns it) and which model face, but the app does not list these in the problem list. The automatic supports that crossed are left out and shown as "Supports left out" (see below). (Every generic model shows this, because supports always touch the model. It is not a refusal.)
+- **Blocked**: a support cuts through the model. A tip touching the surface it was placed on does not count, even on a fine mesh or where the tip sits over a thin edge such as the aligner rim. The result records which part, which contact (if one owns it) and which model face, but the app does not list these in the problem list. Automatic supports whose shaft or tip crossed are repaired or left out and shown as "Supports left out" (see below). Blocked is a warning, not a refusal: export still works. On the reference aligner at default settings nothing crosses any more, so the result is clear; the folder review shows any crossing on other aligners.
 - **Inconclusive**: the software could not decide. This happens when a support end has no face to judge it against, when the mesh is too damaged to judge, when a rim cannot be measured, or when the check ran out of time. A timeout is always inconclusive: even a crossing found before the time ran out is not reported as blocked, because the scan may be partial. Inconclusive never counts as clear.
 
-When something crosses, the software tries a limited number of repairs. Each rebuild counts against the budget (8 for the dental mode; 0 for a generic model, which only reports). It first switches off Tree or Brace if they cross. It then moves a crossing automatic support to another allowed spot if the aligner type offers one: in dental mode the alternates are spare spots in the gaps between the normal ones, and each spare spot is offered to only one support, so two supports never move to the same place. Otherwise it leaves that automatic support out and tells you. The last step builds only your hand-placed supports. It never moves or deletes a support you placed by hand. If a hand-placed support crosses the model, it is reported.
+When something crosses, the software tries a limited number of repairs. Each rebuild counts against the budget (8 for the dental mode; 0 for a generic model, which only reports). It first switches off Tree or Brace if they cross. If the thin end of an automatic support (its tip and the short neck behind it) runs back into the aligner, it builds that neck again pointed out of the face the tip sits on (no more tilted than the neck limit), and if that still crosses, straight down. It then moves a crossing automatic support to another allowed spot if the aligner type offers one: in dental mode the alternates are spare spots in the gaps between the normal ones, and each spare spot is offered to only one support, so two supports never move to the same place. Otherwise it leaves that automatic support out and tells you.
+
+On the reference aligner at default settings no tip is left out: all 94 are built, and the largest gap between supports is 6 mm on the outer edge and 4 mm on the central opening. Before tips moved to faces a support can reach (step 6 above), 13 of the 94 were left out on one stretch of the central opening, where the strip faces up in the print position, which left about 56 mm without a support. Where a gap is still too long on another aligner, Step 3 says so ("Automatic rim gaps", see below); add supports there by hand, or paint area on the side that faces down. The last step builds only your hand-placed supports. It never moves or deletes a support you placed by hand. If a hand-placed support crosses the model, it is reported.
 
 ## Export is refused in some cases
 
