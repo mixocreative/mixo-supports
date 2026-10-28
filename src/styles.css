@@ -730,3 +730,20 @@ dialog.terms .terms-item > span { flex: none; }
   .viewport--step3 .viewport-view { right: 14px; top: 56px; bottom: auto; }
   .dental-side { top: auto; left: 14px; right: 14px; bottom: 12px; width: auto; max-height: 55%; max-width: none; }
 }
+
+/* ---- Full-screen start (docs/ROADMAP.md ST): task, aligner type, aligner file ---- */
+.start-screen {
+  position: relative;
+  height: calc(100vh - 56px - 32px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper);
+}
+.start-screen--dropping { outline: 1px solid var(--ink); outline-offset: -12px; }
+.start-back { position: absolute; top: 16px; left: 16px; z-index: 3; }
+.start-task { display: grid; justify-items: center; gap: 24px; }
+.start-choices { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; }
+.start-big { min-width: 260px; padding: 28px 24px; font-size: 16px; letter-spacing: .04em; }
+.start-screen .dental-stage { padding-top: 32px; background: transparent; }
+@media (max-width: 720px) { .start-big { width: 100%; min-width: 0; } }

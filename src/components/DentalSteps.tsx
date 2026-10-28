@@ -49,16 +49,18 @@ export function noticeText(notice: DentalNotice): string {
 }
 
 /** Step 0: one large card per aligner profile; a click selects it and goes to Step 1. */
-export function DentalTypeStep({ profile, lang, send }: {
+export function DentalTypeStep({ profile, lang, send, onChoose }: {
   profile: string | undefined;
   lang: Lang;
   send: (event: SessionEvent) => void;
+  /** The full-screen start chooses the type itself instead of sending the session event. */
+  onChoose?: (id: string) => void;
 }) {
   return <div className="dental-stage" role="group" aria-label={t('Aligner type')}>
     <h2>{t('Choose the aligner type')}</h2>
     <div className="dental-cards">
       {ALIGNER_PROFILES.map((entry) => <button key={entry.id} type="button" className="dental-card" aria-pressed={profile === entry.id}
-        data-profile={entry.id} onClick={() => send({ type: 'chooseDentalProfile', id: entry.id })}>
+        data-profile={entry.id} onClick={() => (onChoose ? onChoose(entry.id) : send({ type: 'chooseDentalProfile', id: entry.id }))}>
         <ProfileArt profile={entry} />
         <strong>{entry.name[lang]}</strong>
         <small>{entry.description[lang]}</small>

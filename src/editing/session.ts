@@ -97,6 +97,8 @@ export type SessionEvent =
   | { type: 'enterZones' }
   | { type: 'enterDental' }
   | { type: 'chooseDentalProfile'; id: string }
+  /** The full-screen start (components/StartScreen): straight to Step 1 with this type; `file` is read by the app once Step 1 waits for it. */
+  | { type: 'startDental'; profile: string; file?: File }
   | { type: 'switchDentalProfile'; id: string }
   /** `unitId`: the aligner is read and on the plate (Step 1 is now working on it). */
   | { type: 'dentalLoading'; unitId?: string }
@@ -157,6 +159,10 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
       // Entry needs no object: Step 0 and the drop in Step 1 come first.
       return state.mode === 'off'
         ? { ...withMode(state, 'dental'), dentalStage: 'type', dentalAligner: 'prompt', dentalNotices: [], dentalProposal: undefined, dentalFinished: [], dentalUnitId: undefined }
+        : state;
+    case 'startDental':
+      return state.mode === 'off'
+        ? { ...withMode(state, 'dental'), dentalStage: 'aligner', dentalProfile: event.profile, dentalAligner: 'prompt', dentalNotices: [], dentalProposal: undefined, dentalFinished: [], dentalUnitId: undefined }
         : state;
     case 'chooseDentalProfile':
       return state.mode === 'dental' && state.dentalStage === 'type'

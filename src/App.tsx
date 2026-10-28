@@ -68,6 +68,7 @@ import { lockNote, sectionLocked, type Panel } from './editing/locks';
 import { contactToRemove } from './editing/removal';
 import { editsSupports, initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
 import { acceptsDentalDrop } from './editing/session';
+import { StartScreen, type StartScreenId } from './components/StartScreen';
 import { arrangeAlignerCommands } from './dental/arrange';
 import { backNeedsConfirm, discardManualCommands, exitCommands, manualEditCounts } from './dental/flow';
 import { dentalLabelOf } from './dental/label';
@@ -169,6 +170,11 @@ export default function App() {
   // Support Edit Mode / zones mode, tools and selection (src/editing/session): view state of the
   // active object, never in history. `send` steps it and says what changed on the status line.
   const [session, setSession] = useState(initialSession);
+  /** The full-screen start in front of the workspace (docs/ROADMAP.md ST); null: the editor. */
+  const [startScreen, setStartScreen] = useState<StartScreenId | null>('task');
+  /** The next dental import replaces the plate (a file chosen on the start screens). */
+  const freshStart = useRef(false);
+  const importRef = useRef<(files: readonly File[]) => Promise<void>>();
   const sessionRef = useRef(session);
   const { mode: editMode, selection } = session;
   const press = gesture(session);
@@ -195,6 +201,10 @@ export default function App() {
     // A new dental step starts clean: the last step's undo toast and notices do not follow.
     if (next.mode === 'dental' && (next.dentalStage !== previous.dentalStage || next.dentalAligner !== previous.dentalAligner)) { setToast(undefined); setBackAsk(false); }
     if (event.type === 'enterDental') setDoneHint(undefined);
+    if (event.type === 'startDental') {
+      setDoneHint(undefined);
+      if (event.file) void importRef.current?.([event.file]);
+    }
     const message = sessionStatus(previous, next, event);
     if (message) setStatusMessage(message);
   }, []);
@@ -502,6 +512,8 @@ export default function App() {
   const importFiles = useCallback(async (files: readonly File[]) => {
     // Dental Step 1 takes the aligner itself: one file, and it is oriented once read.
     const dentalDrop = acceptsDentalDrop(sessionRef.current);
+    const replacesPlate = dentalDrop && freshStart.current;
+    freshStart.current = false;
     const badFile = (message: Message) => {
       setStatusMessage(message);
       if (dentalDrop) send({ type: 'dentalBadFile', message });
@@ -568,6 +580,8 @@ export default function App() {
       // A mode that began while the files were read still ends here, so the new objects are never edited under it.
       if (!dentalDrop) send({ type: 'leave' });
       dispatch({ type: 'batch', commands: [
+        // A file chosen on the start screens replaces the aligner that stayed on the plate.
+        ...(replacesPlate ? sceneRef.current.units.map((unit) => ({ type: 'unit/remove' as const, unitId: unit.id })) : []),
         // Handed over: the worker's fresh arrays, also the keys of their display copy and pick index.
         ...added.map((unit) => ({ type: 'unit/add' as const, unit, owned: true })),
         { type: 'selection/set', unitIds: added.map((unit) => unit.id), activeUnitId: added[0]!.id },
@@ -594,6 +608,8 @@ export default function App() {
     }
   }, [dispatch, importer, send, setStatus, startDentalAligner]);
 
+  importRef.current = importFiles;
+
   /** Step 1 with the object already selected on the plate instead of a drop. */
   const useSelectedAligner = useCallback(() => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
@@ -611,7 +627,8 @@ export default function App() {
     setPulse((current) => ({ panel: 'left', seq: current.seq + 1 }));
     setStatusMessage(message);
   }, []);
-  const { openProject, saveProject, chooseProject } = useProjectFile({ sceneRef, modeRef: sessionRef, replace: replaceWith, setStatusMessage, offerUndo, refused: refuseWhileBusy, scene });
+  const closeStart = useCallback(() => setStartScreen(null), []);
+  const { openProject, saveProject, chooseProject } = useProjectFile({ sceneRef, modeRef: sessionRef, replace: replaceWith, setStatusMessage, offerUndo, refused: refuseWhileBusy, scene, onOpened: closeStart });
 
   // ---- Commands ------------------------------------------------------------------------
   const forTargets = useCallback((make: (unit: PrintUnit) => SceneCommand | undefined, edit?: string) => {
@@ -922,6 +939,13 @@ export default function App() {
         // Going back from Step 3 throws its hand work away: ask first.
         const unit = sceneRef.current.units.find((candidate) => candidate.id === sceneRef.current.activeUnitId);
         if (sessionRef.current.dentalStage === 'review' && backNeedsConfirm(unit)) return setBackAsk(true);
+        // Back at Step 1 returns to the start's aligner type; the loaded aligner stays on the plate.
+        if (sessionRef.current.dentalStage === 'aligner') {
+          dentalFlow.invalidate();
+          setBackAsk(false);
+          send({ type: 'exit' });
+          return setStartScreen('type');
+        }
         return send({ type: 'backDental' });
       }
       case 'dental.exit': {
@@ -986,6 +1010,24 @@ export default function App() {
       case 'export.active-printable': case 'export.active-supports': case 'export.separate-printable': case 'export.separate-supports': case 'export.whole-printable': return void runExport(exportKindOf(id));
     }
   }, [analysis, checkSupports, chooseProject, saveProject, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dentalPreview, dispatch, generate, generateDental, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo, unitName]);
+
+  /** A start screen was reached: the task screen closes the loaded aligner (all units go, no undo toast). */
+  const goStart = (next: StartScreenId) => {
+    if (next === 'task' && sceneRef.current.units.length > 0) dispatch({ type: 'batch', commands: sceneRef.current.units.map((unit) => ({ type: 'unit/remove' as const, unitId: unit.id })) });
+    setStartScreen(next);
+  };
+  const startDental = (profile: string, file?: File) => {
+    freshStart.current = file !== undefined;
+    setStartScreen(null);
+    send({ type: 'startDental', profile, ...(file ? { file } : {}) });
+  };
+  // Closing the last model returns to the start.
+  const unitCount = scene.units.length;
+  const lastUnitCount = useRef(unitCount);
+  useEffect(() => {
+    if (lastUnitCount.current > 0 && unitCount === 0) setStartScreen('task');
+    lastUnitCount.current = unitCount;
+  }, [unitCount]);
 
   const dropImport = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -1089,6 +1131,10 @@ export default function App() {
         </div>
       </div>
     </header>
+    {startScreen !== null ? <StartScreen screen={startScreen} profile={session.dentalProfile} lang={lang}
+      onScreen={goStart} onAnyModel={() => setStartScreen(null)} onOpenProject={() => runCommand('project.open')}
+      onProjectFile={(file) => void openProject(file)} onStart={startDental}
+      onUnsupported={() => setStatusMessage(errorStatus('import', new CodedError('file-type', 'file-type')))} /> : <>
     <section className="workspace">
       <aside className="panel left" onClick={blockedClick('left')}>
         {lockNoteOf('left')}
@@ -1218,6 +1264,7 @@ export default function App() {
         </section>
       </aside>
     </section>
+    </>}
     <footer>
       <span>{plural(scene.units.length, '1 object', '{n} objects')}</span>
       {activeUnit && <span>{t('{n} triangles', { n: (activeUnit.source.indices.length / 3).toLocaleString() })}</span>}

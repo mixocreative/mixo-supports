@@ -101,7 +101,10 @@ Specification as built:
 - **Goldens**: the dental goldens built with the profile preset re-record once; the commit lists each and its change (Tree/Brace on). Generic goldens unchanged.
 - **Done when**: the walk drags each Step 3 control (Tip size, Pillar size, Support density, Lift height; toggles Raft, Tree branches, Cross-braces) and checks a new verdict arrives and `is-stale` clears; change-to-preview time for each recorded in `perf-current.json` (step R's keys); the folder review of case-001 with the new defaults is in the commit message (tips, left out, crossings, structure fallbacks).
 
-### ST. Full-screen start (0.5–1 unit, UI only; goldens unchanged)
+### ST. Full-screen start (done)
+Implementer readings: Step 1's Back lands on the type cards (the old Step 0 waits in the walk changed to them); the loaded aligner is removed in the same batch that adds the new file; reaching screen 1 also drops a held file; after "Add another aligner", reaching screen 1 removes all units. `supports.dentalAuto` still works from the editor.
+
+Specification as built:
 Today the generic editor opens first; the dental flow is the command `supports.dentalAuto` ("Aligner Support Production", `src/editing/commands.ts`), whose Step 0 is `DentalTypeStep` (`src/components/DentalSteps.tsx`, one card per `ALIGNER_PROFILES` entry).
 - **Screen 1, task**: shown on launch with no model loaded and after closing the last model. Full-screen, two large buttons: "Aligner supports" (primary) and "Any model". A smaller link "Open a saved project" runs the existing open-project command. Any model leads to today's empty generic editor, unchanged.
 - **Screen 2, aligner type**: the `DentalTypeStep` cards, full-screen, with a Back button to screen 1.
