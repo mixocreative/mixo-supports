@@ -127,6 +127,15 @@ Today the generic editor opens first; the dental flow is the command `supports.d
   - Screen 2 after Back keeps the chosen profile `aria-pressed`.
   - Strings: "Aligner supports", "Any model", "Open a saved project", "Open the aligner STL", "Back", "Drop the aligner STL here"; reuse "Choose the aligner type".
 
+### U1. Dental UI simplification (0.5 unit, UI only; goldens unchanged)
+From the lead's screenshot review (2026-10-29, `WALK_LOCALES=en WALK_OUT=…` screenshots):
+- **Dental steps show only dental controls**: while `mode === 'dental'` (Steps 1–3), the generic left panel (Import, project, Objects, Transform, Supports, Modes, Check supports) and right panel (object settings, Pillar, Raft, Letter label, Advanced, Support shape, Contact tip, Foot, Export) are not rendered; the viewport takes their width; the step panel, the viewport buttons (Tips only, Fit view, Bottom view), the header and the footer status stay. Leaving dental mode shows them again unchanged.
+- **Start screen**: while `startScreen` is non-null, the header's Undo, Redo, Hide models and Wireframe buttons are not rendered (the language switch stays); the footer hint reads "Choose what to make supports for." on screen 1, "Choose the aligner type." on screen 2, "Open or drop the aligner STL." on screen 3; screen 1 gets the heading "What would you like to support?" above the two buttons.
+- **Step 3 panel**: the panel scrolls as a whole (one scroll area, `overflow-y: auto` on the panel, none on the Problems block); each problem notice uses the panel's full width with its action buttons on their own row below the text, so no notice is clipped.
+- Strings in en, ja, zh-Hant (Taiwan wording through Gemini); Mixo app style tokens only.
+- **Walk**: existing assertions unchanged unless they asserted a generic panel inside dental mode (then the entry or the target changes, never the claim about behaviour); new checks: in Step 2 the left and right generic panels are absent; on screen 1 Undo is absent and the heading is present; a Step 3 notice is fully visible (its bottom inside the panel's scroll content). Screenshots of Steps 1–3 and screen 1 in the commit message.
+- **Done when**: tsc, vitest, build, walk, locale walk green.
+
 ### B2. Suggested tips and even belt spacing (done)
 Result: belt N = round(L/s) per rim (outer 72 × 3.017 mm, opening 23 × 3.917 mm), fill tips `dental-fill-K` revealed by paint; D19 and D20 applied; engine_version 7 (`generate` gained the unit frame). Reference (app and folder review): 44.5°, clear, 93 tips, 1 left out (measured; the spec's 0 holds only at the nominal frame in the Rust test); painted everywhere: 67 of 306 fill tips left out (pinned). F's band and pick unchanged.
 
