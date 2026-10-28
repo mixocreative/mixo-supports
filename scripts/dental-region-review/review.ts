@@ -15,9 +15,11 @@ type ReviewLayers = { supports: GeneratedSupportMesh; frame: JobTransform; bands
   diagnosticContacts?: { outer: { contacts: DiagnosticContourContact[]; skippedSamples: number };
     inner: { contacts: DiagnosticContourContact[]; skippedSamples: number } };
   proposedTips: number; droppedTips: number };
+/** Extra point markers in the model's own frame (for example where a support crosses the model). */
+export type ReviewMarkers = Array<{ name: string; color: number; points: number[] }>;
 
 /** Diagnostic GLB only. Names and metadata never include the input STL filename or patient fields. */
-export async function exportDentalRegionReview(mesh: TriangleMesh, region: Region, layers?: ReviewLayers): Promise<ArrayBuffer> {
+export async function exportDentalRegionReview(mesh: TriangleMesh, region: Region, layers?: ReviewLayers, markers: ReviewMarkers = []): Promise<ArrayBuffer> {
   if (region.contactFaces?.length !== mesh.indices.length / 3) throw new Error('Contact mask does not match mesh triangles');
   if (layers && layers.supports.indices.length === 0) throw new Error('Support build returned no geometry');
   const scene = new THREE.Group();
@@ -36,6 +38,18 @@ export async function exportDentalRegionReview(mesh: TriangleMesh, region: Regio
     const visual = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: layer.color, side: THREE.DoubleSide }));
     visual.name = layer.name;
     scene.add(visual);
+  }
+  for (const marker of markers) {
+    if (marker.points.length === 0) continue;
+    const shape = new THREE.OctahedronGeometry(0.6);
+    const group = new THREE.Group();
+    group.name = marker.name;
+    for (let at = 0; at + 2 < marker.points.length; at += 3) {
+      const dot = new THREE.Mesh(shape, new THREE.MeshBasicMaterial({ color: marker.color }));
+      dot.position.set(marker.points[at]!, marker.points[at + 1]!, marker.points[at + 2]!);
+      group.add(dot);
+    }
+    scene.add(group);
   }
   if (layers) {
     scene.position.set(...layers.frame.position);

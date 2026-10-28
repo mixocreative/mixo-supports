@@ -94,7 +94,7 @@ const NEAR: [f32; 9] = [-0.1, -0.1, 0.0, 0.1, 0.05, 0.0, 0.1, -0.1, 0.0];
 
 fn reaches(model: &[f32], idx: &[u32], vertices: &[f32], face: usize) -> bool {
     let (built, hit) = reach_fixture(vertices, face);
-    is_intentional_contact_reach(model, idx, &built.mesh(), &hit, &LIMITS)
+    is_intentional_contact_reach(&CollisionIndex::new(model, idx), &built.mesh(), &hit, &LIMITS)
 }
 
 #[test]
@@ -109,6 +109,49 @@ fn contact_reach_accepts_only_the_intended_face_or_its_smooth_neighbour() {
     assert!(!reaches(&sheet, &[0, 2, 1, 2, 1, 3], &NEAR, 1));
     assert!(!reaches(&REACH_MODEL, &idx, &[-0.1, -0.1, 0.0, 2.0, 0.05, 0.0, 0.1, -0.1, 0.0], 0));
     assert!(!reaches(&REACH_MODEL, &idx, &[-0.1, -0.1, 0.0, 0.1, 0.4, 0.0, 0.1, -0.1, 0.0], 0));
+}
+
+/// A strip of 0.1 mm faces along X at height `heights[k]`: vertices (x, y, -0.3) and (x, y, 0.3), facing down like the intent.
+fn strip(heights: &[f32]) -> (Vec<f32>, Vec<u32>) {
+    let mut positions = Vec::new();
+    for (k, &y) in heights.iter().enumerate() {
+        let x = -0.1 + 0.1 * k as f32;
+        positions.extend([x, y, -0.3, x, y, 0.3]);
+    }
+    let mut indices = Vec::new();
+    for k in 0..heights.len() as u32 - 1 {
+        let (a, b, c, d) = (2 * k, 2 * k + 1, 2 * k + 2, 2 * k + 3);
+        indices.extend([a, c, b, c, d, b]);
+    }
+    (positions, indices)
+}
+
+#[test]
+fn contact_reach_follows_the_intended_surface_across_dense_faces() {
+    // Intent face 0 at x in [-0.1, 0]; face 6 lies 0.2 mm on, three edges away, on the same flat sheet.
+    let (flat, idx) = strip(&[0.0; 8]);
+    assert!(reaches(&flat, &idx, &NEAR, 6));
+    // A step up between them (a steep wall) breaks the surface, though face 6 faces the same way.
+    let (folded, idx) = strip(&[0.0, 0.0, 0.0, 0.2, 0.2, 0.2, 0.2, 0.2]);
+    assert!(!reaches(&folded, &idx, &NEAR, 6));
+    // Beyond the reach radius the walk stops, even on the same sheet.
+    let (long, idx) = strip(&[0.0; 12]);
+    assert!(!reaches(&long, &idx, &NEAR, 16));
+}
+
+#[test]
+fn a_tip_seated_over_a_thin_edge_is_not_a_crossing_but_a_deeper_cut_is() {
+    // Intent face 0 is the floor y = 0 (facing down); face 1 is a wall at x = 0.1 that shares the
+    // floor's edge there, facing +X: the far side of a thin edge.
+    let model = [0.1f32, 0.0, -1.0, 0.1, 0.0, 1.0, -1.0, 0.0, 0.0, 0.1, -1.0, 0.0];
+    let idx = [0, 1, 2, 1, 0, 3];
+    // Crosses the wall 0.10 to 0.16 mm from the contact point: inside the 0.2 mm seat.
+    assert!(reaches(&model, &idx, &[-0.05, -0.05, 0.0, 0.2, -0.02, 0.0, 0.1, -0.12, 0.0], 1));
+    // Crosses the same wall up to 0.5 mm away: a crossing.
+    assert!(!reaches(&model, &idx, &[-0.05, -0.05, 0.0, 0.2, -0.4, 0.0, 0.1, -0.5, 0.0], 1));
+    // The same wall as a separate shell (its own vertices) is never part of the tip's seat.
+    let apart = [model.to_vec(), vec![0.1, 0.0, 1.0, 0.1, 0.0, -1.0]].concat();
+    assert!(!reaches(&apart, &[0, 1, 2, 4, 5, 3], &[-0.05, -0.05, 0.0, 0.2, -0.02, 0.0, 0.1, -0.12, 0.0], 1));
 }
 
 fn automatic(index: &CollisionIndex, built: &Built, ids: &[u32]) -> Vec<u32> {

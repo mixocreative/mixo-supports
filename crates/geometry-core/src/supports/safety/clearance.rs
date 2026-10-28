@@ -58,7 +58,7 @@ pub fn crossing_structure_parts(index: &CollisionIndex, supports: &SupportMesh, 
     let limits = reach_limits(settings);
     let allow = |hit: &Conflict| {
         let c = &supports.components[hit.component];
-        (c.tag.part == Part::TreeBranch || is_tree_neck(c)) && is_intentional_contact_reach(index.positions, index.indices, supports, hit, &limits)
+        (c.tag.part == Part::TreeBranch || is_tree_neck(c)) && is_intentional_contact_reach(index, supports, hit, &limits)
     };
     let hits = body_conflicts(index, supports, &part, false, Some(&allow), expired);
     hits.iter()
@@ -131,7 +131,7 @@ pub fn review_body_clearance(index: &CollisionIndex, supports: &SupportMesh, set
         return BodyReport { status: Status::Inconclusive, issues: Vec::new(), reason: Some("invalid-geometry") };
     }
     let limits = reach_limits(settings);
-    let allow = |hit: &Conflict| is_intentional_contact_reach(index.positions, index.indices, supports, hit, &limits);
+    let allow = |hit: &Conflict| is_intentional_contact_reach(index, supports, hit, &limits);
     let hits = body_conflicts(index, supports, &|_| true, false, Some(&allow), expired);
     let issues: Vec<BodyIssue> = hits
         .iter()

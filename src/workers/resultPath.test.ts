@@ -119,7 +119,7 @@ describe('one result path: lifecycle', () => {
 
 describe('one result path: preview == export', () => {
   for (const variant of ['default', 'tree', 'roof', 'low-poly'] as const) {
-    it(`${fixture.name}.${variant}: same contact IDs, dropped lists and verdicts; export echoes its revision`, async () => {
+    it(`${fixture.name}.${variant}: same contact IDs, dropped lists and verdicts (low-poly: export only); export echoes its revision`, async () => {
       const supported = supportedUnit(fixture, variant);
       const preview = runSupportJob(supportJobOf(supported, 0, 'preview'), undefined, 1);
       const c = client('per-job');
@@ -131,11 +131,13 @@ describe('one result path: preview == export', () => {
       workers[0]!.flush();
       const outcome = await exported;
       const [result] = outcome.units;
-      expect(result).toMatchObject({ unitId: supported.id, revision: outcome.revision, verdict: preview.verdict?.status, islands: preview.islands?.status });
       const direct = runSupportJob(supportJobOf(supported, 0, 'export'), undefined, outcome.revision);
+      expect(result).toMatchObject({ unitId: supported.id, revision: outcome.revision, verdict: direct.verdict?.status, islands: preview.islands?.status });
       expect(contactIds(direct)).toEqual(contactIds(preview));
       expect(direct.dropped).toEqual(preview.dropped);
-      expect(direct.verdict?.status).toBe(preview.verdict?.status);
+      // Low Poly Mode previews the exact shape and export samples the remesh, so their bodies (and
+      // whether a body crosses the model) may differ; every other variant builds the same bodies.
+      if (variant !== 'low-poly') expect(direct.verdict?.status).toBe(preview.verdict?.status);
       expect(direct.islands?.status).toBe(preview.islands?.status);
       if (variant !== 'low-poly') expect(direct.components.map((c) => [c.part, c.contactId, c.count])).toEqual(preview.components.map((c) => [c.part, c.contactId, c.count]));
       expect(exportRefusal(outcome, [supported.id], () => true)).toBeUndefined();

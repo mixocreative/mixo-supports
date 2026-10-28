@@ -6,7 +6,7 @@ Status: current at the commit that last changed this file. This is the U0 invent
 
 Labels (as planned at U0): **port** = rewrite in Rust; **port-into-shared-safety** = into the shared `supports/` safety engine (`supports/safety`, `supports/generate`), never a dental pipeline; **frozen-reference** = read-only reference, written once in Rust; **host-adapter** = TypeScript keeps it (UI, camera, files, settings, serialization, worker lifecycle); **retire** = deleted at cutover.
 
-Row count: 125 (host-adapter 75, port 25, port-into-shared-safety 10, frozen-reference 7, retire 5, host-math 2, gone 1: `dentalSettings.ts`, deleted when its behavior became policy data). Of the 125 rows, 44 name files that no longer exist (ported to Rust, merged, or deleted); the TypeScript oracle that once tested the ports (`scripts/test-support/ts-oracle/`) is deleted and its comparisons are recorded golden files in `scripts/fixtures/golden/`. The twelve last rows were added after the U0 plan for files the guard flags that the plan did not list. Counts are recomputed from this table and the file tree whenever the table changes.
+Row count: 126 (host-adapter 76, port 25, port-into-shared-safety 10, frozen-reference 7, retire 5, host-math 2, gone 1: `dentalSettings.ts`, deleted when its behavior became policy data). Of the 126 rows, 44 name files that no longer exist (ported to Rust, merged, or deleted); the TypeScript oracle that once tested the ports (`scripts/test-support/ts-oracle/`) is deleted and its comparisons are recorded golden files in `scripts/fixtures/golden/`. The twelve rows after the U0 plan's own were added for files the guard flags that the plan did not list; the last row is the folder review (2026-10-28). Counts are recomputed from this table and the file tree whenever the table changes.
 
 ## Inventory
 
@@ -137,6 +137,7 @@ Row count: 125 (host-adapter 75, port 25, port-into-shared-safety 10, frozen-ref
 | `src/supports/omittedProblem.ts` | omittedProblems | host | host | host-adapter | Flagged by the guard, outside the U0 scope or added after it. The "Supports left out" entry of the check from the build's `dropped` list (minus `droppedByZones`); no geometry, only positions copied out |
 | `src/supports/supportBuildWasm.ts` | packSettings, packZones, packContacts, decodeComponents | host | host | host-adapter | Flagged by the guard, outside the U0 scope or added after it. Packs settings, zones and contacts as numbers for `generate` and decodes the tags; no decisions |
 | `src/supports/zoneCheck.ts` | zonedAt, problemInZone | host | supports/zones (`zoned_at`) | host-adapter | Flagged by the guard, outside the U0 scope or added after it. Asks the Rust stamp rule whether a point is in a no-support zone |
+| `dentalwork/batch-review/batch.ts` | (cli) | `run-batch-review.bat` | `generate` / `diagnose` through `scripts/dental-region-review/build.ts` and `review.ts` | host-adapter | 2026-10-28 folder review: reads STLs, writes the GLBs and the summary; marker positions are vertex lookups, no geometry |
 
 ### Reviewed with no geometry (all host-adapter)
 
@@ -160,6 +161,7 @@ Production files in the scoped folders that are neither in the table nor flagged
 | `src/workers/importWorker.ts`, `projectWorker.ts` | Rust STL sessions, weld, centering, decimation and pick index; JS decodes the glTF container |
 | `src/components/viewport/useScreenBrush.ts` | Rust `project_brush`, `body_segments` and `pick` (pointer raycast through `rustRaycast.ts`); the host keeps camera and render lifecycle |
 | `scripts/dental-region-review/*` | The same Rust core as the browser (`orient`, region, `generate`, `diagnose`); the script only serializes GLB layers that Rust colors |
+| `dentalwork/batch-review/batch.ts` | The same Rust core through `scripts/dental-region-review/build.ts` and `review.ts`, for a folder of STLs |
 
 ## Baseline evidence, before the port (historical)
 

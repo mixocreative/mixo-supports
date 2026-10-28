@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Folder review</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<style>
+  html, body { height: 100%; }
+  body { display: grid; grid-template-rows: var(--header-h) 1fr; color: var(--ink); font-size: var(--fs-md); }
+  header { display: flex; align-items: center; gap: 12px; padding: 0 var(--pad); border-bottom: 1px solid var(--line); background: var(--surface); }
+  header h1 { margin: 0; font-size: var(--fs-lg); font-weight: 500; }
+  header .muted, .muted { color: var(--muted); }
+  header a { margin-left: auto; color: var(--ink); }
+  main { display: grid; grid-template-columns: 260px 1fr 260px; min-height: 0; }
+  .panel { border-right: 1px solid var(--line); }
+  .panel.right { border-right: 0; border-left: 1px solid var(--line); }
+  .stage { position: relative; min-width: 0; background: var(--viewport-bg); }
+  .stage canvas { display: block; width: 100%; height: 100%; }
+  .views { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+  .steps { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; }
+  .note { position: absolute; top: 8px; left: 8px; max-width: 60%; color: var(--muted); font-size: var(--fs-sm); }
+  .list li { cursor: pointer; }
+  .list li .badge { font-size: var(--fs-xs); }
+  .list li.look .badge { border-color: var(--danger); color: var(--danger); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  dd.bad { color: var(--danger); }
+  .source { color: var(--muted); font-size: var(--fs-sm); overflow-wrap: anywhere; margin: 0 0 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+  .check span { flex: 1; }
+  .segmented { margin-bottom: 6px; }
+</style>
+<script type="importmap">{ "imports": { "three": "/three/build/three.module.js", "three/addons/": "/three/examples/jsm/" } }</script>
+</head>
+<body>
+<header>
+  <h1>Folder review</h1>
+  <span class="muted" id="totals"></span>
+  <a href="/out/summary.csv" download>summary.csv</a>
+</header>
+<main>
+  <div class="panel">
+    <div class="segmented" role="group">
+      <button id="show-look" aria-pressed="true">Needs a look</button>
+      <button id="show-all" aria-pressed="false">All</button>
+    </div>
+    <ul class="list" id="cases"></ul>
+  </div>
+  <div class="stage" id="stage">
+    <div class="note" id="note"></div>
+    <div class="views">
+      <button data-view="fit">Fit view</button>
+      <button data-view="top">Top view</button>
+      <button data-view="bottom">Bottom view</button>
+      <button data-view="side">Side view</button>
+    </div>
+    <div class="steps">
+      <button id="prev">Previous</button>
+      <span class="muted" id="position"></span>
+      <button id="next">Next</button>
+    </div>
+  </div>
+  <div class="panel right">
+    <section>
+      <h3>Case</h3>
+      <p class="source" id="source"></p>
+      <dl id="facts"></dl>
+    </section>
+    <section>
+      <h3>Layers</h3>
+      <div id="layers"></div>
+    </section>
+  </div>
+</main>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// Plain names for the review layers (the GLB names start with the colour word set in Rust).
+const LAYERS = [
+  ['TEAL', 'Support area (where tips may go)', true],
+  ['NEUTRAL', 'Rest of the aligner', true],
+  ['BLUE', 'Outer edge, detected', true],
+  ['GREEN', 'Outer edge, joining paths', true],
+  ['RED', 'Inner opening edge, detected', true],
+  ['GOLD', 'Supports', true],
+  ['ORANGE', 'Support tips', true],
+  ['MARK support crosses', 'Support crosses the aligner', true],
+  ['MARK crossing that', 'Crossing that could not be judged', true],
+  ['MARK low point with', 'Low point with no support', true],
+  ['MARK low point outside', 'Low point outside the support area', false],
+  ['VIOLET', 'Diagnostic: outer strip, opening side', false],
+  ['AMBER', 'Diagnostic: outer strip, other side', false],
+  ['CYAN', 'Diagnostic: inner strip, opening side', false],
+  ['MAGENTA', 'Diagnostic: inner strip, other side', false],
+  ['LIME', 'Diagnostic: outer sample points', false],
+  ['PINK', 'Diagnostic: inner sample points', false],
+];
+// GLTFLoader turns spaces in node names into underscores; compare with them put back.
+const plain = (name) => (name ?? '').replace(/_/g, ' ');
+const layerOf = (name) => LAYERS.find(([prefix]) => plain(name).startsWith(prefix));
+const visible = new Map(LAYERS.map(([prefix, , on]) => [prefix, on]));
+
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+stage.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(getComputedStyle(document.body).getPropertyValue('--viewport-bg').trim() || '#e9e6df');
+const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 5000);
+scene.add(camera, new THREE.HemisphereLight(0xffffff, 0x8a847a, 1.6));
+const light = new THREE.DirectionalLight(0xffffff, 1.4);
+light.position.set(1, 2, 3);
+camera.add(light);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+let model = null;
+
+function resize() {
+  const { clientWidth: w, clientHeight: h } = stage;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / Math.max(h, 1);
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage);
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+
+function look(direction) {
+  if (!model) return;
+  const sphere = new THREE.Box3().setFromObject(model).getBoundingSphere(new THREE.Sphere());
+  const fov = THREE.MathUtils.degToRad(camera.fov) / 2;
+  const distance = sphere.radius / Math.sin(Math.min(fov, Math.atan(Math.tan(fov) * camera.aspect))) * 1.05;
+  controls.target.copy(sphere.center);
+  camera.position.copy(sphere.center).addScaledVector(direction.normalize(), distance);
+  camera.up.set(0, 1, 0);
+  camera.near = distance / 100; camera.far = distance * 10;
+  camera.updateProjectionMatrix();
+}
+const VIEWS = { fit: () => new THREE.Vector3(0.6, 0.7, 1), top: () => new THREE.Vector3(0.001, 1, 0.001), bottom: () => new THREE.Vector3(0.001, -1, 0.001), side: () => new THREE.Vector3(0, 0.15, 1) };
+document.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', () => look(VIEWS[button.dataset.view]())));
+
+function applyVisibility() {
+  model?.traverse((object) => {
+    const layer = object.name && layerOf(object.name);
+    if (layer) object.visible = visible.get(layer[0]);
+  });
+}
+
+function drawLayers() {
+  const present = new Set();
+  model?.traverse((object) => { const layer = object.name && layerOf(object.name); if (layer) present.add(layer[0]); });
+  const box = document.getElementById('layers');
+  box.replaceChildren(...LAYERS.filter(([prefix]) => present.has(prefix)).map(([prefix, label]) => {
+    const row = document.createElement('label');
+    row.className = 'check';
+    const input = Object.assign(document.createElement('input'), { type: 'checkbox', checked: visible.get(prefix) });
+    input.addEventListener('change', () => { visible.set(prefix, input.checked); applyVisibility(); });
+    const swatch = document.createElement('i');
+    swatch.className = 'swatch';
+    let colour = '#ccc';
+    model.traverse((object) => { if (object.isMesh && (plain(object.name).startsWith(prefix) || plain(object.parent?.name).startsWith(prefix))) colour = '#' + object.material.color.getHexString(); });
+    swatch.style.background = colour;
+    const text = document.createElement('span');
+    text.textContent = label;
+    row.append(input, swatch, text);
+    return row;
+  }));
+}
+
+const loader = new GLTFLoader();
+async function show(row) {
+  if (model) { scene.remove(model); model.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); }); model = null; }
+  document.getElementById('note').textContent = row.glb ? 'Loading...' : `No 3D result: ${row.result}${row.reason ? ` (${row.reason})` : ''}`;
+  if (row.glb) {
+    const gltf = await loader.loadAsync(`/out/${row.glb}`);
+    model = gltf.scene;
+    model.traverse((object) => {
+      // Markers draw over everything, so a crossing inside a support body still shows.
+      if (object.isMesh && plain(object.parent?.name).startsWith('MARK')) {
+        object.material.depthTest = false;
+        object.renderOrder = 10;
+      }
+      // Shade the surfaces so the shape reads; markers and tubes keep their flat colour.
+      if (object.isMesh && /^(TEAL|NEUTRAL|GOLD|ORANGE)/.test(object.name)) {
+        if (!object.geometry.attributes.normal) object.geometry.computeVertexNormals();
+        object.material = new THREE.MeshStandardMaterial({ color: object.material.color, roughness: 0.85, side: THREE.DoubleSide });
+      }
+    });
+    scene.add(model);
+    applyVisibility();
+    look(VIEWS.fit());
+    document.getElementById('note').textContent = '';
+  }
+  drawLayers();
+}
+
+const summary = await (await fetch('/out/summary.json')).json();
+const cases = summary.cases;
+const needing = cases.filter((c) => c.needsLook);
+document.getElementById('totals').textContent = `${cases.length} file(s), ${needing.length} need a look, made ${new Date(summary.created).toLocaleString()}`;
+let onlyLook = needing.length > 0;
+let current = 0;
+const shown = () => (onlyLook ? cases.filter((c) => c.needsLook) : cases);
+
+const status = (c) => (c.result !== 'built' ? c.result : c.verdict);
+function facts(c) {
+  const rows = [
+    ['Result', c.result, c.result !== 'built'],
+    ['Safety check', c.verdict || '-', c.verdict && c.verdict !== 'clear'],
+    ['Supports crossing the aligner', c.crossings, c.crossings > 0],
+    ['Crossings not judged', c.uncertain, c.uncertain > 0],
+    ['Low points with no support', c.islandsUnresolved, c.islandsUnresolved > 0],
+    ['Low points outside the area', c.islandsOutsideArea, false],
+    ['Tips placed', c.tipsPlaced, false],
+    ['Tips left out', c.tipsLeftOut, false],
+    ['Largest gap, outer edge (mm)', c.outerGapMm ?? '-', false],
+    ['Largest gap, opening (mm)', c.openingGapMm ?? '-', false],
+    ['Edge coverage needs review', c.rimNeedsReview ? 'yes' : 'no', c.rimNeedsReview],
+    ['Time (s)', c.seconds, false],
+  ];
+  if (c.reason) rows.push(['Reason', c.reason, true]);
+  document.getElementById('facts').replaceChildren(...rows.flatMap(([k, v, bad]) => {
+    const dt = document.createElement('dt'); dt.textContent = k;
+    const dd = document.createElement('dd'); dd.textContent = String(v); if (bad) dd.className = 'bad';
+    return [dt, dd];
+  }));
+  document.getElementById('source').textContent = c.source;
+}
+
+function drawList() {
+  const list = shown();
+  document.getElementById('cases').replaceChildren(...list.map((c, k) => {
+    const li = document.createElement('li');
+    li.className = `${c.needsLook ? 'look' : ''} ${k === current ? 'selected current' : ''}`;
+    const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = c.needsLook ? '!' : '✓';
+    const name = document.createElement('span'); name.textContent = c.case;
+    const small = document.createElement('small'); small.textContent = status(c);
+    li.append(badge, name, small);
+    li.addEventListener('click', () => select(k));
+    return li;
+  }));
+  document.getElementById('show-look').setAttribute('aria-pressed', String(onlyLook));
+  document.getElementById('show-all').setAttribute('aria-pressed', String(!onlyLook));
+}
+
+function select(k) {
+  const list = shown();
+  if (list.length === 0) { drawList(); return; }
+  current = Math.max(0, Math.min(list.length - 1, k));
+  drawList();
+  document.getElementById('position').textContent = `${current + 1} / ${list.length}`;
+  facts(list[current]);
+  show(list[current]);
+}
+document.getElementById('show-look').addEventListener('click', () => { onlyLook = true; select(0); });
+document.getElementById('show-all').addEventListener('click', () => { onlyLook = false; select(0); });
+document.getElementById('prev').addEventListener('click', () => select(current - 1));
+document.getElementById('next').addEventListener('click', () => select(current + 1));
+addEventListener('keydown', (event) => {
+  if (event.key === 'ArrowDown' || event.key === 'PageDown') select(current + 1);
+  if (event.key === 'ArrowUp' || event.key === 'PageUp') select(current - 1);
+});
+select(0);
+</script>
+</body>
+</html>
