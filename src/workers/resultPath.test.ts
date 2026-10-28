@@ -14,7 +14,8 @@ import type { WorkerLike } from './WorkerTask';
  * the app and the goldens use) driven in-process. A worker here is paused: a request waits in its
  * inbox until `step()` runs it, and its reply waits in the outbox until `flush()` delivers it, so a
  * test can cancel or replace a request after `generate` has finished and before anything reached
- * the host. A terminated worker delivers nothing.
+ * the host. A terminated worker delivers nothing, and frees the WASM state its builds kept (in a
+ * browser the whole instance goes with it; here the in-process module's build sessions are released).
  */
 
 vi.mock('./geometryClient', () => ({ geometryReady: () => Promise.resolve({}) }));
@@ -29,7 +30,7 @@ class PausedWorker implements WorkerLike {
   private inbox: unknown[] = [];
   private outbox: unknown[] = [];
   postMessage(message: unknown): void { this.inbox.push(message); }
-  terminate(): void { this.terminated = true; }
+  terminate(): void { this.terminated = true; releaseSessions(); }
   /** Runs the oldest request to completion in the real worker; its reply stays in the outbox. */
   async step(): Promise<void> {
     const message = this.inbox.shift();
@@ -41,6 +42,7 @@ class PausedWorker implements WorkerLike {
   }
 }
 
+let releaseSessions = () => {};
 const workers: PausedWorker[] = [];
 const client = (mode: 'persistent' | 'per-job' = 'persistent') => new SupportMeshClient({
   create: () => { const worker = new PausedWorker(); workers.push(worker); return worker; },
@@ -55,7 +57,7 @@ const contactIds = (mesh: { components: Array<{ contactId?: string | undefined }
 
 beforeAll(async () => {
   vi.stubGlobal('self', scope);
-  await import('./meshWorker');
+  releaseSessions = (await import('./meshWorker')).releaseBuildSessions;
 });
 
 afterEach(() => { workers.length = 0; });
@@ -96,8 +98,10 @@ describe('one result path: lifecycle', () => {
     const direct = runSupportJob(previewJob(), undefined, mesh!.revision);
     expect(contactIds(mesh!)).toEqual(contactIds(direct));
     expect(mesh!.verdict?.status).toBe(direct.verdict?.status);
-    expect(nodeEngine.live_mesh_handles()).toBe(0);
+    // The cancelled worker left nothing; the new one keeps the unit's build session until it ends.
+    expect(nodeEngine.live_mesh_handles()).toBe(2);
     c.dispose();
+    expect(nodeEngine.live_mesh_handles()).toBe(0);
   });
 
   it('a replaced request that finished generating is dropped by its revision, the newer one is delivered', async () => {
@@ -112,9 +116,39 @@ describe('one result path: lifecycle', () => {
     await workers[0]!.step();
     workers[0]!.flush();
     await expect(newer).resolves.toMatchObject({ revision: 2 });
+    c.dispose();
+    expect(nodeEngine.live_mesh_handles()).toBe(0);
+  });
+
+  it('builds of one unit reuse its build session: the model and its placed copy load once, a move replaces the copy, forget frees them', async () => {
+    const c = client();
+    const run = async (job: SupportJob) => {
+      const built = c.build('a', job, label);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await workers[0]!.step();
+      workers[0]!.flush();
+      return built;
+    };
+    const first = await run(previewJob());
+    expect(nodeEngine.live_mesh_handles()).toBe(2); // the model and its plate-space copy
+    const thicker = { ...previewJob(), settings: { ...previewJob().settings, pillarDiameter: previewJob().settings.pillarDiameter + 0.2 } };
+    const second = await run(thicker);
+    expect(nodeEngine.live_mesh_handles()).toBe(2);
+    // The same build as a one-shot session gives.
+    expect(second!.positions).toEqual(runSupportJob(thicker, undefined, second!.revision).positions);
+    expect(first!.positions).not.toEqual(second!.positions);
+    const frame = previewJob().frame!;
+    const lifted = { ...previewJob(), frame: { ...frame, position: [frame.position[0], frame.position[1] + 1, frame.position[2]] as [number, number, number] } };
+    const third = await run(lifted);
+    expect(nodeEngine.live_mesh_handles()).toBe(2); // the old copy was released, the new one loaded
+    expect(third!.positions).toEqual(runSupportJob(lifted, undefined, third!.revision).positions);
+    c.forget('a');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await workers[0]!.step();
+    workers[0]!.flush();
     expect(nodeEngine.live_mesh_handles()).toBe(0);
     c.dispose();
-  });
+  }, 60_000);
 });
 
 describe('one result path: preview == export', () => {

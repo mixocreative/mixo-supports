@@ -6,8 +6,8 @@
 //! The key covers everything the state is a function of: the exact bits of the mesh (positions and
 //! indices, i.e. the body mesh after its transform), the voxel size and the adaptivity. Any change
 //! of those is a different key, so a stale state is never returned; a changed key recomputes. A
-//! state is removed while in use (never shared), only a few are kept, and `clear_cache` (called on
-//! `release_mesh`) frees them all.
+//! state is removed while in use (never shared) and only a few are kept; `forget` (called when the
+//! mesh they were built for is released) frees one mesh's states, `clear_cache` all of them.
 
 use super::grid::Remesh;
 use crate::core::digest::mesh_digest;
@@ -65,6 +65,17 @@ pub(super) fn put(key: Key, warm: Remesh) {
 pub fn clear_cache() {
     let all = KEPT_STATES.with(|kept| std::mem::take(&mut *kept.borrow_mut()));
     drop(all);
+}
+
+/// Forgets the kept remeshes of the mesh with this digest (`core::digest`): it was released.
+pub fn forget(digest: [u64; 2]) {
+    let gone: Vec<(Key, Remesh)> = KEPT_STATES.with(|kept| {
+        let mut kept = kept.borrow_mut();
+        let (gone, stay) = std::mem::take(&mut *kept).into_iter().partition(|(k, _)| k.digest == digest);
+        *kept = stay;
+        gone
+    });
+    drop(gone);
 }
 
 /// `(hits, misses)` of `Remesh::new` on this thread, for tests and the perf script.
@@ -139,5 +150,19 @@ mod tests {
         clear_cache();
         drop(Remesh::new(&p, &i, 1.0, Some(0.8), 0.1));
         assert_eq!(cache_stats().0, h + 1);
+    }
+
+    #[test]
+    fn forget_frees_only_the_released_mesh() {
+        clear_cache();
+        let (p, i) = cube(10.0);
+        let other = cube(11.0).0;
+        drop(Remesh::new(&p, &i, 1.0, None, 0.1));
+        drop(Remesh::new(&other, &i, 1.0, None, 0.1));
+        forget(crate::core::digest::mesh_digest(&p, &i));
+        let (h, m) = cache_stats();
+        drop(Remesh::new(&other, &i, 1.0, None, 0.1));
+        drop(Remesh::new(&p, &i, 1.0, None, 0.1));
+        assert_eq!(cache_stats(), (h + 1, m + 1), "the other mesh is still warm, the forgotten one recomputes");
     }
 }

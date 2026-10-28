@@ -1,5 +1,6 @@
 //! Thin WebAssembly bindings for the host-independent geometry core.
 
+use mixo_geometry_core::core::digest::digest_in_use;
 use mixo_geometry_core::core::mesh::{MeshError, MeshStore};
 use mixo_geometry_core::core::brush::{self, BodySegments, Occluder};
 use mixo_geometry_core::core::matrix::{self, Handedness};
@@ -90,11 +91,14 @@ impl GeometrySession {
     }
 
     pub fn release_mesh(&mut self, handle: u32) -> Result<(), JsValue> {
-        // The voxel remesh cache (keyed on mesh bits) may hold this model's state: free it with the mesh.
-        mixo_geometry_core::supports::remesh::clear_cache();
-        mixo_geometry_core::dental::cache::clear_cache();
-        self.store.release_mesh(handle).map_err(mesh_error)?;
+        let digest = self.store.release(handle).map_err(mesh_error)?;
         LIVE_HANDLES.fetch_sub(1, Ordering::Relaxed);
+        // The remesh and dental caches keyed on this mesh's bits go with it; other meshes' stay warm
+        // (a lift change releases the old placed copy, never the model's dental detection).
+        if let Some(digest) = digest.filter(|&d| !digest_in_use(d)) {
+            mixo_geometry_core::supports::remesh::forget(digest);
+            mixo_geometry_core::dental::cache::forget(digest);
+        }
         Ok(())
     }
 

@@ -1,3 +1,4 @@
+use super::digest;
 use super::spatial::{Bvh, FlatBvh};
 use std::collections::BTreeMap;
 
@@ -98,6 +99,8 @@ impl MeshStore {
         let handle = self.next_id;
         self.next_id = self.next_id.checked_add(1).ok_or(MeshError::Capacity)?;
         self.used_bytes += bytes;
+        // The buffers never change while loaded: the digest caches use is computed once for them.
+        digest::register(&positions, &indices);
         self.meshes.insert(handle, Mesh { positions, indices, bvh });
         Ok(handle)
     }
@@ -149,12 +152,26 @@ impl MeshStore {
     }
 
     pub fn release_mesh(&mut self, handle: u32) -> Result<(), MeshError> {
+        self.release(handle).map(drop)
+    }
+
+    /// `release_mesh` that also says the mesh's digest, when one was computed while it was loaded
+    /// (caches keyed on it may then be freed with it).
+    pub fn release(&mut self, handle: u32) -> Result<Option<[u64; 2]>, MeshError> {
         let mesh = self
             .meshes
             .remove(&handle)
             .ok_or(MeshError::InvalidHandle)?;
         self.used_bytes -= (mesh.positions.len() + mesh.indices.len()) * 4;
-        Ok(())
+        Ok(digest::unregister(&mesh.positions, &mesh.indices))
+    }
+}
+
+impl Drop for MeshStore {
+    fn drop(&mut self) {
+        for mesh in self.meshes.values() {
+            digest::unregister(&mesh.positions, &mesh.indices);
+        }
     }
 }
 

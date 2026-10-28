@@ -6,7 +6,7 @@ import { dentalPolicy, orientationOnly } from '../dental/placement';
 import { genericPolicy, jobContacts } from './genericPolicy';
 import { placeGeneric } from './genericPlacement';
 import { checkSupportProblems } from './checkSupports';
-import { generateSupports } from './generateSupports';
+import { generateSupports, type BuildSite } from './generateSupports';
 import { supportMeshToUnitLocal } from './supportFrame';
 import { applyTransform, transformDirection, transformPoint } from '../state/transform';
 
@@ -31,7 +31,7 @@ const EMPTY_MESH: GeneratedSupportMesh = { positions: new Float32Array(), indice
  * the automatic contacts it left out (`dropped`: policy, landing rule, zones, safety repair), the
  * body-clearance `verdict` and the `islands` verdict.
  */
-export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback, revision = 0): GeneratedSupportMesh {
+export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback, revision = 0, site?: BuildSite): GeneratedSupportMesh {
   const { frame } = job;
   if (frame === null) return { ...EMPTY_MESH, revision };
   const dental = job.dental;
@@ -44,7 +44,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback, re
   // Dental: the aligner's Step 3 switches decide Tree and Brace and Roof/Cage stay off, in Rust.
   const policy = dental ? dentalPolicy(dental, frame) : genericPolicy(job.contacts, job.settings);
   const out = generateSupports(contacts, job.settings, policy, {
-    mode: job.mode, model: job.mesh, frame, labelText: job.labelText, zones, timeoutMs: GENERATE_TIMEOUT_MS, revision,
+    mode: job.mode, model: job.mesh, frame, labelText: job.labelText, zones, timeoutMs: GENERATE_TIMEOUT_MS, revision, ...(site ? { site } : {}),
     ...(onProgress ? { onProgress } : {}),
   });
   const mesh = out.mesh;

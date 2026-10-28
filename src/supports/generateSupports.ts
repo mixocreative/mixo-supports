@@ -5,7 +5,7 @@ import type { GeneratedSupportMesh, SupportContact, SupportIssue, SupportPart, S
 import type { LiveSupportSettings } from '../core/supports/settings';
 import type { ZoneStamp } from '../core/supports/zones';
 import { decodeComponents, packContacts, packSettings, packZones, type ColumnInput } from './supportBuildWasm';
-import { withSession, type SupportSession } from './supportEngine';
+import { supportEngine, SESSION_BYTES, type SupportSession } from './supportEngine';
 
 /*
  * Host adapter of the Rust `generate` (U7): one call runs permit, build, the exact body check, the
@@ -28,6 +28,44 @@ export interface PolicySession extends SupportSession {
 /** Makes the unit's policy in `session`; `model` is the unit-local mesh handle. The caller frees the handle. */
 export type MakePolicy = (session: PolicySession, model: number) => PolicyHandle;
 
+/**
+ * Where a build runs: a session with the unit's model loaded (`source`), its plate-space copy for a
+ * frame and the policy made for it. A one-shot site (`oneShotSite`) loads everything for one build
+ * and frees it after; the mesh worker's per-unit site (`workers/buildSessions`) keeps them across
+ * builds of the same unit. `release` of a policy frees it unless the site keeps it.
+ */
+export interface BuildSite {
+  readonly session: GenerateSession;
+  readonly source: number;
+  /** The model placed by `frame` (the model itself when the frame is absent or the identity). */
+  placed(frame: JobTransform | undefined): number;
+  policy(make: MakePolicy, frame: JobTransform | undefined): { handle: PolicyHandle; release(): void };
+}
+
+/** A frame as a key: positions and rotations as exact number strings; '' for none or the identity. */
+export function frameKey(frame: JobTransform | undefined): string {
+  const values = frame ? [...frame.position, ...frame.rotation] : [];
+  return values.some((v) => v !== 0) ? values.join(',') : '';
+}
+
+/** Runs `use` on a fresh session with `model` loaded once; everything is freed afterwards. */
+export function withOneShotSite<T>(model: TriangleMesh, use: (site: BuildSite) => T): T {
+  const session = new (supportEngine().GeometrySession)(SESSION_BYTES) as unknown as GenerateSession;
+  try {
+    const source = session.load_mesh(Float32Array.from(model.positions), Uint32Array.from(model.indices));
+    return use({
+      session, source,
+      placed: (frame) => (frameKey(frame) ? session.load_placed(source, frameArray(frame!)) : source),
+      policy: (make) => {
+        const handle = make(session, source);
+        return { handle, release: () => handle.free() };
+      },
+    });
+  } finally {
+    session.free();
+  }
+}
+
 export interface RingMeasure {
   perimeterMm: number;
   retained: number;
@@ -43,6 +81,8 @@ export interface GenerateOptions {
   frame?: JobTransform;
   labelText?: string;
   zones?: readonly ZoneStamp[];
+  /** The unit's persistent build site (the mesh worker's); absent: a one-shot session for this build. */
+  site?: BuildSite;
   /** Ends the repair and the checks early with an inconclusive verdict. */
   timeoutMs?: number;
   /** The request's revision: the engine echoes it so the host can drop a result that is not the newest. */
@@ -67,7 +107,8 @@ interface Generation {
   take_rings(): Float64Array; trials(): number; revision(): number; free(): void;
 }
 
-interface GenerateSession extends PolicySession {
+export interface GenerateSession extends PolicySession {
+  release_mesh(handle: number): void;
   load_placed(model: number, frame: Float64Array): number;
   generate(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number,
     labelText: string, zones: Float64Array, policy: PolicyHandle, timeoutMs: number, revision: number): Generation;
@@ -95,11 +136,9 @@ export function generateSupports(contacts: readonly SupportContact[], settings: 
   if (contacts.length === 0) return empty();
   const { model } = options;
   options.onProgress?.(0.05, 'Sampling surface normals');
-  return withSession((session) => {
-    const wasm = session as unknown as GenerateSession;
-    const source = wasm.load_mesh(Float32Array.from(model.positions), Uint32Array.from(model.indices));
-    const placed = options.frame && [...options.frame.position, ...options.frame.rotation].some((v) => v !== 0);
-    const handle = placed ? wasm.load_placed(source, frameArray(options.frame!)) : source;
+  const build = (site: BuildSite) => {
+    const wasm = site.session;
+    const handle = site.placed(options.frame);
     const inputs = contacts.map((contact): ColumnInput => ({
       id: contact.id,
       position: contact.position,
@@ -109,13 +148,13 @@ export function generateSupports(contacts: readonly SupportContact[], settings: 
       ...(contact.shape ? { shape: contact.shape } : {}),
     }));
     const packed = packContacts(inputs);
-    const data = policy(wasm, source);
+    const data = site.policy(policy, options.frame);
     let result: Generation;
     try {
       result = wasm.generate(handle, inputs.map((c) => c.id), packed.contacts, packed.shapes, packSettings(settings), options.mode === 'export' ? 1 : 0,
-        options.labelText ?? '', packZones(options.zones ?? []), data, options.timeoutMs ?? 0, options.revision ?? 0);
+        options.labelText ?? '', packZones(options.zones ?? []), data.handle, options.timeoutMs ?? 0, options.revision ?? 0);
     } finally {
-      data.free();
+      data.release();
     }
     try {
       const ids = result.take_contact_ids();
@@ -154,5 +193,6 @@ export function generateSupports(contacts: readonly SupportContact[], settings: 
     } finally {
       result.free();
     }
-  });
+  };
+  return options.site ? build(options.site) : withOneShotSite(model, build);
 }

@@ -7,13 +7,21 @@ import { runAfterGeometryReady } from './geometryVersion';
 import type { ExportUnitPayload, ExportUnitResult, MeshTask, MeshTaskResult, SupportJobPayload } from './meshProtocol';
 import { serveTask, transferable, type TaskContext } from './serveTask';
 import { SourceCache } from './sourceCache';
+import { BuildSessions } from './buildSessions';
 
 /**
- * Each unit's model by source token, kept by object identity so the remesh and raft caches
- * (WeakMaps keyed on it) stay warm. Freed by 'forget' (unit removed) and capped in total bytes.
+ * Each unit's model by source token, so a later job need not send it again. Freed by 'forget'
+ * (unit removed) and capped in total bytes.
  */
 const SOURCE_CACHE_BYTES = 512 * 1024 * 1024;
 const sources = new SourceCache(SOURCE_CACHE_BYTES);
+/** Each unit's build session (preview builds): its model, placed copy and policy stay loaded in WASM. */
+const sessions = new BuildSessions();
+
+/** Tests drive this module in-process: a terminated worker frees its WASM state, this does the same. */
+export function releaseBuildSessions(): void {
+  sessions.clear();
+}
 
 const PROGRESS_INTERVAL_MS = 60;
 
@@ -37,7 +45,7 @@ function resolveSources(payloads: readonly SupportJobPayload[]): Map<string, Tri
     if (stored) found.set(unitId, stored);
     else missing.push(unitId);
   }
-  sources.trim(new Set(payloads.map((payload) => payload.unitId)));
+  for (const unitId of sources.trim(new Set(payloads.map((payload) => payload.unitId)))) sessions.forget(unitId);
   return missing.length > 0 ? missing : found;
 }
 
@@ -69,13 +77,16 @@ function exportFiles(task: Extract<MeshTask, { kind: 'export' }>, models: Map<st
 serveTask<MeshTask, MeshTaskResult>((task, { progress }) => {
   if (task.kind === 'forget') {
     sources.delete(task.unitId);
+    sessions.forget(task.unitId);
     return { kind: 'forgotten' };
   }
   return runAfterGeometryReady(geometryReady, () => {
     const models = resolveSources(task.kind === 'build' ? [task.unit] : task.units);
     if (Array.isArray(models)) return { kind: 'need-source', unitIds: models };
     if (task.kind === 'export') return exportFiles(task, models, progress);
-    const mesh = runSupportJob({ ...task.unit.job, mesh: models.get(task.unit.unitId)! }, throttled(progress), task.unit.revision);
+    const { unitId, sourceToken, policyToken, job, revision } = task.unit;
+    const model = models.get(unitId)!;
+    const mesh = runSupportJob({ ...job, mesh: model }, throttled(progress), revision, sessions.site(unitId, sourceToken, model, policyToken));
     return transferable<MeshTaskResult>({ kind: 'mesh', mesh }, [mesh.positions.buffer, mesh.indices.buffer]);
   });
 });

@@ -6,7 +6,7 @@ import { applyTransform } from '../state/transform';
 import { meshBounds } from '../core/supports/meshQuery';
 import { defaultSupportSettings } from '../core/supports/settings';
 import { jobContacts } from './genericPolicy';
-import { dentalPlacementJobOf, hiddenByZones, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './unitSupports';
+import { dentalPlacementJobOf, hiddenByZones, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh } from './unitSupports';
 
 // A closed 10 mm cube: its underside (y = -5) is where the contacts sit.
 const source: TriangleMesh = {
@@ -197,6 +197,27 @@ describe('placementCommands (a finished placement meets the unit as it is now)',
     const { placementCommands } = await import('./unitSupports');
     const rotated: PrintUnit = { ...unit, transform: { position: [0, 10, 0], rotation: [0, 0.5, 0] } };
     expect(placementCommands(rotated, requested, result, lift, 1.5)).toBeUndefined();
+  });
+});
+
+describe('liftCommands (a lift change raises the placed unit without placing it again)', () => {
+  const placed = { ...unit, transform: { position: [30, 8, -4] as [number, number, number], rotation: [0, 0.3, 0] as [number, number, number] },
+    supports: { kind: 'live', data: { transform: generated, placed: { ...Object.fromEntries(PLACEMENT_KEYS.map((key) => [key, defaultSupportSettings[key]])) } } } } as PrintUnit;
+
+  it('moves the unit and the supports frame exactly where a placement landing would, and keeps the contacts', async () => {
+    const { liftCommands, placementCommands, orientationOf, placementSignature } = await import('./unitSupports');
+    const settings = { ...resolveSettings(placed.settings), liftHeight: 7.5 };
+    const commands = liftCommands(placed, settings)!;
+    const landing = placementCommands(placed, orientationOf(placed), placed.placement!, settings.liftHeight, 1.5, placementSignature(settings))!.commands;
+    expect(commands[0]).toEqual(landing[0]);
+    expect(commands[1]).toMatchObject({ type: 'supports/set', placement: placed.placement, supports: { kind: 'live', data: (landing[1] as { supports: { data: object } }).supports.data } });
+  });
+
+  it('is not used without placed supports or with another placement change pending', async () => {
+    const { liftCommands } = await import('./unitSupports');
+    const settings = resolveSettings(placed.settings);
+    expect(liftCommands({ ...placed, supports: undefined }, settings)).toBeUndefined();
+    expect(liftCommands(placed, { ...settings, scatterSpacing: settings.scatterSpacing + 1 })).toBeUndefined();
   });
 });
 

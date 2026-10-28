@@ -124,20 +124,23 @@ describe('analysis client', () => {
     await expect(pending).resolves.toEqual(orientation);
   });
 
-  it('retunes an accepted dental region in a replaceable worker job', async () => {
+  it('retunes an accepted dental region and places its contacts in one replaceable worker job', async () => {
     const { workers, create } = pool();
     const client = new AnalysisClient(create, () => {}, 1);
-    const source = mesh();
-    const region = { kind: 'proposal' } as never;
+    const job = dentalJob();
     const tuning = { positionMm: 0.7, stripWidthMm: 0.4, density: 1.5 };
-    const pending = client.retuneDentalRegion('dental-retune:a', source, region, tuning, 'reference-aligner', label);
+    const pending = client.retunePlaceDental('dental-retune:a', job, tuning, label);
     const task = workers[0]!.received[0]!.payload;
-    expect(task.kind).toBe('dental-retune');
-    expect(task.job.mesh).not.toBe(source);
-    expect(task.job).toMatchObject({ region, tuning, profile: 'reference-aligner' });
+    expect(task.kind).toBe('dental-retune-place');
+    expect(task.job.mesh).not.toBe(job.mesh);
+    expect(task.job).toMatchObject({ dental: job.dental, orientation: job.orientation, tuning });
+    const region = { kind: 'proposal' } as never;
+    workers[0]!.done(0, { kind: 'dental-retuned', region, placement: placed.result });
+    await expect(pending).resolves.toEqual({ region, placement: placed.result });
+    const failed = client.retunePlaceDental('dental-retune:a', job, tuning, label);
     const answer = { kind: 'inconclusive' as const, reason: 'invalid-contour' };
-    workers[0]!.done(0, { kind: 'dental-region-result', region: answer });
-    await expect(pending).resolves.toEqual(answer);
+    workers[0]!.done(1, { kind: 'dental-retuned', region: answer });
+    await expect(failed).resolves.toEqual({ region: answer });
   });
 
   it('replaces a queued job and stops a running one by replacing its worker', async () => {
