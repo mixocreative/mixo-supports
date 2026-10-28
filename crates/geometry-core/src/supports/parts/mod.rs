@@ -14,6 +14,7 @@ pub mod model;
 pub mod plan;
 pub mod profile;
 pub mod raft;
+pub mod raft_field;
 pub mod raft_outline;
 pub mod roof;
 pub mod solids;

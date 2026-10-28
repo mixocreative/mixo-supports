@@ -7,16 +7,14 @@
 //! the `test-abi` feature (`dental_test_abi.rs`). Bad input throws a typed error; detection that
 //! finds nothing is a normal result with a reason.
 
-use mixo_geometry_core::core::matrix::placement_matrix;
 use mixo_geometry_core::dental::footprint::{Contact, RimSide, Tuning};
 use mixo_geometry_core::dental::mesh::Mesh;
 use mixo_geometry_core::dental::orientation::{OpeningState, Orientation, matches_profile, orient_dental as orient};
-use mixo_geometry_core::dental::policy::{DentalArea, DentalPolicyInput, DentalStructure, SavedRegion, dental_policy as make_dental_policy};
+
 use mixo_geometry_core::dental::profiles::{self, AlignerProfile};
 use mixo_geometry_core::dental::region::{Region, RegionContours, propose_region, retune_region};
 use mixo_geometry_core::dental::rim::{BoundaryKind, Rim};
 use mixo_geometry_core::supports::policy::AreaStamp;
-use super::safety::PolicyHandle;
 use super::{GeometrySession, mesh_error};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
@@ -38,7 +36,7 @@ pub(crate) fn mesh_of<'a>(positions: &'a [f32], indices: &'a [u32]) -> Result<Me
 
 impl GeometrySession {
     /// The loaded mesh `model` as the dental detectors read it (no copy).
-    fn mesh(&self, model: u32) -> Result<Mesh<'_>, JsValue> {
+    pub(crate) fn mesh(&self, model: u32) -> Result<Mesh<'_>, JsValue> {
         let (positions, indices) = self.store.mesh_arrays(model).map_err(mesh_error)?;
         mesh_of(positions, indices)
     }
@@ -272,98 +270,6 @@ impl GeometrySession {
         let phase = (!phase_fraction.is_nan()).then_some(phase_fraction);
         Ok(finish(retune_region(&mesh, region, &tuning_of(tuning)?, profile, phase)))
     }
-
-    /// The unit's dental policy as a `PolicyResult` for `generate`, made from its saved area and
-    /// recomputed on use. `kind` 0 older saved policy, 1 area painted from scratch, 2 two-contour
-    /// (then `tuning` `[setback, width, density]` and the saved region arrays are required; a region
-    /// that detection does not reproduce permits nothing automatic). `stamps` are the unit-local area
-    /// edits (`STAMP_STRIDE` each), `structure` `[tree, brace]` as 0/1, `frame` the unit's placement
-    /// `[position xyz, rotation xyz]` the result is expressed in.
-    pub fn dental_policy(
-        &self,
-        model: u32,
-        profile: &str,
-        kind: u32,
-        tuning: &[f64],
-        stamps: &[f64],
-        saved_allowed_faces: &[u8],
-        saved_contact_faces: &[u8],
-        saved_outer_edges: &[u32],
-        saved_opening_edges: &[u32],
-        structure: &[u8],
-        frame: &[f64],
-    ) -> Result<PolicyHandle, JsValue> {
-        let profile = profile_of(profile)?;
-        let mesh = self.mesh(model)?;
-        let stamps = area_stamps(stamps)?;
-        let [tree, brace] = structure else { return Err(error("INVALID_LENGTH")) };
-        let frame: [f64; 6] = frame.try_into().map_err(|_| error("INVALID_LENGTH"))?;
-        if frame.iter().any(|v| !v.is_finite()) {
-            return Err(error("NON_FINITE"));
-        }
-        let frame = placement_matrix([frame[0], frame[1], frame[2]], [frame[3], frame[4], frame[5]]);
-        let area = match kind {
-            0 => DentalArea::Legacy,
-            1 => DentalArea::ManualArea,
-            2 => {
-                // A saved region is only compared with what detection gives now: one made for another
-                // mesh (or edited) simply does not reproduce, and the policy permits nothing automatic.
-                let tuning = tuning_of(tuning)?.validate(profile).map_err(|_| error("BAD_INPUT"))?;
-                let saved = SavedRegion { allowed_faces: saved_allowed_faces, contact_faces: saved_contact_faces, outer_edges: saved_outer_edges, opening_edges: saved_opening_edges };
-                DentalArea::TwoContour { tuning, saved }
-            }
-            _ => return Err(error("BAD_INPUT")),
-        };
-        let structure = DentalStructure { tree: *tree != 0, brace: *brace != 0 };
-        let policy = make_dental_policy(&DentalPolicyInput { mesh: &mesh, profile, area, stamps: &stamps, structure, frame: &frame });
-        Ok(PolicyHandle { result: policy.result, reproduced: policy.reproduced, profile_id: policy.profile_id })
-    }
-
-    /// The legacy dental placement (a painted-from-scratch area or an older saved policy), see
-    /// `dental::legacy`: the generic contacts the area permits plus the downward faces filled at
-    /// `spacing`. Positions and normals are in the turned frame (`rotation`, Euler XYZ radians).
-    pub fn dental_legacy_fill(
-        &self,
-        model: u32,
-        profile: &str,
-        rim: &[f64],
-        visibility_mask: &[u8],
-        manual_area: bool,
-        stamps: &[f64],
-        rotation: &[f64],
-        spacing: f64,
-        overhang_angle_degrees: f64,
-        initial_positions: &[f64],
-        initial_normals: &[f64],
-    ) -> Result<LegacyFill, JsValue> {
-        use mixo_geometry_core::dental::legacy::{FillInput, LegacyArea, fill_legacy_dental};
-        profile_of(profile)?;
-        let mesh = self.mesh(model)?;
-        let rim = footprint_rim(rim, visibility_mask)?;
-        let stamps = area_stamps(stamps)?;
-        if rotation.len() != 3 || initial_positions.len() % 3 != 0 || initial_positions.len() != initial_normals.len() || !(spacing > 0.0) || !spacing.is_finite() {
-            return Err(error("INVALID_LENGTH"));
-        }
-        let area = LegacyArea { rim: &rim, manual_area, stamps: &stamps };
-        let input = FillInput { mesh, rotation: [rotation[0], rotation[1], rotation[2]], spacing, overhang_angle_degrees, initial_positions, initial_normals };
-        let fill = fill_legacy_dental(&area, &input);
-        Ok(LegacyFill { kept: fill.kept_initial, positions: fill.positions, normals: fill.normals, ids: fill.ids })
-    }
-}
-
-/// One byte per mesh vertex: the legacy allowed-area overlay (the footprint or the paint, and
-/// seen first from the opening). `normals` is one unit-frame normal per vertex, or empty.
-#[wasm_bindgen]
-pub fn dental_allowed_vertices(positions: &[f32], indices: &[u32], normals: &[f32], rim: &[f64], visibility_mask: &[u8], manual_area: bool, stamps: &[f64], profile: &str) -> Result<Vec<u8>, JsValue> {
-    use mixo_geometry_core::dental::legacy::LegacyArea;
-    profile_of(profile)?;
-    let mesh = mesh_of(positions, indices)?;
-    let rim = footprint_rim(rim, visibility_mask)?;
-    let stamps = area_stamps(stamps)?;
-    if !normals.is_empty() && normals.len() != positions.len() {
-        return Err(error("INVALID_LENGTH"));
-    }
-    Ok(LegacyArea { rim: &rim, manual_area, stamps: &stamps }.allowed_vertices(mesh, normals))
 }
 
 /// A rim rebuilt from the scalars `DentalOrientResult::rim_scalars` returns (frame only; the loop
@@ -401,7 +307,7 @@ pub(crate) fn fill_rim(out: &mut DentalOrientResult, rim: Rim) {
 }
 
 /// A rim with its visibility footprint: the 18 `rim_scalars` plus the footprint's byte mask.
-fn footprint_rim(values: &[f64], mask: &[u8]) -> Result<Rim, JsValue> {
+pub(crate) fn footprint_rim(values: &[f64], mask: &[u8]) -> Result<Rim, JsValue> {
     if values.len() != 18 {
         return Err(error("INVALID_LENGTH"));
     }
@@ -431,109 +337,4 @@ pub(crate) fn area_stamps(stamps: &[f64]) -> Result<Vec<AreaStamp>, JsValue> {
         .chunks_exact(STAMP_STRIDE)
         .map(|s| AreaStamp { center: [s[0], s[1], s[2]], radius: s[3], normal: [s[4], s[5], s[6]], allow: s[7] == 1.0 })
         .collect())
-}
-
-/// The legacy dental placement result: the generic contacts kept and the face-fill contacts added.
-#[wasm_bindgen]
-pub struct LegacyFill {
-    kept: Vec<u32>,
-    positions: Vec<f64>,
-    normals: Vec<f64>,
-    ids: Vec<String>,
-}
-
-#[wasm_bindgen]
-impl LegacyFill {
-    /// Indices (into the generic contacts passed in) that were kept, in order.
-    pub fn take_kept(&mut self) -> Vec<u32> {
-        std::mem::take(&mut self.kept)
-    }
-    /// Contacts the face fill added.
-    pub fn take_positions(&mut self) -> Vec<f64> {
-        std::mem::take(&mut self.positions)
-    }
-    pub fn take_normals(&mut self) -> Vec<f64> {
-        std::mem::take(&mut self.normals)
-    }
-    pub fn take_ids(&mut self) -> Vec<String> {
-        std::mem::take(&mut self.ids)
-    }
-}
-
-/// The review GLB data of `diagnose`: coloured layers, one per role (docs/SHIP-PLAN.md ABI).
-#[wasm_bindgen]
-pub struct Diagnosis {
-    revision: u32,
-    layers: Vec<mixo_geometry_core::dental::review::Layer>,
-}
-
-#[wasm_bindgen]
-impl Diagnosis {
-    /// The request revision, echoed.
-    pub fn revision(&self) -> u32 {
-        self.revision
-    }
-    pub fn layer_count(&self) -> u32 {
-        self.layers.len() as u32
-    }
-    pub fn layer_name(&self, layer: u32) -> String {
-        self.layers.get(layer as usize).map(|l| l.name.to_string()).unwrap_or_default()
-    }
-    /// 0xRRGGBB.
-    pub fn layer_color(&self, layer: u32) -> u32 {
-        self.layers.get(layer as usize).map_or(0, |l| l.color)
-    }
-    pub fn take_layer_positions(&mut self, layer: u32) -> Vec<f32> {
-        self.layers.get_mut(layer as usize).map(|l| std::mem::take(&mut l.positions)).unwrap_or_default()
-    }
-    /// Empty: the positions are a triangle soup.
-    pub fn take_layer_indices(&mut self, layer: u32) -> Vec<u32> {
-        self.layers.get_mut(layer as usize).map(|l| std::mem::take(&mut l.indices)).unwrap_or_default()
-    }
-}
-
-#[wasm_bindgen]
-impl GeometrySession {
-    /// Review layers of a loaded aligner: the contact strip, the contours and, when given, the
-    /// diagnostic strips (`bands`: four masks of one byte per face, or empty), the sampled
-    /// contacts (position then normal, 6 numbers each), and a support mesh with a tip flag per
-    /// triangle. Review only; nothing here is support permission.
-    pub fn diagnose(
-        &self,
-        model: u32,
-        revision: u32,
-        profile: &str,
-        contact_faces: &[u8],
-        outer_ridge_edges: &[u32],
-        connector_edges: &[u32],
-        opening_edges: &[u32],
-        bands: &[u8],
-        outer_contacts: &[f64],
-        inner_contacts: &[f64],
-        support_positions: &[f32],
-        support_indices: &[u32],
-        tip_flags: &[u8],
-    ) -> Result<Diagnosis, JsValue> {
-        use mixo_geometry_core::dental::review::{ReviewError, ReviewInput, SupportMesh, review_layers};
-        profile_of(profile)?;
-        let mesh = self.mesh(model)?;
-        let faces = mesh.face_count();
-        if (!bands.is_empty() && bands.len() != faces * 4) || outer_contacts.len() % 6 != 0 || inner_contacts.len() % 6 != 0 {
-            return Err(error("INVALID_LENGTH"));
-        }
-        let band_views = (!bands.is_empty()).then(|| [&bands[..faces], &bands[faces..faces * 2], &bands[faces * 2..faces * 3], &bands[faces * 3..]]);
-        let support = (!support_indices.is_empty()).then_some(SupportMesh { positions: support_positions, indices: support_indices, tip_flags });
-        if support.is_some() && (support_indices.len() % 3 != 0 || support_indices.iter().any(|&i| i as usize * 3 + 2 >= support_positions.len())) {
-            return Err(error("INVALID_INDEX"));
-        }
-        let input = ReviewInput {
-            mesh, contact_faces, outer_ridge: outer_ridge_edges, connectors: connector_edges, opening: opening_edges,
-            bands: band_views, outer_contacts, inner_contacts, support,
-        };
-        let layers = review_layers(&input).map_err(|e| match e {
-            ReviewError::ContactMaskMismatch | ReviewError::BandMismatch | ReviewError::SupportMismatch => error("INVALID_LENGTH"),
-            ReviewError::EdgeOutOfRange => error("INVALID_INDEX"),
-        })?;
-        Ok(Diagnosis { revision, layers })
-    }
 }

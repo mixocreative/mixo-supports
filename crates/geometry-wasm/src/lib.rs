@@ -1,190 +1,36 @@
 //! Thin WebAssembly bindings for the host-independent geometry core.
 
 use mixo_geometry_core::core::mesh::{MeshError, MeshStore};
-use mixo_geometry_core::core::stl::{AsciiStlStream, BinaryStlStream, StlError};
 use mixo_geometry_core::core::brush::{self, BodySegments, Occluder};
-use mixo_geometry_core::core::matrix::{self, Handedness, Matrix4};
-use mixo_geometry_core::core::spatial::{Bvh, FlatBvh, Side};
-use mixo_geometry_core::core::{normals, overlay, pick};
+use mixo_geometry_core::core::matrix::{self, Handedness};
+use mixo_geometry_core::core::spatial::FlatBvh;
+use mixo_geometry_core::core::pick;
 use mixo_geometry_core::supports::error as support_error;
 use std::sync::atomic::{AtomicU32, Ordering};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
 mod dental;
+mod dental_area;
+mod dental_review;
 #[cfg(feature = "test-abi")]
 mod dental_test_abi;
 mod generic;
 #[cfg(feature = "test-abi")]
 mod generic_test_abi;
+mod import;
+mod overlay_calls;
 mod safety;
+mod spatial;
+mod transform;
+
+pub(crate) use import::WeldResult;
+pub(crate) use overlay_calls::check_triangles;
+pub(crate) use spatial::{PickIndex, side_of};
+pub(crate) use transform::{handedness_of, matrix4};
 
 #[wasm_bindgen]
 pub fn engine_version() -> u32 {
     mixo_geometry_core::engine_version()
-}
-
-/// Mutates the caller's vertex buffer and returns center XYZ, then original min/max XYZ.
-#[wasm_bindgen]
-pub fn center_positions_in_place(positions: &mut [f32]) -> Result<Vec<f64>, JsValue> {
-    let centered =
-        mixo_geometry_core::core::transform::center_positions(positions).map_err(mesh_error)?;
-    Ok(centered
-        .center
-        .into_iter()
-        .chain(centered.bounds.min.into_iter().map(f64::from))
-        .chain(centered.bounds.max.into_iter().map(f64::from))
-        .collect())
-}
-
-#[wasm_bindgen]
-pub struct WeldResult {
-    positions: Vec<f32>,
-    indices: Vec<u32>,
-}
-
-#[wasm_bindgen]
-pub struct BinaryStlSession {
-    stream: Option<BinaryStlStream>,
-}
-
-#[wasm_bindgen]
-pub struct AsciiStlSession {
-    stream: Option<AsciiStlStream>,
-}
-
-#[wasm_bindgen]
-impl AsciiStlSession {
-    #[wasm_bindgen(constructor)]
-    pub fn new(file_size: u32) -> Result<Self, JsValue> {
-        Ok(Self {
-            stream: Some(AsciiStlStream::new(file_size as usize).map_err(stl_error)?),
-        })
-    }
-
-    pub fn push(&mut self, chunk: &[u8]) -> Result<(), JsValue> {
-        self.stream
-            .as_mut()
-            .ok_or_else(|| coded_error("INVALID_HANDLE"))?
-            .push(chunk)
-            .map_err(stl_error)
-    }
-
-    pub fn finish(&mut self) -> Result<WeldResult, JsValue> {
-        let mesh = self
-            .stream
-            .take()
-            .ok_or_else(|| coded_error("INVALID_HANDLE"))?
-            .finish()
-            .map_err(stl_error)?;
-        Ok(WeldResult {
-            positions: mesh.positions,
-            indices: mesh.indices,
-        })
-    }
-}
-
-#[wasm_bindgen]
-impl BinaryStlSession {
-    #[wasm_bindgen(constructor)]
-    pub fn new(triangles: u32) -> Result<Self, JsValue> {
-        Ok(Self {
-            stream: Some(BinaryStlStream::new(triangles).map_err(stl_error)?),
-        })
-    }
-
-    pub fn push(&mut self, chunk: &[u8]) -> Result<(), JsValue> {
-        self.stream
-            .as_mut()
-            .ok_or_else(|| coded_error("INVALID_HANDLE"))?
-            .push(chunk)
-            .map_err(stl_error)
-    }
-
-    pub fn finish(&mut self) -> Result<WeldResult, JsValue> {
-        let mesh = self
-            .stream
-            .take()
-            .ok_or_else(|| coded_error("INVALID_HANDLE"))?
-            .finish()
-            .map_err(stl_error)?;
-        Ok(WeldResult {
-            positions: mesh.positions,
-            indices: mesh.indices,
-        })
-    }
-}
-
-#[wasm_bindgen]
-impl WeldResult {
-    pub fn take_positions(&mut self) -> Vec<f32> {
-        std::mem::take(&mut self.positions)
-    }
-
-    pub fn take_indices(&mut self) -> Vec<u32> {
-        std::mem::take(&mut self.indices)
-    }
-}
-
-/// Transforms and welds one raw mesh; empty indices mean sequential corners.
-#[wasm_bindgen]
-pub fn weld_positions_in_place(
-    positions: &mut [f32],
-    indices: &[u32],
-    matrix: &[f64],
-) -> Result<WeldResult, JsValue> {
-    let welded =
-        mixo_geometry_core::core::weld::weld_positions(positions, indices, matrix).map_err(mesh_error)?;
-    Ok(WeldResult {
-        positions: welded.positions,
-        indices: welded.indices,
-    })
-}
-
-/// Returns a simplified display copy; the caller keeps the full mesh for support and export.
-#[wasm_bindgen]
-pub fn decimate_display(
-    positions: &[f32],
-    indices: &[u32],
-    max_triangles: u32,
-) -> Result<WeldResult, JsValue> {
-    let mesh =
-        mixo_geometry_core::core::decimate::decimate_display(positions, indices, max_triangles as usize)
-            .map_err(mesh_error)?;
-    Ok(WeldResult {
-        positions: mesh.positions,
-        indices: mesh.indices,
-    })
-}
-
-/// A mesh's pick index as flat arrays: per node `min xyz, max xyz` (`bounds`) and `start, count`
-/// (`links`), then the triangle permutation (`order`). Transferable between realms.
-#[wasm_bindgen]
-pub struct PickIndex {
-    bounds: Vec<f32>,
-    links: Vec<u32>,
-    order: Vec<u32>,
-}
-
-#[wasm_bindgen]
-impl PickIndex {
-    pub fn take_bounds(&mut self) -> Vec<f32> {
-        std::mem::take(&mut self.bounds)
-    }
-    pub fn take_links(&mut self) -> Vec<u32> {
-        std::mem::take(&mut self.links)
-    }
-    pub fn take_order(&mut self) -> Vec<u32> {
-        std::mem::take(&mut self.order)
-    }
-}
-
-/// The pick index of a mesh outside any session (the import worker builds it once; the main
-/// thread loads it with `GeometrySession.load_mesh_indexed`).
-#[wasm_bindgen]
-pub fn build_pick_index(positions: &[f32], indices: &[u32]) -> Result<PickIndex, JsValue> {
-    check_triangles(positions, indices)?;
-    let flat = Bvh::build(positions, indices).to_flat();
-    Ok(PickIndex { bounds: flat.bounds, links: flat.links, order: flat.order })
 }
 
 /// Mesh handles alive across every session of this module instance. A cancelled or finished job
@@ -390,165 +236,8 @@ fn hash_u32(values: &[u32]) -> u64 {
     hasher.finish()
 }
 
-fn matrix4(values: &[f64]) -> Result<Matrix4, JsValue> {
-    let matrix: Matrix4 = values.try_into().map_err(|_| coded_error("INVALID_LENGTH"))?;
-    if matrix.iter().any(|v| !v.is_finite()) {
-        return Err(coded_error("NON_FINITE"));
-    }
-    Ok(matrix)
-}
-
-fn handedness_of(flag: u32) -> Result<Handedness, JsValue> {
-    Handedness::from_flag(flag).ok_or_else(|| coded_error("INVALID_ARGUMENT"))
-}
-
-fn side_of(flag: u32) -> Result<Side, JsValue> {
-    Side::from_flag(flag).ok_or_else(|| coded_error("INVALID_ARGUMENT"))
-}
-
-/// Placement matrix (f64[16]) of a position (mm) and Euler XYZ rotation (radians).
-#[wasm_bindgen]
-pub fn placement_matrix(position: &[f64], rotation: &[f64]) -> Result<Vec<f64>, JsValue> {
-    if position.len() != 3 || rotation.len() != 3 {
-        return Err(coded_error("INVALID_LENGTH"));
-    }
-    Ok(matrix::placement_matrix([position[0], position[1], position[2]], [rotation[0], rotation[1], rotation[2]]).to_vec())
-}
-
-#[wasm_bindgen]
-pub fn invert_matrix(matrix: &[f64]) -> Result<Vec<f64>, JsValue> {
-    Ok(matrix::invert_matrix(&matrix4(matrix)?).to_vec())
-}
-
-/// Positions of any mesh (not necessarily in a session) through a matrix; see `GeometrySession.transform`.
-#[wasm_bindgen]
-pub fn transform_positions(positions: &[f32], matrix: &[f64], handedness: u32) -> Result<Vec<f32>, JsValue> {
-    if positions.len() % 3 != 0 {
-        return Err(coded_error("INVALID_LENGTH"));
-    }
-    Ok(matrix::transform_positions(positions, &matrix4(matrix)?, handedness_of(handedness)?))
-}
-
-/// Lowest y of the positions through a matrix (float32 like `transform_positions`), without the copy.
-#[wasm_bindgen]
-pub fn transformed_min_y(positions: &[f32], matrix: &[f64]) -> Result<f32, JsValue> {
-    if positions.len() % 3 != 0 {
-        return Err(coded_error("INVALID_LENGTH"));
-    }
-    Ok(matrix::transformed_min_y(positions, &matrix4(matrix)?))
-}
-
-/// A batch of f64 xyz triples through a matrix as points (with divide) or normalised directions.
-#[wasm_bindgen]
-pub fn transform_vectors(values: &[f64], matrix: &[f64], direction: bool) -> Result<Vec<f64>, JsValue> {
-    if values.len() % 3 != 0 {
-        return Err(coded_error("INVALID_LENGTH"));
-    }
-    Ok(matrix::transform_vectors(values, &matrix4(matrix)?, direction))
-}
-
-#[wasm_bindgen]
-pub fn vertex_normals(positions: &[f32], indices: &[u32]) -> Result<Vec<f32>, JsValue> {
-    check_triangles(positions, indices)?;
-    Ok(normals::vertex_normals(positions, indices))
-}
-
-fn check_triangles(positions: &[f32], indices: &[u32]) -> Result<(), JsValue> {
-    if positions.len() % 3 != 0 || indices.len() % 3 != 0 {
-        return Err(coded_error("INVALID_LENGTH"));
-    }
-    if indices.iter().any(|&i| i as usize >= positions.len() / 3) {
-        return Err(coded_error("INVALID_INDEX"));
-    }
-    Ok(())
-}
-
-#[wasm_bindgen]
-pub struct BodySegmentsResult {
-    keys: Vec<u32>,
-    first: Vec<u32>,
-    points: Vec<f32>,
-}
-
-#[wasm_bindgen]
-impl BodySegmentsResult {
-    pub fn take_keys(&mut self) -> Vec<u32> {
-        std::mem::take(&mut self.keys)
-    }
-    pub fn take_first(&mut self) -> Vec<u32> {
-        std::mem::take(&mut self.first)
-    }
-    pub fn take_points(&mut self) -> Vec<f32> {
-        std::mem::take(&mut self.points)
-    }
-}
-
-/// Support bodies as axis segments; component `k` covers `indices[start[k] .. start[k] + count[k]]`
-/// and belongs to contact key `contact[k]` (`0xFFFFFFFF` for none).
-#[wasm_bindgen]
-pub fn body_segments(positions: &[f32], indices: &[u32], contact: &[u32], start: &[u32], count: &[u32]) -> Result<BodySegmentsResult, JsValue> {
-    check_triangles(positions, indices)?;
-    let ranges_ok = contact.len() == start.len()
-        && contact.len() == count.len()
-        && start.iter().zip(count).all(|(&s, &c)| s as usize + c as usize <= indices.len());
-    if !ranges_ok {
-        return Err(coded_error("INVALID_LENGTH"));
-    }
-    let bodies = brush::body_segments(positions, indices, contact, start, count);
-    Ok(BodySegmentsResult { keys: bodies.keys, first: bodies.first, points: bodies.points })
-}
-
-/// A finer display copy of a mesh for the zone layer (the input when it already fits).
-#[wasm_bindgen]
-pub fn refine_for_overlay(positions: &[f32], indices: &[u32], max_edge: f64, max_triangles: u32) -> Result<WeldResult, JsValue> {
-    check_triangles(positions, indices)?;
-    let (positions, indices) = overlay::refine_for_overlay(positions, indices, max_edge, max_triangles as usize);
-    Ok(WeldResult { positions, indices })
-}
-
-/// Per-corner positions and flat normals of the approved faces (`allowed[face] == 1`).
-#[wasm_bindgen]
-pub struct FaceOverlay {
-    positions: Vec<f32>,
-    normals: Vec<f32>,
-}
-
-#[wasm_bindgen]
-impl FaceOverlay {
-    pub fn take_positions(&mut self) -> Vec<f32> {
-        std::mem::take(&mut self.positions)
-    }
-    pub fn take_normals(&mut self) -> Vec<f32> {
-        std::mem::take(&mut self.normals)
-    }
-}
-
-#[wasm_bindgen]
-pub fn face_mask_overlay(positions: &[f32], indices: &[u32], allowed: &[u8]) -> Result<FaceOverlay, JsValue> {
-    check_triangles(positions, indices)?;
-    let (positions, normals) = overlay::face_mask_overlay(positions, indices, allowed).ok_or_else(|| coded_error("INVALID_LENGTH"))?;
-    Ok(FaceOverlay { positions, normals })
-}
-
-#[wasm_bindgen]
-pub fn face_mask_contour_segments(positions: &[f32], pairs: &[u32]) -> Result<Vec<f32>, JsValue> {
-    if positions.len() % 3 != 0 || pairs.iter().any(|&i| i as usize * 3 + 3 > positions.len()) {
-        return Err(coded_error("INVALID_INDEX"));
-    }
-    Ok(overlay::face_mask_contour_segments(positions, pairs))
-}
-
 fn mesh_error(error: MeshError) -> JsValue {
     coded_error(error.code())
-}
-
-fn stl_error(error: StlError) -> JsValue {
-    coded_error(match error {
-        StlError::Format => "BAD_STL",
-        StlError::Empty => "NO_MESH",
-        StlError::NonFinite => "NON_FINITE",
-        StlError::Capacity => "CAPACITY",
-    })
 }
 
 fn build_error(error: mixo_geometry_core::supports::error::BuildError) -> JsValue {
