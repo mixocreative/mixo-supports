@@ -693,6 +693,8 @@ export const zhHant: Dictionary = {
   'Support settings': '支撐設定',
   'Tip size': '支撐頭尺寸',
   'Diameter of each support tip where it touches the aligner': '每個支撐頭接觸牙套位置的直徑',
+  'Pillar size': '支撐柱尺寸',
+  'Diameter of each support pillar': '每根支撐柱的直徑',
   'Higher density places support tips closer together. Your manual edits are kept where they still fit': '密度越高，支撐頭距離越近。在仍適用的位置會保留您的手動編輯',
   'How high the aligner stands above the plate. Supports are placed again': '牙套高出底板的高度。將會重新產生支撐',
   'Build a raft under the supports. The label needs it': '在支撐下方建立底筏。標籤需要底筏',

@@ -715,7 +715,7 @@ async function walk(url, scratch, dentalFixture) {
       const bandBox = await page.locator('.print-angle .range-band').boundingBox();
       const sliderRange = await angleSlider.evaluate((input) => [Number(input.min), Number(input.max), Number(input.step)]);
       check('f1 Step 1 scans the print angles ("Scanning print angles i/n"), then shows the pick with its stable band',
-        await page.evaluate(() => window.__scanSeen) && (await angleText()) === 'Print angle 36.5° (stable 26.5–36.5°)', `"${await angleText()}"`);
+        await page.evaluate(() => window.__scanSeen) && (await angleText()) === 'Print angle 44.5° (stable 26.5–44.5°)', `"${await angleText()}"`);
       check('f2 the print-angle slider spans start ± 22° in 1° steps with the stable band drawn on its track',
         Math.abs(sliderRange[0] - 24.4577512332) < 1e-6 && Math.abs(sliderRange[1] - 68.4577512332) < 1e-6 && sliderRange[2] === 1 && (bandBox?.width ?? 0) > 10,
         `range ${JSON.stringify(sliderRange)}, band ${JSON.stringify(bandBox)}`);
@@ -723,24 +723,31 @@ async function walk(url, scratch, dentalFixture) {
       const pickRotation = (await d.props()).activeRotation;
       await angleSlider.focus();
       await angleSlider.press('ArrowRight');
-      await page.waitForFunction(() => document.querySelector('.print-angle .edit-hint')?.innerText.startsWith('Print angle 37.5°'), null, { timeout: 10000 }).catch(() => {});
+      await page.waitForFunction(() => document.querySelector('.print-angle .edit-hint')?.innerText.startsWith('Print angle 45.5°'), null, { timeout: 10000 }).catch(() => {});
       const turnedRotation = (await d.props()).activeRotation;
       check('f3 moving the slider turns the preview to that tilt and shows its rule flags (no tips in Step 1)',
-        (await angleText()).startsWith('Print angle 37.5°') && JSON.stringify(turnedRotation) !== JSON.stringify(pickRotation) && (await flagsText()) === 'Passes every rule.' && (await page.getByText('Proposed support tips').count()) === 0,
+        (await angleText()).startsWith('Print angle 45.5°') && JSON.stringify(turnedRotation) !== JSON.stringify(pickRotation) && (await flagsText()) === 'Passes every rule.' && (await page.getByText('Proposed support tips').count()) === 0,
         `"${await angleText()}", flags "${await flagsText()}", rotation ${JSON.stringify(pickRotation)} -> ${JSON.stringify(turnedRotation)}`);
       await angleSlider.press('End');
       await page.waitForFunction(() => document.querySelector('.print-angle .edit-hint')?.innerText.startsWith('Print angle 68.5°'), null, { timeout: 10000 }).catch(() => {});
       const steep = await flagsText();
       check('f4 the steepest tilt shows its failed rules by name', steep.includes('resin trap') && steep.includes('support crossing the aligner'), `flags "${steep}"`);
       await d.button('Auto orientation').click();
-      await page.waitForFunction(() => document.querySelector('.print-angle .edit-hint')?.innerText.startsWith('Print angle 36.5°'), null, { timeout: 10000 }).catch(() => {});
+      await page.waitForFunction(() => document.querySelector('.print-angle .edit-hint')?.innerText.startsWith('Print angle 44.5°'), null, { timeout: 10000 }).catch(() => {});
       check('f5 Auto orientation returns the slider and the preview to the automatic pick',
-        (await angleText()).startsWith('Print angle 36.5°') && JSON.stringify((await d.props()).activeRotation) === JSON.stringify(pickRotation), `"${await angleText()}"`);
+        (await angleText()).startsWith('Print angle 44.5°') && JSON.stringify((await d.props()).activeRotation) === JSON.stringify(pickRotation), `"${await angleText()}"`);
       await d.button('Next').click();
       await stepTo('Step 2 · Support area', 180000);
       await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /Proposed support tips: [1-9]/.test(note.innerText)), null, { timeout: 240000 });
       check('u10 Step 2 shows the detected area with tips, and Next is on', await d.button('Next').isEnabled() && (await page.getByText('No support area was detected').count()) === 0);
-      check('f6 Next confirmed the automatic pick with a real build: it held, so the angle did not move', (await page.getByText('Print angle moved to').count()) === 0 && JSON.stringify((await d.props()).activeRotation) === JSON.stringify(pickRotation));
+      // F's confirm rule: the pick holds, or the angle moves to the next tilt and says so (D15).
+      const movedNotes = await page.getByText('Print angle moved to').allInnerTexts();
+      const movedTo = movedNotes.map((note) => note.match(/([\d.]+)°/)?.[1]).find(Boolean);
+      const shownAngle = await angleText().catch(() => '');
+      const held = movedNotes.length === 0 && JSON.stringify((await d.props()).activeRotation) === JSON.stringify(pickRotation);
+      // After Next the Step 1 label is gone: a move shows as the notice plus a rotation other than the pick's.
+      const movedAndShown = movedTo !== undefined && JSON.stringify((await d.props()).activeRotation) !== JSON.stringify(pickRotation);
+      check('f6 Next confirmed the automatic pick with a real build: it held, or it moved with the notice and a new rotation', held || movedAndShown, `moved notes ${movedNotes}, angle ${shownAngle}, rotation ${JSON.stringify((await d.props()).activeRotation)} vs ${JSON.stringify(pickRotation)}`);
       await page.screenshot({ path: path.join(scratch, 'ux-a-step2.png') });
       // Step 2 controls (unit B): Paint / Erase anywhere, Area width, Area position and Support density, all live.
       const bar = page.locator('.dental-brush');
@@ -877,8 +884,8 @@ async function walk(url, scratch, dentalFixture) {
         ['Tip size', 'Support density', 'Lift height', 'Raft', 'Tree branches', 'Cross-braces', 'Add supports', 'Problems', 'Label', 'OK', 'Add another aligner'].every((word) => side.includes(word)), side.replace(/\s+/g, ' ').slice(0, 200));
       const switchOn = (name) => page.locator('.dental-side label.check').filter({ hasText: name }).locator('input').isChecked();
       const startValues = { tip: await slider('Tip size').inputValue(), lift: await slider('Lift height').inputValue(), tree: await switchOn('Tree branches'), brace: await switchOn('Cross-braces'), raft: await switchOn('Raft') };
-      check('x1c Step 3 starts with the aligner type defaults: 0.45 mm tip, 3.5 mm lift, raft on, Tree and Brace off',
-        Number(startValues.tip) === 0.45 && Number(startValues.lift) === 3.5 && startValues.raft && !startValues.tree && !startValues.brace, JSON.stringify(startValues));
+      check('x1c Step 3 starts with the aligner type defaults: 0.45 mm tip, 3.5 mm lift, raft on, Tree and Brace on (D3)',
+        Number(startValues.tip) === 0.45 && Number(startValues.lift) === 3.5 && startValues.raft && startValues.tree && startValues.brace, JSON.stringify(startValues));
       check('x2 the Label field is titled Label and starts as X', (await label.inputValue()) === 'X' && (await page.getByLabel('Label', { exact: true }).count()) >= 1, `value "${await label.inputValue()}"`);
       await label.fill('');
       await label.pressSequentially('a-1b_$%é .');
@@ -940,6 +947,37 @@ async function walk(url, scratch, dentalFixture) {
       await d.quiet();
       const afterLift = await d.counts();
       check('x9 a lift change regenerates the supports and keeps the manual edits', afterLift.manual === handWork.manual, `manual ${handWork.manual} -> ${afterLift.manual}, removed ${handWork.removed} -> ${afterLift.removed}, status "${await d.status()}"`);
+
+      // Every Step 3 control: the Problems section greys while its change is on the way to a new verdict, then clears.
+      {
+        const problems = page.locator('.dental-side section[aria-busy]');
+        await page.evaluate(() => {
+          window.__staleSeen = 0;
+          new MutationObserver(() => { if (document.querySelector('.dental-side section.is-stale[aria-busy="true"]')) window.__staleSeen += 1; }).observe(document.body, { subtree: true, attributes: true, childList: true });
+        });
+        const verdictBack = async () => {
+          await d.quiet();
+          await page.waitForFunction(() => { const el = document.querySelector('.dental-side section[aria-busy]'); return el && !el.classList.contains('is-stale') && el.getAttribute('aria-busy') === 'false'; }, null, { timeout: 120000 });
+        };
+        const controls = [
+          ['Tip size', async () => { await slider('Tip size').focus(); await slider('Tip size').press('ArrowRight'); }],
+          ['Pillar size', async () => { await slider('Pillar size').focus(); await slider('Pillar size').press('ArrowRight'); }],
+          ['Support density', async () => { await slider('Support density').focus(); await slider('Support density').press('ArrowRight'); }],
+          ['Lift height', async () => { await slider('Lift height').focus(); await slider('Lift height').press('ArrowLeft'); }],
+          ['Raft', async () => { const box = page.locator('.dental-side label.check').filter({ hasText: 'Raft' }).locator('input'); await box.uncheck(); await d.idle(700); await verdictBack(); await box.check(); }],
+          ['Tree branches', async () => { await page.locator('.dental-side label.check').filter({ hasText: 'Tree branches' }).locator('input').click(); }],
+          ['Cross-braces', async () => { await page.locator('.dental-side label.check').filter({ hasText: 'Cross-braces' }).locator('input').click(); }],
+        ];
+        const outcome = [];
+        for (const [name, act] of controls) {
+          await page.evaluate(() => { window.__staleSeen = 0; });
+          await act();
+          await verdictBack();
+          outcome.push(`${name}: stale seen ${await page.evaluate(() => window.__staleSeen)}x`);
+        }
+        const seenAll = outcome.every((line) => !line.endsWith(' 0x'));
+        check('x9b each Step 3 control (Tip size, Pillar size, Support density, Lift height, Raft, Tree branches, Cross-braces) greys the Problems section until its new verdict arrives, then clears it', seenAll && (await problems.getAttribute('aria-busy')) === 'false', outcome.join('; '));
+      }
 
       // Problems: the check runs inside the step and lists what it finds with Show and Fix.
       await d.button('Check for unsupported spots').click();
@@ -1185,7 +1223,7 @@ async function walkLocale(url, scratch, lang, dentalFixture) {
     await page.waitForSelector('.print-angle .edit-hint', { timeout: 120000 });
     const angle = await page.locator('.print-angle .edit-hint').innerText();
     const angleLead = tr('Print angle {n}° (stable {a}–{b}°)').split('{n}')[0];
-    check(tag('d0 Step 1 shows the print angle and its stable band in the language'), angle.startsWith(angleLead) && angle.includes('36.5') && (lang === 'en' || !angle.includes('Print angle')), `"${angle}"`);
+    check(tag('d0 Step 1 shows the print angle and its stable band in the language'), angle.startsWith(angleLead) && angle.includes('44.5') && (lang === 'en' || !angle.includes('Print angle')), `"${angle}"`);
     await shot(page, 'dental-step1-print-angle');
     await button('Next').click();
     await badgeHas('Step 2 · Support area', 180000);

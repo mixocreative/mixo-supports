@@ -11,7 +11,7 @@
  */
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { parseStl } from '../../scripts/node-engine';
+import { nodeEngine, parseStl } from '../../scripts/node-engine';
 import { buildDentalReview, pickPrintAngle } from '../../scripts/dental-region-review/build';
 import { tiltLabel } from '../../src/core/analysis/dentalTilt';
 import { exportDentalRegionReview } from '../../scripts/dental-region-review/review';
@@ -55,6 +55,8 @@ for (const [k, file] of files.entries()) {
   try {
     const bytes = readFileSync(file);
     const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+    // Centred as the app's import does, so the review sees the same coordinates as the app.
+    nodeEngine.center_positions_in_place(mesh.positions);
     const angle = pickPrintAngle(mesh);
     if (angle.kind === 'angle') {
       const { scan } = angle;

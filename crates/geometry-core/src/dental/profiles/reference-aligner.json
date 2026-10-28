@@ -78,8 +78,8 @@
     "pillarDiameterMm": 1.4,
     "tipDiameterMm": 0.45,
     "liftHeightMm": 3.5,
-    "tree": false,
-    "brace": false,
+    "tree": true,
+    "brace": true,
     "raft": true
   },
   "stability": {

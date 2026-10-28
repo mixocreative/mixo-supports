@@ -689,6 +689,8 @@ export const ja: Dictionary = {
   'Support settings': 'サポート設定',
   'Tip size': '先端サイズ',
   'Diameter of each support tip where it touches the aligner': 'アライナーに触れる各サポート先端の直径です。',
+  'Pillar size': '支柱サイズ',
+  'Diameter of each support pillar': '各サポート支柱の直径です。',
   'Higher density places support tips closer together. Your manual edits are kept where they still fit': '密度を上げるとサポート先端の間隔が狭くなります。手動の編集は、まだ合う場所では保持されます。',
   'How high the aligner stands above the plate. Supports are placed again': 'プレートからアライナーまでの高さです。サポートは再配置されます。',
   'Build a raft under the supports. The label needs it': 'サポートの下にラフトを作ります。ラベルにはラフトが必要です。',

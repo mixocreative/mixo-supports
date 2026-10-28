@@ -1015,6 +1015,8 @@ export default function App() {
   const command = (id: CommandId) => resolve(id, ui);
   // Dental Step 3's settings, findings and the answer to Back (see components/DentalSupports).
   const reviewTuning = dentalTuning.tuning;
+  const verdictEntry = activeUnit ? problems.get(activeUnit.id) : undefined;
+  const verdictBehind = Boolean(activeUnit && verdictEntry && (verdictEntry.unit !== activeUnit || verdictEntry.mesh !== currentBuild(activeUnit, built.get(activeUnit.id))));
   const dentalReview: DentalReview | undefined = activeUnit?.dental?.kind === 'two-contour' && reviewTuning ? {
     settings: activeSettings,
     onSetting: onSettingChange,
@@ -1024,6 +1026,7 @@ export default function App() {
     structure: activeUnit.dental.structure ?? defaultDentalStructure,
     onStructure: onDentalStructureChange,
     clickReach: { value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) },
+    verdictPending: generating || regenQueued || dentalTuning.busy || verdictBehind || building(activeUnit),
     rimGap: dentalRimGap,
     structureFallback: activeMesh?.dentalStructureFallback,
     problems: listedProblems,
