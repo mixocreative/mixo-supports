@@ -34,6 +34,7 @@ Decided (by the owner unless noted):
 | D13 | Folder review: with the camera below the floor (the bottom of the supports and raft) the viewer shows only the aligner and its support tips (owner, 2026-10-28; built). | review |
 | D14 | F is built in full: scan, stable band, slider and the automatic pick with its confirm and retries, slenderness limits 20/35 (owner, 2026-10-28, Q6). | F |
 | D15 | F's criteria are the measured reference band (braced 26.46–44.46°, pick 44.46°), not the earlier 35–46° estimate; the example's 46.46° passes but is not robust (cups from 48.46°). Scan once per file off the UI thread, ≤ 5 s; gap rule = `needs_review`; slenderness from the plate at the host's lift, braced per the host's settings (Fable, lead, reversible; prints in V are the real check). | F |
+| D16 | Target split (owner, 2026-10-28): mixosupports becomes dental-only; mixomesh becomes the generic 3D tool with auto supports. Electron stays (it provides automation, batch jobs, a 4 GB heap, file opening and publishing; WASM runs inside it). Shared: the WASM engine, the framework-free editing logic and the style tokens, not UI components (Fable, EGM-reviewed). | After H |
 
 Open (owner; Q1, release timing, was answered: pull request #2 merged to `main` as fbac47f on 2026-10-28):
 
@@ -103,6 +104,23 @@ Today a profile with `"opening": "yes"` refuses an aligner without an opening (`
 
 ### H. Host deliverable (0.5 unit)
 A Node script that drives orient, region, policy, generate and diagnose on an STL through the browser package's ABI with no React (start from `scripts/geometry-wasm-smoke.mjs`). Proves the "future host app" principle and becomes its example.
+
+## After H: dental-only mixosupports, generic supports in mixomesh (D16)
+
+Not started before H is merged. Each step gets a specification and review first. Units are approximate.
+
+| # | Step | Units | Owner |
+|---|---|---|---|
+| A0 | Licence audit: per-file provenance of `supports/`, `core/`, `generic/` (several files cite Blender nodes or follow OpenVDB); set `license` in `Cargo.toml`; rewrite or gate what cannot ship under mixomesh's EULA | 0.5 + rewrites | ruling on derived vs re-implemented (possibly counsel) |
+| A1 | Package the WASM engine: built `.wasm`, glue, `.d.ts`, `VERSION` (engine_version, wasm-bindgen version, hash); mixomesh vendors it like `manifold.wasm` and asserts the version at load | 1 | — |
+| A2 | Dental front door in mixosupports (generic stays a second entry until A6) | 0.5–1 | wording |
+| A3 | mixomesh spike: engine in a worker, supports on one selected mesh, tips shown in Babylon (right-handed adapter, one parity fixture); checks size, CSP, memory | 1 | go / no-go |
+| A4 | Support UX in mixomesh on selected models, no orientation: paint and erase the support area, select by paint, edit each tip, via the shared framework-free editing logic and a one-page UX contract (modes, keys, brush, cursors, strings) | 2 | sign the UX contract |
+| A5 | Tips preview and export in mixomesh through the engine | 1 | export as merged or separate parts |
+| A6 | Remove the generic UI from mixosupports (dental-only); the generic engine tests and goldens stay as UI-free Rust/TS tests | 0.5–1 | confirm after A5 |
+| A7 | Other mixomesh geometry to WASM only where a benchmark shows ≥ 2× (Manifold and MeshFix stay) | per case | only if it touches those engines |
+
+Users of generic mode on the website move to mixomesh (desktop) at A6.
 
 ## Deferred until evidence
 
