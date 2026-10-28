@@ -1,7 +1,10 @@
 //! The cavity rim: the sharp loop pair at the aligner's lower terminal (authorising loop), or a
 //! projection fallback, plus the orthographic visibility footprint of the opening.
 
-use super::mesh::{Mesh, V3, cross, dot, length, normalize, scale, sub, sum_points};
+use super::mesh::{Mesh, sum_points};
+
+use crate::core::vec::{V3, cross, dot, length, normalize, scale, sub};
+use crate::core::jsnum::hypot3;
 use super::profiles::AlignerProfile;
 use std::collections::HashMap;
 
@@ -181,7 +184,7 @@ fn lower_feature_loop(
     let radius_of = |l: &[u32]| {
         l.iter().fold(0.0, |s, &i| {
             let d = sub(vertices[i as usize], centre);
-            s + super::mesh::hypot3(dot(d, tangent), dot(d, bitangent), 0.0)
+            s + hypot3([dot(d, tangent), dot(d, bitangent), 0.0])
         }) / l.len() as f64
     };
     terminal.sort_by(|a, b| (radius_of(a) - radius_of(b)).partial_cmp(&0.0).unwrap_or(std::cmp::Ordering::Equal));

@@ -1,7 +1,7 @@
 //! Attribution tags every built component carries: what it is, which contact owns it, whether
 //! that contact was automatic or manual, and the source-model contact it intentionally approaches.
 
-use super::vec::V3;
+use crate::core::vec::V3;
 use crate::supports::policy::Origin;
 
 /// Codes are the ABI; order follows the TypeScript `SupportPart` union.

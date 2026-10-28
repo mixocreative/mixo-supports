@@ -1,25 +1,9 @@
 //! Plan-view (x, z) helpers the raft, roof and label share: JS-compatible `hypot`, polygon area,
 //! even-odd containment, closed-curve resampling and Blender's Face Corner Angle bisectors.
 
-pub type P2 = [f64; 2];
+use crate::core::jsnum::hypot;
 
-/// `Math.hypot` as V8 computes it (scaled by the largest term, Kahan-summed), so plan geometry
-/// built from it agrees with the TS oracle to the last bit.
-pub fn js_hypot(values: &[f64]) -> f64 {
-    let max = values.iter().fold(0.0_f64, |m, v| m.max(v.abs()));
-    if max == 0.0 || !max.is_finite() {
-        return max;
-    }
-    let (mut sum, mut compensation) = (0.0_f64, 0.0_f64);
-    for v in values {
-        let n = v.abs() / max;
-        let summand = n * n - compensation;
-        let preliminary = sum + summand;
-        compensation = (preliminary - sum) - summand;
-        sum = preliminary;
-    }
-    sum.sqrt() * max
-}
+pub type P2 = [f64; 2];
 
 pub fn area(loop_: &[P2]) -> f64 {
     let mut sum = 0.0;
@@ -47,7 +31,7 @@ pub fn inside(p: P2, polygon: &[P2]) -> bool {
 }
 
 pub fn normalize2(v: P2) -> P2 {
-    let length = js_hypot(&v);
+    let length = hypot(&v);
     if length == 0.0 { [0.0, 0.0] } else { [v[0] / length, v[1] / length] }
 }
 
@@ -57,7 +41,7 @@ pub fn resample_closed(loop_: &[P2], count: usize) -> Vec<P2> {
     let lengths: Vec<f64> = (0..n)
         .map(|i| {
             let (a, b) = (loop_[i], loop_[(i + 1) % n]);
-            js_hypot(&[b[0] - a[0], b[1] - a[1]])
+            hypot(&[b[0] - a[0], b[1] - a[1]])
         })
         .collect();
     let total: f64 = lengths.iter().sum();
@@ -105,13 +89,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hypot_matches_the_pythagorean_triples() {
-        assert_eq!(js_hypot(&[3.0, 4.0]), 5.0);
-        assert_eq!(js_hypot(&[0.0, 0.0]), 0.0);
-        assert!((js_hypot(&[1.0, 2.0, 2.0]) - 3.0).abs() < 1e-15);
-    }
-
-    #[test]
     fn resample_keeps_the_start_and_spreads_evenly() {
         let square: Vec<P2> = vec![[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]];
         let r = resample_closed(&square, 8);
@@ -125,6 +102,6 @@ mod tests {
         let square: Vec<P2> = vec![[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]];
         let b = corner_bisectors(&square);
         assert!((b[0][0].abs() - b[0][1].abs()).abs() < 1e-12);
-        assert!((js_hypot(&b[0]) - 1.0).abs() < 1e-12);
+        assert!((hypot(&b[0]) - 1.0).abs() < 1e-12);
     }
 }

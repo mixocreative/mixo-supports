@@ -2,7 +2,7 @@
 //! triangle through a bounding volume hierarchy, sign from the parity of an upward ray. Port of the
 //! TS `SignedDistance`; the triangle order and tie-breaking follow it.
 
-use super::num::{V3, add, dot, scale, sub};
+use crate::core::vec::{V3, add, dot, scale, sub};
 
 #[derive(Default)]
 pub struct SignedDistance {

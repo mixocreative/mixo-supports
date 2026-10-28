@@ -5,8 +5,9 @@
 
 use super::autotree_safe::{SafeScatter, hits_below};
 use super::column::ColumnContact;
-use super::model::{Model, hypot3};
-use super::vec::{V3, add, sub};
+use super::model::Model;
+use crate::core::jsnum::hypot3;
+use crate::core::vec::{V3, add, sub};
 use crate::supports::error::BuildError;
 use crate::supports::remesh::Remesh;
 use crate::supports::policy::Origin;
@@ -98,7 +99,7 @@ pub fn auto_tree_layout(contacts: &[ColumnContact], model: Option<&Model>, s: &S
         if members.is_empty() {
             continue;
         }
-        let reach = members.iter().map(|&k| crate::supports::remesh::hypot(&[position(k)[0] - average[0], position(k)[2] - average[2]])).fold(f64::NEG_INFINITY, f64::max);
+        let reach = members.iter().map(|&k| crate::core::jsnum::hypot(&[position(k)[0] - average[0], position(k)[2] - average[2]])).fold(f64::NEG_INFINITY, f64::max);
         let y = average[1] - s.scatter_branch_descent - 2.0 * reach;
         if y < spacing {
             continue;

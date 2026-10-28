@@ -1,6 +1,6 @@
 //! Downward (overhang) faces and the connected regions they form.
 
-use crate::supports::remesh::hypot;
+use crate::core::jsnum::hypot;
 use std::collections::HashMap;
 
 /// Faces modelled at exactly the Overhang angle land a hair past it once rounded (a 45-degree plate

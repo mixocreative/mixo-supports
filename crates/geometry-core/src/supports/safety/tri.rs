@@ -1,15 +1,12 @@
 //! Exact triangle tests in one millimetre frame (port of TS `triangleIntersection.ts`; the
 //! operation order is kept so hits agree with the oracle to the last bit).
 
-use crate::supports::parts::vec::{V3, cross, dot, sub};
+use crate::core::jsnum::hypot3;
+use crate::core::vec::{V3, cross, dot, sub};
 
 pub type Tri = [V3; 3];
 
 const EPS: f64 = 1e-8;
-
-fn hypot(v: V3) -> f64 {
-    crate::supports::remesh::hypot3(v)
-}
 
 /// Position along a non-coplanar segment when its centre line intersects a triangle.
 pub fn segment_triangle_hit(from: V3, to: V3, tri: &Tri) -> Option<f64> {
@@ -57,13 +54,13 @@ fn contains(tri: &[P2; 3], point: P2) -> bool {
 
 fn coplanar_overlap(a: &Tri, b: &Tri) -> bool {
     let normal = cross(sub(a[1], a[0]), sub(a[2], a[0]));
-    let size = hypot(normal);
+    let size = hypot3(normal);
     if size < EPS || dot(normal, sub(b[0], a[0])).abs() > EPS * size {
         return false;
     }
     let other = cross(sub(b[1], b[0]), sub(b[2], b[0]));
-    let other_size = hypot(other);
-    if other_size < EPS || hypot(cross(normal, other)) > EPS * size * other_size {
+    let other_size = hypot3(other);
+    if other_size < EPS || hypot3(cross(normal, other)) > EPS * size * other_size {
         return false;
     }
     let mut omit = 0;

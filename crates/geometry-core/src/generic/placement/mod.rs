@@ -16,12 +16,15 @@ mod minima;
 mod poisson;
 mod random;
 mod ridges;
-mod vnormals;
 
 use crate::supports::overhang::{classify_downward_faces, face_overhang_limit, partition_regions};
 pub use crate::supports::contact_id::{position_from_id, position_id};
 
-use crate::supports::remesh::{Remesh, SignedDistance, V3, js_round};
+use crate::supports::remesh::{Remesh, SignedDistance};
+
+use crate::core::vec::V3;
+
+use crate::core::jsnum::js_round;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -122,7 +125,7 @@ fn exact_as_remesh(positions: &[f32], indices: &[u32]) -> (Vec<V3>, Vec<Vec<u32>
             let (a, b, c) = (vertices[f[0] as usize], vertices[f[1] as usize], vertices[f[2] as usize]);
             let (ab, ac) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
             let crossed = [ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]];
-            let size = crate::supports::remesh::hypot3(crossed);
+            let size = crate::core::jsnum::hypot3(crossed);
             (size != 0.0).then(|| [crossed[0] / size, crossed[1] / size, crossed[2] / size])
         })
         .collect();

@@ -15,7 +15,7 @@ use super::parts::column::{ColumnContact, emit_column, emit_feet, neck_bend};
 use super::parts::landing::Landing;
 use super::parts::model::Model;
 use super::parts::tags::Component;
-use super::parts::vec::{V3, normalize_or_down, scale, sub};
+use crate::core::vec::{V3, normalize_or_down, scale, sub};
 use super::parts::tree::{emit_tree, landing_source};
 use super::parts::structures::emit_structures;
 use super::settings::{PreviewMode, SupportSettings};

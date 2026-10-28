@@ -1,7 +1,9 @@
 //! Cavity-opening detection: the opening axis (least-variance direction, terminal-area test) and
 //! its trimmed rim. Port of the oracle's `proposeDentalOrientation`; thresholds come from the profile.
 
-use super::mesh::{Mesh, V3, add, cross, dot, length, normalize, scale, sub, sum_points};
+use super::mesh::{Mesh, sum_points};
+
+use crate::core::vec::{V3, add, cross, dot, length, normalize, scale, sub};
 use super::profiles::AlignerProfile;
 use super::rim::{Rim, trace_rim};
 

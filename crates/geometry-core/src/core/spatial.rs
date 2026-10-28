@@ -1,6 +1,7 @@
 //! Triangle BVH (the pick index, D5) with first-hit ray queries. The index is indirect: it holds a
 //! permutation of triangle ids and never reorders the mesh's own index array.
 
+use super::vec::{V3, cross, dot, sub};
 const LEAF_SIZE: usize = 8;
 /// Slack on bounding boxes so a ray grazing a box edge still reaches its triangles.
 const BOX_SLACK: f64 = 1e-6;
@@ -258,7 +259,7 @@ impl Bvh {
             }
             for &face in &self.order[node.start as usize..(node.start + node.count) as usize] {
                 let [a, b, c] = triangle(positions, indices, face);
-                if let Some(t) = intersect_triangle(&origin, &direction, &a, &b, &c, side) {
+                if let Some(t) = intersect_triangle(origin, direction, a, b, c, side) {
                     if t >= near && t <= far && best.is_none_or(|(f, d)| t < d || (t == d && face < f)) {
                         best = Some((face, t));
                     }
@@ -277,24 +278,12 @@ impl Bvh {
     }
 }
 
-fn sub(a: &[f64; 3], b: &[f64; 3]) -> [f64; 3] {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-
-fn cross(a: &[f64; 3], b: &[f64; 3]) -> [f64; 3] {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
-
-fn dot(a: &[f64; 3], b: &[f64; 3]) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
 /// Moller-Trumbore with three.js's side rule: DdN > 0 means the ray runs along `(b-a) x (c-a)`.
-pub fn intersect_triangle(origin: &[f64; 3], direction: &[f64; 3], a: &[f64; 3], b: &[f64; 3], c: &[f64; 3], side: Side) -> Option<f64> {
+pub fn intersect_triangle(origin: V3, direction: V3, a: V3, b: V3, c: V3, side: Side) -> Option<f64> {
     let edge1 = sub(b, a);
     let edge2 = sub(c, a);
-    let normal = cross(&edge1, &edge2);
-    let ddn = dot(direction, &normal);
+    let normal = cross(edge1, edge2);
+    let ddn = dot(direction, normal);
     let sign = if ddn > 0.0 {
         if side == Side::Front {
             return None;
@@ -309,15 +298,15 @@ pub fn intersect_triangle(origin: &[f64; 3], direction: &[f64; 3], a: &[f64; 3],
         return None;
     };
     let diff = sub(origin, a);
-    let ddqxe2 = sign * dot(direction, &cross(&diff, &edge2));
+    let ddqxe2 = sign * dot(direction, cross(diff, edge2));
     if ddqxe2 < 0.0 {
         return None;
     }
-    let dde1xq = sign * dot(direction, &cross(&edge1, &diff));
+    let dde1xq = sign * dot(direction, cross(edge1, diff));
     if dde1xq < 0.0 || ddqxe2 + dde1xq > ddn.abs() {
         return None;
     }
-    let qdn = -sign * dot(&diff, &normal);
+    let qdn = -sign * dot(diff, normal);
     if qdn < 0.0 {
         return None;
     }
@@ -431,7 +420,7 @@ mod tests {
             let slow = (0..(i.len() / 3) as u32)
                 .filter_map(|f| {
                     let [a, b, c] = triangle(&p, &i, f);
-                    intersect_triangle(&o, &dir, &a, &b, &c, Side::Double).filter(|t| *t <= 50.0).map(|t| (t, f))
+                    intersect_triangle(o, dir, a, b, c, Side::Double).filter(|t| *t <= 50.0).map(|t| (t, f))
                 })
                 .min_by(|x, y| x.0.total_cmp(&y.0).then(x.1.cmp(&y.1)))
                 .map(|(_, f)| f);

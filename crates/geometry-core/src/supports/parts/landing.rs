@@ -1,7 +1,7 @@
 //! Where a support column lands and how its neck leans. Landing hits come from `model.rs`
 //! (exact surface) or, until the voxel remesh is ported (U5), from the caller.
 
-use super::vec::{V3, add, normalize_or_down, scale, sub};
+use crate::core::vec::{V3, add, normalize_or_down, scale, sub};
 
 /// A point where a support lands on the model, with the landed-on surface normal (pointing up).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -26,7 +26,7 @@ pub fn neck_direction(normal: V3, max_angle: f64) -> V3 {
     if angle <= limit {
         return normal;
     }
-    let horizontal = crate::supports::remesh::hypot(&[normal[0], normal[2]]);
+    let horizontal = crate::core::jsnum::hypot(&[normal[0], normal[2]]);
     if horizontal < 1e-9 {
         return [0.0, -1.0, 0.0];
     }

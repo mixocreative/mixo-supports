@@ -4,7 +4,7 @@
 use super::curve::CurveNode;
 use super::profile::{P2, basis, circle_ring};
 use super::tags::{Component, Tag};
-use super::vec::{V3, add, cross, dot, length, normalize_or_down, scale, sub};
+use crate::core::vec::{V3, add, cross, dot, length, normalize_or_down, scale, sub};
 use std::f64::consts::PI;
 
 /// Shorter than this (mm), a segment or axis counts as zero length.

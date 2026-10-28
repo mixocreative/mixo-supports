@@ -1,7 +1,7 @@
 //! No-support zones: brush dabs painted on the model (unit-local data the host serialises). The
 //! last stamp covering a point decides (paint zones, erase clears).
 
-use super::parts::vec::V3;
+use crate::core::vec::V3;
 
 /// One brush dab of a no-support zone.
 #[derive(Clone, Copy, Debug, PartialEq)]

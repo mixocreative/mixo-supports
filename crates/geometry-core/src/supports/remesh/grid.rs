@@ -4,7 +4,8 @@
 //! (x, y, z) = web (x, -z, y) so that leaf alignment, sign tables and quad order match OpenVDB.
 
 use super::leaf::Leaf;
-use super::num::{V3, add, fr, hypot, scale};
+use crate::core::vec::{V3, add, scale};
+use crate::core::jsnum::{fr, hypot};
 use super::sdf::SignedDistance;
 use super::tables::{ADAPTABLE, AMBIGUOUS_FACE, EDGE_GROUPS};
 use super::{LEAF, Polygon, PointId, Prim};

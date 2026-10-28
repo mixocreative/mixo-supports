@@ -2,7 +2,9 @@
 //! connected search inside the side band. Not a safety certificate (U7 owns collision checks).
 
 use super::incidence::inspect_contour_incidence;
-use super::mesh::{Mesh, V3, distance, hypot3};
+use super::mesh::Mesh;
+use crate::core::vec::{V3, distance};
+use crate::core::jsnum::hypot3;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -57,7 +59,7 @@ fn band_faces(mesh: &Mesh, mask: &[u8]) -> Option<Vec<ContourContact>> {
         let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
         let ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         let cross = [ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]];
-        let length = hypot3(cross[0], cross[1], cross[2]);
+        let length = hypot3(cross);
         if !length.is_finite() || length < 1e-12 {
             continue;
         }

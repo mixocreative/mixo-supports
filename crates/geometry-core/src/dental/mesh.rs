@@ -1,7 +1,7 @@
-//! Triangle mesh view and the double-precision vector helpers the dental detectors share.
+//! Triangle mesh view, the ordered point sum and the heap the dental detectors share.
 //! The float operation order is fixed: the frozen golden outputs depend on it.
 
-pub type V3 = [f64; 3];
+use crate::core::vec::{V3, add};
 
 /// Borrowed welded triangle mesh: f32 positions, u32 indices.
 #[derive(Clone, Copy)]
@@ -42,54 +42,6 @@ impl<'a> Mesh<'a> {
     }
 }
 
-pub fn sub(a: V3, b: V3) -> V3 {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-pub fn add(a: V3, b: V3) -> V3 {
-    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
-}
-pub fn scale(v: V3, s: f64) -> V3 {
-    [v[0] * s, v[1] * s, v[2] * s]
-}
-pub fn dot(a: V3, b: V3) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-pub fn cross(a: V3, b: V3) -> V3 {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
-
-/// `Math.hypot` of three values the way V8 computes it (scaled, Kahan-compensated sum).
-pub fn hypot3(x: f64, y: f64, z: f64) -> f64 {
-    let values = [x.abs(), y.abs(), z.abs()];
-    let max = values.iter().cloned().fold(0.0, f64::max);
-    if max == 0.0 {
-        return 0.0;
-    }
-    if !max.is_finite() {
-        return f64::INFINITY;
-    }
-    let (mut sum, mut compensation) = (0.0f64, 0.0f64);
-    for value in values {
-        let n = value / max;
-        let summand = n * n - compensation;
-        let preliminary = sum + summand;
-        compensation = (preliminary - sum) - summand;
-        sum = preliminary;
-    }
-    sum.sqrt() * max
-}
-
-pub fn length(v: V3) -> f64 {
-    hypot3(v[0], v[1], v[2])
-}
-pub fn distance(a: V3, b: V3) -> f64 {
-    hypot3(a[0] - b[0], a[1] - b[1], a[2] - b[2])
-}
-/// Unit vector; a zero-length input stays `[0, 0, 0]`.
-pub fn normalize(v: V3) -> V3 {
-    let size = length(v);
-    if size == 0.0 { [0.0; 3] } else { [v[0] / size, v[1] / size, v[2] / size] }
-}
 /// Sum of points starting from zero, in order (`reduce` in the oracle).
 pub fn sum_points(points: impl Iterator<Item = V3>) -> V3 {
     points.fold([0.0; 3], add)

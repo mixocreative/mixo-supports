@@ -7,7 +7,7 @@ use super::curve::{CurveNode, fillet_polyline};
 use super::landing::{Landing, neck_direction, sink_into, up_direction};
 use super::profile::tip_profile;
 use super::tags::{ContactIntent, IntentKind, Part, Tag};
-use super::vec::{V3, add, normalize_or_down, scale, sub};
+use crate::core::vec::{V3, add, normalize_or_down, scale, sub};
 use crate::supports::policy::{Candidate, Origin};
 use crate::supports::settings::{ContactShape, ShapeSettings, SupportSettings, TipProfile, TipSection};
 

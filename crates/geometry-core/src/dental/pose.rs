@@ -1,7 +1,10 @@
 //! Pose restoration: the arch front (which end of the U is the front teeth) and the Euler XYZ
 //! rotation that maps a scanned aligner onto the owner-approved reference pose.
 
-use super::mesh::{Mesh, V3, cross, dot, normalize, sub};
+use super::mesh::Mesh;
+
+use crate::core::vec::{V3, cross, dot, normalize, sub};
+use crate::core::jsnum::hypot3;
 use super::rim::Rim;
 use std::collections::HashSet;
 
@@ -56,7 +59,7 @@ fn estimate_arch_front(mesh: &Mesh, rim: &Rim) -> Option<V3> {
         svv += dv * dv;
         suv += du * dv;
     }
-    let spread = super::mesh::hypot3(suu - svv, 2.0 * suv, 0.0);
+    let spread = hypot3([suu - svv, 2.0 * suv, 0.0]);
     if spread / (suu + svv).max(1e-9) < 0.05 {
         return None;
     }

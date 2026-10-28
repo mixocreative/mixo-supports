@@ -6,7 +6,8 @@
 use crate::supports::overhang::face_overhang_limit;
 use super::random::{Drand48, hash_pair};
 use super::{Candidate, PlacementSettings, Source};
-use crate::supports::remesh::{V3, hypot3};
+use crate::core::vec::V3;
+use crate::core::jsnum::hypot3;
 use std::collections::HashMap;
 
 pub fn poisson_on_remesh(vertices: &[V3], faces: &[Vec<u32>], normals: &[Option<V3>], s: &PlacementSettings) -> Vec<Candidate> {

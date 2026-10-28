@@ -4,7 +4,7 @@
 //! spot after any regeneration. Manual contacts are never hidden or moved by a removal.
 
 use super::contact_id::{position_from_id, position_id};
-use super::remesh::hypot3;
+use crate::core::jsnum::hypot3;
 use std::collections::{HashMap, HashSet};
 
 /// A contact as the edit model sees it: its ID and where it stands.

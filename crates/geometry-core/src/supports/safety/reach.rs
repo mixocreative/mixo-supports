@@ -3,7 +3,7 @@
 //! a bounded depth. No face identity means no exemption.
 
 use super::conflicts::{Conflict, SupportMesh};
-use crate::supports::parts::vec::{V3, cross, dot, length, sub};
+use crate::core::vec::{V3, cross, distance, dot, length, sub};
 
 #[derive(Clone, Copy, Debug)]
 pub struct ReachLimits {
@@ -24,10 +24,6 @@ fn vertex(positions: &[f32], index: u32) -> Option<V3> {
 fn unit(v: V3) -> V3 {
     let size = length(v);
     [v[0] / size, v[1] / size, v[2] / size]
-}
-
-fn distance(a: V3, b: V3) -> f64 {
-    crate::supports::remesh::hypot3(sub(a, b))
 }
 
 pub fn is_intentional_contact_reach(model_positions: &[f32], model_indices: &[u32], supports: &SupportMesh, hit: &Conflict, limits: &ReachLimits) -> bool {

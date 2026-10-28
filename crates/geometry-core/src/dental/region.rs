@@ -3,7 +3,8 @@
 
 use super::contour::outer_contour;
 use super::footprint::{Contact, Footprint, RimSide, Tuning, footprint_settings, propose_footprint};
-use super::mesh::{Mesh, dot};
+use super::mesh::Mesh;
+use crate::core::vec::dot;
 use super::opening::{Opening, central_opening};
 use super::orient::{Proposal, propose_orientation};
 use super::profiles::AlignerProfile;

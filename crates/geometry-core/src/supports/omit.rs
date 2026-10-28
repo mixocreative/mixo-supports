@@ -5,7 +5,7 @@
 use super::parts::autotree::AutoTreeLayout;
 use super::parts::column::ColumnContact;
 use super::parts::landing::Landing;
-use super::parts::vec::{normalize_or_down, scale, sub};
+use crate::core::vec::{normalize_or_down, scale, sub};
 use super::settings::SupportSettings;
 use super::policy::Origin;
 use super::zones::{ZoneStamp, zoned_at};

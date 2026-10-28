@@ -3,7 +3,8 @@
 //! 1 - dot <= adaptivity; a region has one point, the mean of its cells' points.
 
 use super::grid::{Idx, Remesh, leaf_of};
-use super::num::{V3, fr};
+use crate::core::vec::V3;
+use crate::core::jsnum::fr;
 use super::tables::{ADAPTABLE, EDGE_GROUPS};
 use super::{LEAF, PointId};
 use std::collections::{BTreeMap, HashMap, HashSet};

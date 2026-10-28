@@ -2,7 +2,7 @@
 //! TS `modelCollisionIndex.ts`). Built once per call and shared by both policies.
 
 use super::tri::Tri;
-use crate::supports::parts::vec::V3;
+use crate::core::vec::V3;
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

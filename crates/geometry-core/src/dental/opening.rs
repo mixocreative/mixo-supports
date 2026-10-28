@@ -1,7 +1,8 @@
 //! Central opening: present, absent or ambiguous. Two raster resolutions must agree, and an
 //! ambiguous answer never becomes `absent`; neither grants support permission.
 
-use super::mesh::dot;
+use crate::core::jsnum::js_round;
+use crate::core::vec::dot;
 use super::profiles::AlignerProfile;
 use super::topology::{Context, components};
 use std::collections::{HashMap, HashSet};
@@ -102,10 +103,6 @@ fn opening_hole(context: &Context, size: usize, profile: &AlignerProfile) -> Hol
     Hole::Present { labels, id: holes[0].0, pixels }
 }
 
-fn js_round(value: f64) -> i64 {
-    (value + 0.5).floor() as i64
-}
-
 fn opening_contour(context: &Context, size: usize, profile: &AlignerProfile) -> Opening {
     let (labels, id, pixels) = match opening_hole(context, size, profile) {
         Hole::Present { labels, id, pixels } => (labels, id, pixels),
@@ -121,7 +118,7 @@ fn opening_contour(context: &Context, size: usize, profile: &AlignerProfile) -> 
             continue;
         }
         let (a, b) = (pixels[edge.a as usize], pixels[edge.b as usize]);
-        let (x, y) = (js_round((a[0] + b[0]) / 2.0), js_round((a[1] + b[1]) / 2.0));
+        let (x, y) = (js_round((a[0] + b[0]) / 2.0) as i64, js_round((a[1] + b[1]) / 2.0) as i64);
         let mut near = false;
         'scan: for dy in -2..=2 {
             for dx in -2..=2 {

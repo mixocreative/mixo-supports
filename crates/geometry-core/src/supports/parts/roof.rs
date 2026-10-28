@@ -7,9 +7,10 @@
 //! levels. Columns stand at Column Count points spaced evenly along the raw perimeter.
 
 use super::builder::MeshBuilder;
-use super::plan::{P2, corner_bisectors, js_hypot, normalize2};
+use super::plan::{P2, corner_bisectors, normalize2};
 use super::tags::{Part, Tag};
-use super::vec::{V3, add, scale};
+use crate::core::jsnum::{hypot, js_round};
+use crate::core::vec::{V3, add, distance, scale};
 use crate::supports::settings::{RoofMode, SupportSettings};
 
 pub struct Bar {
@@ -45,15 +46,6 @@ pub struct RoofGeometry {
     pub rings: Vec<Ring>,
 }
 
-fn distance(a: V3, b: V3) -> f64 {
-    js_hypot(&[a[0] - b[0], a[1] - b[1], a[2] - b[2]])
-}
-
-/// `Math.round` (ties toward +infinity).
-fn js_round(x: f64) -> f64 {
-    (x + 0.5).floor()
-}
-
 pub fn build_roof_cage(raw: &[V3], model_top: f64, s: &SupportSettings) -> RoofGeometry {
     let mut geometry = RoofGeometry::default();
     if s.roof_mode == RoofMode::Off || raw.len() < 3 {
@@ -82,7 +74,7 @@ pub fn build_roof_cage(raw: &[V3], model_top: f64, s: &SupportSettings) -> RoofG
             for neighbour in [columns[(i + columns.len() - 1) % columns.len()], columns[(i + 1) % columns.len()]] {
                 let mid = [(base[0] + neighbour[0]) / 2.0, (base[1] + neighbour[1]) / 2.0, (base[2] + neighbour[2]) / 2.0];
                 let reach = 2.0 * distance(mid, *base);
-                let flat = js_hypot(&[mid[0] - base[0], mid[2] - base[2]]);
+                let flat = hypot(&[mid[0] - base[0], mid[2] - base[2]]);
                 let dir: P2 = if flat > 1e-9 { [(mid[0] - base[0]) / flat, (mid[2] - base[2]) / flat] } else { [1.0, 0.0] };
                 for level in 0..(levels as usize - 1) {
                     let lift = level as f64 * spacing + s.diagonal_diameter;
@@ -119,13 +111,13 @@ pub fn build_roof_cage(raw: &[V3], model_top: f64, s: &SupportSettings) -> RoofG
     let points = grown((s.column_diameter - brace) / 2.0);
     let centre: P2 = [points.iter().map(|p| p[0]).sum::<f64>() / points.len() as f64, points.iter().map(|p| p[1]).sum::<f64>() / points.len() as f64];
     let extent = |axis: usize| raw.iter().map(|p| p[axis]).fold(f64::NEG_INFINITY, f64::max) - raw.iter().map(|p| p[axis]).fold(f64::INFINITY, f64::min);
-    let diagonal = js_hypot(&[extent(0), extent(1), extent(2)]);
+    let diagonal = hypot(&[extent(0), extent(1), extent(2)]);
     let angle = (s.brace_angle * std::f64::consts::PI / 180.0).min((s.roof_gap * 0.8).atan2(diagonal * 0.5));
     let tan = angle.tan();
 
     // Radial plates: from the lowered column point to the centre, up to the roof.
     for [x, z] in &points {
-        let d = js_hypot(&[centre[0] - x, centre[1] - z]);
+        let d = hypot(&[centre[0] - x, centre[1] - z]);
         let low: V3 = [*x, top - d * tan, *z];
         let outline: Vec<V3> = if lift > 0.0 {
             vec![low, [centre[0], top, centre[1]], [centre[0], top + lift, centre[1]], [*x, top + lift, *z]]
@@ -148,7 +140,7 @@ pub fn build_roof_cage(raw: &[V3], model_top: f64, s: &SupportSettings) -> RoofG
         let ring: Vec<V3> = points
             .iter()
             .map(|[x, z]| {
-                let d = js_hypot(&[centre[0] - x, centre[1] - z]);
+                let d = hypot(&[centre[0] - x, centre[1] - z]);
                 [x + (centre[0] - x) * f, -d * tan * (1.0 - f), z + (centre[1] - z) * f]
             })
             .collect();
@@ -186,7 +178,7 @@ fn band_normals(points: &[V3]) -> Vec<V3> {
             let a = face_normal(points[(j + n - 1) % n], point);
             let b = face_normal(point, points[(j + 1) % n]);
             let average = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0];
-            let length = js_hypot(&average);
+            let length = hypot(&average);
             if length < 1e-9 {
                 return [a[0], 0.0, a[1]];
             }

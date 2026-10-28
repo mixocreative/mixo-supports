@@ -2,6 +2,7 @@
 
 pub mod brush;
 pub mod decimate;
+pub mod jsnum;
 pub mod matrix;
 pub mod mesh;
 pub mod nearest;
@@ -11,4 +12,5 @@ pub mod pick;
 pub mod spatial;
 pub mod stl;
 pub mod transform;
+pub mod vec;
 pub mod weld;

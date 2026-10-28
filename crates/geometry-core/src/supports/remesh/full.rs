@@ -1,7 +1,7 @@
 //! The whole remesh as Grid to Mesh outputs it (what the scatter distributes points on).
 
 use super::grid::{Idx, Remesh};
-use super::num::{V3, length, normalize_or_down};
+use crate::core::vec::{V3, length, normalize_or_down};
 use super::prims::{newell, to_web};
 use super::{LEAF, PointId};
 use std::collections::HashMap;

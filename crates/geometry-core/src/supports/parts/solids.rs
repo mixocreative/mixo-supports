@@ -3,7 +3,7 @@
 
 use super::builder::MeshBuilder;
 use super::profile::{P2, basis, circle_ring};
-use super::vec::{V3, add, cross, dot, normalize_or_down, scale, sub};
+use crate::core::vec::{V3, add, cross, dot, normalize_or_down, scale, sub};
 use std::collections::HashMap;
 
 /// Ear clipping of a simple polygon (either orientation); index triples in the polygon's orientation.

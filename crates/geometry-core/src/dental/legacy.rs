@@ -5,7 +5,9 @@
 //! the allowed downward faces are filled at placement spacing. The area is data; nothing here
 //! chooses a support structure (docs/SHIP-PLAN.md rule 1).
 
-use super::mesh::{Mesh, V3, cross, dot, length, normalize, sub};
+use super::mesh::Mesh;
+
+use crate::core::vec::{V3, cross, dot, length, normalize, sub};
 use super::rim::{BoundaryKind, Rim};
 use crate::core::matrix::{Handedness, apply_to_direction, apply_to_point, invert_matrix, placement_matrix, transform_positions};
 use crate::supports::overhang::{classify_downward_faces, face_overhang_limit};

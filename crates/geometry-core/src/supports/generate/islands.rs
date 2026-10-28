@@ -7,10 +7,10 @@
 use crate::supports::build::Ground;
 use crate::supports::parts::model::closest_on_triangle;
 use crate::supports::parts::column::ColumnContact;
-use crate::supports::parts::vec::V3;
+use crate::core::vec::V3;
 use crate::supports::safety::births::{BirthsResult, NO_BIRTH, topology_births};
 use crate::supports::safety::paths::{PLATE, PathLink, PathResult, resolve_birth_paths};
-use crate::supports::remesh::hypot3;
+use crate::core::jsnum::hypot3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IslandStatus {

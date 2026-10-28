@@ -5,12 +5,13 @@
 //! No collision, landing or repair logic lives here; the shared safety engine checks every contact.
 
 use super::footprint::{RimSide, Tuning, footprint_settings};
-use super::mesh::{Mesh, add, cross, dot, normalize, scale, sub};
+use super::mesh::Mesh;
+use crate::core::vec::{add, cross, dot, normalize, scale, sub};
 use super::profiles::AlignerProfile;
 use super::region::{Region, propose_region, retune_region};
 use crate::core::matrix::{Matrix4, apply_to_direction, apply_to_point};
 use crate::supports::policy::{AllowedStructures, AreaStamp, AutomaticRule, Candidate, CandidateId, FaceMask, LandingRule, Origin, PolicyResult, Ring, StructureChoice};
-use crate::supports::remesh::hypot3;
+use crate::core::jsnum::hypot3;
 
 /// Where the permitted area came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

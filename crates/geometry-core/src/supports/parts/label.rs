@@ -6,9 +6,9 @@
 
 use super::builder::MeshBuilder;
 use super::font::font;
-use super::plan::js_hypot;
+use crate::core::jsnum::hypot;
 use super::tags::{Part, Tag};
-use super::vec::V3;
+use crate::core::vec::V3;
 use crate::supports::settings::SupportSettings;
 
 struct Placed {
@@ -43,7 +43,7 @@ pub fn emit_label(builder: &mut MeshBuilder, candidates: &[V3], s: &SupportSetti
     }
     let max_x = below.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
     let max_z = below.iter().map(|p| p[2]).fold(f64::NEG_INFINITY, f64::max);
-    let reach = |p: &V3| js_hypot(&[p[0] - max_x, p[2] - max_z]);
+    let reach = |p: &V3| hypot(&[p[0] - max_x, p[2] - max_z]);
     let mut anchor = below[0];
     for p in &below[1..] {
         if reach(p) < reach(&anchor) {

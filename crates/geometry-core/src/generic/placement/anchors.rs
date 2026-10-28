@@ -4,7 +4,8 @@
 //! into the first legal incident face by `radius`, and deduplicated within 0.9 x spacing in order.
 
 use super::Source;
-use crate::supports::remesh::{V3, hypot3};
+use crate::core::jsnum::{hypot, hypot3};
+use crate::core::vec::{V3, add, cross, dot, normalize, scale, sub};
 use std::collections::HashMap;
 
 const MARGIN: f64 = 0.05;
@@ -25,25 +26,6 @@ pub struct AnchorSettings {
     pub ridge_angle_degrees: f64,
 }
 
-fn add(a: V3, b: V3) -> V3 {
-    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
-}
-fn sub(a: V3, b: V3) -> V3 {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-fn scale(v: V3, s: f64) -> V3 {
-    [v[0] * s, v[1] * s, v[2] * s]
-}
-fn dot(a: V3, b: V3) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-fn cross(a: V3, b: V3) -> V3 {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
-fn normalize(v: V3) -> V3 {
-    let size = hypot3(v);
-    if size == 0.0 { [0.0; 3] } else { [v[0] / size, v[1] / size, v[2] / size] }
-}
 fn angle_between(a: V3, b: V3) -> f64 {
     dot(a, b).clamp(-1.0, 1.0).acos()
 }
@@ -77,7 +59,7 @@ fn inside_with_clearance(point: V3, vertices: &[V3; 3], normal: V3, radius: f64)
         let length_squared = (edge[0] * edge[0] + edge[1] * edge[1]).max(1e-12);
         let t = (((q[0] - a[0]) * edge[0] + (q[1] - a[1]) * edge[1]) / length_squared).clamp(0.0, 1.0).max(0.0);
         if nearest != f64::NEG_INFINITY {
-            nearest = nearest.min(crate::supports::remesh::hypot(&[q[0] - (a[0] + edge[0] * t), q[1] - (a[1] + edge[1] * t)]));
+            nearest = nearest.min(hypot(&[q[0] - (a[0] + edge[0] * t), q[1] - (a[1] + edge[1] * t)]));
         }
     }
     nearest != f64::NEG_INFINITY && nearest + 1e-6 >= radius

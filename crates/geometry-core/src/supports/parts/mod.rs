@@ -20,4 +20,3 @@ pub mod solids;
 pub mod structures;
 pub mod tags;
 pub mod tree;
-pub mod vec;

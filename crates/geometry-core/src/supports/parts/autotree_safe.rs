@@ -5,7 +5,7 @@
 //! the inward copy is deleted.
 
 use crate::supports::remesh::{PointId, Polygon, Remesh};
-use super::vec::{V3, add, scale};
+use crate::core::vec::{V3, add, scale};
 use std::collections::HashMap;
 
 pub type Tri = [V3; 3];

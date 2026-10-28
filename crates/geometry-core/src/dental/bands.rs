@@ -2,7 +2,8 @@
 //! the two sides; it does not decide which side is non-fitting or allow any contact.
 
 use super::incidence::inspect_contour_incidence;
-use super::mesh::{Mesh, MinHeap, hypot3};
+use super::mesh::{Mesh, MinHeap};
+use crate::core::jsnum::hypot3;
 use std::collections::HashMap;
 
 /// Face adjacency with f32 centroids (the oracle stores them as `Float32Array`).
@@ -49,7 +50,7 @@ pub fn face_graph(mesh: &Mesh) -> Option<FaceGraph> {
 
 fn centroid_distance(graph: &FaceGraph, a: usize, b: usize) -> f64 {
     let c = &graph.centroids;
-    hypot3(f64::from(c[a * 3]) - f64::from(c[b * 3]), f64::from(c[a * 3 + 1]) - f64::from(c[b * 3 + 1]), f64::from(c[a * 3 + 2]) - f64::from(c[b * 3 + 2]))
+    hypot3([f64::from(c[a * 3]) - f64::from(c[b * 3]), f64::from(c[a * 3 + 1]) - f64::from(c[b * 3 + 1]), f64::from(c[a * 3 + 2]) - f64::from(c[b * 3 + 2])])
 }
 
 /// Surface strip of faces on one `side` of a contour between `setback` and `width` of
@@ -61,11 +62,11 @@ fn side_strip(graph: &FaceGraph, mesh: &Mesh, contour: &[u32], faces: &[u32], re
         let face = if region[faces[at] as usize] == side { faces[at] } else { faces[at + 1] } as usize;
         let (a, b) = (contour[at] as usize * 3, contour[at + 1] as usize * 3);
         let mid = |axis: usize| (f64::from(mesh.positions[a + axis]) + f64::from(mesh.positions[b + axis])) / 2.0;
-        let initial = hypot3(
+        let initial = hypot3([
             f64::from(graph.centroids[face * 3]) - mid(0),
             f64::from(graph.centroids[face * 3 + 1]) - mid(1),
             f64::from(graph.centroids[face * 3 + 2]) - mid(2),
-        );
+        ]);
         if initial < distances[face] {
             distances[face] = initial;
             heap.push(initial, face);

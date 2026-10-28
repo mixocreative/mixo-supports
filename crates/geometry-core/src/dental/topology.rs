@@ -1,7 +1,9 @@
 //! Edge topology of a closed (two-manifold) aligner mesh in the rim frame: edges with their two
 //! faces, sharp-edge selection, edge-graph components and weighted shortest routes.
 
-use super::mesh::{Mesh, MinHeap, V3, cross, dot, normalize, sub};
+use super::mesh::{Mesh, MinHeap};
+
+use crate::core::vec::{V3, cross, dot, normalize, sub};
 use super::rim::Rim;
 use std::collections::{HashMap, HashSet};
 

@@ -1,7 +1,7 @@
 //! Outer contour: the two long sharp ridge chains of the aligner joined by two connector routes
 //! into one closed loop.
 
-use super::mesh::distance;
+use crate::core::vec::distance;
 use super::profiles::AlignerProfile;
 use super::topology::{Component, Context, components, shortest_route};
 use std::collections::{HashMap, HashSet};

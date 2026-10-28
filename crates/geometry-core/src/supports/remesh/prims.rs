@@ -3,7 +3,8 @@
 //! primitive.
 
 use super::grid::{Idx, Remesh};
-use super::num::{V3, add, cross, dot, fr, length, normalize_or_down, scale, sub};
+use crate::core::vec::{V3, add, cross, dot, length, normalize_or_down, scale, sub};
+use crate::core::jsnum::fr;
 use super::{LEAF, PointId, Polygon, Prim};
 use std::rc::Rc;
 

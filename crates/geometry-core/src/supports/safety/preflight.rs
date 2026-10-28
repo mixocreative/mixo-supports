@@ -5,7 +5,7 @@
 
 use super::index::CollisionIndex;
 use super::tri::segment_triangle_hit;
-use crate::supports::parts::vec::V3;
+use crate::core::vec::V3;
 use std::collections::HashSet;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -57,7 +57,7 @@ pub fn preflight_support_path(index: &CollisionIndex, points: &[V3], radius_mm: 
     let mut near_face = false;
     let mut contact_face = false;
     let mut travelled = 0.0;
-    let seg_len = |a: V3, b: V3| crate::supports::remesh::hypot3([b[0] - a[0], b[1] - a[1], b[2] - a[2]]);
+    let seg_len = |a: V3, b: V3| crate::core::jsnum::hypot3([b[0] - a[0], b[1] - a[1], b[2] - a[2]]);
     let total: f64 = points.windows(2).map(|w| seg_len(w[0], w[1])).sum();
     for segment in 0..points.len() - 1 {
         if options.is_cancelled() {

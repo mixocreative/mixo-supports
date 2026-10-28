@@ -6,7 +6,7 @@
 use super::parts::column::{ColumnContact, ContactKind};
 use super::parts::landing::Landing;
 use super::parts::model::Model;
-use super::parts::vec::V3;
+use crate::core::vec::V3;
 use super::remesh::{NormalKind, Remesh};
 use super::settings::SupportSettings;
 use std::cell::RefCell;

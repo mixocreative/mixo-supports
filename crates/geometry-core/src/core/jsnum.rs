@@ -1,7 +1,5 @@
-//! Number helpers that reproduce the TypeScript oracle's arithmetic: single-precision rounding
-//! between double-precision steps (`Math.fround`), V8's `Math.hypot` and `Math.round`.
-
-pub type V3 = [f64; 3];
+//! Number helpers that reproduce JavaScript arithmetic exactly, so Rust agrees with the TypeScript
+//! goldens to the last bit: `Math.fround`, V8's `Math.hypot` and `Math.round`.
 
 /// `Math.fround`: round to the nearest single-precision value.
 #[inline]
@@ -9,18 +7,24 @@ pub fn fr(x: f64) -> f64 {
     f64::from(x as f32)
 }
 
-/// V8's `Math.hypot` of any number of arguments (scaled, Kahan-summed), which differs from
-/// `sqrt(x*x + y*y + z*z)` in the last bit.
+/// V8's `Math.hypot` of any number of arguments (scaled by the largest term, Kahan-summed), which
+/// differs from `sqrt(x*x + y*y + z*z)` in the last bit. Any infinite argument gives infinity even
+/// beside a NaN; otherwise a NaN argument gives NaN (the order the ECMAScript spec fixes).
 pub fn hypot(values: &[f64]) -> f64 {
     let mut max = 0.0f64;
+    let mut has_nan = false;
     for v in values {
         if v.is_nan() {
-            return f64::NAN;
+            has_nan = true;
+        } else {
+            max = max.max(v.abs());
         }
-        max = max.max(v.abs());
     }
     if max == f64::INFINITY {
         return f64::INFINITY;
+    }
+    if has_nan {
+        return f64::NAN;
     }
     if max == 0.0 {
         return 0.0;
@@ -37,7 +41,8 @@ pub fn hypot(values: &[f64]) -> f64 {
     sum.sqrt() * max
 }
 
-pub fn hypot3(v: V3) -> f64 {
+/// `Math.hypot(v[0], v[1], v[2])`.
+pub fn hypot3(v: [f64; 3]) -> f64 {
     hypot(&v)
 }
 
@@ -45,34 +50,6 @@ pub fn hypot3(v: V3) -> f64 {
 pub fn js_round(x: f64) -> f64 {
     let floor = x.floor();
     if x - floor >= 0.5 { floor + 1.0 } else { floor }
-}
-
-pub fn add(a: V3, b: V3) -> V3 {
-    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
-}
-pub fn sub(a: V3, b: V3) -> V3 {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-pub fn scale(v: V3, s: f64) -> V3 {
-    [v[0] * s, v[1] * s, v[2] * s]
-}
-pub fn dot(a: V3, b: V3) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-pub fn cross(a: V3, b: V3) -> V3 {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
-/// `Math.hypot` length (the TS `length`).
-pub fn length(v: V3) -> f64 {
-    hypot3(v)
-}
-/// Unit vector, or `fallback` for a zero-length one (TS `normalize`).
-pub fn normalize(v: V3, fallback: V3) -> V3 {
-    let size = length(v);
-    if size == 0.0 { fallback } else { [v[0] / size, v[1] / size, v[2] / size] }
-}
-pub fn normalize_or_down(v: V3) -> V3 {
-    normalize(v, [0.0, -1.0, 0.0])
 }
 
 #[cfg(test)]
@@ -91,5 +68,14 @@ mod tests {
     fn hypot_matches_exact_cases() {
         assert_eq!(hypot3([3.0, 4.0, 0.0]), 5.0);
         assert_eq!(hypot3([0.0; 3]), 0.0);
+        assert_eq!(hypot(&[3.0, 4.0]), 5.0);
+        assert!((hypot(&[1.0, 2.0, 2.0]) - 3.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn hypot_special_values_follow_javascript() {
+        assert!(hypot(&[f64::NAN, 1.0]).is_nan());
+        assert_eq!(hypot(&[f64::NAN, f64::INFINITY]), f64::INFINITY);
+        assert_eq!(hypot(&[f64::NEG_INFINITY, 1.0]), f64::INFINITY);
     }
 }

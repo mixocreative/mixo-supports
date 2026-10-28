@@ -5,7 +5,9 @@
 //! faces neutral, candidate bands in distinct colours, sampled contacts and final tips apart.
 //! Review only: nothing here is support permission.
 
-use super::mesh::{Mesh, cross, normalize, sub};
+use super::mesh::Mesh;
+
+use crate::core::vec::{cross, normalize, sub};
 
 pub const TEAL: u32 = 0x1aa998;
 pub const NEUTRAL: u32 = 0xeceae5;

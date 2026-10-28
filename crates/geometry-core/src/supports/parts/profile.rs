@@ -1,6 +1,6 @@
 //! Cross-section profiles and ring generation shared by every swept part.
 
-use super::vec::{V3, add, cross, normalize_or_down, scale};
+use crate::core::vec::{V3, add, cross, normalize_or_down, scale};
 use crate::supports::settings::TipSection;
 use std::f64::consts::PI;
 
@@ -51,7 +51,7 @@ mod tests {
     #[test]
     fn basis_is_orthonormal() {
         let (u, v) = basis(normalize_or_down([0.3, -0.9, 0.1]));
-        assert!(super::super::vec::dot(u, v).abs() < 1e-12);
-        assert!((super::super::vec::length(u) - 1.0).abs() < 1e-12);
+        assert!(crate::core::vec::dot(u, v).abs() < 1e-12);
+        assert!((crate::core::vec::length(u) - 1.0).abs() < 1e-12);
     }
 }

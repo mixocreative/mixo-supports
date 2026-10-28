@@ -1,7 +1,7 @@
 //! Tube centre-lines: nodes with radius, and the Blender Fillet Curve (Poly mode).
 
 use super::builder::MIN_LENGTH;
-use super::vec::{V3, add, dot, length, normalize_or_down, scale, sub};
+use crate::core::vec::{V3, add, dot, length, normalize_or_down, scale, sub};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CurveNode {

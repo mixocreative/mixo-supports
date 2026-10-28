@@ -4,8 +4,9 @@
 //! layer z in [0, v], resampled to 3 x Voxel Resolution points. Parts set apart on the plate each
 //! get their own loop (`others`). Plan coordinates are web (x, z).
 
-use super::plan::{P2, area, inside, js_hypot, resample_closed};
-use super::vec::V3;
+use super::plan::{P2, area, inside, resample_closed};
+use crate::core::jsnum::hypot;
+use crate::core::vec::V3;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -93,7 +94,7 @@ fn trace_outline(model: &Mesh, expand: f64, voxel_resolution: usize, max_voxel: 
             max[axis] = max[axis].max(p[axis]);
         }
     }
-    let diagonal = js_hypot(&[max[0] - min[0], max[1] - min[1], max[2] - min[2]]);
+    let diagonal = hypot(&[max[0] - min[0], max[1] - min[1], max[2] - min[2]]);
     let voxel = ((diagonal + 2.0 * expand) / voxel_resolution as f64).min(max_voxel);
     let iso = expand + 0.1;
     let mut field = PlanDistance::new(&triangles, iso + 2.0 * voxel);
@@ -110,7 +111,7 @@ fn trace_outline(model: &Mesh, expand: f64, voxel_resolution: usize, max_voxel: 
         for i in 0..width {
             let d = field.distance((i0 + i as i64) as f64 * voxel, (j0 + j as i64) as f64 * voxel);
             f0[j * width + i] = d - iso;
-            f1[j * width + i] = js_hypot(&[d, voxel]) - iso;
+            f1[j * width + i] = hypot(&[d, voxel]) - iso;
         }
     }
 
@@ -361,7 +362,7 @@ impl<'a> PlanDistance<'a> {
                     }
                     self.seen[index] = self.generation;
                     let b = self.boxes[index];
-                    let gap = js_hypot(&[(b[0] - x).max(0.0).max(x - b[2]), (b[1] - z).max(0.0).max(z - b[3])]);
+                    let gap = hypot(&[(b[0] - x).max(0.0).max(x - b[2]), (b[1] - z).max(0.0).max(z - b[3])]);
                     if gap >= best {
                         continue;
                     }
@@ -396,7 +397,7 @@ fn segment_distance(a: P2, b: P2, x: f64, z: f64) -> f64 {
     let (ex, ez) = (b[0] - a[0], b[1] - a[1]);
     let length = ex * ex + ez * ez;
     let t = if length == 0.0 { 0.0 } else { (((x - a[0]) * ex + (z - a[1]) * ez) / length).clamp(0.0, 1.0) };
-    js_hypot(&[x - (a[0] + ex * t), z - (a[1] + ez * t)])
+    hypot(&[x - (a[0] + ex * t), z - (a[1] + ez * t)])
 }
 
 /// Marching squares: closed loops of cells crossed by the zero contour, in walk order.

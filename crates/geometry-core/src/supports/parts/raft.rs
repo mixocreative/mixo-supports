@@ -8,7 +8,7 @@
 use super::builder::MeshBuilder;
 use super::plan::{P2, corner_bisectors};
 use super::tags::{Part, Tag};
-use super::vec::V3;
+use crate::core::vec::V3;
 use crate::supports::settings::SupportSettings;
 
 /// Resampled points of a raft outline built from the feet alone (no model).

@@ -52,7 +52,7 @@ fn landing_end(positions: &[f32], triangles: &[u32], reach: f64) -> Vec<[u32; 3]
     let end = at(last);
     let near = |v: u32| {
         let p = at(v);
-        crate::supports::remesh::hypot3([p[0] - end[0], p[1] - end[1], p[2] - end[2]]) <= reach
+        crate::core::jsnum::hypot3([p[0] - end[0], p[1] - end[1], p[2] - end[2]]) <= reach
     };
     triangles.chunks_exact(3).filter(|t| near(t[0]) && near(t[1]) && near(t[2])).map(|t| [t[0], t[1], t[2]]).collect()
 }

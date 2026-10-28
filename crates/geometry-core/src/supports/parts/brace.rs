@@ -2,7 +2,7 @@
 
 use super::builder::MeshBuilder;
 use super::tags::{Part, Tag};
-use super::vec::V3;
+use crate::core::vec::V3;
 use crate::supports::settings::SupportSettings;
 
 /// A plate-standing pillar, from its foot top up to where its tube starts (mm).
@@ -26,7 +26,7 @@ pub fn truss_segments(columns: &[Column], s: &SupportSettings) -> Vec<(V3, V3)> 
         let mut partner: Option<&Column> = None;
         let mut distance = f64::INFINITY;
         for (_, other) in &order[i + 1..] {
-            let d = crate::supports::remesh::hypot(&[other.x - own.x, other.z - own.z]);
+            let d = crate::core::jsnum::hypot(&[other.x - own.x, other.z - own.z]);
             if d < distance {
                 distance = d;
                 partner = Some(other);

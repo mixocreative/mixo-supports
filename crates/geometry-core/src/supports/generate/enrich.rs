@@ -9,7 +9,7 @@ use crate::supports::build::{BuiltSupports, Ground};
 use crate::supports::parts::column::ColumnContact;
 use crate::supports::parts::model::closest_on_triangle;
 use crate::supports::parts::tags::{Component, ContactIntent, IntentKind, Part};
-use crate::supports::parts::vec::{V3, cross, dot, length, sub};
+use crate::core::vec::{V3, cross, dot, length, sub};
 use crate::supports::safety::index::CollisionIndex;
 
 const FACE_TOLERANCE_MM: f64 = 0.1;

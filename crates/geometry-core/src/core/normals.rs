@@ -1,7 +1,7 @@
 //! Face and angle-weighted vertex normals in single precision (Newell face normals; each vertex
-//! sums face normal times corner angle in face order). Triangle meshes only.
+//! sums face normal times corner angle in face order).
 
-const TINY: f32 = 1e-35;
+use super::vec::single::{TINY, V3f, dot, normalize, sub};
 
 const PIO2_HI: f32 = 1.570_796_251_3;
 const PIO2_LO: f32 = 7.549_789_415_9e-8;
@@ -44,30 +44,17 @@ pub fn acosf(x: f32) -> f32 {
     2.0 * (df + w)
 }
 
-fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-fn point(positions: &[f32], vertex: u32) -> [f32; 3] {
+fn point(positions: &[f32], vertex: u32) -> V3f {
     let o = vertex as usize * 3;
     [positions[o], positions[o + 1], positions[o + 2]]
 }
 
-fn divide_by_length(v: [f32; 3]) -> [f32; 3] {
-    let length_sq = dot(v, v);
-    if !(length_sq > TINY) {
-        return [0.0; 3];
-    }
-    let length = length_sq.sqrt();
-    [v[0] / length, v[1] / length, v[2] / length]
-}
-
 /// Newell's method from the closing edge (last corner to first); +Z when degenerate.
-pub fn face_normal(positions: &[f32], face: [u32; 3]) -> [f32; 3] {
+pub fn face_normal(positions: &[V3f], face: &[u32]) -> V3f {
     let (mut nx, mut ny, mut nz) = (0.0f32, 0.0f32, 0.0f32);
-    let mut a = point(positions, face[2]);
-    for vertex in face {
-        let b = point(positions, vertex);
+    let mut a = positions[face[face.len() - 1] as usize];
+    for &vertex in face {
+        let b = positions[vertex as usize];
         nx += (a[1] - b[1]) * (a[2] + b[2]);
         ny += (a[2] - b[2]) * (a[0] + b[0]);
         nz += (a[0] - b[0]) * (a[1] + b[1]);
@@ -81,37 +68,33 @@ pub fn face_normal(positions: &[f32], face: [u32; 3]) -> [f32; 3] {
     [nx * inverse, ny * inverse, nz * inverse]
 }
 
-/// Angle-weighted unit vertex normals (3 floats per vertex); a vertex in no face takes its own
-/// position direction.
-pub fn vertex_normals(positions: &[f32], indices: &[u32]) -> Vec<f32> {
-    let count = positions.len() / 3;
-    let mut sums = vec![[0.0f32; 3]; count];
-    let mut used = vec![false; count];
-    for tri in indices.chunks_exact(3) {
-        let face = [tri[0], tri[1], tri[2]];
+/// Angle-weighted unit vertex normals of polygon faces; a vertex in no face takes its own position
+/// direction.
+pub fn polygon_vertex_normals<'a>(positions: &[V3f], faces: impl IntoIterator<Item = &'a [u32]>) -> Vec<V3f> {
+    let mut sums: Vec<V3f> = vec![[0.0; 3]; positions.len()];
+    let mut used = vec![false; positions.len()];
+    for face in faces {
         let normal = face_normal(positions, face);
-        for corner in 0..3 {
-            let vertex = face[corner];
-            let here = point(positions, vertex);
-            let diff = |other: [f32; 3]| {
-                divide_by_length([other[0] - here[0], other[1] - here[1], other[2] - here[2]])
-            };
-            let to_prev = diff(point(positions, face[(corner + 2) % 3]));
-            let to_next = diff(point(positions, face[(corner + 1) % 3]));
+        let n = face.len();
+        for corner in 0..n {
+            let vertex = face[corner] as usize;
+            let here = positions[vertex];
+            let to_prev = normalize(sub(positions[face[(corner + n - 1) % n] as usize], here));
+            let to_next = normalize(sub(positions[face[(corner + 1) % n] as usize], here));
             let weight = acosf(dot(to_prev, to_next));
-            let sum = &mut sums[vertex as usize];
             for axis in 0..3 {
-                sum[axis] += normal[axis] * weight;
+                sums[vertex][axis] += normal[axis] * weight;
             }
-            used[vertex as usize] = true;
+            used[vertex] = true;
         }
     }
-    let mut out = Vec::with_capacity(count * 3);
-    for (vertex, sum) in sums.iter().enumerate() {
-        let v = if used[vertex] { *sum } else { point(positions, vertex as u32) };
-        out.extend_from_slice(&divide_by_length(v));
-    }
-    out
+    sums.iter().enumerate().map(|(vertex, sum)| normalize(if used[vertex] { *sum } else { positions[vertex] })).collect()
+}
+
+/// Angle-weighted unit vertex normals of a triangle mesh (3 floats per vertex).
+pub fn vertex_normals(positions: &[f32], indices: &[u32]) -> Vec<f32> {
+    let points: Vec<V3f> = (0..positions.len() as u32 / 3).map(|v| point(positions, v)).collect();
+    polygon_vertex_normals(&points, indices.chunks_exact(3)).concat()
 }
 
 #[cfg(test)]
@@ -140,8 +123,15 @@ mod tests {
     }
 
     #[test]
+    fn a_flat_quad_has_its_normal_at_every_corner() {
+        let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
+        let normals = polygon_vertex_normals(&positions, [&[0u32, 1, 2, 3][..]]);
+        assert!(normals.iter().all(|n| (n[2] - 1.0).abs() < 1e-6));
+    }
+
+    #[test]
     fn degenerate_face_is_plus_z_and_orphan_vertex_points_outward() {
-        assert_eq!(face_normal(&[0.0; 9], [0, 1, 2]), [0.0, 0.0, 1.0]);
+        assert_eq!(face_normal(&[[0.0; 3]; 3], &[0, 1, 2]), [0.0, 0.0, 1.0]);
         let p = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 5.0];
         let n = vertex_normals(&p, &[0, 1, 2]);
         assert_eq!(&n[9..12], &[0.0, 0.0, 1.0]);

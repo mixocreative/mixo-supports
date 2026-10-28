@@ -8,16 +8,16 @@ mod cache;
 mod full;
 mod grid;
 mod leaf;
-mod num;
 mod prims;
 mod query;
 mod sdf;
 mod tables;
 
+use crate::core::vec::V3;
+
 pub use cache::{cache_stats, clear_cache};
 pub use full::FullMesh;
 pub use grid::Remesh;
-pub use num::{V3, fr, hypot, hypot3, js_round};
 pub use query::{NormalKind, fan};
 pub use sdf::{SignedDistance, closest_on_triangle};
 

@@ -6,9 +6,9 @@
 //! the host lists it beside these spots.
 //! Spots are clustered (2 x spacing) and slivers below a quarter spacing squared are ignored.
 
-use super::parts::vec::V3;
+use crate::core::vec::V3;
 use super::overhang::face_overhang_limit;
-use crate::supports::remesh::hypot3;
+use crate::core::jsnum::hypot3;
 use std::collections::HashMap;
 
 /// A contact covers overhang within this many Support spacings.

@@ -3,7 +3,8 @@
 //! remesh refinement the TS `LineTarget` adds on top is U5; until then a caller may supply landings.
 
 use super::landing::Landing;
-use super::vec::{V3, add, cross, dot, length, normalize_or_down, scale, sub};
+use crate::core::jsnum::hypot3;
+use crate::core::vec::{V3, add, cross, dot, length, normalize_or_down, scale, sub};
 use crate::core::spatial::Bvh;
 
 pub struct Model<'a> {
@@ -136,12 +137,6 @@ impl<'a> Model<'a> {
 
 fn length_of(v: V3) -> f64 {
     length(v)
-}
-
-/// `Math.hypot(x, y, z)` as V8 computes it (scaled, Kahan-summed), so distance comparisons that break
-/// ties between faces agree with the TS oracle to the last bit.
-pub fn hypot3(v: V3) -> f64 {
-    crate::supports::remesh::hypot3(v)
 }
 
 /// Ericson, Real-Time Collision Detection 5.1.5.

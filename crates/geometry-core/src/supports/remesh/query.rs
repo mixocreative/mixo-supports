@@ -2,7 +2,7 @@
 //! scatter) and vertex normals.
 
 use super::grid::{Idx, Remesh, leaf_of};
-use super::num::{V3, add, dot, length, normalize_or_down, scale, sub};
+use crate::core::vec::{V3, add, dot, length, normalize_or_down, scale, sub};
 use super::{LEAF, PointId, Polygon};
 use std::collections::HashSet;
 use std::rc::Rc;

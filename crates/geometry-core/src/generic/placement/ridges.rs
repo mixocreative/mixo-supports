@@ -2,7 +2,8 @@
 //! off, on the remesh R (Blender axes, Z up): the midpoint (single precision) of each edge whose
 //! signed angle exceeds Ridge Angle and whose edge normal has z <= -cos(Overhang Angle).
 
-use crate::supports::remesh::{V3, hypot3};
+use crate::core::jsnum::hypot3;
+use crate::core::vec::{V3, dot, normalize};
 use std::collections::HashMap;
 
 type V3f = [f32; 3];
@@ -33,15 +34,6 @@ pub fn mesh_edges(faces: &[Vec<u32>]) -> Vec<(u32, u32)> {
     edges
 }
 
-fn normalize3(v: V3) -> V3 {
-    let size = hypot3(v);
-    if size == 0.0 { [0.0; 3] } else { [v[0] / size, v[1] / size, v[2] / size] }
-}
-
-fn dot3(a: V3, b: V3) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
 /// Newell normal of a face loop (unit, or zero when degenerate), double precision.
 fn newell_normal(positions: &[V3f], face: &[u32]) -> V3 {
     let mut n = [0.0f64; 3];
@@ -52,7 +44,7 @@ fn newell_normal(positions: &[V3f], face: &[u32]) -> V3 {
         n[1] += (p[2] - q[2]) * (p[0] + q[0]);
         n[2] += (p[0] - q[0]) * (p[1] + q[1]);
     }
-    normalize3(n)
+    normalize(n)
 }
 
 /// Signed dihedral angle of each edge (radians): 0 unless exactly two face loops use it; otherwise
@@ -81,7 +73,7 @@ pub fn signed_edge_angles(positions: &[V3f], faces: &[Vec<u32>], edges: &[(u32, 
             let n1 = newell_normal(positions, &faces[first]);
             let n2 = newell_normal(positions, &faces[second]);
             let c = [n1[1] * n2[2] - n1[2] * n2[1], n1[2] * n2[0] - n1[0] * n2[2], n1[0] * n2[1] - n1[1] * n2[0]];
-            let angle = hypot3(c).atan2(dot3(n1, n2));
+            let angle = hypot3(c).atan2(dot(n1, n2));
             let face2 = &faces[second];
             let mut sum = [0.0; 3];
             for &v in face2 {
@@ -92,7 +84,7 @@ pub fn signed_edge_angles(positions: &[V3f], faces: &[Vec<u32>], edges: &[(u32, 
             let (pa, pb) = (to_f64(positions[a as usize]), to_f64(positions[b as usize]));
             let midpoint = [(pa[0] + pb[0]) / 2.0, (pa[1] + pb[1]) / 2.0, (pa[2] + pb[2]) / 2.0];
             let d = [centroid[0] - midpoint[0], centroid[1] - midpoint[1], centroid[2] - midpoint[2]];
-            if dot3(n1, d) >= 0.0 { -angle } else { angle }
+            if dot(n1, d) >= 0.0 { -angle } else { angle }
         })
         .collect()
 }
@@ -117,7 +109,7 @@ pub fn legacy_ridge_midpoints(
             continue;
         }
         let (na, nb) = (to_f64(vertex_normals[a as usize]), to_f64(vertex_normals[b as usize]));
-        let normal = normalize3([na[0] + nb[0], na[1] + nb[1], na[2] + nb[2]]);
+        let normal = normalize([na[0] + nb[0], na[1] + nb[1], na[2] + nb[2]]);
         if normal[2] > limit {
             continue;
         }

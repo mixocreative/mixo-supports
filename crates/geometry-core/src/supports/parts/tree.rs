@@ -11,9 +11,9 @@ use super::builder::MeshBuilder;
 use super::column::{ColumnContact, add_tip, last_thick, shaped_tip};
 use super::curve::{CurveNode, fillet_polyline};
 use super::landing::{Landing, neck_direction, sink_into, up_direction};
-use super::model::hypot3;
+use crate::core::jsnum::hypot3;
 use super::tags::{ContactIntent, IntentKind, Part, StructureKind, Tag};
-use super::vec::{V3, add, normalize_or_down, scale, sub};
+use crate::core::vec::{V3, add, normalize_or_down, scale, sub};
 use crate::supports::settings::{ContactShape, SupportSettings};
 
 struct Curve {

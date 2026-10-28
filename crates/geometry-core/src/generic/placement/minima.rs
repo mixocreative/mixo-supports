@@ -7,10 +7,10 @@
 
 use super::merge::merge_by_distance;
 use super::ridges::legacy_ridge_midpoints;
-use super::vnormals::vertex_normals;
+use crate::core::normals::polygon_vertex_normals;
 use super::PlacementSettings;
 use crate::core::nearest::NearestPoint;
-use crate::supports::remesh::fr;
+use crate::core::jsnum::fr;
 
 type V3f = [f32; 3];
 
@@ -79,7 +79,7 @@ pub fn minima_stages(vertices_web: &[[f64; 3]], faces: &[Vec<u32>], s: &Placemen
     let candidates: Vec<usize> = (0..count).filter(|&v| lowest[v] != f64::INFINITY && !(lowest[v] < vertices_web[v][1])).collect();
     // Blender axes (web (x, y, z) = Blender (x, -z, y)).
     let blender: Vec<V3f> = vertices_web.iter().map(|v| [v[0] as f32, (-v[2]) as f32, v[1] as f32]).collect();
-    let normals = vertex_normals(&blender, faces);
+    let normals = polygon_vertex_normals(&blender, faces.iter().map(Vec::as_slice));
     let ridge_midpoints = if s.reinforce_edges { Vec::new() } else { legacy_ridge_midpoints(&blender, faces, &normals, s.sharp_edge_angle_degrees, s.overhang_angle_degrees) };
     let mut points: Vec<V3f> = candidates.iter().map(|&v| blender[v]).collect();
     points.extend(ridge_midpoints);

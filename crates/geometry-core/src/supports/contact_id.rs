@@ -2,7 +2,7 @@
 //! markers: a deletion keeps hiding the same spot after any regeneration and simply stops matching
 //! when that spot is no longer sampled.
 
-use crate::supports::remesh::js_round;
+use crate::core::jsnum::js_round;
 
 /// `auto-X_Y_Z` with each coordinate rounded to 0.01 mm (JS `Math.round`, ties toward +infinity).
 pub fn position_id(position: [f64; 3]) -> String {

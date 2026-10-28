@@ -5,7 +5,7 @@
 use crate::supports::parts::column::ColumnContact;
 use crate::supports::parts::landing::Landing;
 use crate::supports::parts::model::Model;
-use crate::supports::parts::vec::{V3, cross, dot, sub};
+use crate::core::vec::{V3, cross, dot, sub};
 use crate::supports::policy::{AutomaticRule, Candidate, LandingRule, Origin, PolicyResult};
 use crate::supports::settings::SupportSettings;
 
