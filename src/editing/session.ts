@@ -1,7 +1,7 @@
 import type { SupportContact } from '../core/supports/mesh';
 import type { DentalProposal } from '../core/analysis/dental';
 import { paintSelection, pruneSelection, toggleSelection } from './selection';
-import type { AddAction, BrushMode, DentalKind, EditMode, EditTool, SelectStyle, StatusMessage, ZoneKind } from './types';
+import type { AddAction, BrushMode, EditMode, EditTool, SelectStyle, StatusMessage, ZoneKind } from './types';
 
 /** The dental flow's steps: 0 aligner type, 1 aligner (drop, check, orient), 2 support area, 3 supports. */
 export type DentalStage = 'type' | 'aligner' | 'area' | 'review';
@@ -46,7 +46,6 @@ export interface EditSession {
   dentalAligner: DentalAligner;
   dentalNotices: readonly DentalNotice[];
   dentalProposal: Extract<DentalProposal, { kind: 'proposal' }> | undefined;
-  dentalKind: DentalKind;
   dentalRadius: number;
   /** Aligners finished in this visit of the flow (OK, or Add another aligner): Exit keeps them as they are. */
   dentalFinished: readonly string[];
@@ -76,7 +75,6 @@ export const initialSession: EditSession = {
   dentalAligner: 'prompt',
   dentalNotices: [],
   dentalProposal: undefined,
-  dentalKind: 'allow',
   dentalRadius: 2,
   dentalFinished: [],
   dentalUnitId: undefined,
@@ -126,7 +124,6 @@ export type SessionEvent =
   | { type: 'setBrushSizing'; sizing: boolean }
   | { type: 'setZoneKind'; kind: ZoneKind }
   | { type: 'setZoneRadius'; radius: number }
-  | { type: 'setDentalKind'; kind: DentalKind }
   | { type: 'setDentalRadius'; radius: number }
   | { type: 'toggleContact'; id: string }
   | { type: 'paint'; ids: readonly string[]; mode: BrushMode }
@@ -137,8 +134,11 @@ export type SessionEvent =
 /** The selection empties on every mode change. */
 function withMode(state: EditSession, mode: EditMode): EditSession {
   if (mode === state.mode) return state;
-  return { ...state, mode, shiftHeld: false, selection: NO_SELECTION };
+  // Paint and Erase are Step 2's own tools: no other mode starts on one.
+  return { ...state, mode, shiftHeld: false, selection: NO_SELECTION, tool: areaTool(state.tool) ? 'add' : state.tool };
 }
+
+const areaTool = (tool: EditTool): boolean => tool === 'paint' || tool === 'erase';
 
 function withSelection(state: EditSession, selection: ReadonlySet<string>): EditSession {
   return selection === state.selection ? state : { ...state, selection };
@@ -194,12 +194,12 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
         : state;
     case 'acceptDentalOrientation':
       return state.mode === 'dental' && state.dentalStage === 'aligner' && state.dentalAligner === 'ready'
-        ? { ...state, dentalStage: 'area', dentalNotices: [...(event.noArea ? [{ kind: 'no-area' as const }] : []), ...(event.angleMovedDeg === undefined ? [] : [{ kind: 'angle-moved' as const, deg: event.angleMovedDeg }])] }
+        ? { ...state, dentalStage: 'area', tool: 'paint', addAction: 'add', selection: NO_SELECTION, dentalNotices: [...(event.noArea ? [{ kind: 'no-area' as const }] : []), ...(event.angleMovedDeg === undefined ? [] : [{ kind: 'angle-moved' as const, deg: event.angleMovedDeg }])] }
         : state;
     case 'acceptDentalArea':
       return state.mode === 'dental' && state.dentalStage === 'area'
         // Step 3 starts on picking supports: a stray click adds none.
-        ? { ...state, dentalStage: 'review', dentalNotices: [], tool: 'select', selectStyle: 'click', addAction: 'add', selection: NO_SELECTION }
+        ? { ...state, dentalStage: 'review', dentalNotices: [], tool: areaTool(state.tool) ? 'select' : state.tool, selectStyle: 'click', addAction: 'add', selection: NO_SELECTION }
         : state;
     case 'finishDental':
       return state.mode === 'dental' && state.dentalStage === 'review'
@@ -212,7 +212,7 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
     case 'backDental':
       if (state.mode !== 'dental') return state;
       switch (state.dentalStage) {
-        case 'review': return { ...state, dentalStage: 'area', selection: NO_SELECTION, shiftHeld: false };
+        case 'review': return { ...state, dentalStage: 'area', tool: 'paint', selection: NO_SELECTION, shiftHeld: false };
         case 'area': return { ...state, dentalStage: 'aligner', dentalAligner: 'ready', dentalNotices: [] };
         case 'aligner': return { ...state, dentalStage: 'type', dentalAligner: 'prompt', dentalProposal: undefined, dentalNotices: [], dentalUnitId: undefined };
         case 'type': return state;
@@ -232,19 +232,18 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
     case 'setSelectStyle': return set(state, 'selectStyle', event.style);
     case 'setBrushMode':
       return set(state, 'brushMode', event.mode);
-    case 'shift': return editsSupports(state) ? set(state, 'shiftHeld', event.held) : state;
+    case 'shift': return selectsTips(state) ? set(state, 'shiftHeld', event.held) : state;
     case 'setBrushRadius': return set(state, 'brushRadius', event.radius);
     case 'setBrushSizing': return set(state, 'brushSizing', event.sizing);
     case 'setZoneKind': return set(state, 'zoneKind', event.kind);
     case 'setZoneRadius': return set(state, 'zoneRadius', event.radius);
-    case 'setDentalKind': return set(state, 'dentalKind', event.kind);
     case 'setDentalRadius': return set(state, 'dentalRadius', event.radius);
     case 'toggleContact':
-      return editsSupports(state) ? withSelection(state, toggleSelection(state.selection, event.id)) : state;
+      return selectsTips(state) ? withSelection(state, toggleSelection(state.selection, event.id)) : state;
     case 'paint':
-      return editsSupports(state) ? withSelection(state, paintSelection(state.selection, event.ids, event.mode)) : state;
+      return selectsTips(state) ? withSelection(state, paintSelection(state.selection, event.ids, event.mode)) : state;
     case 'restoreSelection':
-      return editsSupports(state) ? withSelection(state, new Set(event.ids)) : state;
+      return selectsTips(state) ? withSelection(state, new Set(event.ids)) : state;
     case 'clearSelection':
       return withSelection(state, state.selection.size === 0 ? state.selection : NO_SELECTION);
   }
@@ -255,6 +254,11 @@ const finished = (state: EditSession, unitId: string): readonly string[] => (sta
 /** Supports can be picked, added and deleted: Support Edit Mode, and dental Step 3, which reuses its tools. */
 export function editsSupports(state: Pick<EditSession, 'mode' | 'dentalStage'>): boolean {
   return state.mode === 'edit' || (state.mode === 'dental' && state.dentalStage === 'review');
+}
+
+/** Tips can be selected: where supports can be edited, and in dental Step 2 (its tips, under Select). */
+export function selectsTips(state: Pick<EditSession, 'mode' | 'dentalStage'>): boolean {
+  return editsSupports(state) || (state.mode === 'dental' && state.dentalStage === 'area');
 }
 
 /** There is an active object and it takes hand edits (it is not heavy). */

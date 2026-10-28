@@ -48,7 +48,7 @@ describe('DentalBar', () => {
   });
 
   it('Step 2 without an area says so', () => {
-    const area = { kind: 'dental-area', brush: { kind: 'allow', radius: 2 }, notices: [{ kind: 'no-area' }] } as Gesture & { kind: 'dental-area' };
+    const area = { kind: 'dental-area', brush: { kind: 'allow', radius: 2 }, edit: undefined, notices: [{ kind: 'no-area' }] } as Gesture & { kind: 'dental-area' };
     const html = renderToStaticMarkup(<DentalBar gesture={area} unitName="sample" ui={{ mode: 'dental', dentalStage: 'area' } as UiState} send={() => {}} run={() => {}} tipCount={0} previewStatus="idle" />);
     expect(html).toContain('No support area was detected');
     expect(html).toContain('>Back<');
@@ -57,7 +57,7 @@ describe('DentalBar', () => {
 
   it('shows Next without Done in Step 2, then Done only in Step 3', () => {
     const ui = { mode: 'dental', dentalPreviewReady: true } as UiState;
-    const area = { kind: 'dental-area', brush: { kind: 'allow', radius: 2 }, notices: [] } as Gesture & { kind: 'dental-area' };
+    const area = { kind: 'dental-area', brush: { kind: 'allow', radius: 2 }, edit: undefined, notices: [] } as Gesture & { kind: 'dental-area' };
     const areaHtml = renderToStaticMarkup(<DentalBar gesture={area} unitName="sample" ui={ui} send={() => {}} run={() => {}} tipCount={12} />);
     expect(areaHtml).toContain('Step 2');
     expect(areaHtml).toContain('12');
@@ -72,14 +72,16 @@ describe('DentalBar', () => {
     const review = { kind: 'dental-review', edit: { kind: 'pick' } } as Gesture & { kind: 'dental-review' };
     const stepUi = { mode: 'dental', dentalStage: 'review', dentalReviewReady: true, selection: 0, customisedActive: 0, addAction: 'add', tool: 'select', method: 'click', dragAction: 'select', canUndo: false, active: true, supported: true } as unknown as UiState;
     const base = {
-      settings: defaultSupportSettings, onSetting: () => {}, density: 1, densityBusy: false, onDensity: () => {},
+      settings: defaultSupportSettings, onSetting: () => {},
       structure: { treeEnabled: true, bracesEnabled: true }, onStructure: () => {}, clickReach: { value: 1, onChange: () => {} },
       verdictPending: false, rimGap: undefined, structureFallback: undefined, problems: [], outOfDate: false, rechecking: () => false, unitName: () => 'sample',
       onShow: () => {}, onFix: () => {}, onShowRim: () => {}, finishedCount: 0, backAsk: undefined, onBackConfirm: () => {}, onBackCancel: () => {},
     } satisfies DentalReview;
     const reviewHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={stepUi} reviewReady review={base} send={() => {}} run={() => {}} />);
     expect(reviewHtml).toContain('Step 3');
-    for (const word of ['Tip size', 'Support density', 'Lift height', 'Raft', 'Tree branches', 'Cross-braces', 'Add supports', 'Label', '>OK<', 'Add another aligner', 'Back', 'Exit']) expect(reviewHtml).toContain(word);
+    // Density, Paint and Erase live in Step 2 only (D5).
+    for (const word of ['Support density', 'Paint', 'Erase']) expect(reviewHtml).not.toContain(word);
+    for (const word of ['Tip size', 'Lift height', 'Raft', 'Tree branches', 'Cross-braces', 'Add supports', 'Label', '>OK<', 'Add another aligner', 'Back', 'Exit']) expect(reviewHtml).toContain(word);
     const gapHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={stepUi} reviewReady
       review={{ ...base, rimGap: { outerMm: 4.2, openingMm: 8 } }} send={() => {}} run={() => {}} />);
     expect(gapHtml).toContain('8.0 mm');
@@ -98,7 +100,7 @@ describe('DentalBar', () => {
   });
 
   it('shows live area width, area position and density, and Paint / Erase anywhere', () => {
-    const area = { kind: 'dental-area', brush: { kind: 'allow', radius: 2 }, notices: [] } as Gesture & { kind: 'dental-area' };
+    const area = { kind: 'dental-area', brush: { kind: 'allow', radius: 2 }, edit: undefined, notices: [] } as Gesture & { kind: 'dental-area' };
     const html = renderToStaticMarkup(<DentalBar gesture={area} unitName="sample"
       ui={{ mode: 'dental', dentalPreviewReady: true } as UiState} send={() => {}} run={() => {}}
       tuning={{ positionMm: 0.7, stripWidthMm: 1, density: 1 }} tuningLimits={profileData('reference-aligner').defaults} tuningBusy onTuningChange={() => {}} />);

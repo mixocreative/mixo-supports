@@ -119,13 +119,15 @@ fn a_suggested_tip_is_offered_only_off_the_strip_clear_of_belt_and_manual_tips_a
     let erase = AreaStamp { center: [40.0, 0.0, 0.0], radius: 1.0, allow: false, ..paint };
     let stamps = [paint, erase];
     let skip = FillSkip { contact_faces: &[1, 0], belt: &[[11.0, 0.0, 0.0]], belt_clear: 1.5, manual: &[[20.5, 0.0, 0.0]], manual_clear: 0.6, stamps: &stamps };
-    assert_eq!(offered_fills(&fills, &skip).collect::<Vec<_>>(), vec![3], "ids are kept: K 3 stays K 3");
+    assert_eq!(offered_fills(&fills, &skip, true).collect::<Vec<_>>(), vec![3], "ids are kept: K 3 stays K 3");
     // (b) and (c) are distance rules: farther away the tips are offered.
     let far = FillSkip { belt_clear: 0.9, manual_clear: 0.4, ..skip };
-    assert_eq!(offered_fills(&fills, &far).collect::<Vec<_>>(), vec![1, 2, 3]);
+    assert_eq!(offered_fills(&fills, &far, true).collect::<Vec<_>>(), vec![1, 2, 3]);
     // (d) unpainted is not offered, nor painted on the far side (the stamp faces the other way).
     let none = FillSkip { stamps: &[], ..far };
-    assert_eq!(offered_fills(&fills, &none).count(), 0);
+    assert_eq!(offered_fills(&fills, &none, true).count(), 0);
     let far_side = [AreaStamp { normal: [0.0, 1.0, 0.0], ..paint }];
-    assert_eq!(offered_fills(&fills, &FillSkip { stamps: &far_side, ..far }).count(), 0);
+    assert_eq!(offered_fills(&fills, &FillSkip { stamps: &far_side, ..far }, true).count(), 0);
+    // Without (d) the tips Add can snap to are all offered, painted or not (B3).
+    assert_eq!(offered_fills(&fills, &none, false).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
 }

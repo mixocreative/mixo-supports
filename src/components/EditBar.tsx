@@ -73,23 +73,7 @@ export function EditTools({ gesture, ui, clickReach, send, run, children }: {
         { value: 'add', label: t('Add supports'), hint: 'Click the model to add a support; right-click or Ctrl+click a support to remove it' },
         { value: 'select', label: t('Select supports'), hint: 'Pick supports to delete several at once' },
       ]} />
-      {gesture.kind !== 'add' && <Segmented className="tool-choice" label={t('How to select')} value={gesture.kind === 'drag' ? 'brush' : 'click'} onChange={(style) => send({ type: 'setSelectStyle', style })} options={[
-        { value: 'click', icon: <PointerIcon />, label: t('Click'), hint: 'Click supports one at a time to select them' },
-        {
-          value: 'brush', icon: <BrushIcon />, label: t('Drag over'), hint: 'Drag over the model or its supports to select many at once. A drag that starts on empty space turns the view',
-          // The tool's own size, under it: shown only while Drag over is the way to select.
-          under: gesture.kind === 'drag' && <div className="drag-under">
-            <DragActionSwitch ui={ui} run={run} />
-            <span className="drag-shift-hint">{t(gesture.flipped ? (gesture.base === 'select' ? 'Release Shift to select' : 'Release Shift to unselect') : gesture.base === 'select' ? 'Hold Shift to unselect' : 'Hold Shift to select')}</span>
-            <RangeField
-              layout="stack" label="Circle size" unit="{n} px" hint="Radius of the circle around the pointer, in screen pixels: supports it passes over are selected"
-              min={8} max={80} step={4} value={gesture.brush.radius}
-              onChange={(radius) => send({ type: 'setBrushRadius', radius })}
-              onAdjust={(sizing) => send({ type: 'setBrushSizing', sizing })}
-            />
-          </div>,
-        },
-      ]} />}
+      {gesture.kind !== 'add' && <SelectStyleSwitch gesture={gesture} ui={ui} send={send} run={run} />}
     </div>
     {gesture.kind === 'add' && <div className="edit-row">
       <Segmented label={t('What a click does')} value={ui.addAction} onChange={(action) => run(action === 'add' ? 'edit.add' : 'edit.remove')} options={(['edit.add', 'edit.remove'] as const).map((id) => {
@@ -110,18 +94,45 @@ export function EditTools({ gesture, ui, clickReach, send, run, children }: {
   </>;
 }
 
+
+/** How to select: Click picks one at a time; Drag over paints a selection with the circle (its Select | Unselect switch, Shift hint and size under it). */
+export function SelectStyleSwitch({ gesture, ui, send, run }: {
+  gesture: Exclude<EditGesture, { kind: 'add' }>;
+  ui: UiState;
+  send: (event: SessionEvent) => void;
+  run: (id: CommandId) => void;
+}) {
+  return <Segmented className="tool-choice" label={t('How to select')} value={gesture.kind === 'drag' ? 'brush' : 'click'} onChange={(style) => send({ type: 'setSelectStyle', style })} options={[
+        { value: 'click', icon: <PointerIcon />, label: t('Click'), hint: 'Click supports one at a time to select them' },
+        {
+          value: 'brush', icon: <BrushIcon />, label: t('Drag over'), hint: 'Drag over the model or its supports to select many at once. A drag that starts on empty space turns the view',
+          // The tool's own size, under it: shown only while Drag over is the way to select.
+          under: gesture.kind === 'drag' && <div className="drag-under">
+            <DragActionSwitch ui={ui} run={run} />
+            <span className="drag-shift-hint">{t(gesture.flipped ? (gesture.base === 'select' ? 'Release Shift to select' : 'Release Shift to unselect') : gesture.base === 'select' ? 'Hold Shift to unselect' : 'Hold Shift to select')}</span>
+            <RangeField
+              layout="stack" label="Circle size" unit="{n} px" hint="Radius of the circle around the pointer, in screen pixels: supports it passes over are selected"
+              min={8} max={80} step={4} value={gesture.brush.radius}
+              onChange={(radius) => send({ type: 'setBrushRadius', radius })}
+              onAdjust={(sizing) => send({ type: 'setBrushSizing', sizing })}
+            />
+          </div>,
+        },
+      ]} />;
+}
+
 /**
  * Select | Unselect (registry edit.dragSelect, edit.dragUnselect): the pressed one is what a drag
  * does now, so holding Shift moves the press to the other one and releasing it moves it back.
  */
-function DragActionSwitch({ ui, run }: { ui: UiState; run: (id: CommandId) => void }) {
+export function DragActionSwitch({ ui, run }: { ui: UiState; run: (id: CommandId) => void }) {
   return <div className="segmented" role="group" aria-label={t('Dragging over supports')}>
     {(['edit.dragSelect', 'edit.dragUnselect'] as const).map((id) => <CommandButton key={id} command={resolve(id, ui)} run={run} />)}
   </div>;
 }
 
 /** Click reach from the registry as a number field: the same control as the Advanced row of the right panel. */
-function ClickReachField({ ui, value, onChange }: { ui: UiState; value: number; onChange: (value: number, edit?: string) => void }) {
+export function ClickReachField({ ui, value, onChange }: { ui: UiState; value: number; onChange: (value: number, edit?: string) => void }) {
   const { label, hint } = resolve('setting.clickReach', ui);
   return <NumberField label={t(label)} unit="mm" step={0.1} limits={settingLimits.eraseRadius} value={value} hint={t(hint)} onChange={onChange} />;
 }

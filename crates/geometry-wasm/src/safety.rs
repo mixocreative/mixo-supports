@@ -26,11 +26,12 @@ pub struct PolicyHandle {
     pub(crate) result: PolicyResult,
     pub(crate) reproduced: bool,
     pub(crate) profile_id: String,
+    pub(crate) suggestions: Vec<mixo_geometry_core::supports::policy::Candidate>,
 }
 
 impl PolicyHandle {
     pub(crate) fn new(result: PolicyResult) -> Self {
-        Self { result, reproduced: true, profile_id: String::new() }
+        Self { result, reproduced: true, profile_id: String::new(), suggestions: Vec::new() }
     }
 }
 
@@ -43,6 +44,10 @@ impl PolicyHandle {
     /// Point xyz then normal xyz per candidate (the frame the policy was made in).
     pub fn candidate_points(&self) -> Vec<f64> {
         self.result.candidates.iter().flat_map(|c| c.point.into_iter().chain(c.normal)).collect()
+    }
+    /// Point xyz then normal xyz per suggested tip Add can snap to, painted or not (a dental policy only).
+    pub fn suggested_points(&self) -> Vec<f64> {
+        self.suggestions.iter().flat_map(|c| c.point.into_iter().chain(c.normal)).collect()
     }
     /// Source face per candidate (-1 none).
     pub fn candidate_faces(&self) -> Vec<f64> {

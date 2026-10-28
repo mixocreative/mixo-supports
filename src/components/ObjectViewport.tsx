@@ -93,6 +93,8 @@ export default function ObjectViewport(props: ObjectViewportProps) {
       {...(props.added?.unitId === unit.id ? { added: props.added } : {})}
       wireframe={props.wireframe}
       onSelect={props.onSelect}
+      onPickTip={props.onPickTip}
+      {...(props.dentalArea ? { dentalArea: true } : {})}
       onAddContact={props.onAddContact}
       onRemoveContact={props.onRemoveContact}
       onErase={props.onErase}

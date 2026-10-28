@@ -211,6 +211,55 @@ function readProps() {
   };
 }
 
+
+/** Waits until Step 2's tip preview is ready again after an edit (no "Updating" or "Finding" note, tips counted). */
+async function previewReady(page) {
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 400)));
+  await page.waitForFunction(() => !/Updating support area|Finding safe/.test(document.body.innerText) && /[1-9]/.test([...document.querySelectorAll('.edit-note')].map((note) => note.innerText).join(' ')), null, { timeout: 120000 });
+}
+
+/**
+ * Step 2, Add: orbits the view from below to look down on the aligner (a vertical drag across empty
+ * canvas), then clicks a grid of spots until one answers with `expected` (the "faces up" line).
+ * Every tip added on the way, the one with the warning too, is undone. Returns what was seen.
+ */
+async function addOnUpFacingSpot(page, expected) {
+  const idle = (ms) => page.evaluate((span) => new Promise((resolve) => setTimeout(resolve, span)), ms);
+  const box = await page.locator('canvas').first().boundingBox();
+  const at = (fx, fy) => [box.x + box.width * fx, box.y + box.height * fy];
+  const manual = async () => (await page.evaluate(readProps)).units[0]?.manual ?? -1;
+  const status = () => page.evaluate(() => document.querySelector('footer strong')?.innerText ?? '');
+  const tried = [];
+  // The first drag turns the view one way; if it was already there, the second turns it the other way.
+  for (const [from, to] of [[0.4, 0.85], [0.85, 0.4]]) {
+  // Along the right edge, clear of the bar on top and the buttons below: empty canvas turns the view.
+  for (let sweep = 0; sweep < 2; sweep += 1) {
+    await page.mouse.move(...at(0.97, from));
+    await page.mouse.down();
+    for (let k = 0; k <= 20; k += 1) await page.mouse.move(...at(0.97, from + (to - from) * k / 20));
+    await page.mouse.up();
+  }
+  await idle(1000);
+  for (const fy of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+    for (const fx of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+      await previewReady(page);
+      const was = await manual();
+      await page.mouse.click(...at(fx, fy));
+      await idle(700);
+      const line = await status();
+      const now = await manual();
+      tried.push(`${fx},${fy}:${now > was ? 'added' : 'none'}`);
+      if (now > was) {
+        await page.keyboard.press('Control+z');
+        for (let wait = 0; wait < 20 && (await manual()) !== was; wait += 1) await idle(300);
+      }
+      if (line === expected) return { found: true, added: now > was, status: line, tried };
+    }
+  }
+  }
+  return { found: false, added: false, status: await status(), tried };
+}
+
 /** One Chromium page with the helpers the checks share. */
 function makeDriver(page) {
   const idle = (ms) => page.evaluate((span) => new Promise((resolve) => setTimeout(resolve, span)), ms);
@@ -830,6 +879,107 @@ async function walk(url, scratch, dentalFixture) {
           erasedTips <= tipsBefore && /Dental support area erased/.test(await d.status()),
           `tips ${paintedTips} -> ${erasedTips} (before paint ${tipsBefore}), ${eraseMs} ms (drag ${released - t0} ms, release to tip preview ${t0 + eraseMs - released} ms)`);
       }
+
+      // B3: Step 2's four tools, their keys, Add (exact hit, snapping, the up-facing warning) and Select with Delete.
+      {
+        const tools = bar.getByRole('group', { name: 'Dental area tools' });
+        const pressedTool = async () => { for (const name of ['Paint', 'Erase', 'Add', 'Select']) if ((await tools.getByRole('button', { name, exact: true }).getAttribute('aria-pressed')) === 'true') return name; return ''; };
+        const toolNames = await tools.getByRole('button').allInnerTexts();
+        check('b3a Step 2 offers the four tools Paint, Erase, Add and Select', toolNames.join('|') === 'Paint|Erase|Add|Select', toolNames.join('|'));
+        const byKey = [];
+        for (const key of ['p', 'e', 'a', 's']) { await page.keyboard.press(key); byKey.push(await pressedTool()); }
+        check('b3b the keys P, E, A and S switch the tools', byKey.join('|') === 'Paint|Erase|Add|Select', byKey.join('|'));
+        const unitNow = async () => (await d.props()).units[0];
+        const reach = bar.locator('label.field-row').filter({ hasText: 'Click reach' }).locator('input');
+        const setReach = async (value) => { await page.keyboard.press('a'); await reach.fill(value); await reach.press('Enter'); await previewReady(page); };
+        const spots = [[0.3, 0.47], [0.36, 0.52], [0.62, 0.62], [0.5, 0.5], [0.4, 0.55], [0.55, 0.45], [0.45, 0.6], [0.7, 0.55]];
+        /** Add at the first spot from `skip` on that takes a tip: the unit before and after, and the status line. */
+        const addSomewhere = async (skip = 0) => {
+          for (const spot of spots.slice(skip)) {
+            await previewReady(page);
+            const was = await unitNow();
+            await page.mouse.click(...d.at(...spot));
+            await d.idle(700);
+            const now = await unitNow();
+            if (now.manual === was.manual + 1) return { was, now, status: await d.status(), spot };
+          }
+          return undefined;
+        };
+        if (painted) {
+          await page.keyboard.press('p');
+          const shownBefore = await tipCount();
+          const t0 = Date.now();
+          await d.stroke(...painted.stroke, 20);
+          await step2Settled(t0);
+          const shownAfter = await tipCount();
+          await page.keyboard.press('e');
+          const t1 = Date.now();
+          await d.stroke(...painted.stroke, 20);
+          await step2Settled(t1);
+          const hiddenAgain = await tipCount();
+          check('b3c with the keys: Paint reveals suggested tips, Erase hides them again', shownAfter > shownBefore && hiddenAgain <= shownBefore, `tips ${shownBefore} -> ${shownAfter} -> ${hiddenAgain}`);
+        }
+        // Add with a tiny reach lands on the exact hit; the tip is a manual one and survives a density change.
+        await setReach('0.1');
+        const exact = await addSomewhere();
+        check('b3d Add on the aligner places a manual tip at the hit and says so', exact !== undefined && exact.now.deleted === exact.was.deleted && exact.status === 'Support added.', exact ? `manual ${exact.was.manual} -> ${exact.now.manual}, deleted ${exact.was.deleted} -> ${exact.now.deleted}, status "${exact.status}"` : 'no spot took a tip');
+        await nudge('Support density', 1);
+        const kept = await unitNow();
+        check('b3e a manual tip survives a density change', exact !== undefined && kept.manual === exact.now.manual, `manual ${exact?.now.manual} -> ${kept.manual}`);
+        // Add within Click reach of a suggested tip (shown or hidden) lands on it: that tip is deleted in the same step, so the two never stand together.
+        await setReach('40');
+        const snapped = await addSomewhere(1);
+        let undone;
+        if (snapped) {
+          await page.keyboard.press('Control+z');
+          await d.idle(800);
+          undone = await unitNow();
+        }
+        check('b3f Add within Click reach of a suggested tip takes its place in one step (manual +1, that tip deleted; one Undo gives both back)',
+          snapped !== undefined && snapped.now.deleted === snapped.was.deleted + 1 && undone?.manual === snapped.was.manual && undone?.deleted === snapped.was.deleted,
+          snapped ? `manual ${snapped.was.manual} -> ${snapped.now.manual} -> ${undone?.manual}, deleted ${snapped.was.deleted} -> ${snapped.now.deleted} -> ${undone?.deleted}` : 'no spot took a tip');
+        // Select a tip (Click) and Delete: it is gone, and stays gone after the next rebuild.
+        await previewReady(page);
+        await page.keyboard.press('s');
+        const tipsBeforeDelete = await tipCount();
+        const beforeDelete = await unitNow();
+        let picked = 0;
+        for (const spot of spots) {
+          await page.mouse.click(...d.at(...spot));
+          await d.idle(500);
+          picked = (await d.props()).selected;
+          if (picked > 0) break;
+        }
+        await page.keyboard.press('Delete');
+        await d.idle(500);
+        await previewReady(page);
+        const afterDelete = await unitNow();
+        const tipsAfterDelete = await tipCount();
+        check('b3g Select (Click) a tip and Delete removes it', picked === 1 && (await d.props()).selected === 0 && (beforeDelete.manual - afterDelete.manual) + (afterDelete.deleted - beforeDelete.deleted) === 1 && tipsAfterDelete === tipsBeforeDelete - 1,
+          `selected ${picked}, manual ${beforeDelete.manual} -> ${afterDelete.manual}, deleted ${beforeDelete.deleted} -> ${afterDelete.deleted}, tips ${tipsBeforeDelete} -> ${tipsAfterDelete}`);
+        await setReach('0.1');
+        const rebuilt = await addSomewhere(2);
+        await previewReady(page);
+        const tipsAfterRebuild = await tipCount();
+        check('b3h a deleted tip stays removed after the next rebuild', rebuilt !== undefined && tipsAfterRebuild === tipsAfterDelete + 1 && rebuilt.now.deleted === afterDelete.deleted, `tips ${tipsAfterDelete} -> ${tipsAfterRebuild}, deleted ${afterDelete.deleted} -> ${rebuilt?.now.deleted}`);
+        // Select (Drag over) takes several tips, and Esc drops the selection before it leaves the step.
+        await page.keyboard.press('s');
+        const howToSelect = page.getByRole('group', { name: 'How to select' });
+        await howToSelect.getByRole('button', { name: 'Drag over', exact: true }).click();
+        await d.idle(500);
+        await d.stroke([0.3, 0.5], [0.7, 0.5], 25);
+        const swept = await d.settle();
+        await page.keyboard.press('Escape');
+        await d.idle(400);
+        check('b3i Select (Drag over) takes several tips, and Esc drops the selection first', swept.selected > 1 && (await d.props()).selected === 0 && (await page.locator('.edit-badge').innerText()).includes('Step 2'), `selected ${swept.selected}`);
+        await howToSelect.getByRole('button', { name: 'Click', exact: true }).click();
+        // Add on a spot that faces up shows the warning on the status line.
+        await page.keyboard.press('a');
+        const up = await addOnUpFacingSpot(page, 'This spot faces up, so a tip here may not hold.');
+        check('b3j Add on an up-facing spot still adds, and the status line warns that it may not hold', up.found && up.added, `${up.status} (${up.tried.join(' ')})`);
+        await page.getByRole('button', { name: 'Bottom view', exact: true }).click();
+        await d.idle(600);
+      }
       await d.button('Back').click();
       await stepTo('Step 1 · Aligner');
       check('u11 Back from Step 2 returns to Step 1 with the oriented aligner kept', await d.button('Next').isEnabled() && (await page.getByText('Drop the aligner STL here').count()) === 0);
@@ -893,8 +1043,9 @@ async function walk(url, scratch, dentalFixture) {
       await d.measureCanvas();
       check('x1b Step 3 finish controls (Label, Back, Exit, OK, Add another aligner) are in view without scrolling at 1440x900 and 1280x720', at1440 && at1280, `1440x900 ${at1440}, 1280x720 ${at1280}`);
       const side = await page.locator('.dental-side').innerText();
-      check('x1 Step 3 lists tip size, density, lift height, raft, Tree, Brace, the support tools, problems, Label, OK and Add another aligner',
-        ['Tip size', 'Support density', 'Lift height', 'Raft', 'Tree branches', 'Cross-braces', 'Add supports', 'Problems', 'Label', 'OK', 'Add another aligner'].every((word) => side.includes(word)), side.replace(/\s+/g, ' ').slice(0, 200));
+      check('x1 Step 3 lists tip size, lift height, raft, Tree, Brace, the support tools, problems, Label, OK and Add another aligner',
+        ['Tip size', 'Lift height', 'Raft', 'Tree branches', 'Cross-braces', 'Add supports', 'Problems', 'Label', 'OK', 'Add another aligner'].every((word) => side.includes(word)), side.replace(/\s+/g, ' ').slice(0, 200));
+      check('b3k Step 3 shows no Paint, Erase or density', (await page.getByRole('button', { name: 'Paint', exact: true }).count()) === 0 && (await page.getByRole('button', { name: 'Erase', exact: true }).count()) === 0 && !side.includes('Support density') && !side.includes('Dental area tools'), side.replace(/\s+/g, ' ').slice(0, 160));
       const switchOn = (name) => page.locator('.dental-side label.check').filter({ hasText: name }).locator('input').isChecked();
       const startValues = { tip: await slider('Tip size').inputValue(), lift: await slider('Lift height').inputValue(), tree: await switchOn('Tree branches'), brace: await switchOn('Cross-braces'), raft: await switchOn('Raft') };
       check('x1c Step 3 starts with the aligner type defaults: 0.45 mm tip, 3.5 mm lift, raft on, Tree and Brace on (D3)',
@@ -975,7 +1126,6 @@ async function walk(url, scratch, dentalFixture) {
         const controls = [
           ['Tip size', async () => { await slider('Tip size').focus(); await slider('Tip size').press('ArrowRight'); }],
           ['Pillar size', async () => { await slider('Pillar size').focus(); await slider('Pillar size').press('ArrowRight'); }],
-          ['Support density', async () => { await slider('Support density').focus(); await slider('Support density').press('ArrowRight'); }],
           ['Lift height', async () => { await slider('Lift height').focus(); await slider('Lift height').press('ArrowLeft'); }],
           ['Raft', async () => { const box = page.locator('.dental-side label.check').filter({ hasText: 'Raft' }).locator('input'); await box.uncheck(); await d.idle(700); await verdictBack(); await box.check(); }],
           ['Tree branches', async () => { await page.locator('.dental-side label.check').filter({ hasText: 'Tree branches' }).locator('input').click(); }],
@@ -989,7 +1139,7 @@ async function walk(url, scratch, dentalFixture) {
           outcome.push(`${name}: stale seen ${await page.evaluate(() => window.__staleSeen)}x`);
         }
         const seenAll = outcome.every((line) => !line.endsWith(' 0x'));
-        check('x9b each Step 3 control (Tip size, Pillar size, Support density, Lift height, Raft, Tree branches, Cross-braces) greys the Problems section until its new verdict arrives, then clears it', seenAll && (await problems.getAttribute('aria-busy')) === 'false', outcome.join('; '));
+        check('x9b each Step 3 control (Tip size, Pillar size, Lift height, Raft, Tree branches, Cross-braces) greys the Problems section until its new verdict arrives, then clears it', seenAll && (await problems.getAttribute('aria-busy')) === 'false', outcome.join('; '));
       }
 
       // Problems: the check runs inside the step and lists what it finds with Show and Fix.
@@ -1381,6 +1531,20 @@ async function walkLocale(url, scratch, lang, dentalFixture) {
     await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /[1-9]/.test(note.innerText)), null, { timeout: 240000 });
     await idle(800);
     await shot(page, 'dental-step2');
+    // B3: the four tools and the up-facing warning in the language.
+    {
+      const tools = page.locator('.dental-brush').getByRole('group', { name: tr('Dental area tools') });
+      const names = await tools.getByRole('button').allInnerTexts();
+      const wantedTools = ['Paint', 'Erase', 'Add', 'Select'].map(tr);
+      check(tag('b1 Step 2 offers the four tools in the language'), names.join('|') === wantedTools.join('|'), names.join('|'));
+      await page.keyboard.press('a');
+      const english = 'This spot faces up, so a tip here may not hold.';
+      const facesUp = tr(english);
+      const up = await addOnUpFacingSpot(page, facesUp);
+      check(tag('b2 the up-facing warning is in the language'), up.found && up.added && (lang === 'en' || facesUp !== english), `${up.status} (${up.tried.join(' ')})`);
+      await shot(page, 'dental-step2-add');
+      await previewReady(page);
+    }
     await button('Next').click();
     await badgeHas('Step 3 · Supports', 240000);
     await page.waitForFunction((ok) => { const b = [...document.querySelectorAll('button')].find((x) => x.innerText.trim() === ok); return b && !b.disabled; }, tr('OK'), { timeout: 300000 });

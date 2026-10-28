@@ -77,10 +77,15 @@ function bound({ key, ctrl, shift, target, ui }: KeyInput): KeyAction {
   const done = key === 'Escape' || (key === 'Enter' && !enterActsOn(target));
   if (ctrl && lower === 'z') return run(shift ? 'history.redo' : 'history.undo');
   if (ctrl && lower === 'y') return run('history.redo');
-  // Dental Step 3 reuses the support tools: Delete removes the selection, the first Esc drops it.
+  // Dental Step 2 has four tools (P, E, A, S); Step 3 reuses the support tools. In both, Delete removes the selection and the first Esc drops it.
+  const area = mode === 'dental' && ui.dentalStage === 'area';
   const reviewing = mode === 'dental' && ui.dentalStage === 'review';
-  if (reviewing && hasSelection && (key === 'Delete' || key === 'Backspace')) return run('edit.deleteSelection');
-  if (reviewing && hasSelection && key === 'Escape') return run('edit.clearSelection');
+  if (area && !ctrl && lower === 'p') return run('dental.tool.paint');
+  if (area && !ctrl && lower === 'e') return run('dental.tool.erase');
+  if (area && !ctrl && lower === 'a') return run('dental.tool.add');
+  if (area && !ctrl && lower === 's') return run('dental.tool.select');
+  if ((area || reviewing) && hasSelection && (key === 'Delete' || key === 'Backspace')) return run('edit.deleteSelection');
+  if ((area || reviewing) && hasSelection && key === 'Escape') return run('edit.clearSelection');
   // The dental flow's lock note promises Esc: it leaves with the aligner on the plate and no supports.
   if (mode === 'dental' && key === 'Escape') return run('dental.exit');
   if (mode === 'zones' && done) return run('mode.exit');

@@ -177,6 +177,11 @@ fn reference_paint_outside_the_strip_reveals_suggested_tips_and_erase_hides_them
     let erase = AreaStamp { allow: false, ..paint };
     let (_, erased) = policy_of(&mesh, profile, &[paint, erase], [0.0; 3]);
     assert!(erased.result.candidates.iter().all(|c| !c.id.0.starts_with("dental-fill-")));
+    // The suggestions Add can snap to do not depend on the paint, and include every painted tip (B3).
+    assert!(!plain.suggestions.is_empty(), "unpainted, the suggested tips are still known");
+    assert_eq!(plain.suggestions, painted.suggestions);
+    assert!(plain.result.candidates.iter().all(|c| !c.id.0.starts_with("dental-fill-")), "unpainted, none is a candidate");
+    assert!(added.iter().all(|a| painted.suggestions.iter().any(|s| s.id == a.id && s.point == a.point)));
     assert!(erased.result.candidates.len() < plain.result.candidates.len(), "erase removes the belt tips under it too");
 }
 

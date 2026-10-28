@@ -42,6 +42,10 @@ pub struct DentalPolicy {
     /// False when a saved two-contour area could not be reproduced from this mesh: the policy then
     /// has no candidates and no permitted face, so no automatic support is built.
     pub reproduced: bool,
+    /// Every suggested tip the host could offer (B3): those that pass the strip, belt and manual-tip
+    /// skips, whether painted or not, in the policy's frame. Add snaps to the nearest of these and the
+    /// shown candidates; they are never contacts themselves.
+    pub suggestions: Vec<Candidate>,
 }
 
 /// The two-contour area as it was saved, compared with what detection gives now.
@@ -160,7 +164,7 @@ pub fn dental_policy(input: &DentalPolicyInput) -> DentalPolicy {
     // The switches decide Tree and Brace (whatever the generic settings say); Roof and Cage stay off.
     let choice = Some(StructureChoice { tree: structure.tree, brace: structure.brace });
     let base = PolicyResult { structure_choice: choice, ..PolicyResult::plain(FaceMask::new(faces), Vec::new(), dental_structures(*structure), d.repair_budget) };
-    let finish = |result, area_origin, reproduced| DentalPolicy { result, area_origin, profile_id: profile.id.clone(), reproduced };
+    let finish = |result, area_origin, reproduced| DentalPolicy { result, area_origin, profile_id: profile.id.clone(), reproduced, suggestions: Vec::new() };
     match &input.area {
         DentalArea::Legacy => finish(PolicyResult { automatic: matching, ..base }, AreaOrigin::Legacy, true),
         DentalArea::ManualArea => {
@@ -192,7 +196,7 @@ pub fn dental_policy(input: &DentalPolicyInput) -> DentalPolicy {
             // support reaches them from below; erase stamps take faces back out through the
             // landing rule and the candidate gate.
             let painted = faces_painted_by_stamps(mesh, stamps);
-            let (candidates, alternates, rings) = contacts_of(input, &region, tuning);
+            let (candidates, alternates, rings, suggestions) = contacts_of(input, &region, tuning);
             let mut permitted = mask_of(region.contact_faces.iter().map(|&f| f == 1), faces);
             let moved = candidates.iter().chain(alternates.iter().flat_map(|(_, list)| list)).filter(|c| c.origin == Origin::Auto).filter_map(|c| c.source_face);
             for face in painted.iter().copied().chain(moved) {
@@ -205,7 +209,7 @@ pub fn dental_policy(input: &DentalPolicyInput) -> DentalPolicy {
                 rings,
                 ..closed
             };
-            finish(result, AreaOrigin::Detected, true)
+            DentalPolicy { suggestions, ..finish(result, AreaOrigin::Detected, true) }
         }
     }
 }
@@ -225,7 +229,7 @@ type Alternates = Vec<(CandidateId, Vec<Candidate>)>;
 
 /// Gated belt candidates (in the output frame) then the suggested tips the paint reveals, the belt
 /// candidates' half-step repair alternates and the two contact rings.
-fn contacts_of(input: &DentalPolicyInput, region: &Region, tuning: &Tuning) -> (Vec<Candidate>, Alternates, Vec<Ring>) {
+fn contacts_of(input: &DentalPolicyInput, region: &Region, tuning: &Tuning) -> (Vec<Candidate>, Alternates, Vec<Ring>, Vec<Candidate>) {
     let DentalPolicyInput { mesh, profile, stamps, frame, keep_clear_of, .. } = input;
     let gate = |c: &super::sampling::ContourContact| contour_allows(&region.contact_faces, stamps, c);
     let candidate = |id: CandidateId, c: &super::sampling::ContourContact| {
@@ -306,8 +310,9 @@ fn contacts_of(input: &DentalPolicyInput, region: &Region, tuning: &Tuning) -> (
         })
         .unwrap_or_default();
     let skip = FillSkip { contact_faces: &region.contact_faces, belt: &kept, belt_clear: settings.map_or(0.0, |s| s.outer_spacing / 2.0), manual: keep_clear_of, manual_clear: profile.defaults.min_tip_separation_mm, stamps };
-    let filled: Vec<Candidate> = offered_fills(&fills, &skip).map(|at| candidate(fill_id(at), &fills[at])).collect();
-    (primaries.into_iter().map(|(_, c, _)| c).chain(filled).collect(), alternates, rings)
+    let filled: Vec<Candidate> = offered_fills(&fills, &skip, true).map(|at| candidate(fill_id(at), &fills[at])).collect();
+    let suggestions: Vec<Candidate> = offered_fills(&fills, &skip, false).map(|at| candidate(fill_id(at), &fills[at])).collect();
+    (primaries.into_iter().map(|(_, c, _)| c).chain(filled).collect(), alternates, rings, suggestions)
 }
 
 /// What decides, per policy run, which suggested tips are offered (B2).
@@ -324,13 +329,13 @@ struct FillSkip<'a> {
 
 /// Indices (K) of the suggested tips offered: not (a) on a strip face, (b) within `belt_clear` of a
 /// kept belt tip, (c) within `manual_clear` of a manual tip, and (d) explicitly painted (unpainted is
-/// not offered).
-fn offered_fills<'a>(fills: &'a [super::sampling::ContourContact], skip: &'a FillSkip) -> impl Iterator<Item = usize> + 'a {
+/// not offered; `painted_only` false drops that last rule, for the tips Add can snap to).
+fn offered_fills<'a>(fills: &'a [super::sampling::ContourContact], skip: &'a FillSkip, painted_only: bool) -> impl Iterator<Item = usize> + 'a {
     fills.iter().enumerate().filter(move |(_, c)| {
         skip.contact_faces.get(c.face as usize) != Some(&1)
             && !skip.belt.iter().any(|&at| distance(at, c.position) < skip.belt_clear)
             && !skip.manual.iter().any(|&at| distance(at, c.position) < skip.manual_clear)
-            && AreaStamp::resolve(skip.stamps, c.position, Some(c.normal)) == Some(true)
+            && (!painted_only || AreaStamp::resolve(skip.stamps, c.position, Some(c.normal)) == Some(true))
     }).map(|(at, _)| at)
 }
 

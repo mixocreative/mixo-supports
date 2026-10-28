@@ -89,7 +89,7 @@ impl GeometrySession {
         };
         let structure = DentalStructure { tree: *tree != 0, brace: *brace != 0 };
         let policy = make_dental_policy(&DentalPolicyInput { mesh: &mesh, profile, area, stamps: &stamps, structure, frame: &frame, keep_clear_of: &manual });
-        Ok(PolicyHandle { result: policy.result, reproduced: policy.reproduced, profile_id: policy.profile_id })
+        Ok(PolicyHandle { result: policy.result, reproduced: policy.reproduced, profile_id: policy.profile_id, suggestions: policy.suggestions })
     }
 
     /// The legacy dental placement (a painted-from-scratch area or an older saved policy), see

@@ -54,7 +54,7 @@ describe('reduceSession: modes', () => {
   it('the dental flow runs Step 0, Step 1 (drop, orient), Step 2, Step 3 and backs out', () => {
     const entered = reduceSession(initialSession, { type: 'enterDental' });
     // Entry needs no object: the dimmed flow starts at the type cards.
-    expect(entered).toMatchObject({ mode: 'dental', dentalStage: 'type', dentalKind: 'allow', dentalRadius: 2 });
+    expect(entered).toMatchObject({ mode: 'dental', dentalStage: 'type', dentalRadius: 2 });
     expect(gesture(entered)).toMatchObject({ kind: 'dental-type' });
     const aligner = reduceSession(entered, { type: 'chooseDentalProfile', id: 'reference-aligner' });
     expect(gesture(aligner)).toMatchObject({ kind: 'dental-aligner', phase: 'prompt', profile: 'reference-aligner' });
@@ -287,9 +287,10 @@ describe('reduceSession: dental Step 3 and finishing', () => {
     const picked = run(step3, { type: 'toggleContact', id: 'a' }, { type: 'toggleContact', id: 'b' });
     expect([...picked.selection]).toEqual(['a', 'b']);
     expect(gesture(run(step3, { type: 'setTool', tool: 'add' }))).toMatchObject({ kind: 'dental-review', edit: { kind: 'add', remove: false } });
-    // Outside Step 3 a dental step takes no support picks.
-    const area = run(step3, { type: 'backDental' });
-    expect(reduceSession(area, { type: 'toggleContact', id: 'a' })).toBe(area);
+    // Step 1 takes no tip picks (Step 2 does, under Select).
+    const aligner = run(step3, { type: 'backDental' }, { type: 'backDental' });
+    expect(aligner.dentalStage).toBe('aligner');
+    expect(reduceSession(aligner, { type: 'toggleContact', id: 'a' })).toBe(aligner);
   });
 
   it('Back from Step 3 drops the selection', () => {

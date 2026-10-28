@@ -45,7 +45,7 @@ export function editStatus(session: EditSession): StatusMessage | undefined {
 
 /** What the status line rests on in a mode: how Esc leaves while supports are selected, else the tool line. */
 function standingStatus(session: EditSession): StatusMessage | undefined {
-  return (session.mode === 'edit' || session.dentalStage === 'review' && session.mode === 'dental') && session.selection.size > 0 ? keyed(ESC_AGAIN) : editStatus(session);
+  return (session.mode === 'edit' || (session.dentalStage === 'review' || session.dentalStage === 'area') && session.mode === 'dental') && session.selection.size > 0 ? keyed(ESC_AGAIN) : editStatus(session);
 }
 
 /**

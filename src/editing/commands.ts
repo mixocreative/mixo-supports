@@ -17,6 +17,7 @@ export const COMMAND_IDS = [
   'mode.edit', 'mode.zones', 'mode.exit',
   'zones.clearAll',
   'dental.useDetected', 'dental.next', 'dental.generate', 'dental.back', 'dental.exit', 'dental.finish', 'dental.addAnother',
+  'dental.tool.paint', 'dental.tool.erase', 'dental.tool.add', 'dental.tool.select',
   'edit.generate', 'edit.add', 'edit.remove', 'edit.dragSelect', 'edit.dragUnselect', 'edit.clearSelection', 'edit.deleteSelection',
   'setting.clickReach',
   'shape.reset', 'shape.selectCustomised',
@@ -112,14 +113,18 @@ interface Command {
 
 const UNDO_HINTS: Record<StepKind, string> = {
   addObjects: 'Undo the import', deleteObjects: 'Undo deleting objects', generate: 'Undo generating supports', removeSupports: 'Undo removing the supports',
-  clearManual: 'Undo clearing manual edits', addSupport: 'Undo adding a support', deleteSupports: 'Undo deleting supports', zones: 'Undo the zone change', move: 'Undo moving the object', settings: 'Undo the settings change', openProject: 'Undo opening the project',
+  clearManual: 'Undo clearing manual edits', addSupport: 'Undo adding a support', deleteSupports: 'Undo deleting supports', zones: 'Undo the zone change', move: 'Undo moving the object', settings: 'Undo the settings change', openProject: 'Undo opening the project', dentalArea: 'Undo the support area change',
 };
 const REDO_HINTS: Record<StepKind, string> = {
   addObjects: 'Redo the import', deleteObjects: 'Redo deleting objects', generate: 'Redo generating supports', removeSupports: 'Redo removing the supports',
-  clearManual: 'Redo clearing manual edits', addSupport: 'Redo adding a support', deleteSupports: 'Redo deleting supports', zones: 'Redo the zone change', move: 'Redo moving the object', settings: 'Redo the settings change', openProject: 'Redo opening the project',
+  clearManual: 'Redo clearing manual edits', addSupport: 'Redo adding a support', deleteSupports: 'Redo deleting supports', zones: 'Redo the zone change', move: 'Redo moving the object', settings: 'Redo the settings change', openProject: 'Redo opening the project', dentalArea: 'Redo the support area change',
 };
 /** Supports can be picked, added and deleted: Support Edit Mode, and dental Step 3 which reuses its tools. */
 const editing = (s: UiState) => s.mode === 'edit' || (s.mode === 'dental' && s.dentalStage === 'review');
+/** Dental Step 2: the area and its suggested tips (its four tools). */
+const area = (s: UiState) => s.mode === 'dental' && s.dentalStage === 'area';
+/** Where a selection of supports or tips can be made and deleted. */
+const selecting = (s: UiState) => editing(s) || area(s);
 const editable = (s: UiState) => s.active && s.heavy === undefined;
 const always = () => true;
 const never = () => undefined;
@@ -284,6 +289,10 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
     visible: (s) => s.mode === 'dental' && s.dentalStage === 'review', enabled: (s) => Boolean(s.dentalReviewReady) && !s.generating,
     disabledReason: (s) => (s.generating ? generatingReason : s.dentalReviewReady ? undefined : { key: 'Wait until the supports are built.' }),
   },
+  'dental.tool.paint': areaTool('paint', 'Paint', 'Paint dental support area anywhere on the aligner', 'P'),
+  'dental.tool.erase': areaTool('erase', 'Erase', 'Erase dental support area and its tips anywhere on the aligner', 'E'),
+  'dental.tool.add': areaTool('add', 'Add', 'Click the model to add a tip by hand; it snaps to a nearby suggested tip', 'A'),
+  'dental.tool.select': areaTool('select', 'Select', 'Click or drag over tips to select them, then delete them', 'S'),
   'edit.generate': {
     role: 'secondary',
     label: (s) => (s.generating ? 'Generating supports…' : 'Generate supports'),
@@ -329,12 +338,12 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
   'edit.clearSelection': {
     role: 'secondary', shortcut: 'Esc',
     label: () => 'Clear selection', hint: () => 'Unselect every support at once. Undo on the notice brings the selection back',
-    visible: (s) => editing(s) && s.selection > 0, enabled: always, disabledReason: never,
+    visible: (s) => selecting(s) && s.selection > 0, enabled: always, disabledReason: never,
   },
   'edit.deleteSelection': {
     role: 'destructive', shortcut: 'Delete',
     label: () => 'Delete', hint: () => 'Delete the selected supports. Undo brings them back',
-    visible: (s) => editing(s), enabled: (s) => s.selection > 0, disabledReason: (s) => (s.selection > 0 ? undefined : { key: 'Select a support first.' }),
+    visible: selecting, enabled: (s) => s.selection > 0, disabledReason: (s) => (s.selection > 0 ? undefined : { key: 'Select a support first.' }),
   },
   'export.active-printable': exportRow('Active object with model', 'One STL file: the active object and its supports'),
   'export.active-supports': exportRow('Active object, supports only', 'One STL file: only the supports of the active object'),
@@ -365,8 +374,18 @@ function addChoice(action: AddAction, label: string, hint: string): Command {
 function dragChoice(action: BrushMode, label: string, hint: string): Command {
   return {
     role: 'secondary', label: () => label, hint: () => hint,
-    visible: (s) => editing(s) && s.tool === 'select' && s.method === 'brush', enabled: always, disabledReason: never,
+    visible: (s) => selecting(s) && s.tool === 'select' && s.method === 'brush', enabled: always, disabledReason: never,
     pressed: (s) => s.dragAction === action,
+  };
+}
+
+/** One of Step 2's four tools: Paint, Erase, Add, Select (keys P, E, A, S). */
+function areaTool(tool: EditTool, label: string, hint: string, shortcut: string): Command {
+  return {
+    role: 'secondary', shortcut, label: () => label, hint: () => hint,
+    visible: area, enabled: (s) => area(s) && s.heavy === undefined,
+    disabledReason: (s) => (area(s) && s.heavy === undefined ? undefined : s.heavy !== undefined ? heavyReason(s) : undefined),
+    pressed: (s) => s.tool === tool,
   };
 }
 

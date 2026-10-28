@@ -47,7 +47,7 @@ import { estimateTriangles, ESTIMATE_HEAD_BYTES } from './core/import/estimate';
 import { emptyScene, reduceScene, type ContactSettings, type PrintScene, type PrintUnit, type SceneCommand, type SupportSettings } from './state/project';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint, transformPoint, type ModelTransform } from './state/transform';
 import type { ExportKind } from './supports/export';
-import type { GeneratedSupportMesh } from './core/supports/mesh';
+import type { GeneratedSupportMesh, SupportContact } from './core/supports/mesh';
 import { meshBounds } from './core/supports/meshQuery';
 import { type ZoneStamp } from './core/supports/zones';
 import { problemInZone } from './supports/zoneCheck';
@@ -59,14 +59,15 @@ import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, withShape, type LiveSupportSettings, type SettingKey, type ShapeKey } from './core/supports/settings';
 import { islandProblems } from './supports/islandProblems';
 import { omittedProblems } from './supports/omittedProblem';
-import { checkJobOf, currentBuild, hiddenByZones, liftCommands, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
+import { checkJobOf, contactsWith, currentBuild, hiddenByZones, liftCommands, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { COMMAND_IDS, resolve, type CommandId, type UiState } from './editing/commands';
 import { effectiveBrushMode } from './editing/selection';
 import { keyAction } from './editing/keys';
 import { customisedAmong, liveSelection, scopeCounts, shapePatch, shapeView } from './editing/shapeEdit';
 import { lockNote, sectionLocked, type Panel } from './editing/locks';
 import { contactToRemove } from './editing/removal';
-import { editsSupports, initialSession, reduceSession, startsEditing, type SessionEvent } from './editing/session';
+import { profileData } from './dental/alignerProfiles';
+import { editsSupports, initialSession, reduceSession, selectsTips, startsEditing, type SessionEvent } from './editing/session';
 import { acceptsDentalDrop } from './editing/session';
 import { StartScreen, type StartScreenId } from './components/StartScreen';
 import { arrangeAlignerCommands } from './dental/arrange';
@@ -94,6 +95,7 @@ function historyReducer(history: SceneHistory, action: HistoryAction): SceneHist
 }
 
 const NO_OVERRIDES: ContactSettings = {};
+const NO_CONTACTS: readonly SupportContact[] = [];
 
 /** Settings edits come in bursts (typing a value); a unit's preview rebuild waits this long. */
 const BUILD_DELAY_MS = 120;
@@ -266,7 +268,12 @@ export default function App() {
   const buildSettled = (unit: PrintUnit) => built.get(unit.id)?.unit === unit || failedBuilds.get(unit.id) === unit;
   const supportMeshes = useMemo(() => new Map([...built].map(([id, entry]) => [id, entry.mesh])), [built]);
   /** The unit's contacts as its latest build left them (see `built`). */
-  const contactsOf = useCallback((unit: PrintUnit) => unitContacts(unit, builtRef.current.get(unit.id)?.mesh), []);
+  const contactsOf = useCallback((unit: PrintUnit) => {
+    const { inArea: stepTwo, dentalPreview: preview } = areaRef.current;
+    // Step 2 works on the tip preview's tips; the build of an earlier Step 3 does not count.
+    if (stepTwo && unit.id === preview?.unitId && unit === preview.unit) return contactsWith(unit, preview.localPoints);
+    return stepTwo ? NO_CONTACTS : unitContacts(unit, builtRef.current.get(unit.id)?.mesh);
+  }, []);
   /** Whether the unit changed since its shown supports were built (counts follow once the build returns). */
   const building = (unit: PrintUnit) => unit.supports !== undefined && !buildSettled(unit);
   const activeMesh = activeUnit ? built.get(activeUnit.id)?.mesh : undefined;
@@ -275,26 +282,6 @@ export default function App() {
       ? { outerMm: activeMesh.dentalRimCoverage.outer.maxGapMm, openingMm: activeMesh.dentalRimCoverage.opening.maxGapMm }
       : activeMesh?.dentalRimCoverage ? undefined : 'unavailable' as const
     : undefined;
-  const activeContacts = useMemo(() => (activeUnit ? unitContacts(activeUnit, activeMesh) : []), [activeUnit, activeMesh]);
-  useEffect(() => send({ type: 'contactsChanged', contacts: activeContacts }), [activeContacts, send]);
-  /** Supports the active object's zones hide, in the build the viewport shows. */
-  const zonesHidden = useMemo(() => (activeUnit ? hiddenByZones(activeUnit, activeMesh) : 0), [activeUnit, activeMesh]);
-  const activeSettings = useMemo(() => resolveSettings(activeUnit?.settings), [activeUnit?.settings]);
-  // The Support shape region and the header count (editing/shapeEdit): the supports selected in Support Edit Mode, else the defaults.
-  const activeIds = useMemo(() => activeContacts.map((contact) => contact.id), [activeContacts]);
-  const selectedIds = useMemo(() => (editing ? liveSelection(selection, activeIds) : []), [activeIds, editing, selection]);
-  const activeOverrides = activeUnit?.contactSettings ?? NO_OVERRIDES;
-  const customisedActive = customisedAmong(activeOverrides, activeIds).length;
-  const customisedSelected = customisedAmong(activeOverrides, selectedIds).length;
-  const shapeRegion = useMemo(() => ({
-    view: shapeView(activeSettings, activeOverrides, selectedIds),
-    rep: selectedIds[0] === undefined ? activeSettings : withShape(activeSettings, activeOverrides[selectedIds[0]]) as LiveSupportSettings,
-  }), [activeOverrides, activeSettings, selectedIds]);
-  /** The objects the header count speaks of: the selected objects, else the active one; in Support Edit Mode the active one. */
-  const bandCounts = useMemo(() => {
-    const scoped = !editing && scene.selectedUnitIds.length > 0 ? scene.units.filter((unit) => scene.selectedUnitIds.includes(unit.id)) : activeUnit ? [activeUnit] : [];
-    return scopeCounts(scoped.map((unit) => ({ ids: unitContacts(unit, built.get(unit.id)?.mesh).map((contact) => contact.id), overrides: unit.contactSettings })));
-  }, [activeUnit, built, editing, scene.selectedUnitIds, scene.units]);
   const targets = useCallback((current: PrintScene) => {
     const selected = current.units.filter((unit) => current.selectedUnitIds.includes(unit.id));
     return selected.length > 0 ? selected : current.units;
@@ -343,6 +330,33 @@ export default function App() {
   }, [dispatch, sceneRef, sessionRef]);
   const dentalPreviewState = useDentalPreview(activeUnit, editMode === 'dental' && session.dentalStage === 'area' && !dentalTuning.busy, analysis, unitName);
   const dentalPreview = dentalPreviewState.kind === 'ready' ? currentDentalPreview(activeUnit, dentalPreviewState.preview) : undefined;
+
+  // The tips that can be picked, deleted and counted: in Step 2 the tip preview's (with the unit's deletions and manual tips applied), else the build's.
+  const inArea = editMode === 'dental' && session.dentalStage === 'area';
+  const areaContacts = useMemo(() => (inArea && activeUnit && dentalPreview ? contactsWith(activeUnit, dentalPreview.localPoints) : NO_CONTACTS), [inArea, activeUnit, dentalPreview]);
+  const builtContacts = useMemo(() => (activeUnit ? unitContacts(activeUnit, activeMesh) : []), [activeUnit, activeMesh]);
+  const activeContacts = inArea ? areaContacts : builtContacts;
+  const areaRef = useRef({ inArea, dentalPreview });
+  areaRef.current = { inArea, dentalPreview };
+  useEffect(() => send({ type: 'contactsChanged', contacts: activeContacts }), [activeContacts, send]);
+  /** Supports the active object's zones hide, in the build the viewport shows. */
+  const zonesHidden = useMemo(() => (activeUnit ? hiddenByZones(activeUnit, activeMesh) : 0), [activeUnit, activeMesh]);
+  const activeSettings = useMemo(() => resolveSettings(activeUnit?.settings), [activeUnit?.settings]);
+  // The Support shape region and the header count (editing/shapeEdit): the supports selected in Support Edit Mode, else the defaults.
+  const activeIds = useMemo(() => activeContacts.map((contact) => contact.id), [activeContacts]);
+  const selectedIds = useMemo(() => (editing ? liveSelection(selection, activeIds) : []), [activeIds, editing, selection]);
+  const activeOverrides = activeUnit?.contactSettings ?? NO_OVERRIDES;
+  const customisedActive = customisedAmong(activeOverrides, activeIds).length;
+  const customisedSelected = customisedAmong(activeOverrides, selectedIds).length;
+  const shapeRegion = useMemo(() => ({
+    view: shapeView(activeSettings, activeOverrides, selectedIds),
+    rep: selectedIds[0] === undefined ? activeSettings : withShape(activeSettings, activeOverrides[selectedIds[0]]) as LiveSupportSettings,
+  }), [activeOverrides, activeSettings, selectedIds]);
+  /** The objects the header count speaks of: the selected objects, else the active one; in Support Edit Mode the active one. */
+  const bandCounts = useMemo(() => {
+    const scoped = !editing && scene.selectedUnitIds.length > 0 ? scene.units.filter((unit) => scene.selectedUnitIds.includes(unit.id)) : activeUnit ? [activeUnit] : [];
+    return scopeCounts(scoped.map((unit) => ({ ids: unitContacts(unit, built.get(unit.id)?.mesh).map((contact) => contact.id), overrides: unit.contactSettings })));
+  }, [activeUnit, built, editing, scene.selectedUnitIds, scene.units]);
 
   const requested = useRef(new Map<string, { unit: PrintUnit; index: number }>());
   const buildTimers = useRef(new Map<string, number>());
@@ -736,10 +750,43 @@ export default function App() {
     setStatus('Object moved with its supports. Regenerate to re-plant supports after a rotation.');
   }, [dispatch]);
 
+  /**
+   * Step 2, Add: a manual tip at the click, snapped to the nearest suggested or shown tip within Click
+   * reach (it takes that tip's point and normal, and that tip is deleted in the same step so the two never
+   * stand together); otherwise at the exact hit. A spot that faces up gets a warning on the status line.
+   */
+  const addTip = useCallback((unit: PrintUnit, point: [number, number, number], normal: [number, number, number]) => {
+    const preview = areaRef.current.dentalPreview;
+    if (!preview || preview.unit !== unit) return setStatus('Finding safe support tips…');
+    const local = inverseTransformPoint(unit.transform, point);
+    const reach = resolveSettings(unit.settings).eraseRadius;
+    const gone = new Set(unit.deleted);
+    let snapped: SupportPoint | undefined;
+    let nearest = Infinity;
+    for (const candidate of [...preview.localPoints, ...preview.localSuggested]) {
+      if (gone.has(candidate.id)) continue;
+      const apart = Math.hypot(candidate.position[0] - local[0], candidate.position[1] - local[1], candidate.position[2] - local[2]);
+      if (apart <= reach && apart < nearest) { snapped = candidate; nearest = apart; }
+    }
+    const contact: SupportPoint = {
+      id: `manual-${crypto.randomUUID()}`,
+      regionId: -1,
+      position: snapped ? [...snapped.position] : local,
+      normal: snapped ? [...snapped.normal] : inverseTransformDirection(unit.transform, normal),
+      source: 'interior',
+    };
+    dispatch({ type: 'batch', commands: [{ type: 'manual/add', unitId: unit.id, point: contact }, ...(snapped ? [{ type: 'deletion/add' as const, unitId: unit.id, pointIds: [snapped.id] }] : [])] });
+    const minFromUp = unit.dental ? profileData(unit.dental.profileId).defaults.tipMinFromUpDeg : 0;
+    // Angle between the hit's normal and the plate's up (+y), under the profile's smallest allowed.
+    const facesUp = Math.acos(Math.max(-1, Math.min(1, normal[1]))) * 180 / Math.PI < minFromUp;
+    setStatus(facesUp ? 'This spot faces up, so a tip here may not hold.' : 'Support added.');
+  }, [dispatch, setStatus]);
+
   const onAddContact = useCallback((unitId: string, point: [number, number, number], normal: [number, number, number]) => {
     if (sessionRef.current.mode === 'zones') return; // supports take no edits while painting zones
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
     if (!unit) return;
+    if (sessionRef.current.mode === 'dental' && sessionRef.current.dentalStage === 'area') return addTip(unit, point, normal);
     const contact: SupportPoint = {
       id: `manual-${crypto.randomUUID()}`,
       regionId: -1,
@@ -753,7 +800,7 @@ export default function App() {
     dispatch({ type: 'batch', commands: [...commands, { type: 'manual/add', unitId, point: contact }] });
     setAdded((current) => ({ unitId, point: contact.position, normal: contact.normal, seq: (current?.seq ?? 0) + 1 }));
     if (!noteAdded(unitId, contact.position)) setStatus(normal[1] > 0 ? 'Support added on a top face: it grows from below.' : 'Support added.');
-  }, [dispatch, noteAdded, setStatus]);
+  }, [addTip, dispatch, noteAdded, setStatus]);
 
   // A removal is exact: the manual support itself, or the automatic contact's id. Click reach only decides which support a click on the model hits.
   const removeOne = useCallback((unit: PrintUnit, contactId: string) => {
@@ -779,6 +826,16 @@ export default function App() {
     if (message) setStatusMessage(message);
   }, []);
 
+  /** Step 2, Select → Click: the tip nearest the click within Click reach is picked (or unpicked). */
+  const onPickTip = useCallback((unitId: string, point: [number, number, number]) => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
+    if (!selectsTips(sessionRef.current) || !unit || unit.id !== sceneRef.current.activeUnitId) return;
+    const local = inverseTransformPoint(unit.transform, point);
+    const hit = contactToRemove(contactsOf(unit), local, resolveSettings(unit.settings).eraseRadius);
+    if (!hit) return onEditMiss();
+    send({ type: 'toggleContact', id: hit.id });
+  }, [contactsOf, onEditMiss, send]);
+
   /** A Drag over press with no support bodies to hit: while the object's supports are being built, say so. */
   const onNoBodies = () => {
     if (activeUnit && building(activeUnit)) setStatusMessage(BUILDING_STATUS);
@@ -791,7 +848,7 @@ export default function App() {
   }, [eraseNear]);
 
   const onToggleContact = useCallback((unitId: string, contactId: string) => {
-    if (!editsSupports(sessionRef.current) || unitId !== sceneRef.current.activeUnitId) return;
+    if (!selectsTips(sessionRef.current) || unitId !== sceneRef.current.activeUnitId) return;
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
     // A support deleted a moment ago can still be under the cursor until the mesh rebuilds.
     if (!unit || !contactsOf(unit).some((contact) => contact.id === contactId)) return;
@@ -801,7 +858,7 @@ export default function App() {
   const onShift = useCallback((held: boolean) => send({ type: 'shift', held }), [send]);
   const onPaint = useCallback((unitId: string, ids: readonly string[], mode: BrushMode) => {
     const unit = sceneRef.current.units.find((candidate) => candidate.id === unitId);
-    if (!editsSupports(sessionRef.current) || !unit || unit.id !== sceneRef.current.activeUnitId) return;
+    if (!selectsTips(sessionRef.current) || !unit || unit.id !== sceneRef.current.activeUnitId) return;
     // A support deleted a moment ago can still be drawn until the mesh rebuilds.
     const alive = new Set(contactsOf(unit).map((contact) => contact.id));
     send({ type: 'paint', ids: ids.filter((id) => alive.has(id)), mode });
@@ -989,6 +1046,10 @@ export default function App() {
       case 'edit.generate': return generate(sceneRef.current.activeUnitId ? [sceneRef.current.activeUnitId] : undefined);
       case 'mode.zones': return send({ type: 'enterZones' });
       case 'mode.exit': return send({ type: 'exit' });
+      case 'dental.tool.paint': return send({ type: 'setTool', tool: 'paint' });
+      case 'dental.tool.erase': return send({ type: 'setTool', tool: 'erase' });
+      case 'dental.tool.add': return send({ type: 'setTool', tool: 'add' });
+      case 'dental.tool.select': return send({ type: 'setTool', tool: 'select' });
       case 'edit.add': return send({ type: 'setAddAction', action: 'add' });
       case 'edit.remove': return send({ type: 'setAddAction', action: 'remove' });
       case 'edit.dragSelect': return send({ type: 'setBrushMode', mode: 'select' });
@@ -1062,9 +1123,6 @@ export default function App() {
   const dentalReview: DentalReview | undefined = activeUnit?.dental?.kind === 'two-contour' && reviewTuning ? {
     settings: activeSettings,
     onSetting: onSettingChange,
-    density: reviewTuning.density,
-    densityBusy: dentalTuning.busy,
-    onDensity: (density) => dentalTuning.change({ ...reviewTuning, density }),
     structure: activeUnit.dental.structure ?? defaultDentalStructure,
     onStructure: onDentalStructureChange,
     clickReach: { value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) },
@@ -1188,7 +1246,9 @@ export default function App() {
         <ObjectViewport
           scene={scene}
           supportMeshes={supportMeshes}
-          {...(dentalPreview ? { dentalTips: { unitId: dentalPreview.unitId, points: dentalPreview.localPoints } } : {})}
+          {...(dentalPreview ? { dentalTips: { unitId: dentalPreview.unitId, points: areaContacts } } : {})}
+          {...(inArea ? { dentalArea: true } : {})}
+          onPickTip={onPickTip}
           gesture={canvasGesture(press)}
           gizmoMode={gizmoMode}
           modelVisible={modelVisible}
@@ -1235,7 +1295,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hidden={zonesHidden} ui={ui} send={send} run={runCommand} />
-          : press.kind === 'dental-type' || press.kind === 'dental-aligner' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} lang={lang} selectedName={activeUnit && !session.dentalFinished.includes(activeUnit.id) ? activeUnit.name : undefined} onFiles={(files) => void importFiles(files)} onUseSelected={useSelectedAligner} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview?.localPoints.length ?? 0} previewStatus={dentalPreviewState.kind} reviewReady={ui.dentalReviewReady ?? false} review={dentalReview} tuning={dentalTuning.tuning} tuningLimits={dentalTuning.limits} tuningBusy={dentalTuning.busy} tuningError={dentalTuning.error} onTuningChange={dentalTuning.change} tilt={dentalFlow.tilt?.unitId === activeUnit?.id ? dentalFlow.tilt : undefined} onTilt={dentalFlow.chooseTilt} send={send} run={runCommand} />
+          : press.kind === 'dental-type' || press.kind === 'dental-aligner' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} lang={lang} selectedName={activeUnit && !session.dentalFinished.includes(activeUnit.id) ? activeUnit.name : undefined} onFiles={(files) => void importFiles(files)} onUseSelected={useSelectedAligner} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview ? areaContacts.length : 0} previewStatus={dentalPreviewState.kind} reviewReady={ui.dentalReviewReady ?? false} review={dentalReview} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} tuning={dentalTuning.tuning} tuningLimits={dentalTuning.limits} tuningBusy={dentalTuning.busy} tuningError={dentalTuning.error} onTuningChange={dentalTuning.change} tilt={dentalFlow.tilt?.unitId === activeUnit?.id ? dentalFlow.tilt : undefined} onTilt={dentalFlow.chooseTilt} send={send} run={runCommand} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>

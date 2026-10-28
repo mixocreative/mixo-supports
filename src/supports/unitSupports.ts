@@ -93,6 +93,11 @@ export function unitContacts(unit: PrintUnit, built: BuiltSupports | undefined):
   return kept;
 }
 
+/** The unit's contacts as they would stand if `points` were its automatic placement (the dental Step 2 tip preview): minus deleted, plus manual. */
+export function contactsWith(unit: PrintUnit, points: readonly SupportPoint[]): readonly SupportContact[] {
+  return jobContacts({ ...contactInputs(unit), points });
+}
+
 const hiddenCache = new WeakMap<PrintUnit, { droppedByZones: readonly string[] | undefined; count: number }>();
 
 /**

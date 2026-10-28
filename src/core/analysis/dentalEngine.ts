@@ -43,6 +43,8 @@ export interface DentalRegionResultLike {
 export interface PolicyHandle {
   candidate_ids(): string[];
   candidate_points(): Float64Array;
+  /** Point then normal per suggested tip Add can snap to, painted or not (two-contour policies). */
+  suggested_points(): Float64Array;
   candidate_faces(): Float64Array;
   alternate_owners(): string[];
   alternate_points(): Float64Array;

@@ -141,7 +141,10 @@ Known parts: candidates over every face that passes the reachable-from-below rul
 - **Goldens**: the dental goldens re-record once; generic goldens unchanged; the commit lists each changed golden and its tip-count change.
 - **Done when**: `dental_reference.rs`: unpainted at defaults → candidates are belt only, 0 crossings, **0 left out**; a second test painting every reachable face → fill count > 0 and left out ≤ 5 % of the fill count, each listed; belt spacing per rim within ±10 % of its `s`; Rust unit tests for N, phase, lowest-vertex tie and skips (a)–(d); walk: paint reveals fill tips within one rebuild, erase hides them.
 
-### B3. Step 2 tools (1.5 units, UI + small engine)
+### B3. Step 2 tools (done)
+Implementer readings: the policy also returns every suggested tip that passes the skips (painted or not) as `suggested_points()` for Add's snapping (engine_version 8); snapping and the up-facing notice apply in Step 2 only; click-select picks the nearest tip within Click reach; right-click and Ctrl+click do nothing in Step 2; the strings use the English text as the key, as the codebase does; walk x1 and x9b lost "Support density" with Step 3's density (D5).
+
+Specification as built:
 Known parts: Step 2 offers Paint, Erase, Add and Select; Step 3 keeps `EditTools` (`EditBar.tsx`, used by `DentalSupports.tsx`) and loses Paint, Erase and density (D5). Delete stays the existing `edit.deleteSelection` command (`editing/commands.ts`, handler `deleteSelected` in `App.tsx`). Specified by Fable after an EGM review (2026-10-28):
 - **Tool model**: `EditTool = 'add' | 'select' | 'paint' | 'erase'`; `DentalKind`, `dentalKind` and `setDentalKind` are removed; `gesture.ts` maps `tool === 'paint'` → stamp `allow: true`, `'erase'` → `allow: false`, radius `dentalRadius`. Select in Step 2 honours `selectStyle` (Click | Drag over) and `brushMode`; `addAction` is forced to `'add'` in Step 2. Entering stage `'area'` sets `tool: 'paint'`; entering `'review'` with paint or erase active sets `'select'`.
 - **Commands** (`commands.ts`): `dental.tool.paint|erase|add|select`, enabled when `mode === 'dental' && dentalStage === 'area' && !heavy`.

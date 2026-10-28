@@ -16,7 +16,11 @@ export interface ObjectViewportProps {
   scene: PrintScene;
   supportMeshes: ReadonlyMap<string, GeneratedSupportMesh>;
   /** Dental Step 2 markers from the placement worker, never a built support mesh. */
-  dentalTips?: { unitId: string; points: readonly SupportPoint[] };
+  dentalTips?: { unitId: string; points: readonly Pick<SupportPoint, 'id' | 'position' | 'normal'>[] };
+  /** Dental Step 2 is on (whichever tool): the area and tips show, no support bodies. */
+  dentalArea?: boolean;
+  /** Step 2, Select → Click: the click hit the model at this plate point; pick the tip nearest it. */
+  onPickTip: (unitId: string, point: Vector) => void;
   /** What a press or drag does now (editing/gesture): the mode, the tool and its brush. */
   gesture: Gesture;
   gizmoMode: GizmoMode;

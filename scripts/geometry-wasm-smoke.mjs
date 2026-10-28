@@ -10,7 +10,7 @@ assert.ok(existsSync(packageFile), 'Node WASM package must be built before its s
 const require = createRequire(import.meta.url);
 const { engine_version: engineVersion, GeometrySession, center_positions_in_place: centerPositionsInPlace,
   weld_positions_in_place: weldPositionsInPlace, zoned_at: zonedAt, decimate_display: decimateDisplay, BinaryStlSession, AsciiStlSession } = require(packageFile);
-assert.equal(engineVersion(), 6, 'Node WASM and host must agree on the geometry schema');
+assert.equal(engineVersion(), 8, 'Node WASM and host must agree on the geometry schema');
 
 // The stamp rule behind no-support zones: [centre xyz, normal xyz, radius, 1 paint / 0 erase], the last covering stamp wins.
 const paint = [0, 0, 0, 0, -1, 0, 2, 1];

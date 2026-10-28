@@ -35,6 +35,8 @@ export interface PlacementResult {
   regions: Region[];
   contactPositions: Float32Array;
   contactNormals: Float32Array;
+  /** Dental two-contour only: every suggested tip, painted or not (where Add may snap), in the placement's frame. Never stored in a unit. */
+  suggested?: SupportPoint[];
 }
 
 /** Reports how far a long job has come: `fraction` in [0, 1] and a short stage name. */
