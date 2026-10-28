@@ -741,7 +741,7 @@ async function walk(url, scratch, dentalFixture) {
       check('u10d Area position moves the area off the edge and the tips with it',
         area2.tuning?.positionMm > area1.tuning?.positionMm && area2.faces !== area1.faces && area2.tips !== area1.tips,
         `position ${area1.tuning?.positionMm} -> ${area2.tuning?.positionMm} mm, faces ${area1.faces} -> ${area2.faces}, tips ${area1.tips} -> ${area2.tips}, ${positionMs} ms`);
-      note(`u10 live Step 2 updates (key press to tip preview, 2 debounces included): width ${widthMs} ms, position ${positionMs} ms`);
+      note(`u10 live Step 2 updates (key press to tip preview, one debounce and one worker job included): width ${widthMs} ms, position ${positionMs} ms`);
       // Paint on the aligner body, well away from both edges (bottom view): new tips there; Erase the same stroke removes them.
       const bodyStrokes = [[[0.28, 0.47], [0.36, 0.52]], [[0.62, 0.62], [0.7, 0.55]], [[0.3, 0.42], [0.38, 0.47]]];
       const paintStroke = async (kind) => {

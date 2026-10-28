@@ -14,6 +14,8 @@ export interface SupportJobPayload {
   /** The request's revision: `generate` echoes it and the host drops any result that is not the newest. */
   revision: number;
   sourceToken: number;
+  /** Names the job's dental policy (same object, same token): the worker keeps the policy it made for it. */
+  policyToken?: number;
   source?: TriangleMesh;
   job: Omit<SupportJob, 'mesh'>;
 }
@@ -28,7 +30,7 @@ export type MeshTask =
   | { kind: 'build'; unit: SupportJobPayload }
   /** STL files of an export: full-resolution supports plus models, encoded in the worker. */
   | { kind: 'export'; units: ExportUnitPayload[]; files: ExportFilePlan[] }
-  /** The unit is gone: drop its model and caches. */
+  /** The unit is gone: drop its model, build session and caches. */
   | { kind: 'forget'; unitId: string };
 
 /** What one unit's export build says about itself; the host decides from it whether the files may be written. */

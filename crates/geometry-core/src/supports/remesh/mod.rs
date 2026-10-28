@@ -15,7 +15,7 @@ mod tables;
 
 use crate::core::vec::V3;
 
-pub use cache::{cache_stats, clear_cache};
+pub use cache::{cache_stats, clear_cache, forget};
 pub use full::FullMesh;
 pub use grid::Remesh;
 pub use query::{NormalKind, fan};

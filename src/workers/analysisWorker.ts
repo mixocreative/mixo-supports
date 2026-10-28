@@ -26,12 +26,24 @@ serveTask<AnalysisTask, AnalysisResult>((task, { progress: post }) => runAfterGe
     progress(1, 'Aligner oriented');
     return { kind: 'dental-orient-result', orientation };
   }
-  if (task.kind === 'dental-region' || task.kind === 'dental-retune') {
+  if (task.kind === 'dental-retune-place') {
+    progress(0, 'Detecting dental contours');
+    const { tuning, ...job } = task.job;
+    const policy = job.dental;
+    if (policy.kind !== 'two-contour') return { kind: 'dental-retuned', region: { kind: 'inconclusive', reason: 'invalid-contour' } };
+    const region = retuneDentalSupportRegion(job.mesh, policy.region, tuning, policy.profileId);
+    if (region.kind !== 'proposal') return { kind: 'dental-retuned', region };
+    // The placement `dental-place` would make for the retuned policy, without a second round trip.
+    const empty = { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() };
+    const placement = filterDentalPlacement({ ...job, dental: { ...policy, tuning, region } }, empty);
+    progress(1, 'Dental region ready');
+    return transferable({ kind: 'dental-retuned', region, placement }, [region.allowedFaces.buffer, region.outerEdges.buffer,
+      region.outerRidgeEdges.buffer, region.outerConnectorEdges.buffer, region.openingEdges.buffer, placement.contactPositions.buffer, placement.contactNormals.buffer]);
+  }
+  if (task.kind === 'dental-region') {
     progress(0, 'Detecting dental contours');
     const { mesh, profile } = task.job;
-    const region = task.kind === 'dental-region'
-      ? proposeDentalSupportRegion(mesh, defaultDentalTuning(profile), profile)
-      : retuneDentalSupportRegion(mesh, task.job.region, task.job.tuning, profile);
+    const region = proposeDentalSupportRegion(mesh, defaultDentalTuning(profile), profile);
     progress(1, 'Dental region ready');
     return region.kind === 'proposal'
       ? transferable({ kind: 'dental-region-result', region }, [region.allowedFaces.buffer, region.outerEdges.buffer,

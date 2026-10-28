@@ -90,7 +90,7 @@ export class SupportMeshClient {
   private running: Pending | undefined;
   /** Stops the running job: aborting a worker's only job replaces the worker (WorkerTask). */
   private runningAbort: AbortController | undefined;
-  private readonly tokens = new WeakMap<TriangleMesh, number>();
+  private readonly tokens = new WeakMap<object, number>();
   /** Source token the persistent worker holds for each unit. */
   private readonly sent = new Map<string, number>();
   private nextToken = 1;
@@ -191,10 +191,15 @@ export class SupportMeshClient {
   }
 
   private payload(unitId: string, job: SupportJob, revision: number): SupportJobPayload {
-    let token = this.tokens.get(job.mesh);
-    if (token === undefined) this.tokens.set(job.mesh, (token = this.nextToken++));
     const { mesh: _mesh, ...rest } = job;
-    return { unitId, revision, sourceToken: token, job: rest };
+    return { unitId, revision, sourceToken: this.token(job.mesh), ...(job.dental ? { policyToken: this.token(job.dental) } : {}), job: rest };
+  }
+
+  /** One token per object (a unit's model, a dental policy): the worker keys what it keeps on them. */
+  private token(of: object): number {
+    let token = this.tokens.get(of);
+    if (token === undefined) this.tokens.set(of, (token = this.nextToken++));
+    return token;
   }
 
   private enqueue(pending: Pending): void {

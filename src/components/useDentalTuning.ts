@@ -1,17 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { DentalPolicy } from '../core/analysis/dentalPolicy';
 import type { DentalTuning } from '../core/analysis/dentalTuning';
+import type { PlacementResult } from '../core/analysis/types';
 import { defaultDentalTuning } from '../dental/tuning';
 import { profileData } from '../dental/alignerProfiles';
 import type { PrintUnit, SceneCommand } from '../state/project';
+import { dentalPlacementJobOf } from '../supports/unitSupports';
 import type { AnalysisClient } from '../workers/analysisClient';
+import { seedDentalPlacement } from './dentalPlacementSeed';
 
 type Draft = { unitId: string; tuning: DentalTuning };
 
-/** Debounced worker retune: the visible controls move immediately; stale proposals never enter the scene. */
+/**
+ * The retuned policy and the placement on it, for the unit as the retune saw it. True: the host
+ * applied both (Step 3 lands the contacts with the policy in one batch); false: the hook stores the
+ * policy and the Step 2 preview shows the placement.
+ */
+export type ApplyRetune = (unit: PrintUnit, policy: DentalPolicy, placement: PlacementResult | undefined) => boolean;
+
+/**
+ * Debounced worker retune: the visible controls move immediately; stale proposals never enter the
+ * scene. One debounce and one worker job retune the strip and place its contacts together.
+ */
 export function useDentalTuning(unit: PrintUnit | undefined, active: boolean, analysis: () => AnalysisClient,
-  dispatch: (command: SceneCommand) => void, unitName: (unitId: string) => string, applied?: (unitId: string) => void) {
-  const appliedRef = useRef(applied);
-  appliedRef.current = applied;
+  dispatch: (command: SceneCommand) => void, unitName: (unitId: string) => string, apply?: ApplyRetune) {
+  const applyRef = useRef(apply);
+  applyRef.current = apply;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState(false);
   const policy = unit?.dental;
@@ -34,16 +48,17 @@ export function useDentalTuning(unit: PrintUnit | undefined, active: boolean, an
     let live = true;
     let client: AnalysisClient | undefined;
     const key = `dental-retune:${unit.id}`;
+    const job = dentalPlacementJobOf(unit)!;
     const timer = window.setTimeout(() => {
       client = analysis();
-      void client.retuneDentalRegion(key, unit.source, policy.region, draft.tuning, policy.profileId,
-        { key: 'Updating dental support area on {name}', vars: { name: unitName(unit.id) } }).then((region) => {
+      void client.retunePlaceDental(key, job, draft.tuning,
+        { key: 'Updating dental support area on {name}', vars: { name: unitName(unit.id) } }).then((retuned) => {
         if (!live) return;
-        if (region?.kind !== 'proposal') { setDraft(null); setError(true); return; }
-        dispatch({ type: 'dental/set', unitId: unit.id,
-          policy: { ...policy, tuning: draft.tuning, region } });
+        if (retuned?.region.kind !== 'proposal') { setDraft(null); setError(true); return; }
+        const next: DentalPolicy = { ...policy, tuning: draft.tuning, region: retuned.region };
+        if (retuned.placement) seedDentalPlacement(unit, next, job.orientation.rotation, retuned.placement);
+        if (!applyRef.current?.(unit, next, retuned.placement)) dispatch({ type: 'dental/set', unitId: unit.id, policy: next });
         setDraft(null);
-        appliedRef.current?.(unit.id);
       }, () => { if (live) { setDraft(null); setError(true); } });
     }, 180);
     return () => { live = false; window.clearTimeout(timer); client?.cancel(key); };

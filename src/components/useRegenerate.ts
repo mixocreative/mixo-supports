@@ -6,6 +6,8 @@ import type { EditMode, StatusMessage } from '../editing/types';
 import type { UndoAction } from '../editing/toast';
 import type { Message } from '../i18n';
 import { memoryInfo } from '../state/runtime';
+import type { DentalPolicy } from '../core/analysis/dentalPolicy';
+import type { PlacementResult } from '../core/analysis/types';
 import type { PrintScene, PrintUnit, SceneCommand } from '../state/project';
 import { landPlacements, type FinishedPlacement } from '../supports/landing';
 import { dentalPlacementJobOf, orientationOf, placementJobOf, resolveSettings } from '../supports/unitSupports';
@@ -110,6 +112,23 @@ export function useRegenerate(host: {
     return true;
   }, [dispatch, offerUndo, sceneRef, setStatusMessage]);
 
+  /**
+   * A Step 3 retune (density): the new policy and the placement the same worker job made on it land
+   * in one batch, so the supports are rebuilt once. False when the unit was rotated or removed since.
+   */
+  const landRetuned = useCallback((asked: PrintUnit, policy: DentalPolicy, result: PlacementResult): boolean => {
+    const unit = sceneRef.current.units.find((candidate) => candidate.id === asked.id);
+    if (!unit) return false;
+    const finished: FinishedPlacement = { unitId: unit.id, orientation: orientationOf(asked), settings: resolveSettings(unit.settings), result };
+    const { commands, landed, again } = landPlacements(sceneRef.current.units, [finished]);
+    if (again.length > 0 || landed.length === 0) return false;
+    dispatch({ type: 'batch', commands: [{ type: 'dental/set', unitId: unit.id, policy }, ...commands] });
+    const message = landedStatus(landed);
+    setStatusMessage(message);
+    if (landed.every((entry) => entry.report)) offerUndo({ kind: 'regenerate', message });
+    return true;
+  }, [dispatch, offerUndo, sceneRef, setStatusMessage]);
+
   const generateRef = useRef(generate);
   generateRef.current = generate;
   /** A placement change is waiting out its burst: the pending note holds back, the regeneration is on its way. */
@@ -126,5 +145,5 @@ export function useRegenerate(host: {
   }, [mode]);
   useEffect(() => () => queue.current!.cancel(), []);
 
-  return { generate, generateDental, generating, regenQueued: queued, scheduleRegenerate, forgetPlacing };
+  return { generate, generateDental, landRetuned, generating, regenQueued: queued, scheduleRegenerate, forgetPlacing };
 }

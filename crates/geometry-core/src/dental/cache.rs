@@ -4,8 +4,8 @@
 //! serves the region proposal, the policy's reproduction check and every rebuild of the same mesh.
 //!
 //! The key is the exact bits of the mesh (see `core::digest`) and the profile id; a changed key
-//! recomputes, so a stale result is never returned. A few results are kept; `clear_cache` (called on
-//! `release_mesh`) frees them. Failures (`Inconclusive`) are cached too: they are as deterministic.
+//! recomputes, so a stale result is never returned. A few results are kept; `forget` (called when the
+//! mesh is released) frees one mesh's, `clear_cache` all of them. Failures (`Inconclusive`) are cached too: they are as deterministic.
 
 use super::field::{Prepared, Reach};
 use super::mesh::Mesh;
@@ -62,6 +62,22 @@ pub fn clear_cache() {
     let all = KEPT_RESULTS.with(|kept| std::mem::take(&mut *kept.borrow_mut()));
     drop(all);
     let field = PREPARED.with(|kept| kept.borrow_mut().take());
+    drop(field);
+}
+
+/// Forgets the kept detections and distance field of the mesh with this digest (it was released).
+pub fn forget(digest: [u64; 2]) {
+    let gone = KEPT_RESULTS.with(|kept| {
+        let mut kept = kept.borrow_mut();
+        let (gone, stay): (Vec<_>, Vec<_>) = std::mem::take(&mut *kept).into_iter().partition(|(k, _)| k.digest == digest);
+        *kept = stay;
+        gone
+    });
+    drop(gone);
+    let field = PREPARED.with(|kept| {
+        let mut kept = kept.borrow_mut();
+        if kept.as_ref().is_some_and(|(k, _)| k.mesh.digest == digest) { kept.take() } else { None }
+    });
     drop(field);
 }
 

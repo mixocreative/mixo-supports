@@ -75,11 +75,14 @@ export class AnalysisClient {
       result?.kind === 'dental-region-result' ? result.region : undefined);
   }
 
-  retuneDentalRegion(key: string, mesh: TriangleMesh,
-    region: Extract<DentalRegionProposal, { kind: 'proposal' }>, tuning: DentalTuning, profile: string,
-    label: JobLabel): Promise<DentalRegionProposal | undefined> {
-    return this.submit(key, { kind: 'dental-retune', job: { mesh, region, tuning, profile } }, label).then((result) =>
-      result?.kind === 'dental-region-result' ? result.region : undefined);
+  /**
+   * Step 2/3 tuning: the unit's two-contour strip retuned to `tuning` and its contacts placed on it
+   * (as `dentalPlace` would for the retuned policy), in one job.
+   */
+  retunePlaceDental(key: string, job: DentalPlacementJob, tuning: DentalTuning,
+    label: JobLabel): Promise<{ region: DentalRegionProposal; placement?: PlacementResult } | undefined> {
+    return this.submit(key, { kind: 'dental-retune-place', job: { ...job, tuning } }, label).then((result) =>
+      result?.kind === 'dental-retuned' ? { region: result.region, ...(result.placement ? { placement: result.placement } : {}) } : undefined);
   }
 
   check(key: string, job: CheckJob, label: JobLabel): Promise<SupportProblem[] | undefined> {
@@ -134,7 +137,7 @@ export class AnalysisClient {
       signal: job.controller.signal,
       label: job.label,
       context: job.task.kind,
-      ...(this.gate && (job.task.kind === 'place' || job.task.kind === 'dental-place' || job.task.kind === 'dental-region' || job.task.kind === 'dental-retune') ? { admit: (signal: AbortSignal) => this.gate!.acquire(mesh.indices.length / 3, signal) } : {}),
+      ...(this.gate && (job.task.kind === 'place' || job.task.kind === 'dental-place' || job.task.kind === 'dental-region' || job.task.kind === 'dental-retune-place') ? { admit: (signal: AbortSignal) => this.gate!.acquire(mesh.indices.length / 3, signal) } : {}),
       onProgress: (fields) => {
         if (typeof fields.fraction === 'number' && typeof fields.stage === 'string') this.onProgress(job.key, fields.fraction, fields.stage);
       },

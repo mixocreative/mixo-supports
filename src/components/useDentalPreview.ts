@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import type { SupportPoint } from '../core/analysis/types';
+import type { PlacementResult, SupportPoint } from '../core/analysis/types';
 import type { PrintUnit } from '../state/project';
 import { dentalPlacementJobOf, orientationOf, placedPoints, resolveSettings } from '../supports/unitSupports';
 import type { FinishedPlacement } from '../supports/landing';
 import type { AnalysisClient } from '../workers/analysisClient';
+import { seededDentalPlacement } from './dentalPlacementSeed';
 
 /** Placement plus the exact unit/policy version it reviewed; Step 3 must consume this result. */
 export interface DentalTipPreview extends FinishedPlacement {
@@ -21,13 +22,23 @@ export type DentalPreviewState =
   | { kind: 'ready'; unit: PrintUnit; preview: DentalTipPreview }
   | { kind: 'error'; unit: PrintUnit };
 
-/** Debounced placement preview: worker result, never a support mesh or raft. */
+/** Debounced placement preview: worker result (or the one a retune made with the policy), never a support mesh or raft. */
 export function useDentalPreview(unit: PrintUnit | undefined, active: boolean, analysis: () => AnalysisClient, unitName: (unitId: string) => string): DentalPreviewState {
   const [stored, setStored] = useState<DentalPreviewState>({ kind: 'idle' });
   useEffect(() => {
     if (!active || !unit?.dental) { setStored({ kind: 'idle' }); return; }
     const job = dentalPlacementJobOf(unit);
     if (!job) { setStored({ kind: 'error', unit }); return; }
+    const ready = (result: PlacementResult) => {
+      const orientation = orientationOf(unit);
+      setStored({ kind: 'ready', unit, preview: {
+        unit, unitId: unit.id, orientation, settings: resolveSettings(unit.settings), result,
+        localPoints: placedPoints(orientation, result),
+      } });
+    };
+    // A retune placed the contacts for this very policy already: shown at once, no second job.
+    const seeded = seededDentalPlacement(unit);
+    if (seeded) { ready(seeded); return; }
     let live = true;
     let client: AnalysisClient | undefined;
     const key = `dental-preview:${unit.id}`;
@@ -37,11 +48,7 @@ export function useDentalPreview(unit: PrintUnit | undefined, active: boolean, a
       void client.dentalPlace(key, job, { key: 'Placing dental contacts on {name}', vars: { name: unitName(unit.id) } }).then((result) => {
         if (!live) return;
         if (!result) { setStored({ kind: 'error', unit }); return; }
-        const orientation = orientationOf(unit);
-        setStored({ kind: 'ready', unit, preview: {
-          unit, unitId: unit.id, orientation, settings: resolveSettings(unit.settings), result,
-          localPoints: placedPoints(orientation, result),
-        } });
+        ready(result);
       }, () => { if (live) setStored({ kind: 'error', unit }); });
     }, 180);
     return () => { live = false; window.clearTimeout(timer); client?.cancel(key); };

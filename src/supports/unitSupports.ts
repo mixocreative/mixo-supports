@@ -200,6 +200,27 @@ export function unitLowestY(unit: PrintUnit): number {
 }
 
 /**
+ * A lift height change of a placed unit, as commands: placement analyses the turned, unmoved model,
+ * so the lift moves no contact. Only the height changes (the lowest point `settings.liftHeight`
+ * above the plate, like `placementCommands`) and the supports' frame with it, in the batch that sets
+ * the settings, so the supports are rebuilt once and no placement job runs. Undefined when the unit
+ * has no placed supports, or another placement setting is pending (it is placed again instead).
+ */
+export function liftCommands(unit: PrintUnit, settings: LiveSupportSettings): SceneCommand[] | undefined {
+  if (!unit.supports || !unit.placement) return undefined;
+  const placed = unit.supports.data.placed as JSONObject | undefined;
+  if (placed && PLACEMENT_KEYS.some((key) => key !== 'liftHeight' && placed[key] !== settings[key])) return undefined;
+  const [x, y, z] = unit.transform.position;
+  const transform: ModelTransform = { position: [x, y + settings.liftHeight - unitLowestY(unit), z], rotation: [...unit.transform.rotation] };
+  return [
+    { type: 'transform/set', unitId: unit.id, transform },
+    { type: 'supports/set', unitId: unit.id, placement: unit.placement, supports: { ...unit.supports, data: {
+      ...unit.supports.data, transform: { position: [...transform.position], rotation: [...transform.rotation] }, ...(placed ? { placed: { ...placed, liftHeight: settings.liftHeight } } : {}),
+    } } },
+  ];
+}
+
+/**
  * A finished placement's contacts as the unit stores them. They come back in the turned frame;
  * unit-local space is that frame turned back, and their IDs are re-derived from the unit-local
  * position, so an ID and the stored position share one frame.
