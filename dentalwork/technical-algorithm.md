@@ -1,6 +1,6 @@
 # Dental support algorithm (shipped state)
 
-This document is for engineers. It describes what the code does at the end of unit U10 of [the ship plan](../docs/SHIP-PLAN.md). For the layer rules see [support-module-boundaries.md](support-module-boundaries.md). For the plain explanation see [plain-language.md](plain-language.md).
+This document is for engineers. It describes what the code does at the commit that last changed this file (the ship plan's units and the review fixes after them; see [the ship plan](../docs/SHIP-PLAN.md)). For the layer rules see [support-module-boundaries.md](support-module-boundaries.md). For the plain explanation see [plain-language.md](plain-language.md).
 
 **Not clinically validated.** Every threshold below was calibrated on one owner-approved scan, `docs/dental-reference/reference-aligner.stl`. See [What is validated and what is not](#what-is-validated-and-what-is-not).
 
@@ -10,111 +10,118 @@ All geometry is in Rust: `crates/geometry-core` (pure library, no browser depend
 
 ```
 crates/geometry-core/src/
-  core/      mesh, STL import, weld, decimate, matrix, transform, normals, spatial index, pick, brush, overlay
+  core/      mesh, stl (import), weld, decimate, digest, matrix, transform, normals, spatial index, pick,
+             brush, overlay, nearest (nearest point), vec (the one vector module), jsnum (JS-exact hypot, rounding)
   supports/  everything that is not specific to a mode:
-               parts/ (tip, neck, pillar, foot, tree, brace, roof, cage, raft, label, ...)
-               remesh/ (OpenVDB VolumeToMesh port), build, zones, edits (manual-edit bookkeeping)
-               safety/ (collision index, exact triangle tests, conflicts, reach, clearance, births, paths, rim, preflight)
+               parts/ (tip, neck, column, pillar, foot, tree, autotree, brace, roof, cage, raft, label, font, landing, ...)
+               remesh/ (OpenVDB VolumeToMesh port), build, omit (which contacts a zone, the tree layout or the
+               policy leave out), zones, edits (manual-edit bookkeeping), contact_id, line_target, flat,
+               overhang (overhang classification), error, policy, settings/
+               safety/ (index, tri, conflicts, reach, clearance, births, paths, rings)
                generate/ (permit, repair, enrich, islands), check/ (overhang-coverage warning)
-               policy.rs, settings.rs
-  generic/   generic placement and the generic policy
-  dental/    orientation, rim, pose, topology, contour, opening, region, bands, sampling, footprint,
-             incidence, policy, legacy fill, review layers, profiles/
-crates/geometry-wasm/src/  dental.rs, generic.rs, safety.rs, lib.rs
+  generic/   generic placement (placement/) and the generic policy
+  dental/    orientation (orient, orientation), rim, pose, topology, contour, opening, region, bands, sampling,
+             footprint, incidence, policy, legacy fill, review layers, cache (contour detection cache), mesh, profiles/
+crates/geometry-wasm/src/  lib.rs, import.rs, transform.rs, spatial.rs, overlay_calls.rs, dental.rs, dental_area.rs,
+                           dental_review.rs, generic.rs, safety.rs; test-abi only: dental_test_abi.rs, generic_test_abi.rs
 ```
 
-Layers are one-way: `core` is used by `supports`, which is used by the policies `generic` and `dental`. No collision, landing, repair or mesh-building code lives in a policy. Rust files are kept under about 400 lines except test files.
+Layers are one-way: `core` is used by `supports`, which is used by the policies `generic` and `dental`. No collision, landing, repair or mesh-building code lives in a policy. Every Rust file is under 400 lines (the largest, `crates/geometry-wasm/src/safety.rs`, has 378 including its tests); this is a ship-plan rule checked with `wc`, not enforced by a test. The layer rule is enforced by `crates/geometry-core/tests/layers.rs`.
 
 ## The contract between a policy and the engine
 
-A policy produces a `PolicyResult` (`supports/policy.rs`). It is data. There are no callbacks. Both policies are made in Rust inside the session that runs `generate`: `GeometrySession.dental_policy(handle, profile, kind, tuning, stamps, saved region, structure, frame)` (`dental/policy.rs`) and `GeometrySession.generic_policy(handle, settings, edits, zones)` (`generic/policy.rs`) return a `PolicyHandle` that the host passes straight to `generate`. The host only packs the saved policy as numbers; it never assembles or edits a policy.
+A policy produces a `PolicyResult` (`supports/policy.rs`). It is data. There are no callbacks. Both policies are made in Rust inside the session that runs `generate`: `GeometrySession.dental_policy(model, profile, kind, tuning, stamps, saved allowed faces / contact faces / outer and opening edges, structure switches, frame)` (`dental/policy.rs`) and `GeometrySession.generic_policy(model, settings, automatic and manual contacts, deleted IDs, zones)` (`generic/policy.rs`) return a `PolicyHandle` that the host passes straight to `generate`. The aligner profile is a required argument of every dental call. The host only packs the saved policy as numbers; it never assembles or edits a policy.
 
 | Field | Meaning |
 |---|---|
 | `permitted_faces` | Bitset over source faces. Dental two-contour: the recomputed contact strip (empty when the saved area does not reproduce). Dental painted from scratch: the painted faces. Generic: every face. |
 | `candidates` | Primary contacts: id, source face, point, normal, origin (`Auto` or `Manual`). Dental IDs are `dental-outer-N` / `dental-opening-N` (region order, kept when paint erases one); a candidate passes the face gate (`area_allows`: on the strip, last paint stamp reaching it decides) in Rust. |
-| `alternates` | Ordered repair options per contact. Dental: the phase-zero samples of the same strip (`dental-outer-alt-N`), each offered to the one primary that follows it on its rim within one spacing, so two contacts can never move to one spot. They are never extra primaries. Generic: none. |
+| `alternates` | Ordered repair options per contact. Dental: gap alternates. The same contour is sampled again at phase zero (samples at `k * spacing` instead of `spacing/2 + k * spacing`, so they fall in the gaps between the primaries), the samples pass the same face gate (`dental-outer-alt-N`, `dental-opening-alt-N`), and each is offered to the one primary that follows it on its rim within one spacing, so two contacts can never move to one spot. They are never extra primaries. Generic: none. |
 | `structures` | Allowed pillar, tree, brace, roof, cage, raft flags. Dental: roof and cage off. The flags are an upper bound on the user's settings (`limit_structures`). |
 | `structure_choice` | The policy's own Tree/Brace choice, applied to the settings before the bound (`permit::chosen_settings`). Dental: the per-aligner Step 3 switches (default both on, whatever the generic settings say). Generic: none, the settings decide. |
-| `repair_budget` | Maximum rebuilds. 0 means report only. Dental default is 8 (profile data). |
-| `landing_rule` | `Unrestricted`, or `ApprovedFaces { stamps }`: a column or tree may land on the model only on an upward-facing source face inside `permitted_faces`; a later paint stamp at the landing point can erase or restore it. Dental uses `ApprovedFaces`. |
+| `repair_budget` | Maximum rebuilds, counted exactly: every rebuild spends one trial, and the alternate loop keeps three trials for the fail-safe steps. 0 means report only (the generic policy). Dental default is 8 (profile `repairBudget`). |
+| `landing_rule` | `Unrestricted`, or `ApprovedFaces { stamps }`. It is evaluated as a closure over each landing (`permit::landing_allowed`), not as a per-face mask: the landing must name a source face; that face must be upward-facing (normal y above 1e-6); it must be in `permitted_faces`; and the last paint stamp that reaches the landing's source point on that face's side decides (`AreaStamp::resolve`; no stamp reaching it means allowed). So a stamp can erase a permitted face or restore an erased one, but never permit a face outside `permitted_faces`. An automatic support whose landing fails is left out. Dental uses `ApprovedFaces`. |
 | `automatic` | `AsGiven` (generic: the candidates are the contacts; dental painted from scratch: the fill contacts of the painted area) or `MatchCandidates { tol_mm, min_dot }` (dental two-contour: an automatic contact is built only if it reproduces a candidate within the profile's `matchToleranceMm` (0.03) and normal dot above `matchMinDot` (0.95), and it then takes that candidate's source face). |
-| `rings` | Closed contours with a nominal contact spacing and the arclength of each candidate and alternate on them (dental: outer rim and opening rim). Used for the rim-gap report. |
-| `islands_outside_permitted` | Whether the policy has an outside: an unresolved island whose lowest point touches no permitted face is then `outside-policy`. Dental: yes. Generic: no. |
+| `rings` | Closed contours with a nominal contact spacing and the arclength of each candidate and alternate on them (dental: outer rim and opening rim, spacing from the tuning). Used for the rim-gap report. |
+| `islands_outside_permitted` | Whether the policy has an outside: an unresolved island whose lowest plateau touches no permitted face is then `outside-policy`. Dental: yes (all three area kinds). Generic: no. |
 
-A new mode is a new producer of this struct. Nothing else changes.
+A dental policy whose saved area cannot be reproduced from the mesh (`reproduced` false) has no candidates and no permitted face, so no automatic support is built. A new mode is a new producer of this struct. Nothing else changes.
 
 ## One `generate` call
 
-`GeometrySession.generate` (`crates/geometry-wasm/src/safety.rs`, core `supports/generate/mod.rs`) takes the plate-space model handle (`load_placed` from the unit's own handle), the contacts, the settings, zones, the `PolicyHandle`, a `revision` (u32) and a timeout in milliseconds. It runs the whole pipeline and returns the support mesh arrays with component tags, the verdict, the dropped lists, the island verdict, the ring coverage, the number of rebuilds and the echoed revision. TypeScript never runs a retry loop. `src/supports/jobRunner.ts` is about 70 lines: it moves contacts and zones to plate space, names the policy maker (dental or generic) and makes the one call.
+`GeometrySession.generate` (`crates/geometry-wasm/src/safety.rs`, core `supports/generate/mod.rs`) takes the plate-space model handle (`load_placed` from the unit's own handle), the contacts, the settings, zones, the `PolicyHandle`, a `revision` (u32) and a timeout in milliseconds. It runs the whole pipeline and returns the support mesh arrays with component tags, the verdict (with its issues), the dropped lists (`take_dropped`, and `take_dropped_by_zones` for the subset a no-support zone caused), the Tree/Brace fallback, the island verdict, the ring coverage, the number of rebuilds and the echoed revision. TypeScript never runs a retry loop. `src/supports/jobRunner.ts` is small: it moves contacts and zones to plate space, names the policy maker (dental or generic) and makes the one call (`generateSupports.ts`).
 
 Steps inside `generate`:
 
 1. **Limit structures.** The policy's `structures` bound the settings.
-2. **Permit.** (`generate/permit.rs`) Apply `automatic` (match to candidates). Apply the landing rule as a per-face mask handed to the builder. Contacts the policy never permitted are reported as dropped.
-3. **Build and repair.** (`generate/repair.rs`) Build the supports, run the exact check on the finished mesh, and repair inside `repair_budget`. Every rebuild counts. Order:
+2. **Permit.** (`generate/permit.rs`) Apply `automatic` (match to candidates; a manual contact always passes). Evaluate the landing rule as a predicate over each landing, handed to the builder (see `landing_rule`). Contacts the policy never permitted are reported as dropped, after the build's own.
+3. **Build and repair.** (`generate/repair.rs`) Build the supports, run the exact check on the finished mesh, and repair inside `repair_budget`. Every rebuild spends one trial; a step that cannot spend one is not taken and the crossing is reported. Repair runs only when the budget is above 0 and a model is present, and no step starts once the timeout has expired. Order:
    - a crossing Tree switches Tree off; a crossing Brace switches Brace off (reported as `fallback`);
-   - a crossing automatic pillar moves to the next entry of `alternates` if the policy has one, and is otherwise left out;
-   - the last bounded step builds the manual contacts alone (fail-safe).
+   - a crossing automatic pillar moves to the next entry of its `alternates`, one rebuild per round, while more than three trials remain; when none is left it is left out;
+   - if the rebuild after the omissions exposes another crossing pillar, all remaining automatic contacts are left out;
+   - if a Tree or Brace still crosses after that, the last bounded step builds the manual contacts alone with both structures off (fail-safe).
    Manual contacts are never moved or deleted. A manual crossing is reported.
 4. **Verdict.** (`safety/clearance.rs::review_body_clearance`) See the next section.
 5. **Islands.** (`generate/islands.rs`) See [Islands](#islands).
-6. **Rings.** (`safety/rim.rs`) For each ring, the longest circular gap between retained built automatic contacts. A rim with no retained contact reports its full perimeter. The report trigger is twice the nominal spacing (6 mm outer, 4 mm opening at default density). It is a request to review, not a clinical limit.
+6. **Rings.** (`safety/rings.rs`, `ring_coverage`) For each ring, the longest circular gap between retained built automatic contacts. A rim with no retained contact reports its full perimeter. The report trigger is twice the nominal spacing (6 mm outer, 4 mm opening at default density). It is a request to review, not a clinical limit. A ring that cannot be measured (a non-positive perimeter or spacing, an arclength outside the perimeter) neither reports "fully open" nor passes: it is left out of the list and a verdict that would have been `clear` becomes `inconclusive` with the ring's reason.
 
-A timeout is a host option (`GENERATE_TIMEOUT_MS`, 120 s in `src/supports/jobRunner.ts`). The engine polls it between steps. When it expires the remaining work is skipped and the verdict is `inconclusive`.
+A timeout is a host option (`GENERATE_TIMEOUT_MS`, 120 s in `src/supports/jobRunner.ts`). The engine polls it between steps. When it expires the remaining work is skipped and the verdict is always `inconclusive` (reason `timeout`), whatever was found before: never `clear`, never `blocked`. An island verdict that runs out of time is `inconclusive` too.
 
 ## Safety verdict
 
 `Verdict { status, reason, issues }` with `status` one of:
 - `clear`: no non-exempt crossing was found and every contact end had face identity.
-- `blocked`: at least one crossing. `issues` lists the crossed part, the contact and the model face.
-- `inconclusive`: a contact end has no face identity, the model cannot be judged (for example invalid triangles), or the timeout expired. **A timeout is never `clear`.**
+- `blocked`: at least one crossing that can be judged. `issues` lists, for each hit, the crossed part, the owning contact (absent for a Tree trunk or a Brace, which serve several contacts and record none), the origin (`auto`, `manual` or `structural`) and the model face.
+- `inconclusive`: a contact end has no face identity (an issue with `blocked` false and no judged crossing), the model or the support mesh cannot be judged (`invalid-geometry`), a ring cannot be measured, or the timeout expired. **A timeout is never `clear` and never `blocked`.**
 
 With no model to check against, the verdict is `clear` because nothing can cross.
 
-The check (`supports/safety/`): one `CollisionIndex` per call (X/Z grid over model triangles); the exact triangle intersection predicate for each selected support triangle against nearby model triangles; `conflicts` returns the first non-exempt hit per component and keeps searching after an approved hit, so a second wall is not hidden. `reach` decides whether a hit is intentional: a built component may touch the model only where one of its recorded contact intents proves it, near the exact tagged source face (or a face sharing exactly one indexed edge with it and matching normals), within a bounded distance and penetration depth. No face identity means no exemption. Trunks and braces have no exemption. The numeric limits are in `supports/safety/clearance.rs` and are the values ported from the earlier TypeScript; they are engineering bounds, not clinical thresholds.
+The check (`supports/safety/`): one `CollisionIndex` per call (X/Z grid over model triangles); the exact triangle intersection predicate for each selected support triangle against nearby model triangles; `conflicts` returns the first non-exempt hit per component and keeps searching after an approved hit, so a second wall is not hidden. `reach` decides whether a hit is intentional: a built component may touch the model only where one of its recorded contact intents proves it, near the exact tagged source face (or a face sharing exactly one indexed edge with it and matching normals), within a bounded distance and penetration depth. No face identity means no exemption. Trunks and braces have no exemption. The numeric limits are `reach_limits` in `supports/safety/clearance.rs`: radius = neck length + pillar diameter / 2 + contact radius, penetration = tip depth + contact radius + 0.05 mm, face-normal dot at least 0.8. They are the values ported from the earlier TypeScript; they are engineering bounds, not clinical thresholds.
 
-Policy differences are data only. Both policies use the same check. The repair order (Tree or Brace off, alternate, leave out, manual-only) is the engine's and is the same for both, but it only runs inside `repair_budget`: the generic policy sets 0, so a generic build reports crossings (verdict `blocked`) and is not repaired. (`repair.rs`: repair is active only when the budget is above 0 and a model is present.)
+Policy differences are data only. Both policies use the same check. The repair order (Tree or Brace off, alternate, leave out, manual-only) is the engine's and is the same for both, but it only runs inside `repair_budget`: the generic policy sets 0, so a generic build reports crossings (verdict `blocked`) and is not repaired. A crossing also withdraws island credit: one that names its contact un-verifies only that contact's support, while one with no owner (a Tree trunk or a Brace) is `unattributed_crossing` on the verdict and conservatively withdraws every contact's credit (`withdrawn_contacts` in `generate/mod.rs`). `unattributed_crossing` stays in Rust; it is not part of the browser ABI.
 
-### Route preflight: ported, not wired
+### Route preflight: removed
 
-`safety/preflight.rs` holds the route preflight (`preflight_support_path`), the column path screen and the candidate chooser, ported with their tests. They are not called by `generate`. The ship plan's rule was to keep them only if they gave zero false-safe results and a measured benefit on a collision-heavy fixture. The earlier measurement showed no measurable benefit (one warm comparison was 5.35 s against 5.42 s), so the final exact check is the only gate. They remain in the crate as tested building blocks. If you wire them, re-measure.
+An earlier port of the route preflight, the column path screen and the candidate chooser (`safety/preflight.rs`) was never called by `generate`: it gave no false-safe evidence and no measured benefit (one warm comparison was 5.35 s against 5.42 s). It was deleted with its tests, so the final exact check on the finished mesh is the only gate. A fast path would need a new measurement and a new implementation.
 
 ## Islands
 
 `island_verdict` (`generate/islands.rs`) uses the topology-birth sweep (`safety/births.rs`): sort mesh vertices by height, union same-height plateaus, and record each region with no lower neighbor as a birth. About O(V log V + E alpha(V)); it does not slice print layers. Degenerate triangles are skipped. Edges shared by more than two triangles make the sweep refuse.
 
-Each birth is linked to what the nearest built support rests on: the plate, or the lowest island of the surface it lands on (`safety/paths.rs`, `resolve_birth_paths`). A built contact within one cover radius of an island's lowest point and at or below it links the island. Proximity alone is never a path: a link counts only when it is verified, and a contact that the body-clearance check marked blocked does not verify.
+Not every birth is an island. A birth is listed only if at least one vertex of its lowest plateau has an area-weighted vertex normal that is not clearly upward; a plateau whose vertices all have `ny / length >= 0.3` is a pit in an upward face with material below it, and is not an island.
+
+Each birth is linked to what a nearby built support rests on: the plate, or the lowest island of the surface it lands on (`safety/paths.rs`, `resolve_birth_paths`). A built contact links a birth when all of these hold (`generate/islands.rs`): its support has a ground (the plate, or a model face whose component joined a birth); the contact point is not higher than the birth height plus `cover_mm`; and the contact point is within `cover_mm` of a face around the birth's lowest plateau (closest point on the triangle). `cover_mm` is the scatter spacing setting (`scatter_spacing`) of the settings actually built. Proximity alone is never a path: a link counts only when it is verified, and the contact of a blocked crossing does not verify (see `unattributed_crossing` above for the Tree trunk and Brace case).
 
 Island status:
 - `resolved`: a chain of verified links reaches the plate. If the chain depends on a manual support, the island carries `manual_only`.
 - `unresolved`: no such chain.
-- `inconclusive` (whole verdict): the mesh could not be analysed. `scripts/fixtures/knot.stl` gives `inconclusive: non-manifold edge` because 4,011 edges are shared by four triangles (the tube touches itself). That is a property of the file.
+- `inconclusive` (whole verdict): the mesh could not be analysed (a non-manifold edge, an invalid support path) or the timeout expired. No island is called resolved then. `scripts/fixtures/knot.stl` (89,472 triangles) gives `inconclusive: non-manifold edge` (`src/supports/knotIslands.test.ts`, and the "Could not judge islands" row in the locale walk): the welded mesh has 282 degenerate triangles, which the sweep skips, and 4,011 edges shared by four triangles (the tube touches itself). That is a property of the file; the generic Generate itself works. The 1,920-triangle `knot` golden fixture in `src/goldens` is a different, manifold mesh: its islands are `ok`.
 
 ### Dental islands outside the policy area
 
-The reference aligner at default settings has 54 islands: 6 resolved, 5 `unresolved` on permitted faces, and 43 `OutsidePolicy`. An unresolved island is `OutsidePolicy` when none of the faces around its lowest point is permitted; this applies only when the policy has an approved-area landing rule, so the generic policy never produces it (`supports/generate/islands.rs`, wasm status code 3). The host groups all of them into **one informational problem-list entry** (kind `outside`, Show only, no Fix, not counted as an unsupported spot): "43 low points lie outside the dental support area and are left to the aligner shape." Islands on permitted faces stay `unresolved` entries with Show and Fix. The status bar on the reference aligner reads 6 spots (5 islands + 1 uncovered overhang).
+The reference aligner at default settings has 54 islands (measured at this revision with the `scripts/perf-baseline.mjs` setup, 117 contacts, 14 dropped): 6 `Resolved`, 5 `Unresolved` on permitted faces, and 43 `OutsidePolicy`. An unresolved island is `OutsidePolicy` when none of the faces around its lowest plateau is in `permitted_faces`; this applies only when the policy says it has an outside (`islands_outside_permitted`, dental yes), so the generic policy never produces it (`supports/generate/islands.rs`, wasm status code 3). The host groups all of them into **one informational problem-list entry** (kind `outside`, Show only, no Fix, not counted as an unsupported spot): "43 low points lie outside the dental support area and are left to the aligner shape." Islands on permitted faces stay `unresolved` entries with Show and Fix. The Step 3 Check on the reference aligner lists 8 problem rows in the browser walk, one of them the outside-area note. (The earlier figure "status bar reads 6 spots" was not re-measured at this revision.)
 
 ## Problem list (host)
 
-`src/supports/islandProblems.ts` turns the island verdict into `SupportProblem` entries (`island`, `overhang`, `unjudged`, and with the change above `outside`):
+`src/supports/islandProblems.ts` turns the island verdict into `SupportProblem` entries (`island`, `unjudged`, `outside`), and `src/supports/omittedProblem.ts` turns the build's dropped list into the `omitted` entry; `overhang` entries come from the Rust check:
 - an `unresolved` island is an `island` entry at its lowest vertex with Show and Fix;
 - `resolved` and manual-only islands are not problems;
 - `inconclusive` is one `unjudged` entry ("Could not judge islands on this mesh") without Show or Fix; the status line says "Islands could not be judged on N objects" instead of clean;
-- a Check with no current build has no verdict and reports that it did not finish, never clean.
+- a Check with no current build has no verdict and reports that it did not finish, never clean;
+- `omitted` ("Supports left out") is ONE informational entry for the automatic supports the build left out: `dropped` minus `dropped_by_zones` (the user's own no-support zones), at those contacts' positions in the unit frame, with Show (the first) and Fix. It is not counted as an unsupported spot. The build reports no per-support reason, so the entry does not either (the possible causes are a crossing, the policy's match or landing rule, and the repair).
 
-`overhang` is the Rust check's overhang-coverage warning (`supports/check`). It is non-gating. The old island heuristic was removed from that check. `blocked` body verdicts are not in the problem list because every generic build is blocked (supports touch the model); the dental `issues` carry the evidence.
+`overhang` is the Rust check's overhang-coverage warning (`supports/check`). It is non-gating. The old island heuristic was removed from that check. The `blocked` body verdict is not turned into problem-list entries: every generic build is blocked (supports touch the model), so a list entry per issue would flood it. The issues (part, contact, face) are in the result for tests and tools; what the user sees of a repaired crossing is the "Supports left out" entry and the Tree/Brace fallback notes.
 
 ## Revision, cancel and the export gate
 
 - Every request carries a `revision` u32. `generate` echoes it. `SupportMeshClient` stamps each request, and a result is delivered only if it answers the newest request of its unit and mode.
 - `cancel(unitId)` terminates the running worker. The next request gets a fresh worker, which frees its whole WASM instance. `live_mesh_handles()` returns to 0 (tested in `src/workers/resultPath.test.ts`). The `generate` call is synchronous inside the worker, so cancel is observable between calls, not inside one. A replaced running build restarts the worker after 800 ms; the revision drop covers correctness.
-- **Export gate** (`src/supports/exportGate.ts`). Export returns the files plus each unit's revision, verdict and island verdict, and refuses with a visible message (en, ja, zh-Hant) and no file written when a result is: `stale` (the unit changed meanwhile, or another revision), `failed` (no result for a unit with supports in the files), or `inconclusive` (the body-clearance verdict). Not refusals: a `blocked` verdict, and an inconclusive island verdict. Both are shown in the problem list.
+- **Export gate** (`src/supports/exportGate.ts`). Export returns the files plus each unit's revision, verdict and island verdict, and refuses with a visible message (en, ja, zh-Hant) and no file written when a result is: `stale` (the unit changed meanwhile, or another revision), `failed` (no result for a unit with supports in the files), or `inconclusive` (the body-clearance verdict). Not refusals: a `blocked` verdict (not listed per issue, see above) and an inconclusive island verdict (listed as "Could not judge islands on this mesh").
 - `OVER_CAPACITY`: the engine's wire code is `CAPACITY` (`MeshError::Capacity`, `StlError::Capacity`). The host maps it to the error code `over-capacity` with one message per job; import names the file.
 
 ## Detection pipeline (dental policy)
 
-Order: `orientation → outer and inner mesh-edge loops → broad face cut → side labels → narrow mesh-distance strips → sampled contact faces → PolicyResult`.
+Order: `orientation → outer and inner mesh-edge loops → broad face cut → side labels → narrow mesh-distance strips → sampled contact faces → PolicyResult`. Contour detection is cached across calls in `dental/cache.rs` (key: the mesh bits and the profile; the tuning is applied on top), so retuning and the policy do not repeat it.
 
 The loops define where the strips begin. The face cut is still required: it labels the two incident faces of each contour edge as `opening side` or `other side`. The strips are then built from the edges along the mesh, and only the `other side` is permitted. The broad face group is **not** a support area.
 
@@ -138,7 +145,7 @@ At 60° sort connected sharp-edge components by size. Require the largest two to
 
 ### 3. Central opening (`opening.rs`)
 
-Rasterize all triangles projected on the tangent/bitangent plane with a two-pixel margin. Flood-fill empty pixels (4-connected). The one empty component not touching the border is the hole; require exactly one hole of at least 1% of the image. Lift it back to mesh edges: keep an edge if its two face normals have opposite signs against the opening direction and its projected midpoint is within two pixels of the hole. Keep the large loop only if there is no other branch and any extra loop has at most 10 edges. Run at 256 and 512 pixels and require the same exact edge set.
+Rasterize all triangles projected on the tangent/bitangent plane with a two-pixel margin. Flood-fill empty pixels (4-connected). The one empty component not touching the border is the hole; require exactly one hole of at least 1% of the image. Lift it back to mesh edges: keep an edge if its two face normals have opposite signs against the opening direction and its projected midpoint is within two pixels of the hole. Then check the lifted edge graph: every vertex must have 2 or 4 incident edges and at most one vertex may have more than 2 (`opening-loop-branched` otherwise). With no branch vertex the edges must be one connected loop of more than `openingLoopMinEdges` edges (profile threshold, 50; else `opening-loop-not-closed`). With one branch vertex the edges split into loops at it; keep the longest only if it has at least `openingLoopMinEdges` edges, there are at most 2 loops, and the second has at most 10 edges (else `opening-loop-not-isolated`). Run at 256 and 512 pixels and require the same exact edge set.
 
 The result is `present`, `absent` or `ambiguous`. No enclosed hole at both resolutions is `absent`. A stable identical lifted loop is `present`. Small or multiple holes, a failed lift or a resolution disagreement is `ambiguous`. **Ambiguous never becomes absent.** `absent` on a profile that expects an opening is the Step 1 type-mismatch prompt, and is `inconclusive` for automatic supports. The raster only locates the hole; it never defines the 3D support region.
 
@@ -169,23 +176,23 @@ Dental behavior is parameterised by an `AlignerProfile`, a JSON file in `crates/
 - `opening`: `yes`, `no` or `either`;
 - `card`: top-view line art as SVG path data in a 120 x 90 box;
 - `fixture`: the reference scan path;
-- `thresholds`: all the detector numbers used above (axial variance, terminal band, sharp angles, loop and ridge minimums, opening resolutions, region means and fractions);
-- `defaults`: setback, strip width, density, their limits, outer and inner spacing, max search, and `repairBudget`.
+- `thresholds`: all the detector numbers used above (axial variance, terminal band, sharp angles, loop and ridge minimums, opening resolutions and `openingLoopMinEdges`, region means and fractions);
+- `defaults`: setback, strip width, density, their limits, outer and inner spacing, max search, `repairBudget`, and the automatic-match tolerances `matchToleranceMm` and `matchMinDot`.
 
-The same file is read by Rust (`profiles/mod.rs`, embedded with `include_str!`, listed in `ALL`) and by the host (`src/core/analysis/dentalProfile.ts`, `src/dental/alignerProfiles.ts`), which makes the Step 0 cards. One profile exists today: `reference-aligner`.
+The same file is read by Rust (`profiles/mod.rs`, embedded with `include_str!`, listed in `ALL`, parsed with serde; an unknown or a missing key is an error) and by the host (`src/dental/alignerProfiles.ts`, which reads every `crates/geometry-core/src/dental/profiles/*.json` with `import.meta.glob` and parses just as strictly), which makes the Step 0 cards. A unit saves its `profileId`; a saved unit without one means profile #1. One profile exists today: `reference-aligner`.
 
 ### Adding an aligner type
 
 1. Add `crates/geometry-core/src/dental/profiles/<id>.json` with all the fields above.
 2. List it in `ALL` in `profiles/mod.rs` (`include_str!`).
-3. Import it in the host profile list (`src/core/analysis/dentalProfile.ts` and `ALIGNER_PROFILES` in `src/dental/alignerProfiles.ts`). The card, name and description then appear in Step 0 with no UI code.
+3. Nothing in the host: `ALIGNER_PROFILES` in `src/dental/alignerProfiles.ts` picks the file up through the glob, and the card, name and description appear in Step 0 with no UI code.
 4. Add the reference fixture STL and its checks: golden files, labeled faces (`docs/dental-reference/face-labels.json` is the reference's), random-pose test, opening present/absent/ambiguous cases.
 
-`src/dental/alignerProfiles.test.ts` fails if the Rust registry and the host list differ. Steps 2 to 4 above are inferred from that test and the file headers; no second profile has been added yet, so this procedure has not been exercised.
+`src/dental/alignerProfiles.test.ts` fails if the Rust registry and the host list differ, and a test profile (`profiles/testdata/second-aligner.json`) is parsed by both sides to show the format is not tied to one file. Steps 2 to 4 above are inferred from those tests and the file headers; no real second profile has been added yet, so this procedure has not been exercised end to end.
 
 ## The dental flow (host)
 
-Step 0 type cards (shown even with one profile). Step 1 drop (mesh check for holes or non-manifold geometry first; detection is marked unreliable if the check fails; automatic orientation in a worker; type-mismatch prompt "Switch?" re-runs detection with the other profile; uncertain orientation keeps the dropped pose; bad or too large files show a message and stay). Step 2 area (tuning sliders, Add area and Remove area paint, no-area branch). Step 3 supports (tip size, density, lift, raft, Tree and Brace, add and delete selected supports, problem list, Label, OK, Add another aligner). Back from Step 3 asks before it discards manual edits. Exit keeps finished aligners and clears the current one's policy and supports (`src/dental/flow.ts`). `src/dental/arrange.ts` re-arranges every aligner on the plate without overlap on every drop and finish.
+Step 0 type cards (shown even with one profile). Step 1 drop (mesh check for holes or non-manifold geometry first; detection is marked unreliable if the check fails; automatic orientation in a worker; the type-mismatch prompt ("This looks like a different aligner type: no central opening was found.", with **Switch to** each profile that has no central opening and **Keep** the chosen one) re-runs detection with the other profile; uncertain orientation keeps the dropped pose; bad or too large files show a message and stay). Step 2 area (tuning sliders, Add area and Remove area paint, no-area branch). Step 3 supports (tip size, density, lift, raft, Tree and Brace, add and delete selected supports, problem list incl. "Supports left out", Label, OK, Add another aligner). Back from Step 3 asks before it discards manual edits. Exit keeps finished aligners and clears the current one's policy and supports (`src/dental/flow.ts`). `src/dental/arrange.ts` re-arranges every aligner on the plate without overlap on every drop and finish.
 
 Label rules (`src/dental/label.ts`): default `X`, at most 8 characters, `A-Z`, `0-9` and `-`; other characters are dropped and lower case becomes upper case. It is embossed on the raft base from the shared `labelFont.json` glyph data (digits and `-` are present).
 
@@ -193,7 +200,7 @@ Label rules (`src/dental/label.ts`): default `X`, at most 8 characters, `A-Z`, `
 
 - **Reference aligner**: `docs/dental-reference/reference-aligner.stl` (the only dental fixture). Root `Aligner.stl` and `dentalwork/fixtures/` are not gates.
 - **Generic fixtures**: `src/goldens/fixtures.ts` (cube-overhang, knot, thin-slab, v-ridge; standard and low-poly variants). End-to-end snapshots are in `src/goldens/__snapshots__/`. Regenerate by hand with `npx vite-node scripts/update-goldens.ts` (refuses to run in CI), and only after an intended output change.
-- **Recorded parity goldens**: `scripts/fixtures/golden/` (about 170 files, 1.9 MB: builder, dental, generic, import, knot, legacy, review, safety, rustSupports). They replaced the TypeScript oracle. Helper `scripts/test-support/golden.ts`: IDs, tags, indices, omitted counts and verdicts compared exactly (big arrays as FNV-1a hashes); positions as strided samples within 1e-5 mm. Regenerate one test's files from the current Rust output with `UPDATE_GOLDENS=1 npx vitest run <that test file>`, then review the diff in the commit. Without the variable a missing golden is an error and a mismatch fails.
+- **Recorded parity goldens**: `scripts/fixtures/golden/` (176 files, 1.9 MB at the last count: builder, dental, generic, import, knot, legacy, review, safety, rustSupports). They replaced the TypeScript oracle. Helper `scripts/test-support/golden.ts`: IDs, tags, indices, omitted counts and verdicts compared exactly (big arrays as FNV-1a hashes); positions as strided samples within 1e-5 mm. Regenerate one test's files from the current Rust output with `UPDATE_GOLDENS=1 npx vitest run <that test file>`, then review the diff in the commit. Without the variable a missing golden is an error and a mismatch fails.
 - **Face labels**: `docs/dental-reference/face-labels.json` (allowed and forbidden faces of the reference as run-length lists). Regenerate with `npx vite-node scripts/dental-face-labels.ts`. Every tip and secondary landing must sit on an allowed face.
 - **Other corpora**: odd-STL corpus in `scripts/fixtures/stl-corpus/` (24 files), brush strokes in `scripts/fixtures/brush/`, `scripts/fixtures/knot.stl`.
 - Parity rule: vertex positions within 1e-5 mm (JavaScript and Rust trig differ in the last bit). A larger difference needs a fixture, a rationale and a visible note.
@@ -204,24 +211,26 @@ Baseline commands: `cargo test --workspace`; `npm run wasm:build && npm run wasm
 
 TypeScript owns UI, React, Three.js buffer copies, camera and gizmo, files, worker lifecycle, settings and project serialization (presets stay TypeScript and are sent to Rust as validated numbers), and translations (en, ja, zh-Hant; zh-Hant is translated with Gemini in Taiwan wording).
 
-`scripts/geometry-guard.mjs` scans `src/` and `scripts/dental-region-review`. A file is flagged if it imports a geometry module or contains vector math. Every flagged file must be in `scripts/geometry-allowlist.json` as `host-adapter` (no math of its own) or `host-math` (a justified small amount of render or camera math, with a `why` and a ratcheting `maxMath`). The guard fails on an unlisted flagged file, any other label, a listed file that is gone or no longer flagged, and on any production import of test-support code. At U9 there are 35 flagged files, 5 of them `host-math`.
+`scripts/geometry-guard.mjs` scans `src/` and `scripts/dental-region-review`. A file is flagged if it imports a geometry module or contains vector math. A file is flagged when it matches a geometry import (`core/vec3`, `state/transform`, `core/supports/`, `core/analysis/`, `core/handedness`, `core/transform`, `editing/screenBrush`), or when its vector-math patterns (libm calls, `a[0]*b[0] + a[1]*b[1]`, `dx*dx + dy*dy`, `dot/cross/normalize/subtract(`) reach the threshold: 1 hit in `src/dental/` and `src/supports/`, 3 elsewhere. Every flagged file must be in `scripts/geometry-allowlist.json` as `host-adapter` (no math at or above the threshold) or `host-math` (a justified small amount of render or camera math, with a `why` and a ratcheting `maxMath`). The guard fails on an unlisted flagged file, any other label, a `host-adapter` with math, a `host-math` over its ratchet or without a reason, a listed file that is gone or no longer flagged, and on any import of test-support or ts-oracle code (named, bare side-effect, dynamic `import()` or `require`) from production code. That last rule covers `src/` and every script except `scripts/test-support`, `scripts/fixtures`, `scripts/perf` and five named dev tools that exist to run tests and oracles (`update-goldens.ts`, `probe-dental-edges.ts`, `probe-dental-orientation.ts`, `perf-baseline.mjs`, `dental-face-labels.ts`); the production review tool `scripts/dental-region-review` and `scripts/node-engine.ts` (the Node engine loader) may not import test-support. Test files (`*.test.*`, `*.testkit.*`) are not scanned. At this revision the allow-list has 35 entries: 29 `host-adapter` and 6 `host-math` (`UnitObject.tsx`, `core/supports/zones.ts`, `core/vec3.ts`, `editing/check.ts`, `editing/view.ts`, `supports/export.ts`).
 
-## Performance (U10 gate)
+## Performance
 
-Measured with `npx vite-node scripts/perf-baseline.mjs` (median of 3 in Node, not a browser) against `dentalwork/perf-baseline.json`. No hard target was set; the aim was no obvious regression.
+Measured with `npx vite-node scripts/perf-baseline.mjs` (median of 3 in Node, not a browser) on the machine in `dentalwork/perf-baseline.json` (AMD Ryzen 9 9950X, Node 22). No hard target was set; the aim was no obvious regression. The baseline column is the file `dentalwork/perf-baseline.json`, recorded at U0/U2, and it is not all "TypeScript before the port": the import and the Rust brush and pick-index numbers were already Rust/WASM when they were recorded.
 
-| Measure | Baseline (pre-port) | Final |
+| Measure | Recorded in `perf-baseline.json` | At this revision (median of 3) |
 |---|---|---|
-| Import of the reference aligner | 195.3 ms | 62.2 ms |
-| Dental Generate on the reference (117 contacts, 38,032 support triangles, 16 dropped) | 12.25 s | 3.50 s |
-| Knot Generate (150 contacts, 48,160 triangles) | 1,440 ms | 70.8 ms |
-| Brush p95, 48-triangle supports (`scripts/brush_perf.py`) | 0.1 ms | 0.1 ms |
-| Brush p95, 1,920-triangle supports | 3.2 ms | 1.1 ms |
-| Pick index build | 207 ms | 271 ms (one-off) |
+| Import of the reference aligner (373,956 triangles) | 195.3 ms, already the Rust/WASM stream (the file records the import after U1) | 61.0 ms |
+| Dental Generate on the reference (region + filter + `runSupportJob`) | 12.25 s, TypeScript flow; 117 contacts, 38,032 support triangles, 16 dropped | 3.12 s; 117 contacts, 38,656 support triangles, 14 dropped |
+| Knot Generate (golden `knot`, 1,920 source triangles) | 1,440 ms, TypeScript; 150 contacts, 48,160 triangles | 64.6 ms; 150 contacts, 48,160 triangles |
+| Brush p95 per pointer step, 48-triangle supports (`scripts/brush_perf.py`, browser) | 0.1 ms TypeScript cached, 0.1 ms Rust | not re-measured |
+| Brush p95, 1,920-triangle supports | 1.8 ms TypeScript cached (the pre-port path), 3.2 ms Rust `project_brush` (production since U2) | not re-measured; 1.1 ms was recorded at U10 |
+| Pick index build | 115.8 ms TypeScript (three-mesh-bvh oracle), 207.1 ms Rust | not re-measured; 271 ms was recorded at U10 (one-off) |
 
-The contact count, triangle counts and dropped counts are identical to the baseline.
+Reading it: the Rust brush and pick-index build are slower than the TypeScript oracle they replaced, by 1.4 ms and about 90 ms; the port was chosen for a single tested engine, not for these two numbers. The dental Generate sample 1 includes JIT warm-up (4.35 s; the other two samples are 3.07 s and 3.12 s). Contact count and the knot triangle count equal the recorded ones; the dental support-triangle count (38,656 against 38,032) and dropped count (14 against 16) differ from the U0 recording. The change came with the policy work: real gap alternates now let some crossing contacts move instead of being left out (the Policy API entry of `docs/dental-rework-handoff.md` records the same 16 to 14 change and that cause).
 
 ## What is validated and what is not
+
+Evidence at this revision (one revision, run in sequence): `cargo test --workspace` 183 + 7 + 3 + 1 passed (core unit tests, `dental_reference`, `layers`, the wasm crate); `npm run wasm:build` and `wasm:test` ok; `npx tsc --noEmit` clean; `npm run build` ok (83 npm packages and 24 Rust crates in the notices); `npm test` 125 files / 1,183 tests passed; `npm run walk` ALL PASS, 66 checks, 357 s; locale walk `WALK_LOCALES=en,ja,zh-Hant` ALL PASS, 18 checks, 108 s. The browser smoke (`scripts/geometry_wasm_browser_smoke.py`) was not run for this revision.
 
 Validated, on one reference aligner:
 - Loops of 2,665 and 339 edges; the face mask, four edge sets, contact faces and tip IDs match the recorded goldens; positions within 1e-5 mm at three tunings.
@@ -230,7 +239,7 @@ Validated, on one reference aligner:
 - Every tip and secondary landing candidate sits on an allowed face per `face-labels.json`.
 - A saved policy is recomputed on use.
 - Rust `generate` matches the earlier TypeScript flow on two walls, brace fallback, Tree with both leaves, landing mask, export mode and the aligner (recorded as goldens).
-- Fresh U10 evidence on one revision: `cargo test --workspace` 176 + 3 + 1 passed; `npx tsc --noEmit` clean; full Vitest 126 files / 1,183 tests; browser smoke pass; `npm run walk` 66 checks pass; locale walk in en, ja and zh-Hant 18 checks pass.
+- A timeout is always `inconclusive`, the repair budget is exact and a ring that cannot be measured makes the verdict `inconclusive` (Rust tests in `supports/generate/tests.rs`, `safety/tests.rs`).
 
 Not validated:
 - **Only one reference STL exists.** Thresholds are calibrated to it. Rotations of it do not substitute for other patient models.
@@ -238,12 +247,11 @@ Not validated:
 - **No-opening aligners**: `absent` is inconclusive for automatic supports. Only a synthetic no-opening mesh exists.
 - **No physical print or fit review** on a printer and resin.
 - **Island check is geometric**, not a print simulation. Dental low points outside the support area are reported for information only; this is a policy choice (lead decision 2026-10-28, reversible) that has not been checked against real prints.
-- **`knot.stl`**: the island verdict is `inconclusive` because the mesh is non-manifold. The generic Generate itself works.
-- **Route preflight** is ported but unwired (see above).
-- **Alternates**: no policy supplies them, so a crossing automatic pillar is left out rather than moved. Rim-gap reports can therefore remain.
-- **Neck penetration**: intentional-reach exemptions are bounded engineering limits, not proof that every neck touch is intended. The earlier TypeScript measurements counted thousands of neck-to-model triangle pairs that were not classified by depth; whether the Rust classifier changes that was not re-measured here.
-- **Blocked body verdicts** are not individually listed in the problem list.
-- **Unverified in this document**: the numeric reach limits in `clearance.rs` (not re-read for this document).
+- **`scripts/fixtures/knot.stl`**: the island verdict is `inconclusive: non-manifold edge` (re-checked at this revision by `knotIslands.test.ts` and the locale walk): 4,011 edges are shared by four triangles, so no island can be judged. The generic Generate itself works.
+- **The `blocked` verdict is common**: at default settings the golden knot reports `blocked` with 26 issues and the reference aligner with 101 issues (measured with the perf setup). That the verdict is `blocked` for both is why it is not listed per issue in the problem list and does not stop an export. Which of those issues are real crossings and which are bounded contact reach that the reach exemption does not cover was not analysed here.
+- **Alternates** are real for dental (one gap alternate per primary at most), but whether the moved contacts are better supports than the dropped ones was not evaluated; rim-gap reports can still remain.
+- **Neck penetration**: intentional-reach exemptions (`reach_limits` in `clearance.rs`) are bounded engineering limits, not proof that every neck touch is intended. The earlier TypeScript measurements counted thousands of neck-to-model triangle pairs that were not classified by depth; whether the Rust classifier changes that was not re-measured here.
+- **`zonedAt`**: the TypeScript copy is gone (Rust `zoned_at`). The per-vertex stamp loop of the zone paint display (`stampVertices`, `core/supports/zones.ts`) applies the same last-stamp-wins rule on the display mesh; it is the one remaining TypeScript copy of the idea, kept for the brush's frame budget, and a test (`zones.test.ts`) compares it with Rust `zoned_at`.
 - Left-handed hosts (a future Babylon.js host): `src/workers/babylonContract.test.ts` checks the left-handed contract without loading Babylon itself.
 
 ## Pose of the diagnostic GLB

@@ -7,10 +7,11 @@ import type { ExportUnitResult } from '../workers/meshProtocol';
  *  - failed: the build returned nothing for a unit that has supports in the files;
  *  - inconclusive: the body-clearance verdict could not be reached (a timeout or a crossing that
  *    cannot be judged), which is never treated as clear.
- * Not refusals: a `blocked` verdict lists where supports touch the model (every generic build is
- * blocked), and an inconclusive island verdict means the model's own mesh could not be analysed
- * (non-manifold edges, as in `scripts/fixtures/knot.stl`, make the topology refuse; degenerate triangles are skipped). Both are
- * reported in the problem list (U10), not by stopping the export.
+ * Not refusals: a `blocked` verdict records where supports touch the model (every generic build is
+ * blocked, and so is the reference aligner's default build), so it is not listed per issue, and an
+ * inconclusive island verdict means the model's own mesh could not be analysed (non-manifold edges, as
+ * in `scripts/fixtures/knot.stl`, make the topology refuse; degenerate triangles are skipped). The island
+ * verdict is reported in the problem list ("Could not judge islands"), not by stopping the export.
  */
 export interface ExportRefusal {
   reason: 'stale' | 'failed' | 'inconclusive';
