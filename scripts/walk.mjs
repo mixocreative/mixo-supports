@@ -751,7 +751,10 @@ async function walk(url, scratch, dentalFixture) {
           const stamps = (await d.props()).activeDental?.stamps ?? 0;
           const t0 = Date.now();
           await d.stroke(from, to, 20);
-          if (((await d.props()).activeDental?.stamps ?? 0) > stamps) return { stroke: [from, to], ms: await step2Settled(t0) };
+          // The drag itself is one frame per pointer move (about 0.1 s each in software GL); the
+          // update is timed from the release.
+          const released = Date.now();
+          if (((await d.props()).activeDental?.stamps ?? 0) > stamps) return { stroke: [from, to], ms: await step2Settled(t0), drag: released - t0, update: Date.now() - released };
           // The drag began off the model and turned the view: put the view back and try the next spot.
           await page.getByRole('button', { name: 'Bottom view', exact: true }).click();
           await d.idle(800);
@@ -764,15 +767,17 @@ async function walk(url, scratch, dentalFixture) {
       await page.screenshot({ path: path.join(scratch, 'ux-a-step2-painted.png') });
       check('u10e Paint outside the detected strip adds support tips there, and the status says so',
         painted !== undefined && paintedTips > tipsBefore && /Dental support area painted/.test(await d.status()),
-        `tips ${tipsBefore} -> ${paintedTips}, ${painted ? `${painted.ms} ms` : 'no stroke reached the model'}`);
+        `tips ${tipsBefore} -> ${paintedTips}, ${painted ? `${painted.ms} ms (drag ${painted.drag} ms, release to tip preview ${painted.update} ms)` : 'no stroke reached the model'}`);
       if (painted) {
         await bar.getByRole('button', { name: 'Erase', exact: true }).click();
         const t0 = Date.now();
         await d.stroke(...painted.stroke, 20);
+        const released = Date.now();
         const eraseMs = await step2Settled(t0);
         const erasedTips = await tipCount();
         check('u10f Erase over the same place removes the area and its tips again',
-          erasedTips <= tipsBefore && /Dental support area erased/.test(await d.status()), `tips ${paintedTips} -> ${erasedTips} (before paint ${tipsBefore}), ${eraseMs} ms`);
+          erasedTips <= tipsBefore && /Dental support area erased/.test(await d.status()),
+          `tips ${paintedTips} -> ${erasedTips} (before paint ${tipsBefore}), ${eraseMs} ms (drag ${released - t0} ms, release to tip preview ${t0 + eraseMs - released} ms)`);
       }
       await d.button('Back').click();
       await stepTo('Step 1 · Aligner');
@@ -838,6 +843,10 @@ async function walk(url, scratch, dentalFixture) {
       const side = await page.locator('.dental-side').innerText();
       check('x1 Step 3 lists tip size, density, lift height, raft, Tree, Brace, the support tools, problems, Label, OK and Add another aligner',
         ['Tip size', 'Support density', 'Lift height', 'Raft', 'Tree branches', 'Cross-braces', 'Add supports', 'Problems', 'Label', 'OK', 'Add another aligner'].every((word) => side.includes(word)), side.replace(/\s+/g, ' ').slice(0, 200));
+      const switchOn = (name) => page.locator('.dental-side label.check').filter({ hasText: name }).locator('input').isChecked();
+      const startValues = { tip: await slider('Tip size').inputValue(), lift: await slider('Lift height').inputValue(), tree: await switchOn('Tree branches'), brace: await switchOn('Cross-braces'), raft: await switchOn('Raft') };
+      check('x1c Step 3 starts with the aligner type defaults: 0.45 mm tip, 3.5 mm lift, raft on, Tree and Brace off',
+        Number(startValues.tip) === 0.45 && Number(startValues.lift) === 3.5 && startValues.raft && !startValues.tree && !startValues.brace, JSON.stringify(startValues));
       check('x2 the Label field is titled Label and starts as X', (await label.inputValue()) === 'X' && (await page.getByLabel('Label', { exact: true }).count()) >= 1, `value "${await label.inputValue()}"`);
       await label.fill('');
       await label.pressSequentially('a-1b_$%é .');

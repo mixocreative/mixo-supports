@@ -72,5 +72,13 @@
     "matchToleranceMm": 0.05,
     "matchMinDot": 0.95,
     "minTipSeparationMm": 0.6
+  },
+  "supports": {
+    "pillarDiameterMm": 1.4,
+    "tipDiameterMm": 0.45,
+    "liftHeightMm": 3.5,
+    "tree": false,
+    "brace": false,
+    "raft": true
   }
 }

@@ -48,6 +48,17 @@ pub fn crossing_automatic_body_contacts(index: &CollisionIndex, supports: &Suppo
     hits.iter().filter_map(|h| supports.components[h.component].tag.contact).collect::<BTreeSet<_>>().into_iter().collect()
 }
 
+/// Contact indices (ascending) whose automatic tip or neck (not a tree's) crosses the model beyond
+/// the tip's own reach, judged exactly as the verdict judges it. `supports` must carry the contact
+/// intents of the review (`generate::enrich::review_components`).
+pub fn crossing_automatic_neck_contacts(index: &CollisionIndex, supports: &SupportMesh, settings: &SupportSettings, automatic: &dyn Fn(u32) -> bool, expired: &dyn Fn() -> bool) -> Vec<u32> {
+    let select = |c: &Component| matches!(c.tag.part, Part::Tip | Part::Neck) && c.tag.structure_kind.is_none() && c.tag.contact.is_some_and(automatic);
+    let limits = reach_limits(settings);
+    let allow = |hit: &Conflict| is_intentional_contact_reach(index, supports, hit, &limits);
+    let hits = body_conflicts(index, supports, &select, false, Some(&allow), expired);
+    hits.iter().filter_map(|h| supports.components[h.component].tag.contact).collect::<BTreeSet<_>>().into_iter().collect()
+}
+
 /// Crossing tree and brace components, for the conservative mode fallback. A tree branch or tree
 /// neck may touch its own source surface on purpose.
 pub fn crossing_structure_parts(index: &CollisionIndex, supports: &SupportMesh, settings: &SupportSettings, expired: &dyn Fn() -> bool) -> Vec<StructurePart> {

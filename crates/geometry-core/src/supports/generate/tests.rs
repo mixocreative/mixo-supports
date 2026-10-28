@@ -7,7 +7,8 @@ use crate::supports::settings::{SETTINGS_LAYOUT, SupportSettings, default_values
 
 type V = [f64; 3];
 
-/// Outward-facing axis-aligned boxes as one mesh (12 triangles each).
+/// Outward-facing axis-aligned boxes as one mesh (12 triangles each). Faces 4 and 5 of a box are
+/// its underside (y0): the source face of a contact placed under it.
 fn boxes(list: &[(V, V)]) -> (Vec<f32>, Vec<u32>) {
     let (mut positions, mut indices) = (Vec::new(), Vec::new());
     for &([x0, y0, z0], [x1, y1, z1]) in list {
@@ -125,7 +126,7 @@ fn repair_leaves_a_crossing_automatic_contact_out_but_never_a_manual_one() {
 #[test]
 fn an_automatic_contact_that_reproduces_no_candidate_is_left_out_and_a_match_takes_its_source_face() {
     let fixture = Fixture::new(&[([-5.0, 20.0, -5.0], [5.0, 24.0, 5.0])]);
-    let candidate = Candidate { id: CandidateId("cand".into()), source_face: Some(3), point: [0.0, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };
+    let candidate = Candidate { id: CandidateId("cand".into()), source_face: Some(4), point: [0.0, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };
     let p = policy(fixture.faces(), vec![candidate], 8, AutomaticRule::MatchCandidates { tol_mm: 0.03, min_dot: 0.95 });
     let forged = contact("forged", [5.0, 20.0, 0.0], Origin::Auto);
     let near = contact("near", [0.01, 20.0, 0.0], Origin::Auto);
@@ -133,7 +134,7 @@ fn an_automatic_contact_that_reproduces_no_candidate_is_left_out_and_a_match_tak
     assert_eq!(ids(&out.dropped), vec!["forged"]);
     assert_eq!(out.contact_ids, vec!["near"]);
     let neck = out.built.components.iter().find(|c| c.tag.part == Part::Neck).unwrap();
-    assert_eq!(neck.tag.intents[0].face, Some(3));
+    assert_eq!(neck.tag.intents[0].face, Some(4));
 }
 
 #[test]
@@ -292,7 +293,7 @@ fn an_island_outside_the_permitted_area_is_classified_apart_from_unresolved() {
 #[test]
 fn ring_coverage_counts_only_built_contacts_of_the_ring() {
     let fixture = Fixture::new(&[([-5.0, 20.0, -5.0], [5.0, 24.0, 5.0])]);
-    let cand = |id: &str, x: f64| Candidate { id: CandidateId(id.into()), source_face: Some(0), point: [x, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };
+    let cand = |id: &str, x: f64| Candidate { id: CandidateId(id.into()), source_face: Some(4), point: [x, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };
     let mut p = policy(fixture.faces(), vec![cand("c0", -3.0), cand("c1", 3.0)], 8, AutomaticRule::MatchCandidates { tol_mm: 0.03, min_dot: 0.95 });
     p.rings = vec![Ring { perimeter_mm: 20.0, spacing_mm: 3.0, arcs: vec![(CandidateId("c0".into()), 2.0), (CandidateId("c1".into()), 12.0)] }];
     let out = fixture.run(vec![contact("a", [-3.0, 20.0, 0.0], Origin::Auto), contact("b", [3.0, 20.0, 0.0], Origin::Auto)], &plain_settings(&[]), &p, &never);
@@ -354,3 +355,6 @@ fn a_ring_that_cannot_be_measured_is_inconclusive_not_a_full_perimeter_gap() {
     assert!(out.rings.is_empty());
     assert_eq!((out.verdict.status, out.verdict.reason), (Status::Inconclusive, Some("Invalid ring measure")));
 }
+
+/// The neck re-aim repair (`reaim.rs`).
+mod neck;

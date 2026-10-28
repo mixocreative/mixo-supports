@@ -1,6 +1,6 @@
 # Open decisions for the owner
 
-Five questions the code cannot answer by itself. Each section says what the app does now, how professional dental print-preparation software usually handles the same thing, what I recommend, and what you would do. "Professional software" here means the dedicated dental and resin print-preparation tools in common lab use; the descriptions are of general practice, not of any one product.
+Five questions the code cannot answer by itself (the first is now decided and done). Each section says what the app does now, how professional dental print-preparation software usually handles the same thing, what I recommend, and what you would do. "Professional software" here means the dedicated dental and resin print-preparation tools in common lab use; the descriptions are of general practice, not of any one product.
 
 Where a decision needs evidence, the [folder review](batch-review/README.md) gives it: run it on your aligner files and look.
 
@@ -14,7 +14,9 @@ Result: on the reference aligner, 102 issues became 14. On the built-in test mod
 
 **Recommendation.** One more step, a code change of about one work unit: when a tip's neck crosses the aligner, the repair first re-aims the neck along the real surface normal, and if it still crosses, leaves that tip out and lists it under "Supports left out", as it already does for a crossing shaft. Keep `blocked` a warning, not a refusal; once crossings are this rare, show a "Support crosses the aligner" entry in the problem list with Fix and Show buttons.
 
-**You:** say yes or no to the re-aim step. Look at the red markers in the folder review on a few real aligners: if a marked tip would really fuse into the aligner's inside, that confirms it.
+**You:** ~~say yes or no to the re-aim step.~~ Approved.
+
+**Status: done (unit C, 2026-10-28).** The repair now re-aims a crossing tip's neck (first along the real face normal, then straight down) and leaves the tip out, listed under "Supports left out", if it still crosses; hand-placed supports are never moved or removed, only reported. Generic models are unchanged (their budget is 0: report only). On the reference aligner nothing crosses any more (verdict `clear`). The cost: 13 of 94 tips are left out at the new Step 3 defaults, all on one stretch of the central opening where the strip faces up or sideways in the print pose (no support from below can reach those faces without passing through the aligner). The opening gap there is 56 mm (14 mm before), shown for review in Step 3. If prints need support there, add supports by hand or paint area on the down-facing side. Still open: showing a "Support crosses the aligner" entry with Fix and Show for crossings that remain on other aligners (for example a hand-placed one).
 
 ## 2. Low points outside the support area
 

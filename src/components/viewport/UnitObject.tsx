@@ -20,7 +20,8 @@ import { AddFlash, type AddedAt } from './AddFlash';
 import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
 import { rustRaycast } from './rustRaycast';
-import { type Hover, DentalFaceLayer, DentalPaintLayer, DentalRegionLines, DentalRimLine, DentalStampLayer, DentalTipMarkers, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
+import { type Hover, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
+import { DentalFaceLayer, DentalPaintLayer, DentalRegionLines, DentalRimLine, DentalStampLayer, DentalTipMarkers } from './dentalLayers';
 import type { ObjectViewportProps } from './types';
 import { MODEL_MESH, SUPPORT_MESH, useScreenBrush } from './useScreenBrush';
 

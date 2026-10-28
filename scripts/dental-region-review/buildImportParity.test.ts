@@ -6,6 +6,7 @@ import { runSupportJob } from '../../src/supports/jobRunner';
 import { placeImportedUnits } from '../../src/state/import';
 import { inverseTransformDirection, inverseTransformPoint, transformPoint } from '../../src/state/transform';
 import { buildDentalReview } from './build';
+import { dentalStructureOf, dentalSupportSettings } from '../../src/dental/supportPreset';
 import { parseStl } from '../test-support/rustImport';
 import { REFERENCE_PROFILE } from '../test-support/referenceProfile';
 
@@ -26,11 +27,12 @@ describe('dental import and preview parity', () => {
     if (review.kind !== 'proposal') return;
     expect(review.supports.droppedByPath).toBeUndefined();
     const retained = new Set(review.supports.components.flatMap((part) => part.contactId ? [part.contactId] : []));
-    // 89 of the 94 placed primaries (71 outer, 23 opening; none closer than 0.6 mm) are built as placed;
-    // the other 5 crossed the model and were left out (no repair alternate cleared).
+    // 80 of the 94 placed primaries (71 outer, 23 opening; none closer than 0.6 mm) are built as placed;
+    // the other 14 crossed the model with their pillar or their tip (after the neck re-aim) and were
+    // left out (no repair alternate cleared).
     const placed = new Set(review.placement.points.map((point) => point.id));
     expect(placed.size).toBe(94);
-    expect(retained.size).toBe(89);
+    expect(retained.size).toBe(80);
     expect([...retained].filter((id) => !placed.has(id))).toHaveLength(0);
   }, 180000);
 
@@ -45,8 +47,10 @@ describe('dental import and preview parity', () => {
     const turn = { position: [0, 0, 0] as [number, number, number], rotation: review.frame.rotation };
     const localPoints = review.placement.points.map((point) => ({ ...point,
       position: inverseTransformPoint(turn, point.position), normal: inverseTransformDirection(turn, point.normal) }));
-    const supportJob = { mesh, dental: { kind: 'two-contour' as const, profileId: REFERENCE_PROFILE, rim: orientation.rim, region: review.region, stamps: [] },
-      frame: review.frame, settings: { ...defaultSupportSettings, roofSeededModes: [] },
+    // The settings and switches the review built with: the profile's Step 3 defaults.
+    const supportJob = { mesh, dental: { kind: 'two-contour' as const, profileId: REFERENCE_PROFILE, rim: orientation.rim, region: review.region, stamps: [],
+      structure: dentalStructureOf(REFERENCE_PROFILE) },
+      frame: review.frame, settings: { ...dentalSupportSettings(REFERENCE_PROFILE, defaultSupportSettings), roofSeededModes: [] },
       contacts: { points: localPoints, manual: [], deleted: [], zones: [], contactSettings: {} },
       labelText: 'A', mode: 'preview' as const };
     const preview = runSupportJob(supportJob);

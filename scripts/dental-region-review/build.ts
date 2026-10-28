@@ -10,6 +10,7 @@ import type { GeneratedSupportMesh } from '../../src/core/supports/mesh';
 import { defaultSupportSettings, toPlacementSettings } from '../../src/core/supports/settings';
 import { runSupportJob } from '../../src/supports/jobRunner';
 import { filterDentalPlacement } from '../../src/dental/placement';
+import { dentalStructureOf, dentalSupportSettings } from '../../src/dental/supportPreset';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint } from '../../src/state/transform';
 import { REFERENCE_PROFILE, referenceTuning } from './profile';
 
@@ -46,24 +47,26 @@ export function buildDentalReview(mesh: TriangleMesh): DentalReviewBuild {
   const rotation = rotationToDentalPose(mesh, orientation.rim, REFERENCE_PROFILE);
   if (!rotation) return { kind: 'inconclusive', reason: 'dental-pose-inconclusive' };
 
+  // The aligner type's Step 3 settings and switches, as the app gives a new aligner.
+  const settings = { ...dentalSupportSettings(REFERENCE_PROFILE, defaultSupportSettings), roofSeededModes: [] };
   const orientationOnly: JobTransform = { position: [0, 0, 0], rotation };
   const turned = applyTransform(mesh, orientationOnly);
   let lowestY = Infinity;
   for (let at = 1; at < turned.positions.length; at += 3) lowestY = Math.min(lowestY, turned.positions[at]!);
   if (!Number.isFinite(lowestY)) return { kind: 'inconclusive', reason: 'empty-or-invalid-mesh' };
   const frame: JobTransform = {
-    position: [0, defaultSupportSettings.liftHeight - lowestY, 0], rotation,
+    position: [0, settings.liftHeight - lowestY, 0], rotation,
   };
-  const dental = { kind: 'two-contour' as const, profileId: REFERENCE_PROFILE, rim: orientation.rim, region, stamps: [] };
+  const dental = { kind: 'two-contour' as const, profileId: REFERENCE_PROFILE, rim: orientation.rim, region, stamps: [], structure: dentalStructureOf(REFERENCE_PROFILE) };
   const empty: PlacementResult = { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() };
   const placement = filterDentalPlacement({ mesh, orientation: orientationOnly,
-    settings: toPlacementSettings(defaultSupportSettings), dental }, empty);
+    settings: toPlacementSettings(settings), dental }, empty);
   if (placement.points.length === 0) return { kind: 'inconclusive', reason: 'no-proposed-dental-tips' };
   const localPoints = placement.points.map((point) => ({ ...point,
     position: inverseTransformPoint(orientationOnly, point.position),
     normal: inverseTransformDirection(orientationOnly, point.normal),
   }));
-  const supports = runSupportJob({ mesh, dental, frame, settings: { ...defaultSupportSettings, roofSeededModes: [] },
+  const supports = runSupportJob({ mesh, dental, frame, settings,
     contacts: { points: localPoints, manual: [], deleted: [], zones: [], contactSettings: {} },
     labelText: 'A', mode: 'export' });
   return { kind: 'proposal', region, bands, diagnosticContacts: { outer, inner }, frame, placement, supports };

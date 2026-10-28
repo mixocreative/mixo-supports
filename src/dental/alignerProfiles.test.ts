@@ -24,6 +24,9 @@ describe('aligner profiles', () => {
       expect(() => parseAlignerProfile({ ...record, thresholds: { ...record.thresholds, surprise: 1 } }, path)).toThrow("unknown key 'surprise'");
       const { ja: _ja, ...name } = record.name!;
       expect(() => parseAlignerProfile({ ...record, name }, path)).toThrow("missing key 'ja'");
+      expect(() => parseAlignerProfile({ ...record, supports: { ...record.supports, roof: true } }, path)).toThrow("unknown key 'roof'");
+      expect(() => parseAlignerProfile({ ...record, supports: { ...record.supports, tree: 1 } }, path)).toThrow('tree must be true or false');
+      expect(() => parseAlignerProfile({ ...record, supports: { ...record.supports, liftHeightMm: -1 } }, path)).toThrow('liftHeightMm must be a positive number');
     }
   });
 

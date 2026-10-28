@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import { defaultDentalTuning } from '../dental/tuning';
 import type { Vector } from '../core/vec3';
 import type { GizmoMode, ViewRequest } from './viewport/types';
-import type { PrintScene, PrintUnit, SceneCommand } from '../state/project';
+import type { PrintScene, PrintUnit, SceneCommand, SupportSettings } from '../state/project';
 import type { DentalNotice, EditSession, SessionEvent } from '../editing/session';
 import type { AnalysisClient } from '../workers/analysisClient';
 import { arrangeAlignerCommands } from '../dental/arrange';
 import { manualAreaPolicy } from '../dental/manualArea';
+import { dentalStructureOf, dentalSupportSettings } from '../dental/supportPreset';
+import { resolveSettings } from '../supports/unitSupports';
 
 /*
  * The dental flow's Steps 1 and 2 orchestration, out of App: orient a dropped aligner in the
@@ -27,6 +29,12 @@ interface DentalFlowHost {
   requestView: (kind: ViewRequest['kind']) => void;
   setGizmoMode: (mode: GizmoMode) => void;
   unitName: (unitId: string) => string;
+}
+
+/** The type's Step 3 settings for a new aligner, or one whose type changed; otherwise the operator's are kept. */
+function presetCommands(unit: PrintUnit, profile: string): SceneCommand[] {
+  if (unit.dental?.profileId === profile) return [];
+  return [{ type: 'settings/set', unitId: unit.id, settings: dentalSupportSettings(profile, resolveSettings(unit.settings)) as SupportSettings }];
 }
 
 export function useDentalFlow({ analysis, dispatch, send, sceneRef, sessionRef, session, setStatus, requestView, setGizmoMode, unitName }: DentalFlowHost) {
@@ -101,13 +109,17 @@ export function useDentalFlow({ analysis, dispatch, send, sceneRef, sessionRef, 
       if (!region || region.kind !== 'proposal') {
         // No area detected: Step 2 opens empty, with its message; Next stays off until something is marked.
         // Owner decision: paint may create the area from scratch, only because detection found none.
-        dispatch({ type: 'dental/set', unitId: unit.id, policy: manualAreaPolicy(proposal.rim, false, profile) });
+        dispatch({ type: 'batch', commands: [...presetCommands(unit, profile), { type: 'dental/set', unitId: unit.id, policy: manualAreaPolicy(proposal.rim, false, profile) }] });
         send({ type: 'acceptDentalOrientation', noArea: true });
         requestView('bottom');
         return;
       }
-      dispatch({ type: 'dental/set', unitId: unit.id, policy: { kind: 'two-contour', profileId: profile, rim: proposal.rim, region, stamps: [],
-        tuning: defaultDentalTuning(profile) } });
+      // A new aligner (or one whose type changed) starts from its type's Step 3 settings and
+      // Tree/Brace switches; once set, the operator's own choices are kept.
+      const kept = unit.dental?.kind === 'two-contour' && unit.dental.profileId === profile ? unit.dental.structure : undefined;
+      const policy = { kind: 'two-contour' as const, profileId: profile, rim: proposal.rim, region, stamps: [], tuning: defaultDentalTuning(profile),
+        structure: kept ?? dentalStructureOf(profile) };
+      dispatch({ type: 'batch', commands: [...presetCommands(unit, profile), { type: 'dental/set', unitId: unit.id, policy }] });
       send({ type: 'acceptDentalOrientation' });
       requestView('bottom');
     }, () => { if (detectionSeq.current === detection) setStatus('Dental contour detection failed. No support area was approved.'); });

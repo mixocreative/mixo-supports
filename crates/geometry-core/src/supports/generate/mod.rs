@@ -1,8 +1,9 @@
 //! `generate`: one call that runs the whole support pipeline in Rust for either policy: permit the
 //! contacts the `PolicyResult` allows, build, check the finished mesh exactly against the model, run
 //! the bounded repair, and return the mesh with one verdict. A policy is data; nothing here knows
-//! "dental". The repair is: switch off a crossing Tree or Brace, try the policy's alternates for a
-//! crossing automatic contact, otherwise leave that contact out, and as the last bounded step build
+//! "dental". The repair is: switch off a crossing Tree or Brace, re-aim the neck of an automatic
+//! contact whose tip crosses, try the policy's alternates for a crossing automatic contact (pillar
+//! or tip), otherwise leave that contact out, and as the last bounded step build
 //! the manual contacts alone. Manual contacts are never moved or deleted. Every rebuild is a trial
 //! against `repair_budget`; a budget of 0 reports without repairing. A timeout is `Inconclusive`,
 //! never `Clear`.
@@ -10,6 +11,7 @@
 mod enrich;
 mod islands;
 mod permit;
+mod reaim;
 mod repair;
 
 pub use islands::{Island, IslandStatus, IslandVerdict};
