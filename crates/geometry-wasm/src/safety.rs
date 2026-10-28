@@ -192,7 +192,9 @@ impl Generation {
 impl GeometrySession {
     /// The support pipeline for a plate-space model: `contacts` and `shapes` as `build_supports`,
     /// `policy` the unit's policy as Rust made it (same frame as the model). `timeout_ms` > 0 ends the repair and checks early with
-    /// an inconclusive verdict (never a clear one) once that much time has passed.
+    /// an inconclusive verdict (never a clear one) once that much time has passed. `plate_y` is the
+    /// plate's height in the model's frame: 0 for a model placed on the plate; a lift change keeps the
+    /// placed model (and its caches) and moves the plate instead. Island heights are above the plate.
     pub fn generate(
         &mut self,
         model: u32,
@@ -206,8 +208,13 @@ impl GeometrySession {
         policy: &PolicyHandle,
         timeout_ms: f64,
         revision: u32,
+        plate_y: f64,
     ) -> Result<Generation, JsValue> {
-        let settings = support_settings::SupportSettings::from_slice(settings).map_err(build_error)?;
+        if !plate_y.is_finite() {
+            return Err(coded_error("NON_FINITE"));
+        }
+        let mut settings = support_settings::SupportSettings::from_slice(settings).map_err(build_error)?;
+        settings.plate_y = plate_y;
         let contacts = flat::decode_contacts(&ids, contacts, shapes, &settings.shape).map_err(build_error)?;
         let mode = match mode {
             0 => BuildMode::Preview,
@@ -244,7 +251,7 @@ impl GeometrySession {
         match &out.islands {
             IslandVerdict::Ok(islands) => {
                 for island in islands {
-                    heights.push(island.height);
+                    heights.push(island.height - plate_y);
                     vertices.push(island.vertex);
                     status.push(match (island.status, island.manual_only) {
                         (IslandStatus::Resolved, false) => 0,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SupportPoint, TriangleMesh } from '../core/analysis/types';
 import type { DentalPolicy } from '../core/analysis/dentalPolicy';
-import { identityTransform, type PrintUnit } from '../state/project';
+import { identityTransform, type PrintUnit, type SceneCommand } from '../state/project';
 import { applyTransform } from '../state/transform';
 import { meshBounds } from '../core/supports/meshQuery';
 import { defaultSupportSettings } from '../core/supports/settings';
@@ -204,13 +204,36 @@ describe('liftCommands (a lift change raises the placed unit without placing it 
   const placed = { ...unit, transform: { position: [30, 8, -4] as [number, number, number], rotation: [0, 0.3, 0] as [number, number, number] },
     supports: { kind: 'live', data: { transform: generated, placed: { ...Object.fromEntries(PLACEMENT_KEYS.map((key) => [key, defaultSupportSettings[key]])) } } } } as PrintUnit;
 
-  it('moves the unit and the supports frame exactly where a placement landing would, and keeps the contacts', async () => {
+  it('a unit turned since generation: moves the unit and the supports frame exactly where a placement landing would', async () => {
     const { liftCommands, placementCommands, orientationOf, placementSignature } = await import('./unitSupports');
     const settings = { ...resolveSettings(placed.settings), liftHeight: 7.5 };
     const commands = liftCommands(placed, settings)!;
     const landing = placementCommands(placed, orientationOf(placed), placed.placement!, settings.liftHeight, 1.5, placementSignature(settings))!.commands;
     expect(commands[0]).toEqual(landing[0]);
     expect(commands[1]).toMatchObject({ type: 'supports/set', placement: placed.placement, supports: { kind: 'live', data: (landing[1] as { supports: { data: object } }).supports.data } });
+  });
+
+  it('keeps the generation frame and moves the plate in it instead (no new placed model), every lift from that frame', async () => {
+    const { liftCommands, supportJobOf, generationPlate } = await import('./unitSupports');
+    const still = { ...placed, transform: { position: [30, 8, -4] as [number, number, number], rotation: [0, 0, 0] as [number, number, number] } } as PrintUnit;
+    const apply = (at: PrintUnit, lift: number): PrintUnit => {
+      const [move, set] = liftCommands(at, { ...resolveSettings(at.settings), liftHeight: lift })! as [Extract<SceneCommand, { type: 'transform/set' }>, Extract<SceneCommand, { type: 'supports/set' }>];
+      return { ...at, transform: move.transform, supports: set.supports! };
+    };
+    const higher = apply(still, 7.5);
+    expect(higher.supports!.data.transform).toEqual(generated);
+    // The frame's height above the unit's new one: the plate sits that far below the frame's own.
+    expect(generationPlate(higher)).toBe(generated.position[1] - higher.transform.position[1]);
+    expect(supportJobOf(higher, 0)).toMatchObject({ frame: generated, plate: generationPlate(higher) });
+    // A second change is measured from the same frame, never from the last plate.
+    const lower = apply(higher, 2);
+    expect(lower.supports!.data.transform).toEqual(generated);
+    expect(generationPlate(lower)).toBe(generated.position[1] - lower.transform.position[1]);
+    // Back to the generation height: the plate is the frame's own again (no `plate` stored, no job field).
+    const back = apply(lower, 5);
+    expect(back.transform.position[1]).toBe(generated.position[1]);
+    expect('plate' in back.supports!.data).toBe(false);
+    expect('plate' in supportJobOf(back, 0)).toBe(false);
   });
 
   it('is not used without placed supports or with another placement change pending', async () => {

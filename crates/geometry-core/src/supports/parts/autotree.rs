@@ -49,16 +49,18 @@ pub fn auto_tree_layout(contacts: &[ColumnContact], model: Option<&Model>, s: &S
         .map(|(index, contact)| {
             let p = contact.candidate.point;
             let from = [p[0], p[1] - spacing / 32.0, p[2]];
+            // How far below the contact the plate is: the farthest a blocker can be.
+            let depth = p[1] - s.plate_y;
             let free = contact.candidate.origin != Origin::Manual && contact.shape.is_none();
             if let Some(scatter) = scatter.as_mut() {
-                let (outward, inward) = scatter.blockers(from, p[1]);
-                let blocked = hits_below(&outward, from, p[1]);
-                if blocked && !hits_below(&inward, from, p[1]) {
+                let (outward, inward) = scatter.blockers(from, depth);
+                let blocked = hits_below(&outward, from, depth);
+                if blocked && !hits_below(&inward, from, depth) {
                     removed[index] = true;
                 }
                 return free && !blocked;
             }
-            free && !model.is_some_and(|m| m.hits_blocker_below(from, p[1], limit))
+            free && !model.is_some_and(|m| m.hits_blocker_below(from, depth, limit))
         })
         .collect();
     let mut assigned: Vec<bool> = (0..contacts.len()).map(|k| !eligible[k] || removed[k]).collect();
@@ -101,7 +103,7 @@ pub fn auto_tree_layout(contacts: &[ColumnContact], model: Option<&Model>, s: &S
         }
         let reach = members.iter().map(|&k| crate::core::jsnum::hypot(&[position(k)[0] - average[0], position(k)[2] - average[2]])).fold(f64::NEG_INFINITY, f64::max);
         let y = average[1] - s.scatter_branch_descent - 2.0 * reach;
-        if y < spacing {
+        if y - s.plate_y < spacing {
             continue;
         }
         let junction = [average[0], y, average[2]];

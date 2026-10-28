@@ -81,7 +81,7 @@ pub fn omissions(input: OmitInput) -> Omissions {
             }
         }
     }
-    let raft_top = if settings.raft_enabled { settings.raft_floor_thickness } else { 0.0 };
+    let raft_top = settings.raft_top();
     for (index, contact) in contacts.iter().enumerate() {
         if tree_of[index] || layout.is_some_and(|l| l.removed[index]) || dropped[index] {
             continue;

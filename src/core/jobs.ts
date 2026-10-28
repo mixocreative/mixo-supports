@@ -35,8 +35,13 @@ export interface SupportJob {
   mesh: TriangleMesh;
   /** Accepted dental policy also constrains secondary model landings during mesh construction. */
   dental?: DentalPolicy;
-  /** The transform the supports were generated at (plate space is its frame); null: no supports, an empty mesh. */
+  /** The transform the supports were generated at (the build frame); null: no supports, an empty mesh. */
   frame: JobTransform | null;
+  /**
+   * The plate's height in `frame` (absent: 0, the frame's own plate). A lift change keeps `frame`, so
+   * the build reuses the model placed by it and every cache on it, and moves the plate instead.
+   */
+  plate?: number;
   settings: LiveSupportSettings;
   contacts: ContactInputs;
   /** Label text embossed on the raft (the unit's own text or its automatic letter). */

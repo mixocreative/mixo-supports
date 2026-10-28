@@ -29,6 +29,7 @@ Decided (by the owner unless noted):
 | D8 | Low points outside the support area are information only (lead decision, reversible). | built |
 | D9 | The mesh check stays strict; a separate "repair mesh" step only if real files need it. | evidence |
 | D10 | Generate time limit stays 120 s. | built |
+| D11 | A lift change keeps the generated tips, necks and landings exactly and only moves what reaches the plate (lead decision, reversible). Two fresh generates at different lifts differ (the landing remesh grid follows the build frame: tips up to 2.1 mm apart), so "equal to a fresh generate" holds only on the exact surface. | L |
 
 Open (owner):
 
@@ -61,7 +62,7 @@ Open (owner):
 ### V. Validation on real aligners (owner, in parallel, starts now)
 Owner runs `dentalwork/batch-review/run-batch-review.bat` on 10–20 real aligners (upper and lower, with and without a central opening, attachments, different trim styles, files from more than one design program) and prints 3–5 at the default settings on the owner's printer and resin, checking that supports hold and the parts fit. Sends case numbers and notes. Outcome decides whether O, P2 and the F thresholds need work. Synthetic aligners only if Q2 is yes.
 
-### L. Lift as a plate offset (running)
+### L. Lift as a plate offset (done)
 Lift moves the plate, not the model, so a lift change keeps the model-space caches. Goldens must not change. Done when: a lift change through the offset equals a fresh generate at that lift (within 1e-5 mm; same components, contact ids and verdicts); the session keeps the same mesh handles across the change (handle count asserted); lift-change time before and after with `scripts/perf/live-bench.mjs`. Time-box: if not done within the unit, stop and report.
 
 ### R. Repair loop on a clean pass (0.5 unit, engine; goldens must not change)

@@ -50,7 +50,8 @@ pub fn emit_structures(builder: &mut MeshBuilder, footprints: &[P2], s: &Support
     if !roof {
         return;
     }
-    let top = model.top();
+    // Built at plate height 0 and raised onto the plate by the caller, so the top is measured from it.
+    let top = model.top() - s.plate_y;
     for l in std::iter::once(&outline.main).chain(others.iter().copied()) {
         emit_roof_cage(builder, &build_roof_cage(&l.raw, top, s));
     }

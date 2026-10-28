@@ -196,18 +196,18 @@ pub fn emit_column(
     })
 }
 
-/// Pillar run down to the foot top and the foot frustum of every plate-landing column.
-pub fn emit_feet(builder: &mut MeshBuilder, anchors: &[PlateAnchor], pillar_radius: f64, segments: usize) {
+/// Pillar run down to the foot top and the foot frustum of every plate-landing column (`plate`: its height).
+pub fn emit_feet(builder: &mut MeshBuilder, anchors: &[PlateAnchor], pillar_radius: f64, segments: usize, plate: f64) {
     for anchor in anchors {
         let [x, y, z] = anchor.position;
-        let foot_top = anchor.shape.base_height;
+        let foot_top = plate + anchor.shape.base_height;
         builder.begin(Tag::owned(Part::Pillar, anchor.contact, anchor.origin));
         if (y - foot_top).abs() > MIN_LENGTH {
             builder.frustum(anchor.position, [x, foot_top, z], pillar_radius, pillar_radius, segments);
         }
         builder.end();
         builder.begin(Tag::owned(Part::Foot, anchor.contact, anchor.origin));
-        builder.frustum([x, 0.0, z], [x, foot_top, z], anchor.shape.base_diameter / 2.0, pillar_radius, segments);
+        builder.frustum([x, plate, z], [x, foot_top, z], anchor.shape.base_diameter / 2.0, pillar_radius, segments);
         builder.end();
     }
 }
@@ -234,7 +234,7 @@ mod tests {
         let settings = SupportSettings::from_slice(&values).unwrap();
         let mut builder = MeshBuilder::new();
         let anchor = emit_column(&mut builder, 0, &contact([0.0, 10.0, 0.0]), &settings, 0.0, 12, false, None).unwrap();
-        emit_feet(&mut builder, &[anchor], settings.pillar_diameter / 2.0, 12);
+        emit_feet(&mut builder, &[anchor], settings.pillar_diameter / 2.0, 12, 0.0);
         let mesh = builder.finish();
         let parts: Vec<Part> = mesh.components.iter().map(|c| c.tag.part).collect();
         assert_eq!(parts, [Part::Neck, Part::Pillar, Part::Pillar, Part::Foot]);

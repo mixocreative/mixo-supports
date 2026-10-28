@@ -74,10 +74,12 @@ pub struct IslandInput<'a> {
     pub expired: &'a dyn Fn() -> bool,
     /// The policy's permitted area as a face predicate; `None` permits every face (the generic policy).
     pub permitted_face: Option<&'a dyn Fn(u32) -> bool>,
+    /// The plate's height in the frame of `positions` (`SupportSettings::plate_y`).
+    pub plate_y: f64,
 }
 
 pub fn island_verdict(input: IslandInput) -> IslandVerdict {
-    let IslandInput { positions, indices, contacts, grounds, verified, cover_mm, expired, permitted_face } = input;
+    let IslandInput { positions, indices, contacts, grounds, verified, cover_mm, expired, permitted_face, plate_y } = input;
     if expired() {
         return IslandVerdict::Inconclusive("timeout");
     }
@@ -118,7 +120,7 @@ pub fn island_verdict(input: IslandInput) -> IslandVerdict {
         let ground = grounds.get(ci).copied().unwrap_or(Ground::None);
         let (to, bottom_y) = match ground {
             Ground::None => continue,
-            Ground::Plate => (PLATE.to_string(), 0.0),
+            Ground::Plate => (PLATE.to_string(), plate_y),
             Ground::Model { face, point, .. } => {
                 let Some(face) = face.filter(|&f| (f as usize + 1) * 3 <= indices.len()) else { continue };
                 // The component the landing joined at the face's highest vertex.
@@ -144,7 +146,7 @@ pub fn island_verdict(input: IslandInput) -> IslandVerdict {
             }
         }
     }
-    let PathResult::Ok { resolved, manual_resolved, .. } = resolve_birth_paths(&nodes, &links) else {
+    let PathResult::Ok { resolved, manual_resolved, .. } = resolve_birth_paths(&nodes, &links, plate_y) else {
         return IslandVerdict::Inconclusive("invalid support path");
     };
     let islands = births

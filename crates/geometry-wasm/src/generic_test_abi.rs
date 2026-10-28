@@ -147,3 +147,10 @@ pub fn support_settings_layout() -> Vec<String> {
     support_settings::SETTINGS_LAYOUT.iter().map(|name| (*name).to_string()).collect()
 }
 
+
+/// The voxel remesh cache's `[hits, misses]` since the module loaded: tests prove a rebuild reused it.
+#[wasm_bindgen]
+pub fn remesh_cache_stats() -> Vec<u32> {
+    let (hits, misses) = mixo_geometry_core::supports::remesh::cache_stats();
+    vec![hits, misses]
+}

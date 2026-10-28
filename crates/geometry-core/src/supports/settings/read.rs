@@ -232,6 +232,7 @@ impl SupportSettings {
             reinforce_overhang_edges: r.flag("reinforceOverhangEdges")?,
             lift_height: r.num("liftHeight", 0.0, 200.0, false)?,
             erase_radius: r.num("eraseRadius", 0.1, 50.0, false)?,
+            plate_y: 0.0,
         })
     }
 }
