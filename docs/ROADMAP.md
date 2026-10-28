@@ -64,7 +64,13 @@ Open (owner; Q1, release timing, was answered: pull request #2 merged to `main` 
 ### V. Validation on real aligners (owner, in parallel, starts now)
 Owner runs `dentalwork/batch-review/run-batch-review.bat` on 10–20 real aligners (upper and lower, with and without a central opening, attachments, different trim styles, files from more than one design program) and prints 3–5 at the default settings on the owner's printer and resin, checking that supports hold and the parts fit. Sends case numbers and notes. Outcome decides whether O, P2 and the F thresholds need work. The synthetic set (V1) runs before real files arrive; it shows whether the code is specific to one mesh, not whether parts fit.
 
-### V1. Synthetic test aligners (1.5 units, Rust tool; goldens unchanged)
+### V1. Synthetic test aligners (done)
+First run: generator 16.3 s, all output checks pass; folder review: 9 of 10 procedural shells and the reference with 0.03 mm noise are refused with `outer-ridge-not-closed`, the flat trim (B04) with `orientation-ambiguous-cavity`, the mirrored and scaled references build clear but leave 2 and 3 tips out (scaled 1.15: opening gap 16 mm). Details and findings: `dentalwork/synthetic-aligners/README.md`.
+
+### V2. Fixes from the V1 findings (engine; reference goldens unchanged) — *spec before start*
+Diagnose first (Fable): finding 1 (outer ridge not closed) on B01 and C03 — the detector or the generated rims. Then one specification per fix, each checked on the held-out cases (B06, B09, C02) without tuning on them. Comes before F: F's angle search is built on the detector.
+
+Specification as built:
 Build the generator, cases and checks exactly as `dentalwork/synthetic-aligners/SPEC.md` says (12 cases, 3 held out, output git-ignored, manifest committed). Done when: the generator's unit tests pass; all 12 outputs pass the output checks; generation plus checks take under 30 s; the lead has run the folder review on the set and recorded each case against the expected table in `dentalwork/synthetic-aligners/README.md`; differences from the expected table are listed as findings (each fix is a later step with its own spec), not fixed in V1.
 
 ### L. Lift as a plate offset (done)

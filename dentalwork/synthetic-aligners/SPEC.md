@@ -25,7 +25,7 @@ Closed (373,956 triangles, 186,976 vertices, no boundary edges); extents 67.5 ×
 - Committed: the generator, `cases.json`, `README.md` (how to run, the expected table, the owner's record table), `manifest.json` (per output: case, SHA-256, triangle count, the pose matrix, `truthOpening`, and `openingErrorDeg`: the angle between `truthOpening` and the opening direction `propose_orientation` proposes on the output, or its inconclusive reason code). Git-ignored: `dentalwork/synthetic-aligners/stl/` (add to the root `.gitignore`).
 - Output names `syn-<case>-<tag>.stl`, e.g. `syn-B01-upper-window.stl`. Binary STL (80-byte header, u32 count, 50-byte records). No Rust STL writer exists; it is written inline.
 - **Reading the reference (mode C):** `core::stl::BinaryStlStream::new(count)` with the count from header bytes 80..84, `push` the whole file, `finish()` gives a welded `WeldedMesh` (1e-4 mm weld). The reader turns the file −90° about X (Z-up data becomes Y-up). Mode C undoes that rotation before any operation as an exact coordinate permutation, (x, y, z) → (x, −z, y), not with trigonometry, so mode C outputs are in the file's own frame.
-- **Randomness:** SplitMix64, written inline, seeded with FNV-1a 64 of the case id string. Draw order per case: pose, then jitter (s, then u, then k), then noise (F, then G). Same case id → same bytes on any platform.
+- **Randomness:** SplitMix64, written inline, seeded with FNV-1a 64 of the case id string. Draw order per case: pose, then jitter (s, then u, then k), then noise (F, then G). Same case id → same bytes for the same binary on the same platform and toolchain (sin, cos and atan2 come from the platform's maths library); manifest SHA-256s are regenerated on a new platform, not compared across platforms.
 - **Pose:** applied last to every output. Rotation: axis uniform on the sphere (two draws), angle uniform 0–360° (one draw); translation uniform ± 50 mm per axis (three draws). `truthOpening` = the direction the cavity opens toward (the teeth enter the shell along its reverse): the build frame's −z after the pose for mode B; for mode C, `Rim::opening_direction` from `dental::orient::propose_orientation` (`dental::mesh::Mesh::new`, `profiles::reference_aligner()`) on the unmodified reference (the reference's orientation is accepted by the owner), as read (reader frame), rotated +90° about X into the file frame, then mapped through the operation (mirror: x → −x; scale and noise: unchanged) and the pose.
 - Runtime: generation **and** the output checks for all cases under 30 s in release on the development machine. If that cannot be met, report to the lead; do not weaken a check.
 - The folder review runs unchanged: `dentalwork/batch-review/run-batch-review.bat`, pick `dentalwork/synthetic-aligners/stl`.
@@ -35,7 +35,7 @@ Closed (373,956 triangles, 186,976 vertices, no boundary edges); extents 67.5 ×
 
 All lengths in mm. Build frame: x left–right, y toward the incisors, z up (crowns +z, gum line z ≈ 0, palate z < 0).
 
-**Centreline C(s).** Per half a cubic Bézier in the xy plane, mirrored in x: P0 (0, D), P1 (Wf/2, D), P2 (W/2, 0.55 D), P3 (W/2, 0). Upper W 56, D 44, Wf 14; lower W 52, D 40, Wf 14. Sampled by arclength; L = total arclength (both halves); s runs from the left distal end (s = 0) to the right distal end (s = L). T = dC/ds, N = horizontal unit normal pointing buccal (away from the arch's inside), Z = (0, 0, 1).
+**Centreline C(s).** Per half a cubic Bézier in the xy plane, mirrored in x: P0 (0, D), P1 (Wf/2, D), P2 (W/2, 0.55 D), P3 (W/2, 0). Upper W 56, D 44, Wf 30; lower W 52, D 40, Wf 28; B09 W 62, D 48, Wf 34. (Smallest centreline radius: upper 17.0 mm, lower 16.3 mm, B09 20.0 mm, all at or near the front; a Wf of 14 gave 3.4–4.1 mm and folded the plate.) Sampled by arclength; L = total arclength (both halves); s runs from the left distal end (s = 0) to the right distal end (s = L). T = dC/ds, N = horizontal unit normal pointing buccal (away from the arch's inside), Z = (0, 0, 1).
 
 **Teeth.** Seven per half, distal to front: second molar, first molar, second premolar, first premolar, canine, lateral, central. The widths are scaled by one factor so the 14 teeth fill L exactly. τ ∈ [0, 1) is the position within a tooth. B and H are constant per tooth and blend with a raised cosine, f = (1 − cos(πx/4))/2 over 4 mm centred on each tooth boundary (x from 0 to 4 mm across the blend).
 
@@ -63,18 +63,18 @@ U(s) = profile length at s; U_max = max over s. Band grid (s, u): i = 0..n_s, n_
 **Plate (upper with plate only; polar rings).**
 - Outer loop O: the join-row vertices of columns i with 10 ≤ s_i ≤ L − 10 (s_post,L and s_post,R are the first and last such columns), then a straight back border at z = 0 from the right join vertex to the left one, sampled every h. O shares its vertices with the band. Join-row vertices outside [s_post,L, s_post,R] form a free 3 mm lingual lip and are part of the outer trim.
 - Window: a rounded rectangle, w across (x), d front–back (y), corner radius 4, centred at W = area centroid of O plus the case offset (+y is forward). One ray per O vertex, θ_i = atan2 of (O_i − W) in xy. If θ_i is not strictly monotone around O, the case fails with an error (O not star-shaped about W). I_i = where ray i meets the window outline. If |I_i − W| > |O_i − W| − h for any i, the case fails with an error (the window does not fit inside O).
-- Rings k = 0..K with one global K = ceil(max_i |O_i − I_i| / h) (ring edges may be shorter than h): xy P_k,i = I_i + (k/K)(O_i − I_i); z = −V · cos²(πk / 2K), V 5. Zero slope at both ends: the plate meets the r 3 arc tangentially and the window rim is flat. Ring K is O itself.
+- Rings k = 0..K with one global K = ceil(max_i |O_i − I_i| / h) (ring edges may be shorter than h): xy P_k,i = I_i + (k/K)(O_i − I_i); z(P) = −V · cos²((π/2) · min(d(P)/R, 1)), d(P) = xy distance from P to the window outline (the rounded rectangle's signed distance, clamped at 0), R = 0.9 · min_i d(O_i), V = min(5, 0.09 · R²); ring and ray xy are unchanged. The rim (d = 0) is flat; within 0.1 R of O the plate stays within 0.003 V of z = 0. Radius along the gradient ≥ 2R²/(Vπ²) = 2.25 mm; level curves are rounded rectangles with corner radius ≥ 4 mm. Measured (Fable): R 2.01–2.11, V 0.36–0.40 for B01, B04–B08; R 4.41–4.52, V 1.75–1.84 for B09. A depth per ray or per ring ripples around the rim or copies the back-border corner, so it is not used. Zero slope at both ends: the plate meets the r 3 arc tangentially and the window rim is flat. Ring K is O itself.
 - Quads (k, i), (k+1, i), (k+1, i+1), (k, i+1), i wrapping.
 
-**Surfaces and winding.** F is the fitting (tooth-facing) surface. n = area-weighted vertex normal of F, oriented away from the teeth and tissue (n · Z > 0 at the occlusal top and on the plate; on the lingual wall n points toward the palate's centre); n is continuous across the join. The outer surface G = F + t · n. The solid lies between F and G; every triangle is wound so its right-hand normal points out of the solid: G as built, F reversed. Fail the case if the curvature radius of F, along s or along u and evaluated on the grid, is under 1.5 t anywhere, or if the arch's curvature radius at the front is under B/2 + 3 + t (the 4 mm blend gives a minimum radius of 1.62 mm, which passes for t ≤ 1.08).
+**Surfaces and winding.** F is the fitting (tooth-facing) surface. n = area-weighted vertex normal of F, oriented away from the teeth and tissue (n · Z > 0 at the occlusal top and on the plate; on the lingual wall n points toward the palate's centre); n is continuous across the join. The outer surface G = F + t · n. The solid lies between F and G; every triangle is wound so its right-hand normal points out of the solid: G as built, F reversed. Fail the case if the **normal** curvature radius of F is under 1.5 t anywhere: for every grid row and column curve, κ_n = κ · (curve principal normal · n_v), evaluated on the grid; the trim line's scallop lies in the wall's tangent plane and has κ_n ≈ 0, so it does not count (the 4 mm blend gives a minimum radius of 1.62 mm, which passes for t ≤ 1.08). Also fail if the centreline's smallest curvature radius (anywhere along it) is under B/2 + 3 + t for an upper with a plate, or under B/2 + t otherwise.
 
 **Walls** close every boundary loop of F with the matching loop of G.
 - **Cut (90°):** one quad per boundary edge, F_v → G_v. Used for the outer trim: the buccal row, both distal columns, the lingual lips, the back border, and the lingual trim when there is no plate.
-- **Rounded:** a half circle of radius t/2, centre F_v + (t/2) n_v, from F_v to G_v through F_v + (t/2)(n_v + m_v), 8 quads over 180°. m_v = the in-sheet direction pointing out of the sheet, from the interior neighbour, orthogonalised against n_v (at distal columns m_v is along ∓T; at a boundary vertex where the loop turns, m_v is the normalised sum of the outward in-sheet perpendiculars of its two boundary edges, orthogonalised against n_v). Used for the window always, and for the whole outer trim in case B07.
+- **Rounded:** a half circle of radius t/2, centre F_v + (t/2) n_v, from F_v to G_v through F_v + (t/2)(n_v + m_v), 8 quads over 180°. m_v = the normalised sum of the outward in-sheet perpendiculars of the vertex's two boundary edges, orthogonalised against n_v, at every boundary vertex (lead, after the build: taking it from the interior neighbour twisted the wall up to 64° where rays meet the back border at a shallow angle). Used for the window always, and for the whole outer trim in case B07.
 
 **Triangulation.** Each quad splits along its shorter diagonal. The mesh is indexed directly; vertex ids are shared by construction.
 
-**Jitter** (parameters only, never 3D points): s_i and u_j by uniform ± 0.25 of their spacing, k/K by ± 0.25/K. Not moved: i = 0 and n_s, j = 0 and n_u, the s_post columns, rings 0 and K. Order stays monotone.
+**Jitter** (parameters only, never 3D points): s_i and u_j by uniform ± 0.25 of their spacing, k/K by ± 0.25/K. Not moved: i = 0 and n_s, j = 0 and n_u, the s_post columns, and all rings (no jitter on k; one global K from the longest ray). A parameter that does not move draws nothing; draws follow the listed order over the moving parameters only. Order stays monotone.
 
 **Noise** (when set): uniform ± σ along n_v, applied to F and G separately after the offset.
 
@@ -92,17 +92,17 @@ On every output (any failure exits non-zero, naming the case and check):
 2. Every vertex has a single fan of faces.
 3. Euler characteristic: B cases 2 − 2g, g = windows (with a window χ 0, without χ 2); C cases equal to the unmodified reference's χ, measured at run time (−2 today: the welded reference has genus 2, not 1; where the second handle is, is an open finding for the lead).
 4. Round trip: write, read back with `BinaryStlStream`, undo the reader's rotation; same vertex count and checks 1–3 pass.
-5. Triangle count within 0.5–2× the estimate (sum of grid quads × 2 plus walls) and ≤ 3 M.
+5. Triangle count within 0.5–2× the estimate and ≤ 3 M. Estimate: mode B, grid quads × 2 plus wall quads × 2; mode C, the reference's triangle count (373,956), since mode C operations keep it.
 
 In the generator's unit tests only (h 0.5, cheap):
 
-6. Signed volume > 0 and within 15 % of (mean of the F and G areas) × t.
-7. Minimum edge ≥ 0.05 mm, minimum angle ≥ 10°.
-8. No self-intersection: triangle-triangle tests on non-adjacent pairs through a uniform hash with 2h cells (`core::spatial::Bvh` answers rays, not triangle pairs). If it fires on a plate case, look first at the back-border corners, where the rays from W meet O at shallow angles.
+6. Signed volume > 0 and within 15 % of (mean of the F and G areas) × t (t × the scale factor for a scaled mesh).
+7. Minimum edge ≥ 0.05 mm, minimum angle ≥ 5° (measured at h 0.5: B07 rounded walls 5.78°, plate cases 6.38–7.35°, no-plate 12.5°; B07's 0.12 × 0.5 mm wall quads alone rule out 10°).
+8. No self-intersection: triangle-triangle tests on non-adjacent pairs through a uniform hash with 2h cells (`core::spatial::Bvh` answers rays, not triangle pairs). If it fires on a plate case, look first at the back-border corners, where the rays from W meet O at shallow angles, and at the window-ring edge where a ray meets the molar join row almost head-on (0.032 mm at h 0.2).
 
 ## Cases (12)
 
-Defaults h 0.2, t 0.6, m 0.5, a_g 1.2, window 28 × 15.5 centred, no noise, jitter on.
+Defaults h 0.2, t 0.6, m 0.5, a_g 1.2, window 24 × 14 centred (smallest clearance to O 2.45 mm on the upper arch; the reference's 28 × 15.5 comes within 0.33 mm of O at the premolars), no noise, jitter on.
 
 "Absent" means the reference type refuses the file with `central-opening-absent` (`dental/region.rs`), which needs orientation to succeed first. That refusal is the expected result until step O. An `orientation-*` or `dental-pose-inconclusive` result on any case is a finding. `projected-holes-uncertain` (an ambiguous opening) is a finding on every case.
 
@@ -115,7 +115,7 @@ Defaults h 0.2, t 0.6, m 0.5, a_g 1.2, window 28 × 15.5 centred, no noise, jitt
 | B06 | upper, m −0.5, a_g 1.5 (deep scallop) | 1 | built (held out) |
 | B07 | upper, outer trim rounded | 1 | `inconclusive` with a named reason, never a wrong belt |
 | B08 | upper, t 0.5, h 0.12 | 1 | built |
-| B09 | upper wide W 62, D 48, window 20 × 10 offset 5 forward | 1 | built (held out) |
+| B09 | upper wide W 62, D 48, Wf 34, window 20 × 10 offset 5 forward | 1 | built (held out) |
 | B10 | lower default | 0 | absent |
 | C02 | reference mirrored, scale 0.9 | as reference | built (held out) |
 | C03 | reference, noise 0.03 | as reference | built |
@@ -129,10 +129,10 @@ Defaults h 0.2, t 0.6, m 0.5, a_g 1.2, window 28 × 15.5 centred, no noise, jitt
 
 ## Generator unit tests (h 0.5)
 
-1. Every case's construction passes checks 1–8.
+1. Every mode-B case's construction passes checks 1–8. The mode-C operations (mirror, scale, noise) are tested on B01 at h 0.5 as input, not on the reference (check 7 on 374k triangles in a debug build is too slow, and the reference need not meet check 7's edge and angle minimums).
 2. Same seed → same SHA-256; another case id → different bytes.
 3. Buccal trim vertices lie on z_b(s) within 1e-6 before the pose.
-4. Cut walls have dihedrals 90 ± 5°; the window rim and B07's trim have every dihedral under 30°, except wall edges at the outer loop's corner vertices (4 without a plate: the distal corners; 6 with a plate: plus the two lip/back-border corners), where the loop turns about 90°.
+4. At h 0.25 (at h 0.5 the scallop and the lower incisors' groove alone turn a wall past the limits: B07 trim about 32°, B10 lingual cut wall 84°): cut walls have dihedrals 90 ± 5°; the window rim and B07's trim have every dihedral under 30°, except wall edges within 1 mm of the outer loop's corner vertices (4 without a plate: the distal corners; 6 with a plate: plus the two lip/back-border corners), where the loop turns about 90°.
 5. A window that does not fit inside O returns `Err`, not a mesh.
 6. The self-intersection check finds two crossing triangles and passes a tetrahedron.
 7. Mirroring keeps the volume positive.

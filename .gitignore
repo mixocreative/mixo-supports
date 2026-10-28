@@ -7,3 +7,4 @@ __pycache__/
 target/
 crates/geometry-wasm/pkg-browser/
 crates/geometry-wasm/pkg-node/
+dentalwork/synthetic-aligners/stl/
