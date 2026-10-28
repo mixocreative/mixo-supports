@@ -16,7 +16,8 @@ pub enum Opening {
 }
 
 enum Hole {
-    Present { labels: Vec<i32>, id: i32, pixels: Vec<[f64; 2]> },
+    /// `cell_mm`: the side of one raster cell in millimetres.
+    Present { labels: Vec<i32>, id: i32, pixels: Vec<[f64; 2]>, cell_mm: f64 },
     Absent,
     Ambiguous(&'static str),
 }
@@ -100,16 +101,19 @@ fn opening_hole(context: &Context, size: usize, profile: &AlignerProfile) -> Hol
     if holes.len() != 1 || (holes[0].1 as f64) < (size * size) as f64 * profile.thresholds.opening_hole_min_fraction {
         return Hole::Ambiguous("projected-holes-uncertain");
     }
-    Hole::Present { labels, id: holes[0].0, pixels }
+    Hole::Present { labels, id: holes[0].0, pixels, cell_mm: 1.0 / scale }
 }
 
 fn opening_contour(context: &Context, size: usize, profile: &AlignerProfile) -> Opening {
-    let (labels, id, pixels) = match opening_hole(context, size, profile) {
-        Hole::Present { labels, id, pixels } => (labels, id, pixels),
+    let (labels, id, pixels, cell_mm) = match opening_hole(context, size, profile) {
+        Hole::Present { labels, id, pixels, cell_mm } => (labels, id, pixels, cell_mm),
         Hole::Absent => return Opening::Absent,
         Hole::Ambiguous(reason) => return Opening::Ambiguous(reason),
     };
     let direction = context.rim.opening_direction;
+    let t = &profile.thresholds;
+    // The near-hole distance in whole cells at this resolution (2 cells at 256, 4 at 512 on the reference).
+    let reach = (t.opening_near_hole_mm / cell_mm).ceil() as i64;
     let mut selected: Vec<usize> = Vec::new();
     for (index, edge) in context.edges.iter().enumerate() {
         let first = dot(context.normals[edge.faces[0] as usize], direction);
@@ -120,8 +124,8 @@ fn opening_contour(context: &Context, size: usize, profile: &AlignerProfile) -> 
         let (a, b) = (pixels[edge.a as usize], pixels[edge.b as usize]);
         let (x, y) = (js_round((a[0] + b[0]) / 2.0) as i64, js_round((a[1] + b[1]) / 2.0) as i64);
         let mut near = false;
-        'scan: for dy in -2..=2 {
-            for dx in -2..=2 {
+        'scan: for dy in -reach..=reach {
+            for dx in -reach..=reach {
                 let (nx, ny) = (x + dx, y + dy);
                 if nx >= 0 && nx < size as i64 && ny >= 0 && ny < size as i64 && labels[ny as usize * size + nx as usize] == id {
                     near = true;
@@ -150,9 +154,8 @@ fn opening_contour(context: &Context, size: usize, profile: &AlignerProfile) -> 
     if branch.len() > 1 || graph.values().any(|incident| incident.len() != 2 && incident.len() != 4) {
         return Opening::Ambiguous("opening-loop-branched");
     }
-    let minimum = profile.thresholds.opening_loop_min_edges;
     if branch.is_empty() {
-        return if selected.len() > minimum && components(context, &selected).len() == 1 {
+        return if context.edges_length(&selected) > t.opening_loop_min_mm && components(context, &selected).len() == 1 {
             Opening::Present(selected)
         } else {
             Opening::Ambiguous("opening-loop-not-closed")
@@ -183,11 +186,12 @@ fn opening_contour(context: &Context, size: usize, profile: &AlignerProfile) -> 
             loops.push(path);
         }
     }
-    loops.sort_by(|a, b| b.len().cmp(&a.len()));
-    if loops.is_empty() || loops[0].len() < minimum || loops.len() > 2 || loops.get(1).is_some_and(|l| l.len() > 10) {
+    let mut loops: Vec<(f64, Vec<usize>)> = loops.into_iter().map(|l| (context.edges_length(&l), l)).collect();
+    loops.sort_by(|a, b| b.0.total_cmp(&a.0));
+    if loops.is_empty() || loops[0].0 < t.opening_loop_min_mm || loops.len() > 2 || loops.get(1).is_some_and(|l| l.0 > t.opening_side_loop_max_mm) {
         return Opening::Ambiguous("opening-loop-not-isolated");
     }
-    Opening::Present(loops.swap_remove(0))
+    Opening::Present(loops.swap_remove(0).1)
 }
 
 /// Present only when both resolutions find the same loop; a disagreement is ambiguous.

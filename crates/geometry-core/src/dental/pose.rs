@@ -5,19 +5,28 @@ use super::mesh::Mesh;
 
 use crate::core::vec::{V3, cross, dot, normalize, sub};
 use crate::core::jsnum::hypot3;
+use super::profiles::{AlignerProfile, Pose, Thresholds};
 use super::rim::Rim;
 use std::collections::HashSet;
 
-/// Reference opening and arch-front directions (the owner-approved, already-correct pose).
-const TARGET_OPENING: V3 = [0.03714905735095951, -0.6888892651222808, -0.7239140335269232];
-const TARGET_FRONT: V3 = [-0.01322175449610946, 0.7240118281038878, -0.6896608282146458];
+/// The profile's target opening and arch-front directions (build plate normal +Y). The opening
+/// axis is tilted from the downward plate normal by `tilt_deg` toward `heading_deg`; the front is
+/// the direction of increasing tilt (plate-up across the opening axis), rolled by `roll_deg` about it.
+pub fn target_frame(pose: &Pose) -> (V3, V3) {
+    let (tilt, heading, roll) = (pose.tilt_deg.to_radians(), pose.heading_deg.to_radians(), pose.roll_deg.to_radians());
+    let opening = [tilt.sin() * heading.sin(), -tilt.cos(), -tilt.sin() * heading.cos()];
+    // The direction of increasing tilt: plate-up across the opening axis, defined at tilt 0 too.
+    let up = [tilt.cos() * heading.sin(), tilt.sin(), -tilt.cos() * heading.cos()];
+    let across = normalize(cross(up, opening));
+    let front = std::array::from_fn(|axis| roll.cos() * up[axis] + roll.sin() * across[axis]);
+    (opening, front)
+}
 
-/// Euler XYZ rotation (radians) that restores the reference pose, or `None` for an ambiguous arch.
-/// A convenience proposal, not a universal clinical print orientation.
-pub fn rotation_to_dental_pose(mesh: &Mesh, rim: &Rim) -> Option<[f64; 3]> {
-    let front = estimate_arch_front(mesh, rim)?;
-    let target_opening = normalize(TARGET_OPENING);
-    let target_front = normalize(TARGET_FRONT);
+/// Euler XYZ rotation (radians) that restores the profile's target pose, or `None` for an
+/// ambiguous arch. A convenience proposal, not a universal clinical print orientation.
+pub fn rotation_to_dental_pose(mesh: &Mesh, rim: &Rim, profile: &AlignerProfile) -> Option<[f64; 3]> {
+    let front = estimate_arch_front(mesh, rim, &profile.thresholds)?;
+    let (target_opening, target_front) = target_frame(&profile.pose);
     let target_side = normalize(cross(target_front, target_opening));
     let source_side = normalize(cross(front, rim.opening_direction));
     let source = [source_side, front, rim.opening_direction];
@@ -34,7 +43,7 @@ pub fn rotation_to_dental_pose(mesh: &Mesh, rim: &Rim) -> Option<[f64; 3]> {
     })
 }
 
-fn estimate_arch_front(mesh: &Mesh, rim: &Rim) -> Option<V3> {
+fn estimate_arch_front(mesh: &Mesh, rim: &Rim, t: &Thresholds) -> Option<V3> {
     let count = mesh.vertex_count();
     if count < 32 {
         return None;
@@ -60,7 +69,7 @@ fn estimate_arch_front(mesh: &Mesh, rim: &Rim) -> Option<V3> {
         suv += du * dv;
     }
     let spread = hypot3([suu - svv, 2.0 * suv, 0.0]);
-    if spread / (suu + svv).max(1e-9) < 0.05 {
+    if spread / (suu + svv).max(1e-9) < t.arch_front_min_anisotropy {
         return None;
     }
     let theta = 0.5 * (2.0 * suv).atan2(suu - svv);
@@ -83,18 +92,21 @@ fn estimate_arch_front(mesh: &Mesh, rim: &Rim) -> Option<V3> {
     if !(max_x > min_x) || !(max_y > min_y) {
         return None;
     }
+    // Occupied cells of a grid over the part's own in-plane box: an area fraction, not a mesh count.
+    let grid = t.arch_front_grid_cells as f64;
+    let (side, band) = (t.arch_front_side_fraction, t.arch_front_end_band_fraction);
     let mut ends: [HashSet<i64>; 2] = [HashSet::new(), HashSet::new()];
     for [x, y] in &plane {
         let fx = (x - min_x) / (max_x - min_x);
-        if fx <= 0.3 || fx >= 0.7 {
+        if fx <= side || fx >= 1.0 - side {
             continue;
         }
         let fy = (y - min_y) / (max_y - min_y);
-        let end = if fy < 0.22 { 0 } else if fy > 0.78 { 1 } else { continue };
-        ends[end].insert((fx * 40.0).floor() as i64 * 40 + (fy * 40.0).floor() as i64);
+        let end = if fy < band { 0 } else if fy > 1.0 - band { 1 } else { continue };
+        ends[end].insert((fx * grid).floor() as i64 * t.arch_front_grid_cells as i64 + (fy * grid).floor() as i64);
     }
-    let (first, second) = (ends[0].len(), ends[1].len());
-    if first.max(second) < 20 || first.max(second) < 2 * 1.max(first.min(second)) {
+    let (first, second) = (ends[0].len() as f64, ends[1].len() as f64);
+    if first.max(second) < t.arch_front_min_area_fraction * grid * grid || first.max(second) < t.arch_front_end_ratio_min * first.min(second).max(1.0) {
         return None;
     }
     let sign = if first > second { -1.0 } else { 1.0 };
@@ -103,4 +115,26 @@ fn estimate_arch_front(mesh: &Mesh, rim: &Rim) -> Option<V3> {
         sign * (minor[0] * rim.tangent[1] + minor[1] * rim.bitangent[1]),
         sign * (minor[0] * rim.tangent[2] + minor[1] * rim.bitangent[2]),
     ]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dental::profiles::reference_aligner;
+
+    /// The reference profile's pose block reproduces the owner-approved directions it replaced.
+    #[test]
+    fn the_reference_pose_block_reproduces_the_approved_directions() {
+        let (opening, front) = target_frame(&reference_aligner().pose);
+        let approved_opening = [0.03714905735095951, -0.6888892651222808, -0.7239140335269232];
+        let approved_front = [-0.01322175449610946, 0.7240118281038878, -0.6896608282146458];
+        for axis in 0..3 {
+            assert!((opening[axis] - approved_opening[axis]).abs() < 1e-12, "{opening:?}");
+            assert!((front[axis] - approved_front[axis]).abs() < 1e-12, "{front:?}");
+        }
+        assert!(dot(opening, front).abs() < 1e-12);
+        let flat = target_frame(&Pose { tilt_deg: 0.0, heading_deg: 0.0, roll_deg: 0.0 });
+        assert_eq!(flat.0, [0.0, -1.0, -0.0]);
+        assert!((flat.1[2] - -1.0).abs() < 1e-12, "with no tilt the front lies along -Z: {:?}", flat.1);
+    }
 }

@@ -84,7 +84,7 @@ describe('legacy dental area (Rust against the recorded oracle)', () => {
     const orientation = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
     expect(orientation.kind).toBe('proposal');
     if (orientation.kind !== 'proposal') return;
-    const rotation = rotationToDentalPose(mesh, orientation.rim)!;
+    const rotation = rotationToDentalPose(mesh, orientation.rim, REFERENCE_PROFILE)!;
     const turn = { position: [0, 0, 0] as [number, number, number], rotation };
     const generic = placeGeneric(applyTransform(mesh, turn), settings);
     const aligner = (dental: DentalPolicy): DentalPlacementJob => ({ mesh, orientation: turn, settings, dental });

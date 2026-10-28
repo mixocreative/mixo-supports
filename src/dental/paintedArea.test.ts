@@ -57,7 +57,7 @@ describe('an area painted from scratch on the reference aligner', () => {
     const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
     const orientation = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
     if (orientation.kind !== 'proposal') throw new Error('reference orientation');
-    const rotation = rotationToDentalPose(mesh, orientation.rim)!;
+    const rotation = rotationToDentalPose(mesh, orientation.rim, REFERENCE_PROFILE)!;
     const turn: JobTransform = { position: [0, 0, 0], rotation };
     // Treat it as an aligner whose area was not detected: Step 2 paints one from scratch.
     const centre = Array.from(orientation.rim.points.subarray(0, 3)) as Vector;

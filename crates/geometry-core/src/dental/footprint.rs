@@ -4,7 +4,7 @@
 use super::bands::diagnostic_side_bands;
 use super::mesh::Mesh;
 use super::profiles::AlignerProfile;
-use super::sampling::{ContourContact, sample_contour_contacts};
+use super::sampling::{ContourContact, SampleSettings, sample_contour_contacts};
 
 /// Bounded operator controls (UI limits, not validated clinical ranges).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -47,6 +47,8 @@ pub struct FootprintSettings {
     pub max_search_distance: f64,
     /// 0 samples at the contour origin; `None` keeps the usual half-spacing phase.
     pub sample_phase_fraction: Option<f64>,
+    /// No two contacts (either contour) closer than this, 3D mm; 0 = off.
+    pub min_tip_separation: f64,
 }
 
 pub fn footprint_settings(tuning: &Tuning, profile: &AlignerProfile) -> Result<FootprintSettings, &'static str> {
@@ -59,6 +61,7 @@ pub fn footprint_settings(tuning: &Tuning, profile: &AlignerProfile) -> Result<F
         inner_spacing: d.inner_spacing_mm / tuning.density,
         max_search_distance: d.max_search_mm,
         sample_phase_fraction: None,
+        min_tip_separation: d.min_tip_separation_mm,
     })
 }
 
@@ -85,8 +88,9 @@ pub struct Footprint {
 pub fn propose_footprint(mesh: &Mesh, allowed_faces: &[u8], outer: &[u32], opening: &[u32], settings: &FootprintSettings) -> Result<Footprint, &'static str> {
     let bands = diagnostic_side_bands(mesh, allowed_faces, outer, opening, settings.setback, settings.width)?;
     let phase = |spacing: f64| settings.sample_phase_fraction.map(|f| spacing * f);
-    let outer_samples = sample_contour_contacts(mesh, outer, &bands.outer_other_side, settings.outer_spacing, settings.max_search_distance, phase(settings.outer_spacing))?;
-    let inner_samples = sample_contour_contacts(mesh, opening, &bands.inner_other_side, settings.inner_spacing, settings.max_search_distance, phase(settings.inner_spacing))?;
+    let sample = |spacing: f64, keep_clear_of| SampleSettings { spacing, max_search: settings.max_search_distance, phase_mm: phase(spacing), min_separation: settings.min_tip_separation, keep_clear_of };
+    let outer_samples = sample_contour_contacts(mesh, outer, &bands.outer_other_side, &sample(settings.outer_spacing, &[]))?;
+    let inner_samples = sample_contour_contacts(mesh, opening, &bands.inner_other_side, &sample(settings.inner_spacing, &outer_samples.contacts))?;
     let contact_faces = bands.outer_other_side.iter().zip(&bands.inner_other_side).map(|(a, b)| a | b).collect();
     Ok(Footprint { contact_faces, outer_contacts: outer_samples.contacts, inner_contacts: inner_samples.contacts })
 }
@@ -101,6 +105,7 @@ mod tests {
         let profile = reference_aligner();
         let s = footprint_settings(&Tuning::defaults(profile), profile).unwrap();
         assert_eq!((s.setback, s.width, s.outer_spacing, s.inner_spacing, s.max_search_distance), (0.2, 1.2, 3.0, 2.0, 1.5));
+        assert_eq!(s.min_tip_separation, 0.6);
         let s = footprint_settings(&Tuning { setback_mm: 0.5, strip_width_mm: 0.4, density: 1.5 }, profile).unwrap();
         assert_eq!((s.setback, s.width, s.outer_spacing, s.inner_spacing), (0.5, 0.9, 2.0, 2.0 / 1.5));
         assert!(footprint_settings(&Tuning { setback_mm: 0.2, strip_width_mm: 2.5, density: 1.0 }, profile).is_err());

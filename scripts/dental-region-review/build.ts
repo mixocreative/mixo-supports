@@ -39,7 +39,7 @@ export function buildDentalReview(mesh: TriangleMesh): DentalReviewBuild {
   }
   const orientation = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
   if (orientation.kind !== 'proposal') return { kind: 'inconclusive', reason: `orientation-${orientation.reason}` };
-  const rotation = rotationToDentalPose(mesh, orientation.rim);
+  const rotation = rotationToDentalPose(mesh, orientation.rim, REFERENCE_PROFILE);
   if (!rotation) return { kind: 'inconclusive', reason: 'dental-pose-inconclusive' };
 
   const orientationOnly: JobTransform = { position: [0, 0, 0], rotation };

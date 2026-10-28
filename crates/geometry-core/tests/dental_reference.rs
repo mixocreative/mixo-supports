@@ -1,6 +1,7 @@
 //! U6a done checks on the canonical fixture (docs/dental-reference/reference-aligner.stl).
 
 use mixo_geometry_core::core::stl::BinaryStlStream;
+use mixo_geometry_core::core::vec::distance;
 use mixo_geometry_core::dental::mesh::Mesh;
 use mixo_geometry_core::dental::footprint::Tuning;
 use mixo_geometry_core::dental::orientation::{OpeningState, Orientation, orient_dental};
@@ -33,6 +34,12 @@ fn reference_region_matches_the_pinned_counts() {
     assert_eq!(region.region_faces, [254344, 119612]);
     assert_eq!(region.allowed_faces.iter().map(|&f| usize::from(f)).sum::<usize>(), 254344);
     assert!(region.contacts.len() > 70 && region.contacts.len() < 130, "{}", region.contacts.len());
+    let separation = profile.defaults.min_tip_separation_mm;
+    for (at, a) in region.contacts.iter().enumerate() {
+        for b in &region.contacts[at + 1..] {
+            assert!(distance(a.contact.position, b.contact.position) >= separation, "two tips closer than {separation} mm");
+        }
+    }
 }
 
 fn policy_of(mesh: &Mesh, profile: &AlignerProfile, stamps: &[AreaStamp], frame: [f64; 3]) -> (mixo_geometry_core::dental::region::Region, mixo_geometry_core::dental::policy::DentalPolicy) {
@@ -128,13 +135,23 @@ fn a_second_profile_file_reaches_detection_defaults_and_budget() {
 fn reference_orients_with_a_present_opening() {
     let (positions, indices) = reference();
     let mesh = Mesh::new(&positions, &indices);
-    match orient_dental(&mesh, reference_aligner()) {
+    let rotation_with = |profile: &AlignerProfile| match orient_dental(&mesh, profile) {
         Orientation::Oriented { opening, mesh_ok, rotation, .. } => {
             assert_eq!(opening, OpeningState::Present);
-            assert!(mesh_ok && rotation.is_some());
+            assert!(mesh_ok);
+            rotation.expect("an arch front")
         }
         Orientation::Failed { reason, .. } => panic!("failed: {reason:?}"),
-    }
+    };
+    // The reference scan is already in the approved pose: its rotation is (numerically) none.
+    let reference = rotation_with(reference_aligner());
+    assert!(reference.iter().all(|r| r.abs() < 1e-9), "{reference:?}");
+    // Another aligner type sets its own tilt: 20 degrees less tilt turns the part 20 degrees.
+    let mut flatter = reference_aligner().clone();
+    flatter.pose.tilt_deg -= 20.0;
+    let turned = rotation_with(&flatter);
+    let angle = (turned.iter().map(|r| r * r).sum::<f64>()).sqrt().to_degrees();
+    assert!((angle - 20.0).abs() < 0.5, "{turned:?}");
 }
 
 #[test]

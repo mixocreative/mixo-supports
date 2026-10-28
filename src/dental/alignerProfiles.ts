@@ -24,6 +24,14 @@ export interface ProfileDefaults {
   repairBudget: number;
   matchToleranceMm: number;
   matchMinDot: number;
+  minTipSeparationMm: number;
+}
+
+/** The target print pose (Rust `profiles::Pose`; only the geometry uses it). */
+export interface ProfilePose {
+  tiltDeg: number;
+  headingDeg: number;
+  rollDeg: number;
 }
 
 /** One profile file as the host reads it (thresholds are the geometry's; the host only checks the keys). */
@@ -38,19 +46,22 @@ export interface AlignerProfileData {
   /** The reference scan this type is tuned and tested with. */
   fixture: string;
   thresholds: Readonly<Record<string, number>>;
+  pose: Readonly<ProfilePose>;
   defaults: Readonly<ProfileDefaults>;
 }
 
 const LANGS: readonly Lang[] = ['en', 'ja', 'zh-Hant'];
-const TOP_KEYS = ['id', 'name', 'description', 'opening', 'card', 'fixture', 'thresholds', 'defaults'];
+const TOP_KEYS = ['id', 'name', 'description', 'opening', 'card', 'fixture', 'thresholds', 'pose', 'defaults'];
 const THRESHOLD_KEYS = ['axialVarianceMax', 'terminalAreaRatioMin', 'terminalBandFraction', 'confidenceMin', 'sharpAngleDeg',
-  'loopMinVertices', 'loopBandFraction', 'loopBandMinMm', 'loopRadiusRatioMin', 'loopExtentMin', 'ridgeFirstMinEdges',
-  'ridgeSecondMinEdges', 'ridgeExtentMin', 'connectorAngleDeg', 'openingResolutionLow', 'openingResolutionHigh',
-  'openingHoleMinFraction', 'openingLoopMinEdges', 'regionAllowedMeanMin', 'regionForbiddenMeanMax',
-  'regionAllowedFractionMin', 'regionAllowedFractionMax'];
+  'loopMinPerimeterMm', 'loopBandFraction', 'loopBandMinMm', 'loopRadiusRatioMin', 'loopExtentMin', 'ridgeFirstMinMm',
+  'ridgeSecondMinMm', 'ridgeExtentMin', 'connectorAngleDeg', 'openingResolutionLow', 'openingResolutionHigh',
+  'openingHoleMinFraction', 'openingNearHoleMm', 'openingLoopMinMm', 'openingSideLoopMaxMm', 'regionAllowedMeanMin',
+  'regionForbiddenMeanMax', 'regionAllowedFractionMin', 'regionAllowedFractionMax', 'archFrontMinAnisotropy',
+  'archFrontGridCells', 'archFrontSideFraction', 'archFrontEndBandFraction', 'archFrontMinAreaFraction', 'archFrontEndRatioMin'];
+const POSE_KEYS: readonly (keyof ProfilePose)[] = ['tiltDeg', 'headingDeg', 'rollDeg'];
 const DEFAULT_KEYS: readonly (keyof ProfileDefaults)[] = ['setbackMm', 'stripWidthMm', 'density', 'setbackMaxMm', 'stripWidthMinMm',
   'stripWidthMaxMm', 'densityMin', 'densityMax', 'outerSpacingMm', 'innerSpacingMm', 'maxSearchMm', 'repairBudget',
-  'matchToleranceMm', 'matchMinDot'];
+  'matchToleranceMm', 'matchMinDot', 'minTipSeparationMm'];
 
 function object(value: unknown, keys: readonly string[], where: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new TypeError(`${where} must be an object`);
@@ -84,6 +95,7 @@ export function parseAlignerProfile(value: unknown, where = 'aligner profile'): 
     id, opening, card: [...card] as string[], fixture,
     name: texts(record.name, `${where}.name`), description: texts(record.description, `${where}.description`),
     thresholds: numbers(record.thresholds, THRESHOLD_KEYS, `${where}.thresholds`),
+    pose: numbers(record.pose, POSE_KEYS, `${where}.pose`),
     defaults: numbers(record.defaults, DEFAULT_KEYS, `${where}.defaults`),
   };
 }

@@ -12,7 +12,7 @@ use mixo_geometry_core::dental::policy::{ManualAreaError, faces_painted_by_stamp
 use mixo_geometry_core::dental::pose::rotation_to_dental_pose;
 use mixo_geometry_core::dental::profiles;
 use mixo_geometry_core::dental::region::Region;
-use mixo_geometry_core::dental::sampling::{ContourContact, sample_contour_contacts};
+use mixo_geometry_core::dental::sampling::{ContourContact, SampleSettings, sample_contour_contacts};
 use mixo_geometry_core::dental::topology::Context;
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
@@ -39,11 +39,12 @@ pub fn propose_dental_orientation(positions: &[f32], indices: &[u32], profile: &
     Ok(out)
 }
 
-/// Euler XYZ radians restoring the reference pose, or empty for an ambiguous arch.
+/// Euler XYZ radians restoring the profile's target pose, or empty for an ambiguous arch.
 #[wasm_bindgen]
-pub fn dental_pose(positions: &[f32], indices: &[u32], rim_scalars: &[f64]) -> Result<Vec<f64>, JsValue> {
+pub fn dental_pose(positions: &[f32], indices: &[u32], rim_scalars: &[f64], profile: &str) -> Result<Vec<f64>, JsValue> {
+    let profile = profile_of(profile)?;
     let mesh = mesh_of(positions, indices)?;
-    Ok(rotation_to_dental_pose(&mesh, &rim_from_scalars(rim_scalars)?).map(|r| r.to_vec()).unwrap_or_default())
+    Ok(rotation_to_dental_pose(&mesh, &rim_from_scalars(rim_scalars)?, profile).map(|r| r.to_vec()).unwrap_or_default())
 }
 
 /// Central opening of a closed mesh for a known rim frame. `kind()` 0 present, 1 absent, 2 ambiguous.
@@ -157,28 +158,29 @@ impl DentalSampleResult {
     }
 }
 
-/// `phase_mm` NaN keeps the half-spacing phase.
+/// `phase_mm` NaN keeps the half-spacing phase; `min_separation` 0 turns the 3D minimum off.
 #[wasm_bindgen]
-pub fn dental_sample_contacts(positions: &[f32], indices: &[u32], contour: &[u32], side_band: &[u8], spacing: f64, max_search: f64, phase_mm: f64) -> Result<DentalSampleResult, JsValue> {
+pub fn dental_sample_contacts(positions: &[f32], indices: &[u32], contour: &[u32], side_band: &[u8], spacing: f64, max_search: f64, phase_mm: f64, min_separation: f64) -> Result<DentalSampleResult, JsValue> {
     let mesh = mesh_of(positions, indices)?;
     if contour.iter().any(|&i| i as usize >= mesh.vertex_count()) {
         return Ok(DentalSampleResult { ok: false, reason: "invalid-contour".into(), skipped: 0, perimeter: 0.0, contacts: Vec::new() });
     }
     let phase = (!phase_mm.is_nan()).then_some(phase_mm);
-    Ok(match sample_contour_contacts(&mesh, contour, side_band, spacing, max_search, phase) {
+    let settings = SampleSettings { spacing, max_search, phase_mm: phase, min_separation, keep_clear_of: &[] };
+    Ok(match sample_contour_contacts(&mesh, contour, side_band, &settings) {
         Ok(s) => DentalSampleResult { ok: true, reason: String::new(), skipped: s.skipped_samples as u32, perimeter: s.perimeter, contacts: s.contacts },
         Err(reason) => DentalSampleResult { ok: false, reason: reason.into(), skipped: 0, perimeter: 0.0, contacts: Vec::new() },
     })
 }
 
 /// The contact footprint for explicit strip settings:
-/// `[setback, width, outerSpacing, innerSpacing, maxSearch, phaseFraction]` (phase NaN = default
-/// half-spacing). `ok()` false carries the raw reason.
+/// `[setback, width, outerSpacing, innerSpacing, maxSearch, phaseFraction, minTipSeparation]` (phase
+/// NaN = default half-spacing; separation 0 = off). `ok()` false carries the raw reason.
 #[wasm_bindgen]
 pub fn dental_footprint(positions: &[f32], indices: &[u32], allowed_faces: &[u8], outer_edges: &[u32], opening_edges: &[u32], settings: &[f64]) -> Result<DentalRegionResult, JsValue> {
     use mixo_geometry_core::dental::footprint::{FootprintSettings, propose_footprint};
     let mesh = mesh_of(positions, indices)?;
-    if allowed_faces.len() != mesh.face_count() || outer_edges.len() % 2 != 0 || opening_edges.len() % 2 != 0 || settings.len() != 6 {
+    if allowed_faces.len() != mesh.face_count() || outer_edges.len() % 2 != 0 || opening_edges.len() % 2 != 0 || settings.len() != 7 {
         return Err(error("INVALID_LENGTH"));
     }
     if outer_edges.iter().chain(opening_edges).any(|&i| i as usize >= mesh.vertex_count()) {
@@ -191,6 +193,7 @@ pub fn dental_footprint(positions: &[f32], indices: &[u32], allowed_faces: &[u8]
         inner_spacing: settings[3],
         max_search_distance: settings[4],
         sample_phase_fraction: (!settings[5].is_nan()).then_some(settings[5]),
+        min_tip_separation: settings[6],
     };
     Ok(match propose_footprint(&mesh, allowed_faces, outer_edges, opening_edges, &settings) {
         Ok(footprint) => {

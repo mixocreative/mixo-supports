@@ -3,7 +3,7 @@
 
 use super::mesh::{Mesh, MinHeap};
 
-use crate::core::vec::{V3, cross, dot, normalize, sub};
+use crate::core::vec::{V3, cross, distance, dot, normalize, sub};
 use super::rim::Rim;
 use std::collections::{HashMap, HashSet};
 
@@ -82,6 +82,17 @@ impl<'a> Context<'a> {
         self.slot.get(&key).copied()
     }
 
+    /// Length (mm) of one edge.
+    pub fn edge_length(&self, edge: usize) -> f64 {
+        let e = &self.edges[edge];
+        distance(self.vertices[e.a as usize], self.vertices[e.b as usize])
+    }
+
+    /// Total length (mm) of a set of edges.
+    pub fn edges_length(&self, edges: &[usize]) -> f64 {
+        edges.iter().map(|&e| self.edge_length(e)).sum()
+    }
+
     /// Indices of edges whose faces meet at least `degrees` apart (|dot| <= cos).
     pub fn sharp_edges(&self, degrees: f64) -> Vec<usize> {
         let limit = (degrees * std::f64::consts::PI / 180.0).cos();
@@ -97,9 +108,11 @@ pub struct Component {
     /// Visit order (stack pop), the oracle's `Set` insertion order.
     pub vertices: Vec<u32>,
     pub endpoints: Vec<u32>,
+    /// Summed edge length (mm).
+    pub length: f64,
 }
 
-/// Connected components of the selected edges, largest first (stable for equal sizes).
+/// Connected components of the selected edges, longest (mm) first (stable for equal lengths).
 pub fn components(context: &Context, selected: &[usize]) -> Vec<Component> {
     let mut graph: HashMap<u32, Vec<usize>> = HashMap::new();
     let mut keys: Vec<u32> = Vec::new();
@@ -139,9 +152,10 @@ pub fn components(context: &Context, selected: &[usize]) -> Vec<Component> {
             }
         }
         let endpoints = vertices.iter().copied().filter(|v| graph[v].len() == 1).collect();
-        result.push(Component { edges, vertices, endpoints });
+        let length = edges.iter().map(|&e| context.edge_length(e)).sum();
+        result.push(Component { edges, vertices, endpoints, length });
     }
-    result.sort_by(|a, b| b.edges.len().cmp(&a.edges.len()));
+    result.sort_by(|a, b| b.length.total_cmp(&a.length));
     result
 }
 

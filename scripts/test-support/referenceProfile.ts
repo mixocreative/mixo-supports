@@ -12,5 +12,6 @@ export const referenceTuning: Readonly<DentalTuning> = defaultDentalTuning(REFER
 export function footprintSettings(tuning: DentalTuning = referenceTuning, profile = REFERENCE_PROFILE): DentalContactFootprintSettings {
   const { defaults } = profileData(profile);
   return { setback: tuning.setbackMm, width: tuning.setbackMm + tuning.stripWidthMm, outerSpacing: defaults.outerSpacingMm / tuning.density,
-    innerSpacing: defaults.innerSpacingMm / tuning.density, maxSearchDistance: defaults.maxSearchMm };
+    innerSpacing: defaults.innerSpacingMm / tuning.density, maxSearchDistance: defaults.maxSearchMm,
+    minTipSeparation: defaults.minTipSeparationMm };
 }

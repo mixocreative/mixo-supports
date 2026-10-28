@@ -56,7 +56,7 @@ describe('proposeDentalOrientation', () => {
     const mesh = watertightCup();
     const result = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
     expect(result.kind).toBe('proposal');
-    if (result.kind === 'proposal') expect(rotationToDentalPose(mesh, result.rim)).toBeUndefined();
+    if (result.kind === 'proposal') expect(rotationToDentalPose(mesh, result.rim, REFERENCE_PROFILE)).toBeUndefined();
   });
 });
 

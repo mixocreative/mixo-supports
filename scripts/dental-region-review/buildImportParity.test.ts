@@ -26,10 +26,12 @@ describe('dental import and preview parity', () => {
     if (review.kind !== 'proposal') return;
     expect(review.supports.droppedByPath).toBeUndefined();
     const retained = new Set(review.supports.components.flatMap((part) => part.contactId ? [part.contactId] : []));
-    // 100 placed primaries survive, and one primary whose support crossed the model was moved to its
-    // repair alternate (a phase-zero sample, new position ID) instead of being left out.
+    // 99 of the 116 placed primaries survive (none closer than 0.6 mm), and one primary whose support
+    // crossed the model was moved to its repair alternate (a phase-zero sample, new position ID)
+    // instead of being left out.
     const placed = new Set(review.placement.points.map((point) => point.id));
-    expect(retained.size).toBe(101);
+    expect(placed.size).toBe(116);
+    expect(retained.size).toBe(100);
     expect([...retained].filter((id) => !placed.has(id))).toHaveLength(1);
   }, 180000);
 

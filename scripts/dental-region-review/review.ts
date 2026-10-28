@@ -59,7 +59,7 @@ export async function exportDentalRegionReview(mesh: TriangleMesh, region: Regio
 
   const orientation = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
   if (orientation.kind !== 'proposal') throw new Error('Dental orientation is inconclusive');
-  const rotation = rotationToDentalPose(mesh, orientation.rim);
+  const rotation = rotationToDentalPose(mesh, orientation.rim, REFERENCE_PROFILE);
   if (!rotation) throw new Error('Dental pose is inconclusive');
   scene.rotation.set(...rotation);
 

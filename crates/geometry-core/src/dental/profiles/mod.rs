@@ -18,7 +18,10 @@ pub enum OpeningExpected {
     Either,
 }
 
-/// Detector thresholds (what counts as an aligner, a ridge, a hole, a region).
+/// Detector thresholds (what counts as an aligner, a ridge, a hole, a region). Anything that stands
+/// for a size or a spacing is in millimetres (`…Mm`), never a count of faces, edges or pixels; the
+/// rest are angles, ratios of the part's own extent, or raster resolutions. The reference values
+/// each one was calibrated against are in `dentalwork/technical-algorithm.md` (Thresholds).
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Thresholds {
@@ -27,23 +30,59 @@ pub struct Thresholds {
     pub terminal_band_fraction: f64,
     pub confidence_min: f64,
     pub sharp_angle_deg: f64,
-    pub loop_min_vertices: usize,
+    /// A closed sharp loop shorter than this (mm) is a triangle-sized crease, not a rim loop
+    /// (reference: creases 0.30-0.59 mm, the next loops 2.85 mm; profile value 1).
+    pub loop_min_perimeter_mm: f64,
     pub loop_band_fraction: f64,
     pub loop_band_min_mm: f64,
     pub loop_radius_ratio_min: f64,
     pub loop_extent_min: f64,
-    pub ridge_first_min_edges: usize,
-    pub ridge_second_min_edges: usize,
+    /// Minimum length (mm) of the longest and of the second-longest open sharp chain (reference:
+    /// 110.2 and 56.1 mm; profile values 35 and 20, the old 500 / 300 edges at its 0.068 mm edge).
+    pub ridge_first_min_mm: f64,
+    pub ridge_second_min_mm: f64,
     pub ridge_extent_min: f64,
     pub connector_angle_deg: f64,
     pub opening_resolution_low: usize,
     pub opening_resolution_high: usize,
     pub opening_hole_min_fraction: f64,
-    pub opening_loop_min_edges: usize,
+    /// A silhouette edge belongs to the opening when its midpoint lies within this distance (mm) of
+    /// the projected hole, rounded up to whole raster cells at each resolution (reference: lifted
+    /// edges within one cell, 0.27 / 0.13 mm, the next silhouette edges 1.2 mm away; profile 0.5).
+    pub opening_near_hole_mm: f64,
+    /// Minimum perimeter (mm) of the opening loop (reference 90.1 mm; profile 15) ...
+    pub opening_loop_min_mm: f64,
+    /// ... and the longest a second loop through its one branch vertex may be (mm; reference
+    /// 0.80 mm; profile 2.5).
+    pub opening_side_loop_max_mm: f64,
     pub region_allowed_mean_min: f64,
     pub region_forbidden_mean_max: f64,
     pub region_allowed_fraction_min: f64,
     pub region_allowed_fraction_max: f64,
+    /// Arch front (`pose.rs`): the in-plane spread must be at least this anisotropic ...
+    pub arch_front_min_anisotropy: f64,
+    /// ... the end bands are scanned on a grid of this many cells per side (a resolution) ...
+    pub arch_front_grid_cells: usize,
+    /// ... over the middle of the major axis (this fraction excluded at each side) ...
+    pub arch_front_side_fraction: f64,
+    /// ... in the two end bands of this fraction of the minor axis; the fuller end is the front
+    /// when it covers at least this fraction of the grid area (0.0125 = 20 of 40 x 40 cells; the
+    /// reference front covers 138) ...
+    pub arch_front_end_band_fraction: f64,
+    pub arch_front_min_area_fraction: f64,
+    /// ... and at least this many times the other end.
+    pub arch_front_end_ratio_min: f64,
+}
+
+/// The target print pose (`pose.rs`): the opening axis tilted `tilt_deg` from the downward build
+/// plate normal (−Y), toward `heading_deg` about the plate normal (0 = toward −Z, positive toward
+/// +X), and the arch front rolled `roll_deg` about the opening axis from the plate-up direction.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Pose {
+    pub tilt_deg: f64,
+    pub heading_deg: f64,
+    pub roll_deg: f64,
 }
 
 /// Default strip width, density and setback, their operator limits, the contact spacing, the
@@ -67,6 +106,10 @@ pub struct Defaults {
     pub match_tolerance_mm: f64,
     /// ... and with normals at least this aligned (dot product).
     pub match_min_dot: f64,
+    /// Two contour contacts (same or other contour) are never closer than this (3D, mm). Profile
+    /// 0.6: just over one 0.5 mm tip, so it removes the reference's 0.31 mm hairpin pair but keeps
+    /// density 1.5 (opening tips 0.64-1.0 mm apart in space) intact.
+    pub min_tip_separation_mm: f64,
 }
 
 /// Host text per locale (the profile card).
@@ -90,6 +133,7 @@ pub struct AlignerProfile {
     pub card: Vec<String>,
     pub fixture: String,
     pub thresholds: Thresholds,
+    pub pose: Pose,
     pub defaults: Defaults,
 }
 
@@ -135,7 +179,9 @@ mod tests {
         assert_eq!(profile.opening, OpeningExpected::Yes);
         assert_eq!(profile.fixture, "docs/dental-reference/reference-aligner.stl");
         assert_eq!(profile.thresholds.axial_variance_max, 0.6);
-        assert_eq!(profile.thresholds.ridge_first_min_edges, 500);
+        assert_eq!(profile.thresholds.ridge_first_min_mm, 35.0);
+        assert_eq!(profile.pose.tilt_deg, 46.4577512332);
+        assert_eq!(profile.defaults.min_tip_separation_mm, 0.6);
         assert_eq!(profile.thresholds.region_forbidden_mean_max, -0.15);
         assert_eq!((profile.defaults.setback_mm, profile.defaults.strip_width_mm, profile.defaults.density), (0.2, 1.0, 1.0));
         assert_eq!((profile.defaults.outer_spacing_mm, profile.defaults.inner_spacing_mm, profile.defaults.max_search_mm), (3.0, 2.0, 1.5));

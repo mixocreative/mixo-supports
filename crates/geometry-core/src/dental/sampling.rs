@@ -18,8 +18,24 @@ pub struct ContourContact {
 
 pub struct Sampled {
     pub contacts: Vec<ContourContact>,
+    /// Samples without a unique local side.
     pub skipped_samples: usize,
+    /// Samples left out for lying closer than the minimum separation to an accepted contact.
+    pub crowded_samples: usize,
     pub perimeter: f64,
+}
+
+/// How one contour is sampled: every `spacing` mm of contour length, starting `phase_mm` along
+/// (default half a spacing), each contact searched within `max_search` mm, and no contact closer
+/// (3D) than `min_separation` mm to an earlier one of this contour or to `keep_clear_of` (the
+/// contacts already accepted on the other contour). `min_separation` 0 turns the rule off.
+#[derive(Clone, Copy, Debug)]
+pub struct SampleSettings<'a> {
+    pub spacing: f64,
+    pub max_search: f64,
+    pub phase_mm: Option<f64>,
+    pub min_separation: f64,
+    pub keep_clear_of: &'a [ContourContact],
 }
 
 /// The loop's vertices in walk order from its lowest vertex id, toward its lower neighbour.
@@ -166,11 +182,12 @@ fn local_candidate(seed: usize, point: V3, graph: &LocalGraph, face_data: &HashM
     closest
 }
 
-/// Samples contacts every `spacing` mm of contour length, starting `phase_mm` along (default
-/// half a spacing). `Err` carries the oracle's reason string.
-pub fn sample_contour_contacts(mesh: &Mesh, contour: &[u32], side_band: &[u8], spacing: f64, max_search: f64, phase_mm: Option<f64>) -> Result<Sampled, &'static str> {
+/// Samples contacts along one contour (see [`SampleSettings`]). `Err` carries the oracle's reason
+/// string.
+pub fn sample_contour_contacts(mesh: &Mesh, contour: &[u32], side_band: &[u8], settings: &SampleSettings) -> Result<Sampled, &'static str> {
+    let SampleSettings { spacing, max_search, phase_mm, min_separation, keep_clear_of } = *settings;
     let phase = phase_mm.unwrap_or(spacing / 2.0);
-    if !spacing.is_finite() || spacing <= 0.0 || !max_search.is_finite() || max_search <= 0.0 || !phase.is_finite() || phase < 0.0 || phase >= spacing || side_band.len() != mesh.face_count() {
+    if !spacing.is_finite() || spacing <= 0.0 || !max_search.is_finite() || max_search <= 0.0 || !phase.is_finite() || phase < 0.0 || phase >= spacing || !(min_separation >= 0.0) || !min_separation.is_finite() || side_band.len() != mesh.face_count() {
         return Err("invalid-sampling-input");
     }
     let pairs = inspect_contour_incidence(mesh.vertex_count(), mesh.indices, contour).map_err(|_| "invalid-contour")?;
@@ -207,6 +224,10 @@ pub fn sample_contour_contacts(mesh: &Mesh, contour: &[u32], side_band: &[u8], s
     let mut contacts = Vec::new();
     let mut used: HashSet<u32> = HashSet::new();
     let mut skipped = 0;
+    let mut crowded = 0;
+    // Arclength alone does not keep tips apart where the contour folds back on itself (the
+    // arch's distal hairpin) or passes close to the other contour: check the 3D distance too.
+    let crowds = |position: V3, contacts: &[ContourContact]| keep_clear_of.iter().chain(contacts).any(|c| distance(c.position, position) < min_separation);
     let (mut segment_index, mut segment_start) = (0usize, 0.0f64);
     let mut along = phase;
     while along < perimeter {
@@ -226,6 +247,7 @@ pub fn sample_contour_contacts(mesh: &Mesh, contour: &[u32], side_band: &[u8], s
         };
         match chosen {
             None => skipped += 1,
+            Some((contact, _)) if crowds(contact.position, &contacts) => crowded += 1,
             Some((contact, from)) => {
                 used.insert(contact.face);
                 contacts.push(ContourContact { distance_along_contour: along, distance_from_contour: from, ..contact });
@@ -233,5 +255,59 @@ pub fn sample_contour_contacts(mesh: &Mesh, contour: &[u32], side_band: &[u8], s
         }
         along += spacing;
     }
-    Ok(Sampled { contacts, skipped_samples: skipped, perimeter })
+    Ok(Sampled { contacts, skipped_samples: skipped, crowded_samples: crowded, perimeter })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A flat 12 x 2 mm grid (0.2 mm cells) with a closed 10 x 0.6 mm rectangle contour: a thin
+    /// hairpin whose two long sides lie 0.6 mm apart. The band is every face inside it.
+    fn hairpin() -> (Vec<f32>, Vec<u32>, Vec<u32>, Vec<u8>) {
+        let (nx, ny) = (61u32, 11u32);
+        let id = |i: u32, j: u32| j * nx + i;
+        let positions: Vec<f32> = (0..ny).flat_map(|j| (0..nx).flat_map(move |i| [i as f32 * 0.2, j as f32 * 0.2, 0.0])).collect();
+        let (mut indices, mut band) = (Vec::new(), Vec::new());
+        for j in 0..ny - 1 {
+            for i in 0..nx - 1 {
+                indices.extend([id(i, j), id(i + 1, j), id(i + 1, j + 1), id(i, j), id(i + 1, j + 1), id(i, j + 1)]);
+                let inside = u8::from((5..55).contains(&i) && (3..6).contains(&j));
+                band.extend([inside, inside]);
+            }
+        }
+        let mut ring: Vec<u32> = (5..55).map(|i| id(i, 3)).collect();
+        ring.extend((3..6).map(|j| id(55, j)));
+        ring.extend((6..=55).rev().map(|i| id(i, 6)));
+        ring.extend((4..=6).rev().map(|j| id(5, j)));
+        let contour = (0..ring.len()).flat_map(|k| [ring[k], ring[(k + 1) % ring.len()]]).collect();
+        (positions, indices, contour, band)
+    }
+
+    fn closest_pair(contacts: &[ContourContact], others: &[ContourContact]) -> f64 {
+        let mut best = f64::INFINITY;
+        for (at, a) in contacts.iter().enumerate() {
+            for b in contacts[at + 1..].iter().chain(others) {
+                best = best.min(distance(a.position, b.position));
+            }
+        }
+        best
+    }
+
+    #[test]
+    fn a_hairpin_keeps_its_tips_the_minimum_separation_apart() {
+        let (positions, indices, contour, band) = hairpin();
+        let mesh = Mesh::new(&positions, &indices);
+        let settings = SampleSettings { spacing: 1.0, max_search: 1.0, phase_mm: None, min_separation: 0.0, keep_clear_of: &[] };
+        let free = sample_contour_contacts(&mesh, &contour, &band, &settings).unwrap();
+        assert!(closest_pair(&free.contacts, &[]) < 1.0, "arclength alone puts tips across the hairpin closer than 1 mm");
+        assert_eq!(free.crowded_samples, 0);
+        let kept = sample_contour_contacts(&mesh, &contour, &band, &SampleSettings { min_separation: 1.0, ..settings }).unwrap();
+        assert!(closest_pair(&kept.contacts, &[]) >= 1.0);
+        assert!(kept.crowded_samples > 0 && kept.contacts.len() + kept.crowded_samples == free.contacts.len());
+        // The other contour's accepted contacts count too.
+        let again = sample_contour_contacts(&mesh, &contour, &band, &SampleSettings { min_separation: 1.0, phase_mm: Some(0.0), keep_clear_of: &kept.contacts, ..settings }).unwrap();
+        assert!(closest_pair(&again.contacts, &kept.contacts) >= 1.0);
+        assert!(sample_contour_contacts(&mesh, &contour, &band, &SampleSettings { min_separation: f64::NAN, ..settings }).is_err());
+    }
 }

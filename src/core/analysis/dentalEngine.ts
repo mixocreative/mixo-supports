@@ -92,7 +92,7 @@ export interface DentalEngine {
  */
 export interface DentalInternals {
   propose_dental_orientation(positions: Float32Array, indices: Uint32Array, profile: string): DentalOrientResultLike;
-  dental_pose(positions: Float32Array, indices: Uint32Array, rim: Float64Array): Float64Array;
+  dental_pose(positions: Float32Array, indices: Uint32Array, rim: Float64Array, profile: string): Float64Array;
   inspect_dental_opening(positions: Float32Array, indices: Uint32Array, rim: Float64Array, profile: string): {
     free(): void; kind(): number; reason(): string; take_edges(): Uint32Array };
   dental_footprint(positions: Float32Array, indices: Uint32Array, allowed: Uint8Array, outer: Uint32Array, opening: Uint32Array,
@@ -100,7 +100,7 @@ export interface DentalInternals {
   dental_side_bands(positions: Float32Array, indices: Uint32Array, allowed: Uint8Array, outer: Uint32Array, opening: Uint32Array,
     setback: number, width: number): { free(): void; ok(): boolean; reason(): string; take_band(index: number): Uint8Array };
   dental_sample_contacts(positions: Float32Array, indices: Uint32Array, contour: Uint32Array, sideBand: Uint8Array,
-    spacing: number, maxSearch: number, phaseMm: number): { free(): void; ok(): boolean; reason(): string; skipped_samples(): number;
+    spacing: number, maxSearch: number, phaseMm: number, minSeparation: number): { free(): void; ok(): boolean; reason(): string; skipped_samples(): number;
     perimeter(): number; faces(): Uint32Array; points(): Float64Array; distances(): Float64Array };
   manual_dental_area(faceCount: number, painted: Uint32Array, detected: boolean, profile: string): Uint8Array;
   manual_dental_area_from_stamps(positions: Float32Array, indices: Uint32Array, stamps: Float64Array, detected: boolean, profile: string): Uint8Array;
