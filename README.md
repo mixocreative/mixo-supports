@@ -25,6 +25,13 @@ English · [繁體中文](README.zh-Hant.md) · [日本語](README.ja.md)
 
 ## Features
 
+### Aligner supports (preview)
+- Pick **Aligner supports** on the start screen, choose the aligner type, and drop the STL.
+- The aligner is turned into print position by itself; a scan of tilts picks a **print angle** with no resin traps, no long gaps and no support crossing the aligner, and shows the stable range.
+- Support tips are placed **evenly along the trim edge** and the central opening, on faces a support can reach from below. **Paint**, **Erase**, **Add** and **Select** adjust them (keys P, E, A, S).
+- Step 3 builds straight columns with cross-braces and a raft, checks the finished supports against the aligner, and repairs or leaves out any that would cut through it.
+- Not clinically validated: check every result before printing.
+
 ### Automatic supports
 - One click places supports on **downward faces**, **islands** (lowest points that would print in mid-air) and **overhang edges**.
 - **Light, Middle and Heavy presets**, or full custom control of spacing, overhang angle (50° by default), ridge angle, lift height, pillar diameter and more.
@@ -63,7 +70,7 @@ The interface picks up your browser language and remembers your choice. Switch b
 ## How to use it
 
 1. Open **[mixocreative.github.io/mixo-supports](https://mixocreative.github.io/mixo-supports/)**.
-2. Drop your STL, GLB or glTF onto **Import models**.
+2. Choose **Aligner supports** (and follow Steps 1 to 3), or **Any model** and drop your STL, GLB or glTF onto **Import models**.
 3. Move or rotate the model into print orientation.
 4. Press **Generate supports**, then pick a preset or tune the settings.
 5. Optional: run **Check for unsupported spots**, or fix things by hand in **Support Edit Mode**.
