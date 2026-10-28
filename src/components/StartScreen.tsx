@@ -63,6 +63,7 @@ export function StartScreen({ screen, profile, lang, onScreen, onAnyModel, onOpe
     onDrop={drop}>
     {screen !== 'task' ? <button type="button" className="start-back" onClick={() => go(screen === 'file' ? 'type' : 'task')}>{t('Back')}</button> : null}
     {screen === 'task' ? <div className="start-task">
+      <h2 className="start-heading">{t('What would you like to support?')}</h2>
       <div className="start-choices">
         <button type="button" className="primary start-big" onClick={() => onScreen('type')}>{t('Aligner supports')}</button>
         <button type="button" className="start-big" onClick={onAnyModel}>{t('Any model')}</button>

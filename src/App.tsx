@@ -98,6 +98,8 @@ const NO_OVERRIDES: ContactSettings = {};
 const NO_CONTACTS: readonly SupportContact[] = [];
 
 /** Settings edits come in bursts (typing a value); a unit's preview rebuild waits this long. */
+/** The footer line of each start screen (i18n keys). */
+const START_HINT: Record<StartScreenId, string> = { task: 'Choose what to make supports for.', type: 'Choose the aligner type.', file: 'Open or drop the aligner STL.' };
 const BUILD_DELAY_MS = 120;
 
 /** The Export STL commands (editing/commands): `export.` and the kind. */
@@ -167,7 +169,7 @@ export default function App() {
     setLanguage(next, true);
     setLang(next);
   };
-  const [status, setStatusMessage] = useState<Message>({ key: 'Drop STL, GLB or glTF files to begin. Every mesh becomes an object.' });
+  const [status, setStatusMessage] = useState<Message>({ key: START_HINT.task });
   const setStatus = useCallback((key: string, vars?: Message['vars'], other?: string) => setStatusMessage({ key, ...(vars ? { vars } : {}), ...(other ? { other } : {}) }), []);
   // Support Edit Mode / zones mode, tools and selection (src/editing/session): view state of the
   // active object, never in history. `send` steps it and says what changed on the status line.
@@ -1077,6 +1079,8 @@ export default function App() {
     if (next === 'task' && sceneRef.current.units.length > 0) dispatch({ type: 'batch', commands: sceneRef.current.units.map((unit) => ({ type: 'unit/remove' as const, unitId: unit.id })) });
     setStartScreen(next);
   };
+  // The footer says what each start screen asks for.
+  useEffect(() => { if (startScreen !== null) setStatusMessage({ key: START_HINT[startScreen] }); }, [startScreen]);
   const startDental = (profile: string, file?: File) => {
     freshStart.current = file !== undefined;
     setStartScreen(null);
@@ -1179,22 +1183,24 @@ export default function App() {
       <div className="brand"><h1><BrandLogo /></h1><small>{t('Resin Support Studio')}</small></div>
       <div className="header-actions">
         <Segmented className="segmented lang" label={t('Language')} value={lang} onChange={chooseLanguage} options={LANGS.map((entry) => ({ value: entry.lang, label: entry.label, lang: entry.lang, title: entry.name }))} />
-        <div className="toolbar-group">
-          <CommandButton command={command('history.undo')} run={runCommand} />
-          <CommandButton command={command('history.redo')} run={runCommand} />
-        </div>
-        <div className="toolbar-group">
-          <CommandButton command={command('view.models')} run={runCommand} />
-          <CommandButton command={command('view.wireframe')} run={runCommand} />
-        </div>
+        {startScreen === null ? <>
+          <div className="toolbar-group">
+            <CommandButton command={command('history.undo')} run={runCommand} />
+            <CommandButton command={command('history.redo')} run={runCommand} />
+          </div>
+          <div className="toolbar-group">
+            <CommandButton command={command('view.models')} run={runCommand} />
+            <CommandButton command={command('view.wireframe')} run={runCommand} />
+          </div>
+        </> : null}
       </div>
     </header>
     {startScreen !== null ? <StartScreen screen={startScreen} profile={session.dentalProfile} lang={lang}
       onScreen={goStart} onAnyModel={() => setStartScreen(null)} onOpenProject={() => runCommand('project.open')}
       onProjectFile={(file) => void openProject(file)} onStart={startDental}
       onUnsupported={() => setStatusMessage(errorStatus('import', new CodedError('file-type', 'file-type')))} /> : <>
-    <section className="workspace">
-      <aside className="panel left" onClick={blockedClick('left')}>
+    <section className={`workspace${editMode === 'dental' ? ' workspace--dental' : ''}`}>
+      {editMode !== 'dental' ? <aside className="panel left" onClick={blockedClick('left')}>
         {lockNoteOf('left')}
         <label className="drop" {...(locked('import') ? { inert: '' } : {})} title={t('Choose STL, GLB or glTF files, or drop them on the viewport')}>
           <input type="file" aria-description={t('Choose STL, GLB or glTF files, or drop them on the viewport')} multiple accept=".stl,.glb,.gltf" onChange={(event) => { void importFiles([...(event.target.files ?? [])]); event.target.value = ''; }} />
@@ -1236,7 +1242,7 @@ export default function App() {
           <ProblemList problems={listedProblems} outOfDate={outOfDate} rechecking={isRechecking} unitName={unitName} onShow={showProblem} onFix={fixProblem} />
           <p className="help">{t('Finds islands and overhangs no contact reaches, before you print.')}</p>
         </section>
-      </aside>
+      </aside> : null}
       <section
         className={`viewport${isDraggingOver ? ' viewport--dropping' : ''}${VIEWPORT_CLASS[press.kind]}${editMode === 'dental' && session.dentalStage === 'review' ? ' viewport--step3' : ''}`}
         onDragOver={(event) => { event.preventDefault(); setIsDraggingOver(sessionRef.current.mode === 'off' || acceptsDentalDrop(sessionRef.current)); }}
@@ -1298,7 +1304,7 @@ export default function App() {
           : press.kind === 'dental-type' || press.kind === 'dental-aligner' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} lang={lang} selectedName={activeUnit && !session.dentalFinished.includes(activeUnit.id) ? activeUnit.name : undefined} onFiles={(files) => void importFiles(files)} onUseSelected={useSelectedAligner} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview ? areaContacts.length : 0} previewStatus={dentalPreviewState.kind} reviewReady={ui.dentalReviewReady ?? false} review={dentalReview} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} tuning={dentalTuning.tuning} tuningLimits={dentalTuning.limits} tuningBusy={dentalTuning.busy} tuningError={dentalTuning.error} onTuningChange={dentalTuning.change} tilt={dentalFlow.tilt?.unitId === activeUnit?.id ? dentalFlow.tilt : undefined} onTilt={dentalFlow.chooseTilt} send={send} run={runCommand} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
-      <aside className="panel right" onClick={blockedClick('right')}>
+      {editMode !== 'dental' ? <aside className="panel right" onClick={blockedClick('right')}>
         {lockNoteOf('right')}
         {!activeUnit && <p className="help">{t('Select an object to edit its settings. Changes apply to every selected object.')}</p>}
         <SettingsPanel
@@ -1307,7 +1313,6 @@ export default function App() {
           ui={ui}
           scope={activeUnit ? `${activeUnit.name}${selectedCount > 1 ? ` ${t('and {n} more', { n: selectedCount - 1 })}` : ''}` : t('Nothing selected')}
           deferPlacement={editMode === 'edit'}
-          dentalMode={editMode === 'dental'}
           placementPending={!generating && !regenQueued && Boolean(activeUnit && placementPending(activeUnit))}
           autoLabel={activeIndex >= 0 ? labelForIndex(activeIndex) : 'A'}
           disabled={!activeUnit}
@@ -1322,7 +1327,7 @@ export default function App() {
           {EXPORT_IDS.map((id) => <CommandButton key={id} command={command(id)} run={runCommand} />)}
           <p className="help">{t('Exports match the viewport at full resolution. Source models are never changed.')}</p>
         </section>
-      </aside>
+      </aside> : null}
     </section>
     </>}
     <footer>

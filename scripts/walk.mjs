@@ -705,10 +705,9 @@ async function walk(url, scratch, dentalFixture) {
       await enterEditor(page);
       await d.button('Aligner Support Production').click();
       await stepTo('Step 0 · Aligner type');
-      const inertLeft = await page.locator('.panel.left [inert]').count();
-      const inertRight = await page.locator('.panel.right [inert]').count();
-      check('u0 entering the dental flow dims both side panels and shows the type card', inertLeft >= 3 && inertRight >= 2 && await page.locator('.dental-card').count() === 1 && /Reference aligner/.test(await page.locator('.dental-card').innerText()) && await page.locator('.dental-card svg').count() === 1,
-        `inert left ${inertLeft}, right ${inertRight}, cards ${await page.locator('.dental-card').count()}`);
+      const panelsShown = await page.locator('.panel.left, .panel.right').count();
+      check('u0 entering the dental flow shows no generic side panels (U1) and shows the type card', panelsShown === 0 && await page.locator('.dental-card').count() === 1 && /Reference aligner/.test(await page.locator('.dental-card').innerText()) && await page.locator('.dental-card svg').count() === 1,
+        `panels ${panelsShown}, cards ${await page.locator('.dental-card').count()}`);
       await page.screenshot({ path: path.join(scratch, 'ux-a-step0.png') });
       await d.button('Exit').click();
       await page.waitForFunction(() => !document.querySelector('.edit-badge'), null, { timeout: 5000 });
@@ -801,6 +800,7 @@ async function walk(url, scratch, dentalFixture) {
       await stepTo('Step 2 · Support area', 180000);
       await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /Proposed support tips: [1-9]/.test(note.innerText)), null, { timeout: 240000 });
       check('u10 Step 2 shows the detected area with tips, and Next is on', await d.button('Next').isEnabled() && (await page.getByText('No support area was detected').count()) === 0);
+      check('u1b in Step 2 the generic left and right panels are absent and the viewport buttons stay', (await page.locator('.panel.left, .panel.right').count()) === 0 && await page.getByRole('button', { name: 'Fit view', exact: true }).isVisible());
       // F's confirm rule: the pick holds, or the angle moves to the next tilt and says so (D15).
       const movedNotes = await page.getByText('Print angle moved to').allInnerTexts();
       const movedTo = movedNotes.map((note) => note.match(/([\d.]+)°/)?.[1]).find(Boolean);
@@ -843,7 +843,7 @@ async function walk(url, scratch, dentalFixture) {
         `position ${area1.tuning?.positionMm} -> ${area2.tuning?.positionMm} mm, faces ${area1.faces} -> ${area2.faces}, tips ${area1.tips} -> ${area2.tips}, ${positionMs} ms`);
       note(`u10 live Step 2 updates (key press to tip preview, one debounce and one worker job included): width ${widthMs} ms, position ${positionMs} ms`);
       // Paint on the aligner body, well away from both edges (bottom view): new tips there; Erase the same stroke removes them.
-      const bodyStrokes = [[[0.28, 0.47], [0.36, 0.52]], [[0.62, 0.62], [0.7, 0.55]], [[0.3, 0.42], [0.38, 0.47]]];
+      const bodyStrokes = [[[0.37, 0.47], [0.42, 0.52]], [[0.57, 0.62], [0.62, 0.55]], [[0.38, 0.42], [0.43, 0.47]]];
       const paintStroke = async (kind) => {
         await bar.getByRole('button', { name: kind, exact: true }).click();
         await d.measureCanvas();
@@ -892,7 +892,7 @@ async function walk(url, scratch, dentalFixture) {
         const unitNow = async () => (await d.props()).units[0];
         const reach = bar.locator('label.field-row').filter({ hasText: 'Click reach' }).locator('input');
         const setReach = async (value) => { await page.keyboard.press('a'); await reach.fill(value); await reach.press('Enter'); await previewReady(page); };
-        const spots = [[0.3, 0.47], [0.36, 0.52], [0.62, 0.62], [0.5, 0.5], [0.4, 0.55], [0.55, 0.45], [0.45, 0.6], [0.7, 0.55]];
+        const spots = [[0.38, 0.47], [0.42, 0.52], [0.57, 0.62], [0.5, 0.5], [0.44, 0.55], [0.53, 0.45], [0.47, 0.6], [0.62, 0.55]];
         /** Add at the first spot from `skip` on that takes a tip: the unit before and after, and the status line. */
         const addSomewhere = async (skip = 0) => {
           for (const spot of spots.slice(skip)) {
@@ -967,7 +967,7 @@ async function walk(url, scratch, dentalFixture) {
         const howToSelect = page.getByRole('group', { name: 'How to select' });
         await howToSelect.getByRole('button', { name: 'Drag over', exact: true }).click();
         await d.idle(500);
-        await d.stroke([0.3, 0.5], [0.7, 0.5], 25);
+        await d.stroke([0.38, 0.5], [0.62, 0.5], 25);
         const swept = await d.settle();
         await page.keyboard.press('Escape');
         await d.idle(400);
@@ -1045,6 +1045,24 @@ async function walk(url, scratch, dentalFixture) {
       const side = await page.locator('.dental-side').innerText();
       check('x1 Step 3 lists tip size, lift height, raft, Tree, Brace, the support tools, problems, Label, OK and Add another aligner',
         ['Tip size', 'Lift height', 'Raft', 'Tree branches', 'Cross-braces', 'Add supports', 'Problems', 'Label', 'OK', 'Add another aligner'].every((word) => side.includes(word)), side.replace(/\s+/g, ' ').slice(0, 200));
+      // U1: every notice in the panel uses its full width, its buttons on their own row below the text, inside the scroll content.
+      const notices = await page.evaluate(() => {
+        const panel = document.querySelector('.dental-side');
+        const box = panel.getBoundingClientRect();
+        const rows = [...panel.querySelectorAll('.dental-block li')];
+        return {
+          count: rows.length,
+          scrolls: getComputedStyle(panel).overflowY === 'auto' && [...panel.querySelectorAll('.dental-scroll, .dental-block')].every((el) => getComputedStyle(el).overflowY === 'visible'),
+          bad: rows.filter((row) => {
+            const r = row.getBoundingClientRect();
+            const text = row.querySelector('.problem-text')?.getBoundingClientRect();
+            const buttons = [...row.querySelectorAll('button')].map((b) => b.getBoundingClientRect());
+            const inside = r.left >= box.left && r.right <= box.right + 1 && row.offsetTop + row.offsetHeight <= panel.scrollHeight + panel.scrollTop + 1000;
+            return !(inside && text && text.right <= box.right + 1 && buttons.every((b) => b.top >= text.bottom - 1 && b.right <= box.right + 1 && b.bottom <= r.bottom + 1));
+          }).length,
+        };
+      });
+      check('u1c Step 3 panel is one scroll area (the blocks do not scroll) and each notice shows in full: text on top, buttons on their own row below', notices.scrolls && notices.bad === 0, JSON.stringify(notices));
       check('b3k Step 3 shows no Paint, Erase or density', (await page.getByRole('button', { name: 'Paint', exact: true }).count()) === 0 && (await page.getByRole('button', { name: 'Erase', exact: true }).count()) === 0 && !side.includes('Support density') && !side.includes('Dental area tools'), side.replace(/\s+/g, ' ').slice(0, 160));
       const switchOn = (name) => page.locator('.dental-side label.check').filter({ hasText: name }).locator('input').isChecked();
       const startValues = { tip: await slider('Tip size').inputValue(), lift: await slider('Lift height').inputValue(), tree: await switchOn('Tree branches'), brace: await switchOn('Cross-braces'), raft: await switchOn('Raft') };
@@ -1301,6 +1319,9 @@ async function walk(url, scratch, dentalFixture) {
       const names = await page.locator('.start-task button').allInnerTexts();
       check('s1 the app opens on the task screen: Aligner supports (primary), Any model, Open a saved project, and no workspace',
         names.join('|') === 'Aligner supports|Any model|Open a saved project' && await page.locator('.start-task .primary').innerText() === 'Aligner supports' && (await page.locator('.workspace').count()) === 0, names.join('|'));
+      check('u1a on the task screen the header has no Undo, Redo, Hide models or Wireframe, the language switch stays, the heading is present, and the footer says what to choose',
+        (await page.locator('header').getByRole('button', { name: /^(Undo|Redo|Hide models|Wireframe)/ }).count()) === 0 && await page.locator('header .lang').isVisible() &&
+        await page.getByRole('heading', { name: 'What would you like to support?' }).isVisible() && (await page.locator('footer strong').innerText()) === 'Choose what to make supports for.', await page.locator('footer strong').innerText());
       await supports().click();
       await onScreen('type');
       check('s2 Aligner supports shows the type cards full-screen with Back', (await page.locator('.start-screen .dental-card').count()) === 1 && await d.button('Back').isVisible() && (await page.locator('.workspace').count()) === 0);

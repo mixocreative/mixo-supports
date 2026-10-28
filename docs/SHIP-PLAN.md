@@ -189,6 +189,7 @@ Dental mode is a visible feature. Entering it dims the rest of the editor.
 | B2: suggested tips, even belt | done | 7c95da6 | Fill tips over reachable overhangs revealed by paint; even belt spacing per rim; graduated structure fallback and per-tip leave-out after it (D20); repaired tips named from unit-local points; engine_version 7. Reference clear, 93 tips, 1 left out. Dental goldens re-recorded (ids moved; aligner parts 573->571 / 571->567; safety-aligner left out 11->12). Verified: cargo 217+12+3+1+1, tsc, vitest 1199, build, walk 98, locale 30. |
 | B3: Step 2 tools | done | cd26c3d | Step 2 has Paint, Erase, Add (snaps to suggested tips) and Select with P/E/A/S keys; Delete on a selection; Esc clears a selection first; Step 3 loses Paint, Erase and density; engine_version 8. Verified: cargo 217+12+…, tsc, vitest 1206, build, walk 109, locale 36. Goldens unchanged. |
 | H: host deliverable | done | 70e521f | `scripts/host-example.mjs` (`npm run host-example`): plain JS through the WASM ABI, no React; writes supported.stl and summary.json. Reference: 44.5°, clear, 93 tips, 1 left out, 7-8 s. Finding: the one left-out tip is borderline (94/0 without the app's frame round trip). |
+| U1: dental UI simplification | done | (this commit) | Dental steps hide the generic panels (viewport full width); start screen without editor buttons, with heading and per-screen hint; Step 3 panel scrolls as one, notices unclipped. Verified: tsc, vitest 1206, build, walk 112, locale 36. |
 
 ## Reference material (detail only; do not track progress there)
 
