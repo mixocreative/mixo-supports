@@ -18,6 +18,7 @@ export interface SupportProblemsHandle {
 export interface SupportEngine {
   GeometrySession: new (maxBytes: number) => SupportSession;
   check_support_problems(positions: Float32Array, indices: Uint32Array, contacts: Float64Array, overhangAngleDegrees: number, spacing: number): SupportProblemsHandle;
+  zoned_at(zones: Float64Array, point: Float64Array, normal: Float64Array): boolean;
   refine_for_overlay(positions: Float32Array, indices: Uint32Array, maxEdge: number, maxTriangles: number): { take_positions(): Float32Array; take_indices(): Uint32Array; free(): void };
 }
 

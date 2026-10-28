@@ -501,6 +501,8 @@ export const ja: Dictionary = {
   'The check did not finish for {n} objects: run it again.': '{n} 個のオブジェクトのチェックが完了しませんでした。もう一度チェックしてください。',
   '1 low point lies outside the dental support area and is left to the aligner shape.': '最下点 1 か所がデンタルサポート領域の外にあり、アライナーの形状に委ねられます。',
   '{n} low points lie outside the dental support area and are left to the aligner shape.': '最下点 {n} か所がデンタルサポート領域の外にあり、アライナーの形状に委ねられます。',
+  '1 support was left out because it would cross the model or break a placement rule.': 'モデルを貫通する、または配置ルールに反するため、サポート 1 本を省略しました。',
+  '{n} supports were left out because they would cross the model or break a placement rule.': 'モデルを貫通する、または配置ルールに反するため、サポート {n} 本を省略しました。',
   'Unsupported island': 'サポートされていないアイランド',
   'Could not judge islands on this mesh': 'このメッシュではアイランドを判定できません',
   'This mesh has defects, such as edges shared by more than two faces, so no island is called supported. Repair the model, then check again.': 'このメッシュには、3 つ以上の面が共有する辺などの欠陥があるため、どのアイランドもサポート済みとは判定されません。モデルを修復してから、もう一度確認してください。',

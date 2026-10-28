@@ -49,7 +49,8 @@ import { applyTransform, inverseTransformDirection, inverseTransformPoint, trans
 import type { ExportKind } from './supports/export';
 import type { GeneratedSupportMesh } from './core/supports/mesh';
 import { meshBounds } from './core/supports/meshQuery';
-import { problemInZone, type ZoneStamp } from './core/supports/zones';
+import { type ZoneStamp } from './core/supports/zones';
+import { problemInZone } from './supports/zoneCheck';
 import type { DentalAllowStamp } from './core/analysis/dentalPolicy';
 import { defaultDentalStructure } from './core/analysis/dentalPolicy';
 import { deleteCommands } from './supports/selection';
@@ -57,6 +58,7 @@ import { canvasGesture, gesture, type GestureKind } from './editing/gesture';
 import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, withShape, type LiveSupportSettings, type SettingKey, type ShapeKey } from './core/supports/settings';
 import { islandProblems } from './supports/islandProblems';
+import { omittedProblems } from './supports/omittedProblem';
 import { checkJobOf, currentBuild, hiddenByZones, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
 import { COMMAND_IDS, resolve, type CommandId, type UiState } from './editing/commands';
 import { effectiveBrushMode } from './editing/selection';
@@ -423,14 +425,14 @@ export default function App() {
         const islands = islandProblems(mesh?.islands, unit.source.positions).map((problem) => ({
           ...problem, unitId: unit.id, inZone: problem.kind === 'island' && problemInZone(unit.zones, problem.position, down),
         }));
-        const items = [...islands, ...overhangs];
+        const items = [...islands, ...omittedProblems(unitContacts(unit, undefined), mesh).map((problem) => ({ ...problem, unitId: unit.id, inZone: false })), ...overhangs];
         setProblems((current) => new Map(current).set(unit.id, { unit, mesh, items }));
         // No current build: the island verdict is not known yet, so this check is not complete (never clean);
         // the re-check below runs once the build lands and lists what it finds.
         if (!mesh) return undefined;
         const unjudged = items.filter((problem) => problem.kind === 'unjudged').length;
         // Low points outside the policy's area are informational: never a spot that may print unsupported.
-        const outside = items.filter((problem) => problem.kind === 'outside').length;
+        const outside = items.filter((problem) => problem.kind === 'outside' || problem.kind === 'omitted').length;
         const inZone = items.filter((problem) => problem.inZone).length;
         return { spots: items.length - inZone - unjudged - outside, inZone, unjudged };
       }
@@ -451,7 +453,7 @@ export default function App() {
       const mesh = currentBuild(unit, built.get(unit.id));
       if (entry.unit === unit && entry.mesh === mesh) return entry.items;
       // An unjudged verdict, and the outside-policy note, have no spot a support could cover: it stays until the re-check replaces it.
-      const open = uncovered(entry.items, unitContacts(unit, mesh), resolveSettings(unit.settings).scatterSpacing, (problem) => problem.kind === 'unjudged' || problem.kind === 'outside' || isRechecking(problem));
+      const open = uncovered(entry.items, unitContacts(unit, mesh), resolveSettings(unit.settings).scatterSpacing, (problem) => problem.kind === 'unjudged' || problem.kind === 'outside' || problem.kind === 'omitted' || isRechecking(problem));
       stale ||= open.length > 0;
       return open;
     });

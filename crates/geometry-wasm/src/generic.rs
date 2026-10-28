@@ -8,7 +8,7 @@ use mixo_geometry_core::supports::contact_id::position_id;
 use mixo_geometry_core::supports::edits::{self, EditPoint};
 use mixo_geometry_core::supports::parts::column::ContactKind;
 use mixo_geometry_core::supports::policy::Origin;
-use mixo_geometry_core::supports::zones::decode_zones;
+use mixo_geometry_core::supports::zones::{self, decode_zones};
 use mixo_geometry_core::supports::settings as support_settings;
 use std::collections::HashSet;
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
@@ -230,6 +230,22 @@ impl GeometrySession {
         let input = GenericInput { face_count: indices.len() / 3, auto: &auto, manual: &manual, deleted: &deleted, zones: &zones };
         Ok(super::safety::PolicyHandle::new(generic_policy(&input, &settings).result))
     }
+}
+
+/// Whether `point` is zoned by the no-support `zones` (`ZONE_STRIDE` f64 each): the last stamp that
+/// reaches it decides, and an empty `normal` skips the side test. The one place the host asks the
+/// stamp rule (`AreaStamp::resolve`), e.g. whether a check finding lies in a zone.
+#[wasm_bindgen]
+pub fn zoned_at(zones: &[f64], point: &[f64], normal: &[f64]) -> Result<bool, JsValue> {
+    let stamps = decode_zones(zones).ok_or_else(|| coded_error("INVALID_LENGTH"))?;
+    let vec3 = |values: &[f64]| -> Result<[f64; 3], JsValue> {
+        match values {
+            [x, y, z] if values.iter().all(|v| v.is_finite()) => Ok([*x, *y, *z]),
+            _ => Err(coded_error("INVALID_LENGTH")),
+        }
+    };
+    let normal = if normal.is_empty() { None } else { Some(vec3(normal)?) };
+    Ok(zones::zoned_at(&stamps, vec3(point)?, normal))
 }
 
 /// The ID each position encodes on the 0.01 mm grid (`auto-X_Y_Z`).

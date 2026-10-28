@@ -9,8 +9,16 @@ assert.ok(existsSync(packageFile), 'Node WASM package must be built before its s
 
 const require = createRequire(import.meta.url);
 const { engine_version: engineVersion, GeometrySession, center_positions_in_place: centerPositionsInPlace,
-  weld_positions_in_place: weldPositionsInPlace, decimate_display: decimateDisplay, BinaryStlSession, AsciiStlSession } = require(packageFile);
-assert.equal(engineVersion(), 2, 'Node WASM and host must agree on the geometry schema');
+  weld_positions_in_place: weldPositionsInPlace, zoned_at: zonedAt, decimate_display: decimateDisplay, BinaryStlSession, AsciiStlSession } = require(packageFile);
+assert.equal(engineVersion(), 3, 'Node WASM and host must agree on the geometry schema');
+
+// The stamp rule behind no-support zones: [centre xyz, normal xyz, radius, 1 paint / 0 erase], the last covering stamp wins.
+const paint = [0, 0, 0, 0, -1, 0, 2, 1];
+const erase = [0, 0, 0, 0, -1, 0, 1, 0];
+assert.equal(zonedAt(new Float64Array(paint), new Float64Array([1.5, 0, 0]), new Float64Array([0, -1, 0])), true);
+assert.equal(zonedAt(new Float64Array([...paint, ...erase]), new Float64Array([0.5, 0, 0]), new Float64Array(0)), false);
+assert.equal(zonedAt(new Float64Array(paint), new Float64Array([0, 0, 0]), new Float64Array([0, 1, 0])), false);
+assert.throws(() => zonedAt(new Float64Array(paint), new Float64Array([0, 0]), new Float64Array(0)), { code: 'INVALID_LENGTH' });
 
 const shifted = new Float32Array([8, -2, 4, 12, 4, 6]);
 assert.deepEqual(Array.from(centerPositionsInPlace(shifted)), [10, 1, 5, 8, -2, 4, 12, 4, 6]);

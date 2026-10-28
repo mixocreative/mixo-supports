@@ -1,4 +1,4 @@
-import initWasm, { AsciiStlSession, BinaryStlSession, body_segments, build_pick_index, center_positions_in_place, decimate_display, dental_allowed_vertices, face_mask_contour_segments, face_mask_overlay, live_mesh_handles, engine_version, GeometrySession, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, transformed_min_y, vertex_normals, weld_positions_in_place, generic_policy_contacts, position_ids, remap_deleted_ids, hiding_removal_ids, contacts_hidden_by_marker_ids, rekey_contact_ids, rekey_hand_work, check_support_problems } from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm.js';
+import initWasm, { AsciiStlSession, BinaryStlSession, body_segments, build_pick_index, center_positions_in_place, decimate_display, dental_allowed_vertices, face_mask_contour_segments, face_mask_overlay, live_mesh_handles, engine_version, GeometrySession, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, transformed_min_y, vertex_normals, weld_positions_in_place, generic_policy_contacts, position_ids, remap_deleted_ids, hiding_removal_ids, contacts_hidden_by_marker_ids, rekey_contact_ids, rekey_hand_work, check_support_problems, zoned_at } from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm.js';
 import wasmUrl from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm_bg.wasm?url';
 import { setDentalEngine } from '../core/analysis/dentalEngine';
 import { setTransformEngine } from '../state/transformEngine';
@@ -39,6 +39,8 @@ export interface GeometryEngine {
   rekey_hand_work: typeof rekey_hand_work;
   /* Dental and the U7 safety engine are GeometrySession methods (orient_dental, propose/retune_dental_region, dental_policy, dental_legacy_fill, generic_policy, load_placed, generate, diagnose); the dental internals exist only in the Node test package (`test-abi`). The support check below. A missing entry here breaks the walk, not the unit tests. */
   check_support_problems: typeof check_support_problems;
+  /* The stamp rule for no-support zones (AreaStamp::resolve): whether a point is zoned. */
+  zoned_at: typeof zoned_at;
 }
 
 let ready: Promise<GeometryEngine> | undefined;
@@ -71,7 +73,7 @@ export function sharedSession(): GeometrySession | undefined {
 export function geometryReady(): Promise<GeometryEngine> {
   ready ??= initWasm({ module_or_path: wasmUrl }).then(() => {
     assertGeometryVersion(engine_version());
-    loaded = { engine_version, GeometrySession, center_positions_in_place, weld_positions_in_place, decimate_display, BinaryStlSession, AsciiStlSession, body_segments, build_pick_index, dental_allowed_vertices, face_mask_contour_segments, face_mask_overlay, live_mesh_handles, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, transformed_min_y, vertex_normals, generic_policy_contacts, position_ids, remap_deleted_ids, hiding_removal_ids, contacts_hidden_by_marker_ids, rekey_contact_ids, rekey_hand_work, check_support_problems };
+    loaded = { engine_version, GeometrySession, center_positions_in_place, weld_positions_in_place, decimate_display, BinaryStlSession, AsciiStlSession, body_segments, build_pick_index, dental_allowed_vertices, face_mask_contour_segments, face_mask_overlay, live_mesh_handles, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, transformed_min_y, vertex_normals, generic_policy_contacts, position_ids, remap_deleted_ids, hiding_removal_ids, contacts_hidden_by_marker_ids, rekey_contact_ids, rekey_hand_work, check_support_problems, zoned_at };
     setTransformEngine(loaded);
     setSupportEngine(loaded);
     setDentalEngine(loaded);
