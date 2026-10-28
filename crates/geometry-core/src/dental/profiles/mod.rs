@@ -85,15 +85,18 @@ pub struct Pose {
     pub roll_deg: f64,
 }
 
-/// Default strip width, density and setback, their operator limits, the contact spacing, the
-/// repair budget, and how close a built contact must reproduce a candidate.
+/// Default area position, width and density, their operator limits, the contact spacing, the
+/// repair budget, and how close a built contact must reproduce a candidate. The position is the
+/// signed distance (mm, along the surface) of the area's middle line from the detected edge:
+/// positive on the outer (non-fitting) side, negative across the edge.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Defaults {
-    pub setback_mm: f64,
+    pub position_mm: f64,
     pub strip_width_mm: f64,
     pub density: f64,
-    pub setback_max_mm: f64,
+    pub position_min_mm: f64,
+    pub position_max_mm: f64,
     pub strip_width_min_mm: f64,
     pub strip_width_max_mm: f64,
     pub density_min: f64,
@@ -183,8 +186,9 @@ mod tests {
         assert_eq!(profile.pose.tilt_deg, 46.4577512332);
         assert_eq!(profile.defaults.min_tip_separation_mm, 0.6);
         assert_eq!(profile.thresholds.region_forbidden_mean_max, -0.15);
-        assert_eq!((profile.defaults.setback_mm, profile.defaults.strip_width_mm, profile.defaults.density), (0.2, 1.0, 1.0));
-        assert_eq!((profile.defaults.outer_spacing_mm, profile.defaults.inner_spacing_mm, profile.defaults.max_search_mm), (3.0, 2.0, 1.5));
+        assert_eq!((profile.defaults.position_mm, profile.defaults.strip_width_mm, profile.defaults.density), (0.25, 0.5, 1.0));
+        assert_eq!((profile.defaults.position_min_mm, profile.defaults.position_max_mm), (-0.4, 2.5));
+        assert_eq!((profile.defaults.outer_spacing_mm, profile.defaults.inner_spacing_mm, profile.defaults.max_search_mm), (3.0, 4.0, 1.5));
         assert_eq!((profile.defaults.match_tolerance_mm, profile.defaults.match_min_dot), (0.03, 0.95));
         assert_eq!(profile.name.zh_hant, "標準牙套");
     }

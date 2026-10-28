@@ -661,7 +661,7 @@ export default function App() {
   const onDentalStroke = useCallback((unitId: string, stamps: DentalAllowStamp[]) => {
     if (sessionRef.current.mode !== 'dental' || sessionRef.current.dentalStage !== 'area' || unitId !== sceneRef.current.activeUnitId || stamps.length === 0) return;
     dispatch({ type: 'dental/stamps/add', unitId, stamps });
-    setStatus(stamps[stamps.length - 1]!.kind === 'allow' ? 'Dental support area allowed.' : 'Dental support permission removed.');
+    setStatus(stamps[stamps.length - 1]!.kind === 'allow' ? 'Dental support area painted.' : 'Dental support area erased.');
   }, [dispatch, setStatus]);
   const clearActiveZones = useCallback(() => {
     const unitId = sceneRef.current.activeUnitId;

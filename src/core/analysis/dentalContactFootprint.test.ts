@@ -18,7 +18,7 @@ describe('proposeDentalContactFootprint', () => {
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
     const result = proposeDentalContactFootprint(mesh, region, {
-      setback: 0.2, width: 1.2, outerSpacing: 3, innerSpacing: 5, maxSearchDistance: 1.5, minTipSeparation: 0.6,
+      low: 0.2, high: 1.2, outerSpacing: 3, innerSpacing: 5, maxSearchDistance: 1.5, minTipSeparation: 0.6,
     });
     expect(result.kind).toBe('proposal');
     if (result.kind !== 'proposal') return;
@@ -39,7 +39,7 @@ describe('proposeDentalContactFootprint', () => {
     const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
-    const settings = { setback: 0.2, width: 1.2, outerSpacing: 3, innerSpacing: 5, maxSearchDistance: 1.5, minTipSeparation: 0.6 };
+    const settings = { low: 0.2, high: 1.2, outerSpacing: 3, innerSpacing: 5, maxSearchDistance: 1.5, minTipSeparation: 0.6 };
     const original = proposeDentalContactFootprint(mesh, region, settings);
     const rotated = { ...mesh, positions: transformPositions(mesh.positions,
       placementMatrix({ position: [0, 0, 0], rotation: [0.7, -1.1, 0.4] })) };
@@ -57,7 +57,7 @@ describe('proposeDentalContactFootprint', () => {
     const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
-    const settings = { setback: 0.2, width: 1.2, outerSpacing: 3, innerSpacing: 2, maxSearchDistance: 1.5, minTipSeparation: 0.6 };
+    const settings = { low: 0.2, high: 1.2, outerSpacing: 3, innerSpacing: 2, maxSearchDistance: 1.5, minTipSeparation: 0.6 };
     const usual = proposeDentalContactFootprint(mesh, region, settings);
     const shifted = proposeDentalContactFootprint(mesh, region, { ...settings, samplePhaseFraction: 0 });
     expect(usual.kind).toBe('proposal');

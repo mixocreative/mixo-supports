@@ -6,8 +6,9 @@ import { decodeContacts, type DiagnosticContourContact } from './dentalContourCo
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
 
 export interface DentalContactFootprintSettings {
-  setback: number;
-  width: number;
+  /** The area: faces whose signed contour distance lies in `[low, high]` mm (negative across the edge). */
+  low: number;
+  high: number;
   outerSpacing: number;
   innerSpacing: number;
   maxSearchDistance: number;
@@ -32,7 +33,7 @@ export type DentalContactFootprint =
 export function proposeDentalContactFootprint(mesh: TriangleMesh, region: Region,
   settings: DentalContactFootprintSettings): DentalContactFootprint {
   const result = dentalInternals().dental_footprint(mesh.positions, mesh.indices, region.allowedFaces, region.outerEdges, region.openingEdges,
-    Float64Array.of(settings.setback, settings.width, settings.outerSpacing, settings.innerSpacing, settings.maxSearchDistance,
+    Float64Array.of(settings.low, settings.high, settings.outerSpacing, settings.innerSpacing, settings.maxSearchDistance,
       settings.samplePhaseFraction ?? Number.NaN, settings.minTipSeparation));
   try {
     if (!result.ok()) return { kind: 'inconclusive', reason: result.reason() };

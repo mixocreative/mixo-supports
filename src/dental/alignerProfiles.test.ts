@@ -50,10 +50,10 @@ describe('aligner profiles', () => {
     const profiles = profilesFrom(files);
     const added = profiles.find((profile) => profile.id === 'test-second-aligner');
     expect(added?.opening).toBe('either');
-    expect(added?.defaults).toMatchObject({ setbackMm: 0.3, outerSpacingMm: 4.5, repairBudget: 3, matchToleranceMm: 0.05 });
+    expect(added?.defaults).toMatchObject({ positionMm: 0.8, outerSpacingMm: 4.5, repairBudget: 3, matchToleranceMm: 0.05 });
     expect(() => profilesFrom({ '../profiles/misnamed.json': second })).toThrow('named after its id');
     // The tuning helpers read whichever profile the policy names (the registered set here).
-    expect(defaultDentalTuning('reference-aligner')).toEqual({ setbackMm: 0.2, stripWidthMm: 1, density: 1 });
+    expect(defaultDentalTuning('reference-aligner')).toEqual({ positionMm: 0.25, stripWidthMm: 0.5, density: 1 });
     expect(() => parseDentalTuning(defaultDentalTuning('reference-aligner'), 'test-second-aligner')).toThrow('unknown aligner profile');
   });
 });

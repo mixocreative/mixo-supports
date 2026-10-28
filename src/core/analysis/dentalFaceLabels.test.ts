@@ -66,9 +66,20 @@ describe('reference aligner face labels', () => {
     }
   }, 60000);
 
-  it('refuse a face on the forbidden side even under an allow stamp', () => {
-    const policy = dentalPolicyOf(mesh, saved([{ center: [0, 0, 0], radius: 1e6, normal: [0, 0, 1], kind: 'allow' }]));
-    for (const face of [...policy.candidates, ...policy.alternates].map((c) => c.face)) expect(forbidden[face]).toBe(0);
-    policy.permittedFaces.forEach((flag, face) => { if (flag) expect(forbidden[face], `permitted face ${face}`).toBe(0); });
-  }, 60000);
+  it('keep detected tips off the forbidden side under paint; only painted faces join the area', () => {
+    // Paint is the operator's own choice and may reach any face (owner decision, unit B); the detected
+    // tips and their alternates still never move onto the fitting side.
+    const stamp = { center: [0, 0, 0] as [number, number, number], radius: 1e6, normal: [0, 0, 1] as [number, number, number], kind: 'allow' as const };
+    const policy = dentalPolicyOf(mesh, saved([stamp]));
+    const detected = policy.candidates.filter((c) => !c.id.startsWith('dental-paint-'));
+    for (const face of [...detected, ...policy.alternates].map((c) => c.face)) expect(forbidden[face]).toBe(0);
+    const painted = policy.candidates.filter((c) => c.id.startsWith('dental-paint-'));
+    expect(painted.length).toBeGreaterThan(0);
+    for (const { face } of painted) expect(policy.permittedFaces[face], `paint tip on face ${face}`).toBe(1);
+    // An erase stamp after it takes the paint, and the detected tips under it (faces turned the same way), away again.
+    const erased = dentalPolicyOf(mesh, saved([stamp, { ...stamp, kind: 'erase' }]));
+    expect(erased.candidates.filter((c) => c.id.startsWith('dental-paint-'))).toEqual([]);
+    expect(erased.candidates.length).toBeGreaterThan(0);
+    expect(erased.candidates.length).toBeLessThan(detected.length);
+  }, 120000);
 });

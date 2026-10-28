@@ -10,6 +10,7 @@ import { decodeProject, encodeProject } from '../state/projectFile';
 import { emptyScene, identityTransform, reduceScene, type PrintUnit } from '../state/project';
 import { parseStl } from '../../scripts/test-support/rustImport';
 import { REFERENCE_PROFILE, referenceTuning } from '../../scripts/test-support/referenceProfile';
+import { UNSAVED_TUNING } from './tuning';
 
 /** A saved two-contour policy is recomputed from the mesh when it is used; it is never trusted as saved. */
 const rim: DentalRim = {
@@ -45,7 +46,7 @@ describe('saved dental policy on load', () => {
   }, 60000);
 
   it('rejects a saved footprint that no longer matches the tuning it is used with', () => {
-    expect(filterDentalPlacement(job(saved({ tuning: { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 } })), empty).points).toEqual([]);
+    expect(filterDentalPlacement(job(saved({ tuning: { positionMm: 0.7, stripWidthMm: 0.4, density: 1.5 } })), empty).points).toEqual([]);
   }, 60000);
 
   it('loads an old-format project (no aligner profile, stored gap alternates) and recomputes it on use', () => {
@@ -54,7 +55,10 @@ describe('saved dental policy on load', () => {
     // A rim the project loader accepts (the placement itself does not read it for a two-contour area).
     const storedRim: DentalRim = { ...rim, points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]), visibilityMask: new Uint8Array([1]),
       visibilityResolution: 1, visibilityMin: [-1, -1], visibilityMax: [1, 1] };
-    const scene = reduceScene(reduceScene(emptyScene, { type: 'unit/add', unit }), { type: 'dental/set', unitId: 'unit-a', policy: saved({ rim: storedRim }) });
+    // Saved before tunings were stored: the strip was detected at the defaults of the time.
+    const oldRegion = proposeDentalSupportRegion(mesh, UNSAVED_TUNING, REFERENCE_PROFILE);
+    if (oldRegion.kind !== 'proposal') throw new Error('reference must yield a region');
+    const scene = reduceScene(reduceScene(emptyScene, { type: 'unit/add', unit }), { type: 'dental/set', unitId: 'unit-a', policy: saved({ rim: storedRim, region: oldRegion }) });
     // Write the file the way projects were saved before profiles: no profileId, provisional alternates listed.
     const file = JSON.parse(encodeProject(scene)) as { scene: { units: { dental: Record<string, unknown> }[] } };
     const dental = file.scene.units[0]!.dental;
@@ -64,7 +68,11 @@ describe('saved dental policy on load', () => {
     const loaded = decodeProject(JSON.stringify(file)).units[0]!.dental!;
     expect(loaded.profileId).toBe(REFERENCE_PROFILE);
     expect('gapAlternateIds' in loaded).toBe(false);
-    expect(filterDentalPlacement(job(loaded), empty).points.length).toBe(region.contacts!.length);
+    expect(loaded.kind === 'two-contour' && loaded.tuning).toEqual(UNSAVED_TUNING);
+    expect(filterDentalPlacement(job(loaded), empty).points.length).toBe(oldRegion.contacts!.length);
+    // A tuning saved as a setback reads as the same strip, so it still reproduces.
+    dental.tuning = { setbackMm: 0.2, stripWidthMm: 1, density: 1 };
+    expect(filterDentalPlacement(job(decodeProject(JSON.stringify(file)).units[0]!.dental!), empty).points.length).toBe(oldRegion.contacts!.length);
     // An aligner type no profile file defines is refused, not guessed.
     dental.profileId = 'retired-aligner';
     expect(() => decodeProject(JSON.stringify(file))).toThrow('unknown aligner profile');

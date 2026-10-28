@@ -20,7 +20,7 @@ import { AddFlash, type AddedAt } from './AddFlash';
 import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
 import { rustRaycast } from './rustRaycast';
-import { type Hover, DentalFaceLayer, DentalRegionLines, DentalRimLine, DentalStampLayer, DentalTipMarkers, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
+import { type Hover, DentalFaceLayer, DentalPaintLayer, DentalRegionLines, DentalRimLine, DentalStampLayer, DentalTipMarkers, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
 import type { ObjectViewportProps } from './types';
 import { MODEL_MESH, SUPPORT_MESH, useScreenBrush } from './useScreenBrush';
 
@@ -287,6 +287,8 @@ export function UnitObject(props: UnitObjectProps) {
     {model && dentalPainting && shown === unit.source && unit.dental && <group visible={props.modelVisible}>
       {unit.dental.kind === 'two-contour'
         ? <><DentalFaceLayer mesh={unit.source} policy={{ ...unit.dental, stamps: dentalStamps ?? unit.dental.stamps }} opacity={0.7} />
+          {(dentalStamps ?? unit.dental.stamps).some((stamp) => stamp.kind === 'allow') &&
+            <DentalPaintLayer mesh={unit.source} geometry={model} stamps={dentalStamps ?? unit.dental.stamps} opacity={0.7} />}
           <DentalRegionLines mesh={unit.source} policy={unit.dental} /></>
         : <><DentalStampLayer mesh={unit.source} geometry={model} policy={{ ...unit.dental, stamps: dentalStamps ?? unit.dental.stamps }} opacity={0.7} />
           <DentalRimLine rim={unit.dental.rim} /></>}

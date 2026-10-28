@@ -36,9 +36,9 @@ function expectSameRegion(name: string, actual: Region): void {
 
 describe('Rust dental region vs the recorded TS oracle', () => {
   const tunings = [
-    { setbackMm: 0.2, stripWidthMm: 1, density: 1 },
-    { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 },
-    { setbackMm: 0, stripWidthMm: 0.2, density: 0.5 },
+    { positionMm: 0.7, stripWidthMm: 1, density: 1 },
+    { positionMm: 0.7, stripWidthMm: 0.4, density: 1.5 },
+    { positionMm: 0.1, stripWidthMm: 0.2, density: 0.5 },
   ];
   for (const tuning of tunings) {
     it(`matches mask, contours, tips and IDs at ${JSON.stringify(tuning)}`, () => {
@@ -50,7 +50,7 @@ describe('Rust dental region vs the recorded TS oracle', () => {
   it('retunes to the recorded result and to fresh detection', () => {
     const mesh = reference();
     const base = proposal(proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE));
-    const tuning = { setbackMm: 0.35, stripWidthMm: 0.8, density: 1.25 };
+    const tuning = { positionMm: 0.75, stripWidthMm: 0.8, density: 1.25 };
     const retuned = proposal(retuneDentalSupportRegion(mesh, base, tuning, REFERENCE_PROFILE));
     expectSameRegion('dental-region-retuned', retuned);
     expect(retuned).toEqual(proposal(proposeDentalSupportRegion(mesh, tuning, REFERENCE_PROFILE)));

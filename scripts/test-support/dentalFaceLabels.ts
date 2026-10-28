@@ -32,7 +32,7 @@ export function buildLabels() {
     tuning: referenceTuning,
     meaning: {
       forbidden: 'Opening-facing (fitting) side of the two contours. No tip and no secondary landing may sit on it.',
-      allowed: 'Narrow strip on the non-fitting side, between the setback and the strip width from a contour. Every tip and every secondary landing must sit on it.',
+      allowed: 'The detected area at the default tuning: the faces on the non-fitting side whose surface distance from a contour is within the area (position ± half the width). Every detected tip and every secondary landing must sit on it; operator paint can add faces.',
     },
     forbiddenFaceRuns: runs(region.allowedFaces),
     allowedFaceRuns: runs(region.contactFaces),

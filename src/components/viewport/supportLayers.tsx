@@ -221,6 +221,14 @@ export function DentalStampLayer({ mesh, geometry, policy, opacity }: { mesh: Tr
   return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={policy.stamps} filledKind="allow" color={PREVIEW.dental} opacity={opacity} baseline={baseline} />;
 }
 
+/**
+ * Paint of a two-contour area anywhere on the model (Paint adds area outside the detected strip,
+ * Erase removes it; last stamp wins). Display only: Rust `dental_policy` decides the faces and tips.
+ */
+export function DentalPaintLayer({ mesh, geometry, stamps, opacity }: { mesh: TriangleMesh; geometry: THREE.BufferGeometry; stamps: readonly DentalAllowStamp[]; opacity: number }) {
+  return <SurfaceStampLayer mesh={mesh} geometry={geometry} stamps={stamps} filledKind="allow" color={PREVIEW.dental} opacity={opacity} />;
+}
+
 /** The exact approved triangles only: shared vertices cannot bleed colour onto tooth faces. */
 export function DentalFaceLayer({ mesh, policy, opacity }: { mesh: TriangleMesh; policy: Extract<DentalPolicy, { kind: 'two-contour' }>; opacity: number }) {
   const [layer, setLayer] = useState<{ geometry: THREE.BufferGeometry; colors: THREE.BufferAttribute;

@@ -1,6 +1,8 @@
 import type { TriangleMesh } from './types';
 import type { DentalRegionProposal } from './dentalRegion';
 import { dentalInternals } from './dentalEngine';
+import { tuningArray } from './dentalRegion';
+import type { DentalTuning } from './dentalTuning';
 
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
 export type DentalDiagnosticBands = { kind: 'proposal'; outerOpeningSide: Uint8Array; outerOtherSide: Uint8Array;
@@ -23,4 +25,10 @@ export function diagnosticDentalSideBands(mesh: TriangleMesh, region: Region,
   } finally {
     result.free();
   }
+}
+
+/** The area a tuning gives on a profile as signed contour distances `[low, high]` mm (Rust `Tuning::band`, Node test package only). */
+export function dentalAreaBand(tuning: DentalTuning, profile: string): [number, number] {
+  const [low, high] = dentalInternals().dental_area_band(tuningArray(tuning), profile);
+  return [low!, high!];
 }

@@ -56,10 +56,11 @@
     "rollDeg": 2.7827557871
   },
   "defaults": {
-    "setbackMm": 0.3,
+    "positionMm": 0.8,
     "stripWidthMm": 1,
     "density": 1,
-    "setbackMaxMm": 1,
+    "positionMinMm": -0.4,
+    "positionMaxMm": 2.5,
     "stripWidthMinMm": 0.2,
     "stripWidthMaxMm": 2.4,
     "densityMin": 0.5,

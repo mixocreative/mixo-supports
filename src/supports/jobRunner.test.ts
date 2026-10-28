@@ -155,7 +155,7 @@ describe('filterDentalPlacement', () => {
     expect(filterDentalPlacement({ ...job, dental: forged }, empty).points).toEqual([]);
     const forgedBand: DentalPolicy = { ...dental, region: { ...region, contactFaces: new Uint8Array(region.allowedFaces.length).fill(1) } };
     expect(filterDentalPlacement({ ...job, dental: forgedBand }, empty).points).toEqual([]);
-    const tuning = { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 };
+    const tuning = { positionMm: 0.7, stripWidthMm: 0.4, density: 1.5 };
     const tuned = proposeDentalSupportRegion(mesh, tuning, REFERENCE_PROFILE);
     expect(tuned.kind).toBe('proposal');
     if (tuned.kind !== 'proposal') return;

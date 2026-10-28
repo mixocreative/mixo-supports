@@ -82,25 +82,23 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
       label="Dental area marker"
       kind={gesture.brush.kind}
       options={[
-        { value: 'allow', label: t('Add area'), hint: 'Allow dental supports on this model surface' },
-        { value: 'erase', label: t('Remove area'), hint: 'Remove dental support permission from this model surface' },
+        { value: 'allow', label: t('Paint'), hint: 'Paint dental support area anywhere on the aligner' },
+        { value: 'erase', label: t('Erase'), hint: 'Erase dental support area and its tips anywhere on the aligner' },
       ]}
       onKindChange={(kind) => send({ type: 'setDentalKind', kind })}
       radius={gesture.brush.radius}
       onRadiusChange={(radius) => send({ type: 'setDentalRadius', radius })}
       note={<>
         {tuning && tuningLimits && <div className="edit-row dental-tuning" role="group" aria-label={t('Aligner contact strip')}>
-          <RangeField layout="row" label="Strip width" unit="{n} mm" hint="Width of the permitted strip beside each rim"
+          <RangeField layout="row" label="Area width" unit="{n} mm" hint="Width of the support area along each edge"
             min={tuningLimits.stripWidthMinMm} max={tuningLimits.stripWidthMaxMm} step={0.1} value={tuning.stripWidthMm}
             onChange={(stripWidthMm) => onTuningChange?.({ ...tuning, stripWidthMm })} />
+          <RangeField layout="row" label="Area position" unit="{n} mm" hint="Higher moves the support area farther onto the outer surface; lower moves it toward and across the edge"
+            min={tuningLimits.positionMinMm} max={tuningLimits.positionMaxMm} step={0.05} value={tuning.positionMm}
+            onChange={(positionMm) => onTuningChange?.({ ...tuning, positionMm })} />
           <RangeField layout="row" label="Support density" unit="{n}×" hint="Higher density places proposed tips closer together"
             min={tuningLimits.densityMin} max={tuningLimits.densityMax} step={0.1} value={tuning.density}
             onChange={(density) => onTuningChange?.({ ...tuning, density })} />
-          <details><summary>{t('Advanced position')}</summary>
-            <RangeField layout="row" label="Rim setback" unit="{n} mm" hint="Move the strip away from the trim rim on its non-cavity side"
-              min={0} max={tuningLimits.setbackMaxMm} step={0.1} value={tuning.setbackMm}
-              onChange={(setbackMm) => onTuningChange?.({ ...tuning, setbackMm })} />
-          </details>
         </div>}
         {tuningBusy && <p className="edit-note" role="status">{t('Updating support area and tips…')}</p>}
         {tuningError && <p className="edit-note" role="alert">{t('Could not update the support strip. The previous area is still active.')}</p>}

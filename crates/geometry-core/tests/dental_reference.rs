@@ -113,6 +113,36 @@ fn reference_policy_honours_erase_paint_and_a_changed_area() {
     assert!(!changed.reproduced && changed.result.candidates.is_empty() && changed.result.permitted_faces.count() == 0);
 }
 
+/// Paint reaches past the strip: painted faces join the area and get their own tips at the outer
+/// spacing (clear of the contour tips); an erase stamp after it takes area and tips away again.
+#[test]
+fn reference_paint_outside_the_strip_gets_tips_and_erase_removes_them() {
+    let (positions, indices) = reference();
+    let mesh = Mesh::new(&positions, &indices);
+    let profile = reference_aligner();
+    let (region, plain) = policy_of(&mesh, profile, &[], [0.0; 3]);
+    let down = region.contacts.iter().find(|c| c.contact.normal[1] < -0.5).expect("a downward contour tip").contact;
+    let paint = AreaStamp { center: down.position, radius: 5.0, normal: down.normal, allow: true };
+    let (_, painted) = policy_of(&mesh, profile, &[paint], [0.0; 3]);
+    let r = &painted.result;
+    assert!(r.permitted_faces.count() > plain.result.permitted_faces.count(), "painted faces join the area");
+    let added: Vec<_> = r.candidates.iter().filter(|c| c.id.0.starts_with("dental-paint-")).collect();
+    assert!(!added.is_empty(), "paint outside the strip gets tips");
+    let spacing = profile.defaults.outer_spacing_mm;
+    for a in &added {
+        let face = a.source_face.unwrap() as usize;
+        assert!(r.permitted_faces.get(face) && region.contact_faces[face] == 0, "a paint tip stands on paint outside the strip");
+        assert!(a.normal[1] < 0.0, "a paint tip faces down");
+        for b in r.candidates.iter().filter(|c| c.id != a.id) {
+            assert!(distance(a.point, b.point) >= spacing - 1e-9, "{} and {} closer than the spacing", a.id.0, b.id.0);
+        }
+    }
+    let erase = AreaStamp { allow: false, ..paint };
+    let (_, erased) = policy_of(&mesh, profile, &[paint, erase], [0.0; 3]);
+    assert!(erased.result.candidates.iter().all(|c| !c.id.0.starts_with("dental-paint-")));
+    assert!(erased.result.candidates.len() < plain.result.candidates.len(), "erase removes the contour tips under it too");
+}
+
 /// A second profile is only a JSON file: it reaches detection (spacing), defaults and the budget.
 #[test]
 fn a_second_profile_file_reaches_detection_defaults_and_budget() {
@@ -127,7 +157,7 @@ fn a_second_profile_file_reaches_detection_defaults_and_budget() {
     assert_eq!(policy.result.automatic, AutomaticRule::MatchCandidates { tol_mm: 0.05, min_dot: 0.95 });
     assert_eq!(policy.result.rings[0].spacing_mm, 4.5);
     assert!(policy.result.candidates.len() < reference_policy.result.candidates.len(), "wider default spacing, fewer contacts");
-    assert_eq!(Tuning::defaults(&second).setback_mm, 0.3);
+    assert_eq!(Tuning::defaults(&second).position_mm, 0.8);
     assert_eq!(policy.result.candidates.len(), region.contacts.len());
 }
 

@@ -10,7 +10,7 @@ const GESTURE_STATUS = {
   zones: 'Paint where supports must not grow; drag on the model.',
   'dental-type': 'Choose the aligner type to begin.',
   'dental-aligner': 'Drop an aligner STL, or choose one. It is oriented automatically; adjust with the gizmo, then press Next.',
-  'dental-area': 'Mark where dental supports may grow; Remove clears permission. Drag on the model.',
+  'dental-area': 'Paint where dental supports may grow, anywhere on the aligner; Erase takes area away. Drag on the model.',
   'dental-review': 'Review the supports: change the settings, add or delete supports, fix the problems, then press OK.',
   add: 'Support Edit Mode: click the model to add, right-click a support to remove.',
   remove: 'Support Edit Mode: click a support, or the model next to one, to remove it.',

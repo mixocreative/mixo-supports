@@ -12,7 +12,7 @@ export type DentalRegionProposal =
   | { kind: 'inconclusive'; reason: string };
 
 /** The tuning as the Rust calls take it (Rust validates it against the profile's limits). */
-export const tuningArray = ({ setbackMm, stripWidthMm, density }: DentalTuning): Float64Array => Float64Array.of(setbackMm, stripWidthMm, density);
+export const tuningArray = ({ positionMm, stripWidthMm, density }: DentalTuning): Float64Array => Float64Array.of(positionMm, stripWidthMm, density);
 
 /** The strip and contacts of a result (the part `retune` replaces); rim labels as the host expects. */
 function contactsOf(result: DentalRegionResultLike) {

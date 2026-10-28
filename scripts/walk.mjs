@@ -192,7 +192,9 @@ function readProps() {
     zones: unit ? unit.zones.length : -1,
     dentalBoundary: unit?.dental?.rim.boundaryKind ?? '',
     dentalKind: unit?.dental?.kind ?? '',
-    activeDental: active?.dental ? { kind: active.dental.kind ?? 'legacy', origin: active.dental.origin ?? '', stamps: active.dental.stamps.length } : undefined,
+    activeDental: active?.dental ? { kind: active.dental.kind ?? 'legacy', origin: active.dental.origin ?? '', stamps: active.dental.stamps.length,
+      tuning: active.dental.tuning, faces: active.dental.region?.contactFaces?.reduce((sum, face) => sum + face, 0) ?? -1,
+      tips: hash((active.dental.region?.contacts ?? []).map((contact) => String(contact.face))) } : undefined,
     dentalStamps: unit?.dental?.stamps.length ?? -1,
     dentalFaces: unit?.dental?.kind === 'two-contour' ? unit.dental.region.contactFaces?.reduce((sum, face) => sum + face, 0) ?? -1 : -1,
     dentalContacts: unit?.dental?.kind === 'two-contour' ? unit.dental.region.contacts?.length ?? -1 : -1,
@@ -708,6 +710,70 @@ async function walk(url, scratch, dentalFixture) {
       await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /Proposed support tips: [1-9]/.test(note.innerText)), null, { timeout: 240000 });
       check('u10 Step 2 shows the detected area with tips, and Next is on', await d.button('Next').isEnabled() && (await page.getByText('No support area was detected').count()) === 0);
       await page.screenshot({ path: path.join(scratch, 'ux-a-step2.png') });
+      // Step 2 controls (unit B): Paint / Erase anywhere, Area width, Area position and Support density, all live.
+      const bar = page.locator('.dental-brush');
+      check('u10b Step 2 offers Paint and Erase and the Area width, Area position and Support density sliders (no hidden setback)',
+        await bar.getByRole('button', { name: 'Paint', exact: true }).isVisible() && await bar.getByRole('button', { name: 'Erase', exact: true }).isVisible() &&
+        await page.locator('.dental-tuning label').filter({ hasText: 'Area width' }).isVisible() && await page.locator('.dental-tuning label').filter({ hasText: 'Area position' }).isVisible() &&
+        await page.locator('.dental-tuning label').filter({ hasText: 'Support density' }).isVisible() && (await page.getByText('Rim setback').count()) === 0);
+      const tipCount = async () => Number((await page.locator('.edit-note').allInnerTexts()).map((text) => text.match(/Proposed support tips: (\d+)/)?.[1]).find(Boolean) ?? -1);
+      /** Waits for the retune and the tip preview it starts to finish; returns the time since `t0`. */
+      const step2Settled = async (t0) => {
+        await page.waitForFunction(() => /Updating support area|Finding safe/.test(document.body.innerText), null, { timeout: 5000 }).catch(() => {});
+        await page.waitForFunction(() => !/Updating support area|Finding safe/.test(document.body.innerText) && /Proposed support tips: [1-9]/.test(document.body.innerText), null, { timeout: 120000 });
+        return Date.now() - t0;
+      };
+      const nudge = async (name, presses) => {
+        const input = page.locator('.dental-tuning label').filter({ hasText: name }).locator('input');
+        await input.focus();
+        const t0 = Date.now();
+        for (let k = 0; k < presses; k += 1) await input.press('ArrowRight');
+        return step2Settled(t0);
+      };
+      const area0 = (await d.props()).activeDental;
+      const widthMs = await nudge('Area width', 2);
+      const area1 = (await d.props()).activeDental;
+      check('u10c Area width widens the area and moves the tip preview onto its middle line',
+        area1.tuning?.stripWidthMm > area0.tuning?.stripWidthMm && area1.faces > area0.faces && area1.tips !== area0.tips,
+        `width ${area0.tuning?.stripWidthMm} -> ${area1.tuning?.stripWidthMm} mm, faces ${area0.faces} -> ${area1.faces}, tips ${area0.tips} -> ${area1.tips}, ${widthMs} ms`);
+      const positionMs = await nudge('Area position', 3);
+      const area2 = (await d.props()).activeDental;
+      check('u10d Area position moves the area off the edge and the tips with it',
+        area2.tuning?.positionMm > area1.tuning?.positionMm && area2.faces !== area1.faces && area2.tips !== area1.tips,
+        `position ${area1.tuning?.positionMm} -> ${area2.tuning?.positionMm} mm, faces ${area1.faces} -> ${area2.faces}, tips ${area1.tips} -> ${area2.tips}, ${positionMs} ms`);
+      note(`u10 live Step 2 updates (key press to tip preview, 2 debounces included): width ${widthMs} ms, position ${positionMs} ms`);
+      // Paint on the aligner body, well away from both edges (bottom view): new tips there; Erase the same stroke removes them.
+      const bodyStrokes = [[[0.28, 0.47], [0.36, 0.52]], [[0.62, 0.62], [0.7, 0.55]], [[0.3, 0.42], [0.38, 0.47]]];
+      const paintStroke = async (kind) => {
+        await bar.getByRole('button', { name: kind, exact: true }).click();
+        await d.measureCanvas();
+        for (const [from, to] of bodyStrokes) {
+          const stamps = (await d.props()).activeDental?.stamps ?? 0;
+          const t0 = Date.now();
+          await d.stroke(from, to, 20);
+          if (((await d.props()).activeDental?.stamps ?? 0) > stamps) return { stroke: [from, to], ms: await step2Settled(t0) };
+          // The drag began off the model and turned the view: put the view back and try the next spot.
+          await page.getByRole('button', { name: 'Bottom view', exact: true }).click();
+          await d.idle(800);
+        }
+        return undefined;
+      };
+      const tipsBefore = await tipCount();
+      const painted = await paintStroke('Paint');
+      const paintedTips = await tipCount();
+      await page.screenshot({ path: path.join(scratch, 'ux-a-step2-painted.png') });
+      check('u10e Paint outside the detected strip adds support tips there, and the status says so',
+        painted !== undefined && paintedTips > tipsBefore && /Dental support area painted/.test(await d.status()),
+        `tips ${tipsBefore} -> ${paintedTips}, ${painted ? `${painted.ms} ms` : 'no stroke reached the model'}`);
+      if (painted) {
+        await bar.getByRole('button', { name: 'Erase', exact: true }).click();
+        const t0 = Date.now();
+        await d.stroke(...painted.stroke, 20);
+        const eraseMs = await step2Settled(t0);
+        const erasedTips = await tipCount();
+        check('u10f Erase over the same place removes the area and its tips again',
+          erasedTips <= tipsBefore && /Dental support area erased/.test(await d.status()), `tips ${paintedTips} -> ${erasedTips} (before paint ${tipsBefore}), ${eraseMs} ms`);
+      }
       await d.button('Back').click();
       await stepTo('Step 1 · Aligner');
       check('u11 Back from Step 2 returns to Step 1 with the oriented aligner kept', await d.button('Next').isEnabled() && (await page.getByText('Drop the aligner STL here').count()) === 0);
@@ -917,7 +983,7 @@ async function walk(url, scratch, dentalFixture) {
       await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /Proposed support tips: [1-9]/.test(note.innerText)), null, { timeout: 180000 });
       await page.screenshot({ path: path.join(scratch, 'dental-area.png') });
       check('l2b Step 2 offers paint and Next without premature Done',
-        await d.button('Add area').isVisible() && await d.button('Remove area').isVisible() && await d.button('Next').isVisible() && await d.button('Done', false).count() === 0);
+        await d.button('Paint').isVisible() && await d.button('Erase').isVisible() && await d.button('Next').isVisible() && await d.button('Done', false).count() === 0);
       const baseline = await d.props();
       const waitForTuning = async (key, value) => {
         for (let attempt = 0; attempt < 300; attempt += 1) {
@@ -927,10 +993,10 @@ async function walk(url, scratch, dentalFixture) {
         }
         throw new Error(`Dental ${key} did not update to ${value}`);
       };
-      const stripWidth = page.locator('.dental-tuning label').filter({ hasText: 'Strip width' }).locator('input');
+      const stripWidth = page.locator('.dental-tuning label').filter({ hasText: 'Area width' }).locator('input');
       await stripWidth.focus();
       await stripWidth.press('ArrowRight');
-      const widened = await waitForTuning('stripWidthMm', 1.1);
+      const widened = await waitForTuning('stripWidthMm', 0.6);
       check('l2c strip width updates the live painted face mask',
         widened.dentalFaces !== baseline.dentalFaces, `faces ${baseline.dentalFaces} -> ${widened.dentalFaces}`);
       const density = page.locator('.dental-tuning label').filter({ hasText: 'Support density' }).locator('input');
@@ -944,12 +1010,11 @@ async function walk(url, scratch, dentalFixture) {
       check('l2f Tree and Brace moved out of Step 2 (they are in Step 3)', (await page.getByText('Tree branches').count()) === 0);
       check('l2g generic right-panel structure controls do not contradict dental Step 2',
         !/Roof \/ cage|Tree supports|Auto placement|Bracing/.test(await page.locator('.panel.right').innerText()));
-      await page.locator('.dental-tuning details').filter({ hasText: 'Advanced position' }).locator('summary').click();
-      const rimSetback = page.locator('.dental-tuning label').filter({ hasText: 'Rim setback' }).locator('input');
-      await rimSetback.focus();
-      await rimSetback.press('ArrowRight');
-      const shifted = await waitForTuning('setbackMm', 0.3);
-      check('l2e rim setback moves the live permitted strip',
+      const areaPosition = page.locator('.dental-tuning label').filter({ hasText: 'Area position' }).locator('input');
+      await areaPosition.focus();
+      await areaPosition.press('ArrowRight');
+      const shifted = await waitForTuning('positionMm', 0.3);
+      check('l2e area position moves the live permitted area',
         shifted.dentalFaces !== denser.dentalFaces,
         `faces ${denser.dentalFaces} -> ${shifted.dentalFaces}`);
       await d.button('Next').click();
@@ -961,7 +1026,7 @@ async function walk(url, scratch, dentalFixture) {
       const dentalSupports = await d.counts();
       const placed = await d.props();
       check('l3 dental generation finishes a support mesh only after the approved-area stage',
-        dentalSupports.auto > 0 && placed.dentalKind === 'two-contour' && placed.tris > 0 && placed.drawn > 0 && placed.droppedDrawn === 0 && Math.abs(placed.dentalReviewGap - 4 / 1.1) < 1e-6,
+        dentalSupports.auto > 0 && placed.dentalKind === 'two-contour' && placed.tris > 0 && placed.drawn > 0 && placed.droppedDrawn === 0 && Math.abs(placed.dentalReviewGap - 8 / 1.1) < 1e-6,
         `automatic ${dentalSupports.auto}, mesh triangles ${placed.tris}, drawn ${placed.drawn}, forbidden secondary landings dropped ${placed.dropped}, dropped still drawn ${placed.droppedDrawn}, tuned review gap ${placed.dentalReviewGap}`);
       const rimWarning = await page.locator('.dental-side').getByText(/Automatic rim gaps/).innerText();
       check('l4 final dental rim gap is disclosed before Done',

@@ -45,7 +45,7 @@ describe('dental status on a step change', () => {
     const next = reduceSession(step3, { type: 'acceptDentalArea' });
     expect(sessionStatus(step3, next, { type: 'acceptDentalArea' })?.key).toMatch(/^Review the supports/);
     const back = reduceSession(next, { type: 'backDental' });
-    expect(sessionStatus(next, back, { type: 'backDental' })?.key).toMatch(/^Mark where dental supports/);
+    expect(sessionStatus(next, back, { type: 'backDental' })?.key).toMatch(/^Paint where dental supports/);
     const again = reduceSession(next, { type: 'addAnotherDental', unitId: 'u1' });
     expect(sessionStatus(next, again, { type: 'addAnotherDental', unitId: 'u1' })?.key).toMatch(/^Drop an aligner STL/);
   });

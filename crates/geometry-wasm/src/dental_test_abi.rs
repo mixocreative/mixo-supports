@@ -3,7 +3,7 @@
 //! painted-area masks and the profile list. The browser build has none of these; the host needs only
 //! the calls in `dental.rs`.
 
-use super::dental::{DentalOrientResult, DentalRegionResult, area_stamps, blank_orient, empty_region, error, fill_rim, mesh_of, profile_of, rim_from_scalars};
+use super::dental::{DentalOrientResult, DentalRegionResult, area_stamps, blank_orient, empty_region, error, fill_rim, mesh_of, profile_of, rim_from_scalars, tuning_of};
 use mixo_geometry_core::dental::bands::diagnostic_side_bands;
 use mixo_geometry_core::dental::footprint::{Contact, RimSide};
 use mixo_geometry_core::dental::opening::{Opening, central_opening};
@@ -166,16 +166,28 @@ pub fn dental_sample_contacts(positions: &[f32], indices: &[u32], contour: &[u32
         return Ok(DentalSampleResult { ok: false, reason: "invalid-contour".into(), skipped: 0, perimeter: 0.0, contacts: Vec::new() });
     }
     let phase = (!phase_mm.is_nan()).then_some(phase_mm);
-    let settings = SampleSettings { spacing, max_search, phase_mm: phase, min_separation, keep_clear_of: &[] };
+    let settings = SampleSettings { spacing, max_search, phase_mm: phase, min_separation, keep_clear_of: &[], tip_line: None };
     Ok(match sample_contour_contacts(&mesh, contour, side_band, &settings) {
         Ok(s) => DentalSampleResult { ok: true, reason: String::new(), skipped: s.skipped_samples as u32, perimeter: s.perimeter, contacts: s.contacts },
         Err(reason) => DentalSampleResult { ok: false, reason: reason.into(), skipped: 0, perimeter: 0.0, contacts: Vec::new() },
     })
 }
 
+/// The area a tuning `[position, width, density]` gives on `profile`, as signed contour distances
+/// `[low, high]` (`Tuning::band`), so review scripts draw the same area as the app.
+#[wasm_bindgen]
+pub fn dental_area_band(tuning: &[f64], profile: &str) -> Result<Vec<f64>, JsValue> {
+    use mixo_geometry_core::dental::footprint::footprint_settings;
+    let profile = profile_of(profile)?;
+    let settings = footprint_settings(&tuning_of(tuning)?, profile).map_err(|_| error("BAD_INPUT"))?;
+    Ok(vec![settings.low, settings.high])
+}
+
 /// The contact footprint for explicit strip settings:
-/// `[setback, width, outerSpacing, innerSpacing, maxSearch, phaseFraction, minTipSeparation]` (phase
-/// NaN = default half-spacing; separation 0 = off). `ok()` false carries the raw reason.
+/// `[low, high, outerSpacing, innerSpacing, maxSearch, phaseFraction, minTipSeparation]`: the area is
+/// the faces whose signed contour distance lies in `[low, high]` (negative across the edge), tips on
+/// its middle line (phase NaN = default half-spacing; separation 0 = off). `ok()` false carries the
+/// raw reason.
 #[wasm_bindgen]
 pub fn dental_footprint(positions: &[f32], indices: &[u32], allowed_faces: &[u8], outer_edges: &[u32], opening_edges: &[u32], settings: &[f64]) -> Result<DentalRegionResult, JsValue> {
     use mixo_geometry_core::dental::footprint::{FootprintSettings, propose_footprint};
@@ -187,8 +199,9 @@ pub fn dental_footprint(positions: &[f32], indices: &[u32], allowed_faces: &[u8]
         return Err(error("INVALID_INDEX"));
     }
     let settings = FootprintSettings {
-        setback: settings[0],
-        width: settings[1],
+        low: settings[0],
+        high: settings[1],
+        reach: [settings[1].max(0.0), (-settings[0]).max(0.0)],
         outer_spacing: settings[2],
         inner_spacing: settings[3],
         max_search_distance: settings[4],

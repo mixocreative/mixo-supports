@@ -129,7 +129,7 @@ describe('analysis client', () => {
     const client = new AnalysisClient(create, () => {}, 1);
     const source = mesh();
     const region = { kind: 'proposal' } as never;
-    const tuning = { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 };
+    const tuning = { positionMm: 0.7, stripWidthMm: 0.4, density: 1.5 };
     const pending = client.retuneDentalRegion('dental-retune:a', source, region, tuning, 'reference-aligner', label);
     const task = workers[0]!.received[0]!.payload;
     expect(task.kind).toBe('dental-retune');

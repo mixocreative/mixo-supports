@@ -105,6 +105,7 @@ export interface DentalInternals {
   manual_dental_area(faceCount: number, painted: Uint32Array, detected: boolean, profile: string): Uint8Array;
   manual_dental_area_from_stamps(positions: Float32Array, indices: Uint32Array, stamps: Float64Array, detected: boolean, profile: string): Uint8Array;
   dental_profile_ids(): string[];
+  dental_area_band(tuning: Float64Array, profile: string): Float64Array;
 }
 
 let current: DentalEngine | undefined;

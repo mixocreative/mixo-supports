@@ -47,7 +47,7 @@ describe('proposeDentalSupportRegion', () => {
   it('keeps exact contours while tuning the non-cavity strip and contact density', () => {
     const mesh = reference();
     const baseline = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
-    const tuned = proposeDentalSupportRegion(mesh, { ...referenceTuning, setbackMm: 0.5,
+    const tuned = proposeDentalSupportRegion(mesh, { ...referenceTuning, positionMm: 0.7,
       stripWidthMm: 0.4, density: 1.5 }, REFERENCE_PROFILE);
     expect(baseline.kind).toBe('proposal');
     expect(tuned.kind).toBe('proposal');
@@ -65,7 +65,7 @@ describe('proposeDentalSupportRegion', () => {
     const baseline = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(baseline.kind).toBe('proposal');
     if (baseline.kind !== 'proposal') return;
-    const tuning = { setbackMm: 0.5, stripWidthMm: 0.4, density: 1.5 };
+    const tuning = { positionMm: 0.7, stripWidthMm: 0.4, density: 1.5 };
     const retuned = retuneDentalSupportRegion(mesh, baseline, tuning, REFERENCE_PROFILE);
     const fresh = proposeDentalSupportRegion(mesh, tuning, REFERENCE_PROFILE);
     expect(retuned).toEqual(fresh);

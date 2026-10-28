@@ -188,7 +188,7 @@ pub(crate) fn empty_region() -> Region {
 
 pub(crate) fn tuning_of(values: &[f64]) -> Result<Tuning, JsValue> {
     match values {
-        [setback_mm, strip_width_mm, density] => Ok(Tuning { setback_mm: *setback_mm, strip_width_mm: *strip_width_mm, density: *density }),
+        [position_mm, strip_width_mm, density] => Ok(Tuning { position_mm: *position_mm, strip_width_mm: *strip_width_mm, density: *density }),
         _ => Err(error("INVALID_LENGTH")),
     }
 }

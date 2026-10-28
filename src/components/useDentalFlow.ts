@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
+import { defaultDentalTuning } from '../dental/tuning';
 import type { Vector } from '../core/vec3';
 import type { GizmoMode, ViewRequest } from './viewport/types';
 import type { PrintScene, PrintUnit, SceneCommand } from '../state/project';
@@ -105,7 +106,8 @@ export function useDentalFlow({ analysis, dispatch, send, sceneRef, sessionRef, 
         requestView('bottom');
         return;
       }
-      dispatch({ type: 'dental/set', unitId: unit.id, policy: { kind: 'two-contour', profileId: profile, rim: proposal.rim, region, stamps: [] } });
+      dispatch({ type: 'dental/set', unitId: unit.id, policy: { kind: 'two-contour', profileId: profile, rim: proposal.rim, region, stamps: [],
+        tuning: defaultDentalTuning(profile) } });
       send({ type: 'acceptDentalOrientation' });
       requestView('bottom');
     }, () => { if (detectionSeq.current === detection) setStatus('Dental contour detection failed. No support area was approved.'); });

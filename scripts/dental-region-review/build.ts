@@ -1,7 +1,8 @@
 import { useNodeEngine } from '../node-engine';
 import { proposeDentalOrientation, rotationToDentalPose } from '../../src/core/analysis/dental';
 import { proposeDentalSupportRegion, type DentalRegionProposal } from '../../src/core/analysis/dentalRegion';
-import { diagnosticDentalSideBands, type DentalDiagnosticBands } from '../../src/core/analysis/dentalContactBand';
+import { dentalAreaBand, diagnosticDentalSideBands, type DentalDiagnosticBands } from '../../src/core/analysis/dentalContactBand';
+import { profileData } from '../../src/dental/alignerProfiles';
 import { sampleDiagnosticContourContacts, type DiagnosticContourContact } from '../../src/core/analysis/dentalContourContacts';
 import type { PlacementResult, TriangleMesh } from '../../src/core/analysis/types';
 import type { JobTransform } from '../../src/core/jobs';
@@ -28,12 +29,15 @@ export type DentalReviewBuild =
 export function buildDentalReview(mesh: TriangleMesh): DentalReviewBuild {
   const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
   if (region.kind !== 'proposal') return region;
-  const bands = diagnosticDentalSideBands(mesh, region, { setback: 0.2, width: 1.2 });
+  // The diagnostic strips and samples use the profile's own area and spacing (the app's defaults).
+  const { defaults } = profileData(REFERENCE_PROFILE);
+  const [low, high] = dentalAreaBand(referenceTuning, REFERENCE_PROFILE);
+  const bands = diagnosticDentalSideBands(mesh, region, { setback: Math.max(0, low), width: high });
   if (bands.kind !== 'proposal') return { kind: 'inconclusive', reason: `diagnostic-band-${bands.reason}` };
   const outer = sampleDiagnosticContourContacts(mesh, region.outerEdges, bands.outerOtherSide,
-    { spacing: 2, maxSearchDistance: 1.5 });
+    { spacing: defaults.outerSpacingMm / referenceTuning.density, maxSearchDistance: defaults.maxSearchMm });
   const inner = sampleDiagnosticContourContacts(mesh, region.openingEdges, bands.innerOtherSide,
-    { spacing: 2, maxSearchDistance: 1.5 });
+    { spacing: defaults.innerSpacingMm / referenceTuning.density, maxSearchDistance: defaults.maxSearchMm });
   if (outer.kind !== 'proposal' || inner.kind !== 'proposal') {
     return { kind: 'inconclusive', reason: `diagnostic-contact-${outer.kind !== 'proposal' ? outer.reason : inner.kind !== 'proposal' ? inner.reason : 'unknown'}` };
   }

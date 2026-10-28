@@ -10,10 +10,11 @@ import type { Lang } from '../i18n';
 const FILES = import.meta.glob<unknown>('../../crates/geometry-core/src/dental/profiles/*.json', { eager: true, import: 'default' });
 
 export interface ProfileDefaults {
-  setbackMm: number;
+  positionMm: number;
   stripWidthMm: number;
   density: number;
-  setbackMaxMm: number;
+  positionMinMm: number;
+  positionMaxMm: number;
   stripWidthMinMm: number;
   stripWidthMaxMm: number;
   densityMin: number;
@@ -59,7 +60,7 @@ const THRESHOLD_KEYS = ['axialVarianceMax', 'terminalAreaRatioMin', 'terminalBan
   'regionForbiddenMeanMax', 'regionAllowedFractionMin', 'regionAllowedFractionMax', 'archFrontMinAnisotropy',
   'archFrontGridCells', 'archFrontSideFraction', 'archFrontEndBandFraction', 'archFrontMinAreaFraction', 'archFrontEndRatioMin'];
 const POSE_KEYS: readonly (keyof ProfilePose)[] = ['tiltDeg', 'headingDeg', 'rollDeg'];
-const DEFAULT_KEYS: readonly (keyof ProfileDefaults)[] = ['setbackMm', 'stripWidthMm', 'density', 'setbackMaxMm', 'stripWidthMinMm',
+const DEFAULT_KEYS: readonly (keyof ProfileDefaults)[] = ['positionMm', 'stripWidthMm', 'density', 'positionMinMm', 'positionMaxMm', 'stripWidthMinMm',
   'stripWidthMaxMm', 'densityMin', 'densityMax', 'outerSpacingMm', 'innerSpacingMm', 'maxSearchMm', 'repairBudget',
   'matchToleranceMm', 'matchMinDot', 'minTipSeparationMm'];
 
