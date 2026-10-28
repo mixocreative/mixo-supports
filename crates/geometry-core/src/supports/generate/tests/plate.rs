@@ -139,9 +139,9 @@ fn a_moved_plate_builds_what_a_raised_model_builds() {
             }
             assert!(lands_on_the_model(&report) && report.verdict.status == Status::Blocked);
             assert!(matches!(&report.islands, IslandVerdict::Ok(islands) if islands.len() >= 2));
-            // The repair takes the same steps on both: braces off, the pillar between the walls left out.
+            // The repair takes the same steps on both: the crossing braces pruned, the pillar between the walls left out.
             let repaired = check(&overrides, BuildMode::Preview, dy, 8);
-            assert!(repaired.fallback.contains(&Fallback::Brace) && repaired.dropped.iter().any(|id| id == "c6"), "{:?} {:?}", repaired.fallback, repaired.dropped);
+            assert!(repaired.fallback.contains(&Fallback::BracePruned) && repaired.dropped.iter().any(|id| id == "c6"), "{:?} {:?}", repaired.fallback, repaired.dropped);
         }
     }
     // No raft: feet and the braces stand on the plate itself.

@@ -610,6 +610,7 @@ export const zhHant: Dictionary = {
   'Cross-braces': '橫向加強桿',
   'Tree branches were omitted because they crossed the model. Review the supports before finishing.': '樹狀分枝因穿過模型而被省略。完成前請檢查支撐。',
   'Cross-braces were omitted because they crossed the model. Review the supports before finishing.': '橫向加強桿因穿過模型而被省略。完成前請檢查支撐。',
+  'Some cross-braces were left out where they crossed the model. Review the supports before finishing.': '部分橫向加強桿因穿過模型而被省略。完成前請檢查支撐。',
   'Updating support area and tips…': '正在更新支撐區域與支撐頭…',
   'Could not update the support strip. The previous area is still active.': '無法更新支撐接觸帶，原本的區域仍然有效。',
   'Updating dental support area on {name}': '正在更新 {name} 的牙套支撐區域',

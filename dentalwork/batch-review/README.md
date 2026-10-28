@@ -45,7 +45,7 @@ The right panel gives the numbers for the selected file:
 | Low points with no support | Low points inside the support area that no support reaches: purple markers |
 | Low points outside the area | Low points outside the support area, for information: blue-grey markers, off by default (see [open decisions](../open-decisions.md)) |
 | Print angle | The tilt the app's Step 1 picks (degrees), its stable band, and whether the confirm build at that tilt passed |
-| Structures left out | `brace` or `tree` when the repair switched them off because they crossed the aligner; `none` otherwise. New aligners start with Brace on and Tree off |
+| Structures left out | `brace-pruned` when only the cross-brace segments that crossed the aligner were left out (the other braces stay); `brace` or `tree` when the repair switched all of them off; joined with `+`; `none` otherwise. New aligners start with Brace on and Tree off |
 | Tips placed / left out | Automatic tips built, and tips left out by the repair |
 | Largest gap, outer edge / opening | The longest stretch of each rim without a tip, in mm |
 | Edge coverage needs review | A gap longer than twice the normal spacing |

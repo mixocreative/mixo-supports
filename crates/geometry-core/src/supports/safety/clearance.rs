@@ -6,7 +6,7 @@
 use super::conflicts::{Conflict, SupportMesh, body_conflicts};
 use super::index::CollisionIndex;
 use super::reach::{ReachLimits, is_intentional_contact_reach};
-use crate::supports::parts::tags::{Component, Part, StructureKind};
+use crate::supports::parts::tags::{BraceKey, Component, Part, StructureKind};
 use crate::supports::policy::Origin;
 use crate::supports::settings::{ContactShape, SupportSettings};
 use std::collections::BTreeSet;
@@ -29,9 +29,10 @@ pub fn reach_limits(s: &SupportSettings) -> ReachLimits {
 }
 
 /// Structures a fallback may switch off; order is the order of their names (`brace` < `tree-branch`).
+/// A brace names its segment, so the repair can leave out just that one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StructurePart {
-    Brace,
+    Brace(BraceKey),
     TreeBranch,
     TreeTrunk,
 }
@@ -81,7 +82,9 @@ pub fn crossing_structure_parts(index: &CollisionIndex, supports: &SupportMesh, 
             } else if c.tag.part == Part::TreeTrunk {
                 StructurePart::TreeTrunk
             } else {
-                StructurePart::Brace
+                // Every brace is emitted with its key; the sentinel (no segment) can never be pruned, so
+                // the repair would fall through to switching the braces off, not accept the crossing.
+                StructurePart::Brace(c.tag.brace.unwrap_or([i32::MIN; 6]))
             }
         })
         .collect::<BTreeSet<_>>()

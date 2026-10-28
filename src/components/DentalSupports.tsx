@@ -28,7 +28,7 @@ export interface DentalReview {
   /** A change is on its way to a new verdict (rebuild, re-check, retune): the Problems section shows stale. */
   verdictPending: boolean;
   rimGap: RimGap | undefined;
-  structureFallback: readonly ('tree' | 'brace')[] | undefined;
+  structureFallback: readonly ('tree' | 'brace' | 'brace-pruned')[] | undefined;
   problems: readonly Problem[];
   outOfDate: boolean;
   rechecking: (problem: Problem) => boolean;
@@ -78,6 +78,7 @@ export function DentalSupportsStep({ gesture, ui, review, ready, send, run }: {
     ...(rimNote ? [{ key: 'rim', text: rimNote }] : []),
     ...(review.structureFallback?.includes('tree') ? [{ key: 'tree', text: t('Tree branches were omitted because they crossed the model. Review the supports before finishing.') }] : []),
     ...(review.structureFallback?.includes('brace') ? [{ key: 'brace', text: t('Cross-braces were omitted because they crossed the model. Review the supports before finishing.') }] : []),
+    ...(review.structureFallback?.includes('brace-pruned') ? [{ key: 'brace-pruned', text: t('Some cross-braces were left out where they crossed the model. Review the supports before finishing.') }] : []),
   ];
   const finishing = resolve('dental.finish', ui);
   return <aside className="dental-side" aria-label={t('Step 3 · Supports')}>

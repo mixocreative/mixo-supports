@@ -8,7 +8,7 @@ describe('geometry WASM contract', () => {
 
   it('rejects a mismatched core before work can start', () => {
     expect(() => assertGeometryVersion(HOST_GEOMETRY_VERSION + 1)).toThrowError(
-      'Geometry core schema 9 does not match host schema 8',
+      'Geometry core schema 10 does not match host schema 9',
     );
   });
 

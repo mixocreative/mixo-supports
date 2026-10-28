@@ -89,7 +89,7 @@ impl GeometrySession {
         let (mode, source) = (build_mode(mode)?, landing_mode(landings)?);
         let zones = decode_zones(zones).ok_or_else(|| coded_error("BAD_INPUT"))?;
         let built = if model == u32::MAX {
-            let host = support_build::HostChoices { label_text, zones: &zones, landing_allowed: None };
+            let host = support_build::HostChoices { label_text, zones: &zones, landing_allowed: None, pruned_braces: None };
             support_build::build_supports(&contacts, &settings, mode, None, source, &host)
         } else {
             self.store.ensure_pick_index(model).map_err(mesh_error)?;
@@ -106,7 +106,7 @@ impl GeometrySession {
                 policy.landing_rule = LandingRule::ApprovedFaces { stamps: Vec::new() };
             }
             let allowed = landing_allowed(&view, &policy);
-            let host = support_build::HostChoices { label_text, zones: &zones, landing_allowed: allowed.as_ref().map(|f| f as &dyn Fn(&Landing) -> bool) };
+            let host = support_build::HostChoices { label_text, zones: &zones, landing_allowed: allowed.as_ref().map(|f| f as &dyn Fn(&Landing) -> bool), pruned_braces: None };
             support_build::build_supports(&contacts, &settings, mode, Some(&view), source, &host)
         }
         .map_err(build_error)?;

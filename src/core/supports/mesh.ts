@@ -123,5 +123,5 @@ export interface GeneratedSupportMesh extends TriangleMesh {
   /** Final built contacts on each dental rim; absent when the detector could not certify a contour. */
   dentalRimCoverage?: DentalRimCoverage;
   /** Requested dental structures omitted because their built geometry crossed the model. */
-  dentalStructureFallback?: Array<'tree' | 'brace'>;
+  dentalStructureFallback?: Array<'tree' | 'brace' | 'brace-pruned'>;
 }

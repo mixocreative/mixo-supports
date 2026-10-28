@@ -1,9 +1,10 @@
 //! Cross-bracing between neighbouring columns (SLASG_Truss2). Port of TS `trussSegments` / `addBraces`.
 
 use super::builder::MeshBuilder;
-use super::tags::{Part, Tag};
+use super::tags::{BraceKey, Part, Tag};
 use crate::core::vec::V3;
 use crate::supports::settings::SupportSettings;
+use std::collections::BTreeSet;
 
 /// A plate-standing pillar, from its foot top up to where its tube starts (mm).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -54,10 +55,23 @@ pub fn truss_segments(columns: &[Column], s: &SupportSettings) -> Vec<(V3, V3)> 
     segments
 }
 
-pub fn emit_braces(builder: &mut MeshBuilder, columns: &[Column], s: &SupportSettings, segments: usize) {
+/// The identity of the segment `from`-`to` (built on the plate at 0, raised by `plate_y`).
+pub fn brace_key(from: V3, to: V3, plate_y: f64) -> BraceKey {
+    let end = |p: V3| [(p[0] * 100.0).round() as i32, ((p[1] + plate_y) * 100.0).round() as i32, (p[2] * 100.0).round() as i32];
+    let (a, b) = (end(from), end(to));
+    let (a, b) = if a <= b { (a, b) } else { (b, a) };
+    [a[0], a[1], a[2], b[0], b[1], b[2]]
+}
+
+/// Builds the braces, except the segments in `pruned` (the repair left them out where they crossed the model).
+pub fn emit_braces(builder: &mut MeshBuilder, columns: &[Column], s: &SupportSettings, segments: usize, pruned: &BTreeSet<BraceKey>) {
     let radius = s.truss_diameter / 2.0;
     for (from, to) in truss_segments(columns, s) {
-        builder.begin(Tag::new(Part::Brace));
+        let key = brace_key(from, to, s.plate_y);
+        if pruned.contains(&key) {
+            continue;
+        }
+        builder.begin(Tag::new(Part::Brace).brace(key));
         builder.frustum(from, to, radius, radius, segments);
         builder.end();
     }
@@ -78,5 +92,12 @@ mod tests {
         let far = [near[0], Column { x: 400.0, ..near[1] }];
         assert!(truss_segments(&far, &s).is_empty());
         assert!(truss_segments(&near[..1], &s).is_empty());
+    }
+
+    #[test]
+    fn a_brace_key_is_the_endpoints_in_centimillimetres_ordered_and_raised_by_the_plate() {
+        assert_eq!(brace_key([4.0, 3.2, 0.0], [0.0, 7.2, 0.0], 0.0), [0, 720, 0, 400, 320, 0]);
+        assert_eq!(brace_key([0.0, 7.2, 0.0], [4.0, 3.2, 0.0], 0.0), brace_key([4.0, 3.2, 0.0], [0.0, 7.2, 0.0], 0.0));
+        assert_eq!(brace_key([0.0, 1.0, 0.0], [0.004, 1.0, 0.0], 0.5), [0, 150, 0, 0, 150, 0]);
     }
 }

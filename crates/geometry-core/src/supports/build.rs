@@ -14,7 +14,8 @@ use super::parts::builder::MeshBuilder;
 use super::parts::column::{ColumnContact, emit_column, emit_feet, neck_bend};
 use super::parts::landing::Landing;
 use super::parts::model::Model;
-use super::parts::tags::Component;
+use super::parts::tags::{BraceKey, Component};
+use std::collections::BTreeSet;
 use crate::core::vec::{V3, normalize_or_down, scale, sub};
 use super::parts::tree::{emit_tree, landing_source};
 use super::parts::structures::emit_structures;
@@ -67,6 +68,8 @@ pub struct HostChoices<'a> {
     pub zones: &'a [AreaStamp],
     /// True where a support may land; an automatic support landing elsewhere is left out.
     pub landing_allowed: Option<&'a dyn Fn(&Landing) -> bool>,
+    /// Brace segments the repair left out because they crossed the model (`None`: none).
+    pub pruned_braces: Option<&'a BTreeSet<BraceKey>>,
 }
 
 struct Prepared<'m, 'a> {
@@ -219,7 +222,7 @@ pub fn build_supports(
         }
         let start = builder.vertex_count();
         if settings.truss_enabled {
-            emit_braces(&mut builder, &columns, settings, segments);
+            emit_braces(&mut builder, &columns, settings, segments, host.pruned_braces.unwrap_or(&BTreeSet::new()));
         }
         let footprints: Vec<[f64; 2]> = columns.iter().map(|c| [c.x, c.z]).collect();
         emit_structures(&mut builder, &footprints, settings, prepared.model, host.label_text);

@@ -1,5 +1,6 @@
 use super::super::repair::trace;
 use super::*;
+use crate::supports::parts::tags::BraceKey;
 
 /// What the repair did, as one comparable line: the trials by step (and contacts touched), the
 /// outcome lists and a hash of the built positions. The expected lines were recorded from the loop
@@ -122,3 +123,56 @@ fn after_structures_off_only_the_contacts_that_still_cross_are_left_out() {
     assert_eq!(out.verdict.status, Status::Clear, "{:?}", out.verdict);
 }
 
+
+/// Three columns in a row under a shelf (x = -4, 0, 4): each neighbouring pair gets a two-segment
+/// zigzag (one falling, one rising). A 0.3 mm wall stands between columns 1 and 2 at x = 2.
+fn braced_row(wall: (f64, f64)) -> Generated {
+    let fixture = Fixture::new(&[([-12.0, 20.0, -5.0], [12.0, 24.0, 5.0]), ([1.85, wall.0, -5.0], [2.15, wall.1, 5.0])]);
+    let s = settings(&[("trussEnabled", 1.0), ("raftEnabled", 0.0), ("scatterAutoTree", 0.0), ("lowPolyMode", 1.0), ("trussMinHeight", 1.0)]);
+    let at = |id: &str, x: f64| contact(id, [x, 20.0, 0.0], Origin::Auto);
+    trace::take();
+    fixture.run(vec![at("a", -4.0), at("b", 0.0), at("c", 4.0)], &s, &policy(fixture.faces(), Vec::new(), 8, AutomaticRule::AsGiven), &never)
+}
+
+fn brace_keys(out: &Generated) -> Vec<BraceKey> {
+    let mut keys: Vec<BraceKey> = out.built.components.iter().filter(|c| c.tag.part == Part::Brace).map(|c| c.tag.brace.expect("every brace names its segment")).collect();
+    keys.sort();
+    keys
+}
+
+/// Pair 1-2 is columns b and c; its falling segment passes the wall at 5.2 mm, its rising one at 11.2 mm.
+const FALLING_1_2: BraceKey = [0, 720, 0, 400, 320, 0];
+const OTHERS: [BraceKey; 3] = [[-400, 720, 0, 0, 320, 0], [-400, 920, 0, 0, 1320, 0], [0, 920, 0, 400, 1320, 0]];
+
+/// D24: only the segment that crosses is left out; its partners and the other pair's zigzag stay.
+#[test]
+fn a_brace_segment_that_crosses_is_pruned_and_every_other_segment_stays() {
+    let out = braced_row((4.0, 6.5));
+    let keys = brace_keys(&out);
+    assert!(!keys.contains(&FALLING_1_2), "{keys:?}");
+    assert_eq!(keys, { let mut all = OTHERS.to_vec(); all.sort(); all });
+    assert_eq!(out.fallback, [Fallback::BracePruned]);
+    assert_eq!((out.trials, trace::take().iter().map(|t| t.step).collect::<Vec<_>>()), (1, vec!["brace-prune"]));
+    assert_eq!(out.verdict.status, Status::Clear, "{:?}", out.verdict);
+    assert_eq!(out.contact_ids.len(), 3);
+}
+
+/// D24: the wall crosses every segment of pair 1-2. They are all pruned in one pass; the other pair
+/// stays, and the braces are not switched off (nothing crosses after the pass).
+#[test]
+fn a_wall_across_a_whole_pair_prunes_that_pair_and_keeps_the_other() {
+    let out = braced_row((3.0, 14.0));
+    assert_eq!(brace_keys(&out), vec![OTHERS[0], OTHERS[1]]);
+    assert_eq!(out.fallback, [Fallback::BracePruned]);
+    assert_eq!((out.trials, trace::take().iter().map(|t| t.step).collect::<Vec<_>>()), (1, vec!["brace-prune"]));
+    assert_eq!(out.verdict.status, Status::Clear, "{:?}", out.verdict);
+}
+
+#[test]
+fn brace_pruning_is_deterministic() {
+    let first = braced_row((4.0, 6.5));
+    let (first_keys, first_print) = (brace_keys(&first), fingerprint(&first));
+    let second = braced_row((4.0, 6.5));
+    assert_eq!(first_keys, brace_keys(&second));
+    assert_eq!(first_print, fingerprint(&second));
+}
