@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-28T09:18:14.022Z",
+  "machine": {
+    "cpu": "AMD Ryzen 9 9950X 16-Core Processor            ",
+    "cores": 32,
+    "node": "v22.15.1"
+  },
+  "method": "median of 3 in-process runs (vite-node, Node); Step 2 = Area width step: region proposal + placement filter; Step 3 = runSupportJob after one control change, one-shot session",
+  "dentalGenerateMs": 1139.2,
+  "step2SliderMs": 149.1,
+  "step3PillarDiameterMs": 1277.2,
+  "step3TipSizeMs": 943.9,
+  "step3LiftHeightMs": 980.1,
+  "step3RaftToggleMs": 943.1
+}
