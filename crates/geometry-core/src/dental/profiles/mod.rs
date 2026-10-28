@@ -244,7 +244,7 @@ mod tests {
         assert_eq!(profile.name.zh_hant, "標準牙套");
         let s = &profile.supports;
         assert_eq!((s.pillar_diameter_mm, s.tip_diameter_mm, s.lift_height_mm), (1.4, 0.45, 3.5));
-        assert_eq!((s.tree, s.brace, s.raft), (true, true, true));
+        assert_eq!((s.tree, s.brace, s.raft), (false, true, true));
     }
 
     /// Every profile file in the folder (and the test-only fixture) parses strictly.

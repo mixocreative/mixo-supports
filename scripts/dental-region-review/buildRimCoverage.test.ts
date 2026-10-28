@@ -14,9 +14,9 @@ describe('final dental rim coverage', () => {
     const review = buildDentalReview(mesh);
     expect(review.kind).toBe('proposal');
     if (review.kind !== 'proposal') return;
-    // The profile's Step 3 defaults (D3): Tree and Brace on. On the reference the cross-braces are
-    // built and the tree branches are left out because they cross the model (the structure fallback).
-    expect(review.supports.dentalStructureFallback).toEqual(['tree']);
+    // The profile's Step 3 defaults (D21): Tree off, Brace on. On the reference the cross-braces are
+    // built and nothing falls back.
+    expect(review.supports.dentalStructureFallback ?? []).toEqual([]);
     expect(review.supports.parts).toContain('brace');
     expect(review.supports.parts).not.toContain('tree-branch');
     // Opening spacing 4 mm (profile): 23 opening tips. One stretch of the rim's outer side faces up in

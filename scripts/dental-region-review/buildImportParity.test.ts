@@ -29,15 +29,15 @@ describe('dental import and preview parity', () => {
     const retained = new Set(review.supports.components.flatMap((part) => part.contactId ? [part.contactId] : []));
     // 94 placed primaries (71 outer, 23 opening, evenly spaced; none closer than 0.6 mm): a tip whose
     // face a support could not reach from below was moved to one it can before placement. At the
-    // profile's pose in this centred frame (measured, B2 with D20): the repair leaves 3 crossing
-    // primaries out, then the tree and the braces still cross and go off with every contact kept,
-    // so 91 are built. (At the confirmed print angle none is left out: the folder review.)
+    // profile's pose in this centred frame (measured, B2 with D20 and D21, Tree off): the repair
+    // moves 2 primaries to alternates and leaves 1 crossing primary out, then the braces still cross
+    // and go off with every contact kept, so 93 are built. (At the confirmed print angle none is left out: the folder review.)
     const placed = new Set(review.placement.points.map((point) => point.id));
     expect(placed.size).toBe(94);
-    expect(retained.size).toBe(91);
-    expect([...retained].filter((id) => !placed.has(id))).toHaveLength(0);
-    expect(review.supports.dropped).toHaveLength(3);
-    expect(review.supports.dentalStructureFallback).toEqual(['tree', 'brace']);
+    expect(retained.size).toBe(93);
+    expect([...retained].filter((id) => !placed.has(id))).toHaveLength(2);
+    expect(review.supports.dropped).toHaveLength(1);
+    expect(review.supports.dentalStructureFallback).toEqual(['brace']);
   }, 180000);
 
   it('keeps dental automatic contact IDs the same in preview and export', () => {
