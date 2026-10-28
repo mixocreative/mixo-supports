@@ -61,7 +61,7 @@ Two things about the shape are worth knowing without the table:
 
 ## Driving the engine without the app
 
-`scripts/host-example.mjs` (`npm run host-example -- <aligner.stl> <out-dir>`) is the example of a host with no React and no import from `src/`: it loads the Node build of the package and calls, in order, the STL sessions, `center_positions_in_place`, `orient_dental`, `propose_dental_region`, `dental_tilt_scan`, `dental_policy`, `generic_policy_contacts` and `generate`, then writes `supported.stl` (the aligner in its print pose plus the supports) and `summary.json` (angle, band, tips placed and left out, crossings, rim gaps, seconds per step, engine version). Each step carries a one-line comment naming its call. On `dentalwork/fixtures/case-001/aligner.stl` it gives 44.5 degrees, clear, 93 tips, 1 left out, 0 crossings, as the folder review does.
+`scripts/host-example.mjs` (`npm run host-example -- <aligner.stl> <out-dir>`) is the example of a host with no React and no import from `src/`: it loads the Node build of the package and calls, in order, the STL sessions, `center_positions_in_place`, `orient_dental`, `propose_dental_region`, `dental_tilt_scan`, `dental_policy`, `generic_policy_contacts` and `generate`, then writes `supported.stl` (the aligner in its print pose plus the supports) and `summary.json` (angle, band, tips placed and left out, crossings, rim gaps, seconds per step, engine version). Each step carries a one-line comment naming its call. On `dentalwork/fixtures/case-001/aligner.stl` it gives 44.5 degrees, clear, 94 tips, 0 left out, 0 crossings, as the folder review does (Tree off, Brace on: D21).
 
 ## Handoff discipline
 

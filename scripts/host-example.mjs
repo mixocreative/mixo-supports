@@ -20,7 +20,7 @@ const engine = createRequire(import.meta.url)(packageFile);
 const PROFILE = 'reference-aligner';
 // The profile's area defaults: [position mm, strip width mm, density] (the tuning array of region and policy).
 const TUNING = Float64Array.of(0.25, 0.5, 1);
-// The profile's Step 3 support settings (Tree and Brace on), named as engine.support_settings_layout() lists them.
+// The profile's Step 3 support settings (Tree off, Brace on: D21), named as engine.support_settings_layout() lists them.
 const SETTINGS = {
   contactShape: 'NONE', pointDiameter: 0.45, pointDepth: 0.2, tipSection: 'ROUND', tipCrossWidth: 40, tipProfile: 'TAPERED',
   touchDiameter: 0.45, touchDepth: 0, neckDiameter: 0.3, neckLength: 2, maxNeckAngle: 45,
@@ -112,7 +112,7 @@ const frame = Float64Array.of(0, SETTINGS.liftHeight - lowest, 0, ...angle.rotat
 // 7. Policy: dental_policy(model, profile, 2 = two-contour, tuning, stamps, region..., [tree, brace], frame, manual)
 //    -> a PolicyHandle: the suggested tips (ids, then point and normal each, in the plate frame) and the structures to build.
 const makePolicy = (at) => session.dental_policy(model, PROFILE, 2, TUNING, new Float64Array(),
-  region.allowed, region.contact, region.outer, region.opening, Uint8Array.of(1, 1), at, new Float64Array());
+  region.allowed, region.contact, region.outer, region.opening, Uint8Array.of(0, 1), at, new Float64Array());
 //    The tips are asked for in the rotated frame (no lift); position_ids names each by its place on a 0.01 mm grid, a repeat counts once.
 const suggested = timed('policy', () => {
   const handle = makePolicy(Float64Array.of(0, 0, 0, ...angle.rotation));
