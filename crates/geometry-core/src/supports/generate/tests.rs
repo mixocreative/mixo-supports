@@ -76,7 +76,7 @@ impl Fixture {
     }
     fn run(&self, contacts: Vec<ColumnContact>, s: &SupportSettings, p: &PolicyResult, expired: &dyn Fn() -> bool) -> Generated {
         let model = Model::new(&self.positions, &self.indices, &self.bvh);
-        generate(GenerateInput { contacts, settings: s, mode: BuildMode::Preview, model: Some(&model), label_text: "", zones: &[], policy: p, expired }).unwrap()
+        generate(GenerateInput { contacts, settings: s, mode: BuildMode::Preview, model: Some(&model), label_text: "", zones: &[], policy: p, expired, local: None }).unwrap()
     }
 }
 

@@ -42,7 +42,7 @@ fn run_at(positions: &[f32], indices: &[u32], dy: f64, s: &SupportSettings, mode
     let bvh = Bvh::build(positions, indices);
     let model = Model::new(positions, indices, &bvh);
     let p = policy(indices.len() / 3, Vec::new(), budget, AutomaticRule::AsGiven);
-    generate(GenerateInput { contacts: scene_contacts(dy), settings: s, mode, model: Some(&model), label_text: "AB", zones: &[], policy: &p, expired: &never }).unwrap()
+    generate(GenerateInput { contacts: scene_contacts(dy), settings: s, mode, model: Some(&model), label_text: "AB", zones: &[], policy: &p, expired: &never, local: None }).unwrap()
 }
 
 fn close(a: f64, b: f64, what: &str) {

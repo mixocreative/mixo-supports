@@ -80,3 +80,45 @@ const EXPECTED: [&str; 4] = [
     r#"trials=3 steps=["reaim-normal:1", "reaim-down:1", "leave-out:1"] dropped=["auto-0"] fallback=[] ids=["hand"] verdict=Clear positions=102:71aaedf8353dcc7d"#,
     r#"trials=1 steps=["alternates:1"] dropped=[] fallback=[] ids=["auto-400_2000_0"] verdict=Clear positions=168:a2828132e78a9955"#,
 ];
+
+/// D20: a brace that first appears after the contact repairs (an alternate brings two pillars within
+/// brace reach across a thin wall) is switched off with the tree, keeping every contact.
+#[test]
+fn a_structure_that_still_crosses_after_the_contact_repairs_goes_off_and_the_contacts_stay() {
+    // A shelf; a block under the far primary's pillar; a thin wall between the left contact and the alternate.
+    let fixture = Fixture::new(&[([-9.0, 20.0, -5.0], [22.0, 24.0, 5.0]), ([19.0, 0.0, -5.0], [21.0, 12.0, 5.0]), ([-0.4, 0.0, -5.0], [0.4, 19.0, 5.0])]);
+    let s = settings(&[("trussEnabled", 1.0), ("raftEnabled", 0.0), ("scatterAutoTree", 0.0), ("lowPolyMode", 1.0), ("trussMinHeight", 1.0), ("trussDistanceLimit", 15.0)]);
+    let cand = |id: &str, x: f64| Candidate { id: CandidateId(id.into()), source_face: Some(4), point: [x, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };
+    let mut p = policy(fixture.faces(), vec![cand("left", -6.0), cand("primary", 20.0)], 8, AutomaticRule::MatchCandidates { tol_mm: 0.03, min_dot: 0.95 });
+    p.alternates = vec![(CandidateId("primary".into()), vec![cand("alt", 6.0)])];
+    trace::take();
+    let out = fixture.run(vec![contact("left", [-6.0, 20.0, 0.0], Origin::Auto), contact("auto-0", [20.0, 20.0, 0.0], Origin::Auto)], &s, &p, &never);
+    let steps: Vec<&str> = trace::take().iter().map(|t| t.step).collect();
+    assert_eq!(steps, ["alternates", "structures-off"], "{out:?}", out = (&out.dropped, &out.fallback, &out.verdict));
+    assert_eq!(out.fallback, [Fallback::Tree, Fallback::Brace]);
+    assert!(out.dropped.is_empty(), "{:?}", out.dropped);
+    assert_eq!(out.contact_ids.len(), 2, "both contacts are kept: {:?}", out.contact_ids);
+    assert!(!out.built.components.iter().any(|c| c.tag.part == Part::Brace));
+    assert_eq!(out.verdict.status, Status::Clear, "{:?}", out.verdict);
+}
+
+/// D20: after Tree and Brace go off, an automatic contact whose own pillar now crosses (the tree had
+/// carried it out of a slot narrower than the pillar) is left out alone; the others stay.
+#[test]
+fn after_structures_off_only_the_contacts_that_still_cross_are_left_out() {
+    // As above, plus a pair under the shelf that a tree joins, one of them over a 0.6 mm slot.
+    let fixture = Fixture::new(&[([-9.0, 20.0, -5.0], [32.0, 24.0, 5.0]), ([29.0, 0.0, -5.0], [31.0, 12.0, 5.0]), ([-0.4, 0.0, -5.0], [0.4, 19.0, 5.0]), ([10.5, 0.0, -5.0], [11.7, 12.0, 5.0]), ([12.3, 0.0, -5.0], [12.6, 12.0, 5.0])]);
+    let s = settings(&[("trussEnabled", 1.0), ("raftEnabled", 0.0), ("scatterAutoTree", 1.0), ("lowPolyMode", 1.0), ("trussMinHeight", 1.0), ("trussDistanceLimit", 15.0)]);
+    let cand = |id: &str, x: f64| Candidate { id: CandidateId(id.into()), source_face: Some(4), point: [x, 20.0, 0.0], normal: [0.0, -1.0, 0.0], origin: Origin::Auto };
+    let mut p = policy(fixture.faces(), vec![cand("left", -6.0), cand("primary", 30.0), cand("c", 12.0), cand("d", 14.0)], 8, AutomaticRule::MatchCandidates { tol_mm: 0.03, min_dot: 0.95 });
+    p.alternates = vec![(CandidateId("primary".into()), vec![cand("alt", 6.0)])];
+    trace::take();
+    let at = |id: &str, x: f64| contact(id, [x, 20.0, 0.0], Origin::Auto);
+    let out = fixture.run(vec![at("left", -6.0), at("auto-0", 30.0), at("c", 12.0), at("d", 14.0)], &s, &p, &never);
+    let steps: Vec<&str> = trace::take().iter().map(|t| t.step).collect();
+    assert_eq!(steps.last(), Some(&"structures-off-leave-out"), "{steps:?}");
+    assert_eq!(out.dropped, ["c"]);
+    assert_eq!(out.contact_ids.len(), 3, "{:?}", out.contact_ids);
+    assert_eq!(out.verdict.status, Status::Clear, "{:?}", out.verdict);
+}
+

@@ -248,8 +248,8 @@ impl GeometrySession {
         Ok(finish(propose_region(&mesh, &tuning_of(tuning)?, profile)))
     }
 
-    /// Recomputes the strip and contacts for accepted contours. `phase_fraction` NaN keeps the usual
-    /// half-spacing phase; 0 samples from the contour origin.
+    /// Recomputes the strip and contacts for accepted contours. `phase_fraction` (of the even step)
+    /// NaN keeps phase 0, the primaries; 0.5 samples halfway between them.
     pub fn retune_dental_region(
         &self,
         model: u32,

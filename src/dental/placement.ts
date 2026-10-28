@@ -23,20 +23,25 @@ export function orientationOnly(transform: JobTransform): JobTransform {
 /** `dental_policy` area kinds: 0 older saved policy, 1 painted from scratch, 2 two-contour. */
 const areaKind = (policy: DentalPolicy) => (policy.kind === 'two-contour' ? 2 : isManualArea(policy) ? 1 : 0);
 
-/** The unit's dental policy made in Rust from its saved data, expressed in `frame`. */
-export function makeDentalPolicy(session: Pick<PolicySession, 'dental_policy'>, model: number, policy: DentalPolicy, frame: JobTransform) {
+/**
+ * The unit's dental policy made in Rust from its saved data, expressed in `frame`. `manual` are the
+ * unit's manual tips (unit-local): no suggested tip is offered next to one.
+ */
+export function makeDentalPolicy(session: Pick<PolicySession, 'dental_policy'>, model: number, policy: DentalPolicy, frame: JobTransform,
+  manual: readonly Pick<SupportPoint, 'position'>[] = []) {
   const region = policy.kind === 'two-contour' ? policy.region : undefined;
   const tuning = (policy.kind === 'two-contour' ? policy.tuning : undefined) ?? defaultDentalTuning(policy.profileId);
   const structure = (policy.kind === 'two-contour' ? policy.structure : undefined) ?? defaultDentalStructure;
   return session.dental_policy(model, policy.profileId, areaKind(policy), tuningArray(tuning), stampRows(policy),
     region?.allowedFaces ?? new Uint8Array(), region?.contactFaces ?? new Uint8Array(),
     region?.outerEdges ?? new Uint32Array(), region?.openingEdges ?? new Uint32Array(),
-    Uint8Array.of(Number(structure.treeEnabled), Number(structure.bracesEnabled)), frameArray(frame));
+    Uint8Array.of(Number(structure.treeEnabled), Number(structure.bracesEnabled)), frameArray(frame),
+    Float64Array.from(manual.flatMap((point) => point.position)));
 }
 
 /** `makeDentalPolicy` for `generateSupports`. */
-export const dentalPolicy = (policy: DentalPolicy, frame: JobTransform): MakePolicy =>
-  (session, model) => makeDentalPolicy(session, model, policy, frame);
+export const dentalPolicy = (policy: DentalPolicy, frame: JobTransform, manual: readonly Pick<SupportPoint, 'position'>[] = []): MakePolicy =>
+  (session, model) => makeDentalPolicy(session, model, policy, frame, manual);
 
 const EMPTY: PlacementResult = { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() };
 
@@ -51,7 +56,7 @@ export function filterDentalPlacement(job: DentalPlacementJob, placement: Placem
   const { mesh, orientation, dental: policy } = job;
   if (policy.kind !== 'two-contour') return legacyDentalPlacement({ ...job, dental: policy }, placement);
   const candidates = withDentalMesh(mesh, (session, model) => {
-    const handle = makeDentalPolicy(session, model, policy, orientationOnly(orientation));
+    const handle = makeDentalPolicy(session, model, policy, orientationOnly(orientation), job.manual);
     try {
       return handle.reproduced() ? handle.candidate_points() : new Float64Array();
     } finally {

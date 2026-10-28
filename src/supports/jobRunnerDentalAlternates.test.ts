@@ -15,7 +15,7 @@ import { REFERENCE_PROFILE, footprintSettings, fromBelow, referenceTuning } from
 
 /*
  * Gap alternates are the policy's repair options (`PolicyResult.alternates`, made by Rust
- * `dental_policy` from the phase-zero samples of the exact strip), consumed by the `generate` repair
+ * `dental_policy` from the half-step samples of the exact strip), consumed by the `generate` repair
  * runner when a primary's support crosses the model (runner: Rust `generate` tests). They are never
  * extra primary tips: the preview and the permitted automatic contacts are the primaries only.
  */
@@ -30,7 +30,7 @@ function reference() {
   const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
   if (region.kind !== 'proposal') throw new Error(`Reference region ${region.reason}`);
   // The policy samples for its frame's plate normal (+Y for the still frame used here).
-  const phase = proposeDentalContactFootprint(mesh, region, { ...footprintSettings(), samplePhaseFraction: 0, fromBelow: fromBelow() });
+  const phase = proposeDentalContactFootprint(mesh, region, { ...footprintSettings(), samplePhaseFraction: 0.5, fromBelow: fromBelow() });
   const primaries = proposeDentalContactFootprint(mesh, region, { ...footprintSettings(), fromBelow: fromBelow() });
   if (phase.kind !== 'proposal' || primaries.kind !== 'proposal') throw new Error('Reference footprint');
   return { mesh, region, phase, primaries: [...primaries.outerContacts, ...primaries.innerContacts] };
@@ -45,7 +45,7 @@ function policy(region: ReturnType<typeof fixture>['region']): Extract<DentalPol
 }
 
 describe('dental gap alternates are repair options, not primaries', () => {
-  it('offers exactly the phase-zero samples of the exact strip as alternates, each owned by one primary', () => {
+  it('offers exactly the half-step samples of the exact strip as alternates, each owned by one primary', () => {
     const { mesh, region, phase } = fixture();
     const made = dentalPolicyOf(mesh, policy(region));
     const phaseZero = [...phase.outerContacts, ...phase.innerContacts];

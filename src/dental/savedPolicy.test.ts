@@ -9,6 +9,7 @@ import { filterDentalPlacement } from './placement';
 import { decodeProject, encodeProject } from '../state/projectFile';
 import { emptyScene, identityTransform, reduceScene, type PrintUnit } from '../state/project';
 import { parseStl } from '../../scripts/test-support/rustImport';
+import { dentalPolicyOf } from '../../scripts/test-support/dentalPolicyOf';
 import { REFERENCE_PROFILE, referenceTuning } from '../../scripts/test-support/referenceProfile';
 import { UNSAVED_TUNING } from './tuning';
 
@@ -69,10 +70,13 @@ describe('saved dental policy on load', () => {
     expect(loaded.profileId).toBe(REFERENCE_PROFILE);
     expect('gapAlternateIds' in loaded).toBe(false);
     expect(loaded.kind === 'two-contour' && loaded.tuning).toEqual(UNSAVED_TUNING);
-    expect(filterDentalPlacement(job(loaded), empty).points.length).toBe(oldRegion.contacts!.length);
+    // The placement is the policy's own candidates, recomputed for the job's plate normal.
+    const candidates = dentalPolicyOf(mesh, loaded).candidates.length;
+    expect(candidates).toBeGreaterThan(0);
+    expect(filterDentalPlacement(job(loaded), empty).points.length).toBe(candidates);
     // A tuning saved as a setback reads as the same strip, so it still reproduces.
     dental.tuning = { setbackMm: 0.2, stripWidthMm: 1, density: 1 };
-    expect(filterDentalPlacement(job(decodeProject(JSON.stringify(file)).units[0]!.dental!), empty).points.length).toBe(oldRegion.contacts!.length);
+    expect(filterDentalPlacement(job(decodeProject(JSON.stringify(file)).units[0]!.dental!), empty).points.length).toBe(candidates);
     // An aligner type no profile file defines is refused, not guessed.
     dental.profileId = 'retired-aligner';
     expect(() => decodeProject(JSON.stringify(file))).toThrow('unknown aligner profile');

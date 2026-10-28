@@ -59,6 +59,8 @@ export interface PlacementJob {
 /** Automatic placement restricted to an accepted, unit-local dental support policy. */
 export interface DentalPlacementJob extends PlacementJob {
   dental: DentalPolicy;
+  /** The unit's manual tips (unit-local): the policy offers no suggested tip next to one. */
+  manual?: readonly SupportPoint[];
 }
 
 /** What the contacts leave unsupported, with model and contacts turned by `orientation`. */

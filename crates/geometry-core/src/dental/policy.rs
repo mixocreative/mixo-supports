@@ -6,7 +6,8 @@
 
 use super::footprint::{RimSide, Tuning, footprint_settings};
 use super::mesh::Mesh;
-use super::paint::{PaintFill, paint_contacts};
+use super::cache;
+use super::paint::fill_candidates;
 use crate::core::vec::{V3, distance, sub};
 use super::profiles::AlignerProfile;
 use super::region::{Region, propose_region_facing, retune_region};
@@ -69,6 +70,9 @@ pub struct DentalPolicyInput<'a> {
     pub structure: DentalStructure,
     /// Unit-local to the frame the result is in (plate space for `generate`).
     pub frame: &'a Matrix4,
+    /// The unit's manual tips (unit-local): a suggested tip within the profile's tip separation of
+    /// one is not offered.
+    pub keep_clear_of: &'a [[f64; 3]],
 }
 
 /// Dental allows pillars and raft, Tree and Brace by the operator's switches; Roof and Cage stay off.
@@ -81,12 +85,13 @@ pub fn candidate_id(rim: RimSide, index: usize) -> CandidateId {
     CandidateId(format!("dental-{}-{index}", rim_name(rim)))
 }
 
-/// Candidate id for the n-th contact the paint fill added outside the strip.
-pub fn paint_id(index: usize) -> CandidateId {
-    CandidateId(format!("dental-paint-{index}"))
+/// Candidate id of the K-th suggested tip (`paint::fill_candidates`), stable for a given mesh, plate
+/// normal and density.
+pub fn fill_id(index: usize) -> CandidateId {
+    CandidateId(format!("dental-fill-{index}"))
 }
 
-/// Id of the n-th phase-zero sample of a rim, offered as a repair alternate.
+/// Id of the n-th half-step sample of a rim, offered as a repair alternate.
 pub fn alternate_id(rim: RimSide, index: usize) -> CandidateId {
     CandidateId(format!("dental-{}-alt-{index}", rim_name(rim)))
 }
@@ -95,9 +100,9 @@ fn rim_name(rim: RimSide) -> &'static str {
     if rim == RimSide::Outer { "outer" } else { "opening" }
 }
 
-/// Exact face gate of a contour contact: it may stand on a strip face unless a later area edit
-/// reaching it says otherwise (add paint may restore an erased spot). Paint outside the strip is
-/// filled by its own contacts (`paint::paint_contacts`), not by moving contour contacts there.
+/// Exact face gate of a contour (belt) contact: it may stand on a strip face unless a later area edit
+/// reaching it says otherwise (add paint may restore an erased spot); unpainted is allowed. Paint
+/// outside the strip reveals suggested tips (`paint::fill_candidates`), not contour contacts.
 pub fn area_allows(contact_faces: &[u8], stamps: &[AreaStamp], face: u32, point: [f64; 3], normal: [f64; 3]) -> bool {
     if contact_faces.get(face as usize) != Some(&1) {
         return false;
@@ -187,7 +192,7 @@ pub fn dental_policy(input: &DentalPolicyInput) -> DentalPolicy {
             // support reaches them from below; erase stamps take faces back out through the
             // landing rule and the candidate gate.
             let painted = faces_painted_by_stamps(mesh, stamps);
-            let (candidates, alternates, rings) = contacts_of(input, &region, tuning, &painted);
+            let (candidates, alternates, rings) = contacts_of(input, &region, tuning);
             let mut permitted = mask_of(region.contact_faces.iter().map(|&f| f == 1), faces);
             let moved = candidates.iter().chain(alternates.iter().flat_map(|(_, list)| list)).filter(|c| c.origin == Origin::Auto).filter_map(|c| c.source_face);
             for face in painted.iter().copied().chain(moved) {
@@ -218,10 +223,10 @@ fn reproduce(mesh: &Mesh, tuning: &Tuning, saved: &SavedRegion, profile: &Aligne
 
 type Alternates = Vec<(CandidateId, Vec<Candidate>)>;
 
-/// Gated primary candidates (in the output frame) then the paint fill's, the contour candidates'
-/// phase-zero repair alternates and the two contact rings.
-fn contacts_of(input: &DentalPolicyInput, region: &Region, tuning: &Tuning, painted: &[u32]) -> (Vec<Candidate>, Alternates, Vec<Ring>) {
-    let DentalPolicyInput { mesh, profile, stamps, frame, .. } = input;
+/// Gated belt candidates (in the output frame) then the suggested tips the paint reveals, the belt
+/// candidates' half-step repair alternates and the two contact rings.
+fn contacts_of(input: &DentalPolicyInput, region: &Region, tuning: &Tuning) -> (Vec<Candidate>, Alternates, Vec<Ring>) {
+    let DentalPolicyInput { mesh, profile, stamps, frame, keep_clear_of, .. } = input;
     let gate = |c: &super::sampling::ContourContact| contour_allows(&region.contact_faces, stamps, c);
     let candidate = |id: CandidateId, c: &super::sampling::ContourContact| {
         let (point, normal) = through(frame, c.position, c.normal);
@@ -240,14 +245,15 @@ fn contacts_of(input: &DentalPolicyInput, region: &Region, tuning: &Tuning, pain
             primaries.push((c.rim, candidate(id, &c.contact), c.contact.distance_along_contour));
         }
     }
-    // Phase-zero samples sit half a spacing before each primary; each is offered to the primary
-    // that follows it on its rim (within one spacing), so no two contacts can move to one spot.
+    // Half-step samples sit halfway between primaries; each is offered to the primary that follows
+    // it on its rim (within one spacing), so no two contacts can move to one spot.
+    let (outer_length, opening_length) = (contour_length(mesh, &region.contours.outer_edges), contour_length(mesh, &region.contours.opening_edges));
     let settings = footprint_settings(tuning, profile).ok();
-    let phase_zero = retune_region(mesh, region.clone(), tuning, profile, Some(0.0), Some(plate_up(frame))).map(|r| r.contacts).unwrap_or_default();
+    let half_step = retune_region(mesh, region.clone(), tuning, profile, Some(0.5), Some(plate_up(frame))).map(|r| r.contacts).unwrap_or_default();
     let mut alternates: Alternates = Vec::new();
     let mut alternate_arcs: Vec<(RimSide, CandidateId, f64)> = Vec::new();
     let mut alt_counters = [0usize; 2];
-    for c in &phase_zero {
+    for c in &half_step {
         let counter = &mut alt_counters[usize::from(c.rim == RimSide::Opening)];
         let id = alternate_id(c.rim, *counter);
         *counter += 1;
@@ -256,7 +262,10 @@ fn contacts_of(input: &DentalPolicyInput, region: &Region, tuning: &Tuning, pain
             continue;
         }
         let arc = c.contact.distance_along_contour;
-        let owner = primaries.iter().filter(|(rim, _, at)| *rim == c.rim && *at >= arc && *at - arc <= spacing).min_by(|a, b| a.2.total_cmp(&b.2));
+        // Arc to a primary, forward along the rim; the one after the last primary wraps to the first (D19).
+        let perimeter = if c.rim == RimSide::Outer { outer_length } else { opening_length };
+        let ahead = |at: f64| if at >= arc { at - arc } else { at + perimeter - arc };
+        let owner = primaries.iter().filter(|(rim, _, at)| *rim == c.rim && ahead(*at) <= spacing).min_by(|a, b| ahead(a.2).total_cmp(&ahead(b.2)));
         let Some((_, owner, _)) = owner else { continue };
         // A spot within the tip separation of a primary (its owner included) is no real alternative:
         // on the middle line two samples can meet on one face where the band is narrow.
@@ -272,9 +281,10 @@ fn contacts_of(input: &DentalPolicyInput, region: &Region, tuning: &Tuning, pain
     }
     let rings = settings
         .map(|s| {
-            let ring = |rim: RimSide, edges: &[u32], spacing_mm: f64| Ring {
+            // Each rim's spacing is its actual even step (D19), so one missing tip is exactly a 2-step gap.
+            let ring = |rim: RimSide, edges: &[u32], spacing: f64| Ring {
                 perimeter_mm: contour_length(mesh, edges),
-                spacing_mm,
+                spacing_mm: super::sampling::even_step(contour_length(mesh, edges), spacing),
                 arcs: primaries
                     .iter()
                     .filter(|(r, ..)| *r == rim)
@@ -285,12 +295,43 @@ fn contacts_of(input: &DentalPolicyInput, region: &Region, tuning: &Tuning, pain
             vec![ring(RimSide::Outer, &region.contours.outer_edges, s.outer_spacing), ring(RimSide::Opening, &region.contours.opening_edges, s.inner_spacing)]
         })
         .unwrap_or_default();
-    // Painted faces outside the strip get their own contacts at the outer spacing, clear of the
-    // contour contacts kept above.
-    let fill = settings.map(|s| PaintFill { mesh, stamps, painted, skip: &region.contact_faces, frame, spacing: s.outer_spacing, keep_clear_of: &kept });
-    let filled = fill.map(|f| paint_contacts(&f)).unwrap_or_default();
-    let filled = filled.iter().enumerate().map(|(at, c)| candidate(paint_id(at), c));
+    // Suggested tips over every face reached from below at the outer spacing (cached per mesh, plate
+    // normal and density, so K is stable); this run offers those off the strip, clear of the belt
+    // and of manual tips, that the paint explicitly reveals. Ids are kept, gaps allowed.
+    let up = plate_up(frame);
+    let fills = settings
+        .map(|s| {
+            let key = cache::FillKey::of(mesh.positions, mesh.indices, &profile.id, up, tuning.density);
+            cache::fills(key, || fill_candidates(mesh, up, s.outer_spacing, profile.defaults.tip_min_from_up_deg))
+        })
+        .unwrap_or_default();
+    let skip = FillSkip { contact_faces: &region.contact_faces, belt: &kept, belt_clear: settings.map_or(0.0, |s| s.outer_spacing / 2.0), manual: keep_clear_of, manual_clear: profile.defaults.min_tip_separation_mm, stamps };
+    let filled: Vec<Candidate> = offered_fills(&fills, &skip).map(|at| candidate(fill_id(at), &fills[at])).collect();
     (primaries.into_iter().map(|(_, c, _)| c).chain(filled).collect(), alternates, rings)
+}
+
+/// What decides, per policy run, which suggested tips are offered (B2).
+struct FillSkip<'a> {
+    contact_faces: &'a [u8],
+    /// The kept belt tips and how near (3D mm) a suggested tip may not be to one.
+    belt: &'a [V3],
+    belt_clear: f64,
+    /// The unit's manual tips and how near a suggested tip may not be to one.
+    manual: &'a [[f64; 3]],
+    manual_clear: f64,
+    stamps: &'a [AreaStamp],
+}
+
+/// Indices (K) of the suggested tips offered: not (a) on a strip face, (b) within `belt_clear` of a
+/// kept belt tip, (c) within `manual_clear` of a manual tip, and (d) explicitly painted (unpainted is
+/// not offered).
+fn offered_fills<'a>(fills: &'a [super::sampling::ContourContact], skip: &'a FillSkip) -> impl Iterator<Item = usize> + 'a {
+    fills.iter().enumerate().filter(move |(_, c)| {
+        skip.contact_faces.get(c.face as usize) != Some(&1)
+            && !skip.belt.iter().any(|&at| distance(at, c.position) < skip.belt_clear)
+            && !skip.manual.iter().any(|&at| distance(at, c.position) < skip.manual_clear)
+            && AreaStamp::resolve(skip.stamps, c.position, Some(c.normal)) == Some(true)
+    }).map(|(at, _)| at)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

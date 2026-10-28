@@ -42,7 +42,8 @@ impl GeometrySession {
     /// (then `tuning` `[setback, width, density]` and the saved region arrays are required; a region
     /// that detection does not reproduce permits nothing automatic). `stamps` are the unit-local area
     /// edits (`STAMP_STRIDE` each), `structure` `[tree, brace]` as 0/1, `frame` the unit's placement
-    /// `[position xyz, rotation xyz]` the result is expressed in.
+    /// `[position xyz, rotation xyz]` the result is expressed in, `manual_positions` the unit's manual
+    /// tips (unit-local xyz triples): no suggested tip is offered next to one.
     pub fn dental_policy(
         &self,
         model: u32,
@@ -56,6 +57,7 @@ impl GeometrySession {
         saved_opening_edges: &[u32],
         structure: &[u8],
         frame: &[f64],
+        manual_positions: &[f64],
     ) -> Result<PolicyHandle, JsValue> {
         let profile = profile_of(profile)?;
         let mesh = self.mesh(model)?;
@@ -66,6 +68,13 @@ impl GeometrySession {
             return Err(error("NON_FINITE"));
         }
         let frame = placement_matrix([frame[0], frame[1], frame[2]], [frame[3], frame[4], frame[5]]);
+        if manual_positions.len() % 3 != 0 {
+            return Err(error("INVALID_LENGTH"));
+        }
+        if manual_positions.iter().any(|v| !v.is_finite()) {
+            return Err(error("NON_FINITE"));
+        }
+        let manual: Vec<[f64; 3]> = manual_positions.chunks_exact(3).map(|p| [p[0], p[1], p[2]]).collect();
         let area = match kind {
             0 => DentalArea::Legacy,
             1 => DentalArea::ManualArea,
@@ -79,7 +88,7 @@ impl GeometrySession {
             _ => return Err(error("BAD_INPUT")),
         };
         let structure = DentalStructure { tree: *tree != 0, brace: *brace != 0 };
-        let policy = make_dental_policy(&DentalPolicyInput { mesh: &mesh, profile, area, stamps: &stamps, structure, frame: &frame });
+        let policy = make_dental_policy(&DentalPolicyInput { mesh: &mesh, profile, area, stamps: &stamps, structure, frame: &frame, keep_clear_of: &manual });
         Ok(PolicyHandle { result: policy.result, reproduced: policy.reproduced, profile_id: policy.profile_id })
     }
 

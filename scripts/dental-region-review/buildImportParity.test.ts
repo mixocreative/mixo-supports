@@ -27,17 +27,17 @@ describe('dental import and preview parity', () => {
     if (review.kind !== 'proposal') return;
     expect(review.supports.droppedByPath).toBeUndefined();
     const retained = new Set(review.supports.components.flatMap((part) => part.contactId ? [part.contactId] : []));
-    // All 94 placed primaries (71 outer, 23 opening; none closer than 0.6 mm) are built: a tip whose
-    // face a support could not reach from below was moved to one it can before placement (80 before
-    // that move; the other 14 crossed the model and were left out). In this centred frame one opening
-    // primary still crosses and the repair builds its phase-zero alternate instead (an id that is not
-    // a placed primary), so the count stays.
+    // 94 placed primaries (71 outer, 23 opening, evenly spaced; none closer than 0.6 mm): a tip whose
+    // face a support could not reach from below was moved to one it can before placement. At the
+    // profile's pose in this centred frame (measured, B2 with D20): the repair leaves 3 crossing
+    // primaries out, then the tree and the braces still cross and go off with every contact kept,
+    // so 91 are built. (At the confirmed print angle none is left out: the folder review.)
     const placed = new Set(review.placement.points.map((point) => point.id));
     expect(placed.size).toBe(94);
-    expect(retained.size).toBe(94);
-    const substituted = [...retained].filter((id) => !placed.has(id));
-    expect(substituted.length).toBeLessThanOrEqual(1);
-    expect([...placed].filter((id) => !retained.has(id))).toHaveLength(substituted.length);
+    expect(retained.size).toBe(91);
+    expect([...retained].filter((id) => !placed.has(id))).toHaveLength(0);
+    expect(review.supports.dropped).toHaveLength(3);
+    expect(review.supports.dentalStructureFallback).toEqual(['tree', 'brace']);
   }, 180000);
 
   it('keeps dental automatic contact IDs the same in preview and export', () => {

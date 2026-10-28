@@ -12,7 +12,7 @@ export interface DentalContactFootprintSettings {
   outerSpacing: number;
   innerSpacing: number;
   maxSearchDistance: number;
-  /** 0 samples at the contour origin; omitted keeps the usual half-spacing phase. */
+  /** Where the even samples sit within each step, as a fraction of it: omitted (0) the primaries, 0.5 halfway between. */
   samplePhaseFraction?: number;
   /** No two contacts (either contour) closer than this, 3D mm; 0 turns it off. */
   minTipSeparation: number;

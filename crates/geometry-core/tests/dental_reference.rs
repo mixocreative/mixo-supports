@@ -48,7 +48,7 @@ fn policy_of(mesh: &Mesh, profile: &AlignerProfile, stamps: &[AreaStamp], frame:
     let region = propose_region_facing(mesh, &tuning, profile, Some([0.0, 1.0, 0.0])).expect("region");
     let saved = SavedRegion { allowed_faces: &region.allowed_faces, contact_faces: &region.contact_faces, outer_edges: &region.contours.outer_edges, opening_edges: &region.contours.opening_edges };
     let frame = placement_matrix(frame, [0.0; 3]);
-    let input = DentalPolicyInput { mesh, profile, area: DentalArea::TwoContour { tuning, saved }, stamps, structure: DentalStructure { tree: true, brace: false }, frame: &frame };
+    let input = DentalPolicyInput { mesh, profile, area: DentalArea::TwoContour { tuning, saved }, stamps, structure: DentalStructure { tree: true, brace: false }, frame: &frame, keep_clear_of: &[] };
     let policy = dental_policy(&input);
     (region, policy)
 }
@@ -83,7 +83,7 @@ fn reference_policy_is_built_in_rust() {
     assert!(matches!(r.landing_rule, LandingRule::ApprovedFaces { .. }) && r.islands_outside_permitted);
     assert_eq!(r.repair_budget, profile.defaults.repair_budget);
     assert!(r.structures.tree && !r.structures.brace && !r.structures.roof && !r.structures.cage);
-    // Repair alternates: phase-zero samples, each owned by one primary, none a primary itself.
+    // Repair alternates: half-step samples, each owned by one primary, none a primary itself.
     assert!(!r.alternates.is_empty());
     let mut seen = std::collections::HashSet::new();
     for (owner, options) in &r.alternates {
@@ -140,39 +140,44 @@ fn reference_policy_honours_erase_paint_and_a_changed_area() {
     strip[on] = 0;
     let saved = SavedRegion { allowed_faces: &region.allowed_faces, contact_faces: &strip, outer_edges: &region.contours.outer_edges, opening_edges: &region.contours.opening_edges };
     let frame = placement_matrix([0.0; 3], [0.0; 3]);
-    let input = DentalPolicyInput { mesh: &mesh, profile, area: DentalArea::TwoContour { tuning: Tuning::defaults(profile), saved }, stamps: &[], structure: DentalStructure { tree: true, brace: true }, frame: &frame };
+    let input = DentalPolicyInput { mesh: &mesh, profile, area: DentalArea::TwoContour { tuning: Tuning::defaults(profile), saved }, stamps: &[], structure: DentalStructure { tree: true, brace: true }, frame: &frame, keep_clear_of: &[] };
     let changed = dental_policy(&input);
     assert!(!changed.reproduced && changed.result.candidates.is_empty() && changed.result.permitted_faces.count() == 0);
 }
 
-/// Paint reaches past the strip: painted faces join the area and get their own tips at the outer
-/// spacing (clear of the contour tips); an erase stamp after it takes area and tips away again.
+/// Paint reaches past the strip: painted faces join the area and reveal the suggested tips there
+/// (`dental-fill-K`, at the outer spacing, clear of the belt); an erase stamp after it hides them again.
 #[test]
-fn reference_paint_outside_the_strip_gets_tips_and_erase_removes_them() {
+fn reference_paint_outside_the_strip_reveals_suggested_tips_and_erase_hides_them() {
     let (positions, indices) = reference();
     let mesh = Mesh::new(&positions, &indices);
     let profile = reference_aligner();
     let (region, plain) = policy_of(&mesh, profile, &[], [0.0; 3]);
     let down = region.contacts.iter().find(|c| c.contact.normal[1] < -0.5).expect("a downward contour tip").contact;
-    let paint = AreaStamp { center: down.position, radius: 5.0, normal: down.normal, allow: true };
+    // The suggested tips are spread over the whole mesh (both sides of the shell) at the outer
+    // spacing, so a stamp must be wide to reveal several.
+    let paint = AreaStamp { center: down.position, radius: 15.0, normal: down.normal, allow: true };
     let (_, painted) = policy_of(&mesh, profile, &[paint], [0.0; 3]);
     let r = &painted.result;
     assert!(r.permitted_faces.count() > plain.result.permitted_faces.count(), "painted faces join the area");
-    let added: Vec<_> = r.candidates.iter().filter(|c| c.id.0.starts_with("dental-paint-")).collect();
-    assert!(!added.is_empty(), "paint outside the strip gets tips");
+    let fill = |c: &&mixo_geometry_core::supports::policy::Candidate| c.id.0.starts_with("dental-fill-");
+    let added: Vec<_> = r.candidates.iter().filter(fill).collect();
+    assert!(!added.is_empty(), "paint outside the strip reveals tips");
     let spacing = profile.defaults.outer_spacing_mm;
+    let max_up = profile.defaults.tip_min_from_up_deg.to_radians().cos();
     for a in &added {
         let face = a.source_face.unwrap() as usize;
-        assert!(r.permitted_faces.get(face) && region.contact_faces[face] == 0, "a paint tip stands on paint outside the strip");
-        assert!(a.normal[1] < 0.0, "a paint tip faces down");
+        assert!(r.permitted_faces.get(face) && region.contact_faces[face] == 0, "a suggested tip stands on paint outside the strip");
+        assert!(a.normal[1] <= max_up + 1e-9, "a suggested tip is reached from below");
         for b in r.candidates.iter().filter(|c| c.id != a.id) {
-            assert!(distance(a.point, b.point) >= spacing - 1e-9, "{} and {} closer than the spacing", a.id.0, b.id.0);
+            let apart = if fill(&b) { spacing } else { spacing / 2.0 };
+            assert!(distance(a.point, b.point) >= apart - 1e-9, "{} and {} closer than {apart}", a.id.0, b.id.0);
         }
     }
     let erase = AreaStamp { allow: false, ..paint };
     let (_, erased) = policy_of(&mesh, profile, &[paint, erase], [0.0; 3]);
-    assert!(erased.result.candidates.iter().all(|c| !c.id.0.starts_with("dental-paint-")));
-    assert!(erased.result.candidates.len() < plain.result.candidates.len(), "erase removes the contour tips under it too");
+    assert!(erased.result.candidates.iter().all(|c| !c.id.0.starts_with("dental-fill-")));
+    assert!(erased.result.candidates.len() < plain.result.candidates.len(), "erase removes the belt tips under it too");
 }
 
 /// A second profile is only a JSON file: it reaches detection (spacing), defaults and the budget.
@@ -187,7 +192,8 @@ fn a_second_profile_file_reaches_detection_defaults_and_budget() {
     assert_eq!(policy.profile_id, "test-second-aligner");
     assert_eq!(policy.result.repair_budget, 3);
     assert_eq!(policy.result.automatic, AutomaticRule::MatchCandidates { tol_mm: 0.05, min_dot: 0.95 });
-    assert_eq!(policy.result.rings[0].spacing_mm, 4.5);
+    // The outer rim's spacing is its even step (D19), within 10 % of the profile's 4.5 mm.
+    assert!((policy.result.rings[0].spacing_mm / 4.5 - 1.0).abs() <= 0.1, "{}", policy.result.rings[0].spacing_mm);
     assert!(policy.result.candidates.len() < reference_policy.result.candidates.len(), "wider default spacing, fewer contacts");
     assert_eq!(Tuning::defaults(&second).position_mm, 0.8);
     assert_eq!(policy.result.candidates.len(), region.contacts.len());
@@ -254,3 +260,106 @@ fn detection_is_cached_and_a_changed_key_recomputes() {
     let _ = propose_region(&mesh, &base, profile);
     assert_eq!(cache_stats().1, m0 + 3, "a cleared cache recomputes");
 }
+
+/// The reference as the folder review builds it (B2 done check): centred as the import does, at
+/// the print angle the scan picks and the confirm keeps (44.46 degrees, D19 measurement), the
+/// profile's Step 3 settings (`dentalSupportSettings`, packed as the host packs them), plate frame
+/// at the 3.5 mm lift, every policy candidate passed as an automatic face contact (as the host's
+/// interior placement points are), export build.
+mod built {
+    use super::*;
+    use mixo_geometry_core::core::matrix::{Handedness, invert_matrix, transform_positions};
+    use mixo_geometry_core::core::spatial::Bvh;
+    use mixo_geometry_core::core::transform::center_positions;
+    use mixo_geometry_core::dental::tilt::{Prepared, ScanArgs};
+    use mixo_geometry_core::supports::build::BuildMode;
+    use mixo_geometry_core::supports::generate::{Generated, GenerateInput, generate};
+    use mixo_geometry_core::supports::parts::column::{ColumnContact, ContactKind};
+    use mixo_geometry_core::supports::parts::model::Model;
+    use mixo_geometry_core::supports::policy::PolicyResult;
+    use mixo_geometry_core::supports::safety::clearance::Status;
+    use mixo_geometry_core::supports::settings::SupportSettings;
+
+    /// `packSettings(dentalSupportSettings('reference-aligner', defaultSupportSettings))` (SETTINGS_LAYOUT order).
+    const STEP3: [f64; 66] = [
+        0.0, 0.45, 0.2, 0.0, 40.0, 0.0, 0.45, 0.0, 0.3, 2.0, 45.0, 1.4, 20.0, 3.0, 1.2, 1.0, 1.4, 45.0, 2.0, 3.0, 0.0, 100.0, 1.0, 3.0, 1.0, 1.5, 0.5, 30.0, 16.0, 0.0, 5.0, 4.0, 5.0, 10.0, 1.0, 6.0, 1.5, 0.0, 1.0, 3.0, 1.0, 40.0, 1.5,
+        1.0, 1.0, 5.0, 0.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 12.0, 2.0, 50.0, 0.0, 1.0, 1.0, 45.0, 0.0, 2.0, 2.0, 1.0, 3.5, 1.5,
+    ];
+
+    /// The policy (made with `stamps`) and the build of all its candidates.
+    pub fn build(stamps_of: impl Fn([f64; 3]) -> Vec<AreaStamp>) -> (PolicyResult, Generated) {
+        let (mut positions, indices) = reference();
+        center_positions(&mut positions).expect("centre");
+        let mesh = Mesh::new(&positions, &indices);
+        let profile = reference_aligner();
+        let prepared = Prepared::of(&mesh, profile).expect("prepared");
+        let step = ((44.46 - profile.pose.tilt_deg) / profile.pose.tilt_step_deg).round() as i32;
+        let row = prepared.row(step, &ScanArgs { neck_length_mm: 2.0, pillar_diameter_mm: 1.4, lift_mm: 3.5, braced: true }).expect("row");
+        assert!((row.tilt_deg - 44.46).abs() < 0.01);
+        let rotation = row.rotation;
+        let turned = transform_positions(&positions, &placement_matrix([0.0; 3], rotation), Handedness::Right);
+        let lowest = turned.iter().skip(1).step_by(3).fold(f64::INFINITY, |low, &y| low.min(f64::from(y)));
+        let frame = placement_matrix([0.0, 3.5 - lowest, 0.0], rotation);
+        let tuning = Tuning::defaults(profile);
+        let up = [frame[1], frame[5], frame[9]];
+        let region = propose_region_facing(&mesh, &tuning, profile, Some(up)).expect("region");
+        let saved = SavedRegion { allowed_faces: &region.allowed_faces, contact_faces: &region.contact_faces, outer_edges: &region.contours.outer_edges, opening_edges: &region.contours.opening_edges };
+        let stamps = stamps_of(up);
+        let input = DentalPolicyInput { mesh: &mesh, profile, area: DentalArea::TwoContour { tuning, saved }, stamps: &stamps, structure: DentalStructure { tree: true, brace: true }, frame: &frame, keep_clear_of: &[] };
+        let policy = dental_policy(&input).result;
+        let placed = transform_positions(&positions, &frame, Handedness::Right);
+        let bvh = Bvh::build(&placed, &indices);
+        let model = Model::new(&placed, &indices, &bvh);
+        let contacts = policy.candidates.iter().map(|c| ColumnContact { candidate: c.clone(), shape: None, landing: None, kind: ContactKind::Face }).collect();
+        let settings = SupportSettings::from_slice(&STEP3).expect("settings");
+        let out = generate(GenerateInput { contacts, settings: &settings, mode: BuildMode::Export, model: Some(&model), label_text: "A", zones: &[], policy: &policy, expired: &|| false, local: Some(&invert_matrix(&frame)) }).expect("generate");
+        (policy, out)
+    }
+
+    pub fn crossings(out: &Generated) -> usize {
+        out.verdict.issues.iter().filter(|i| i.blocked).count()
+    }
+
+    pub fn clear(out: &Generated) -> bool {
+        out.verdict.status == Status::Clear
+    }
+}
+
+/// Unpainted at the defaults: the candidates are the belt only, nothing crosses and nothing is left out.
+#[test]
+fn reference_unpainted_builds_the_belt_clear_with_none_left_out() {
+    let (policy, out) = built::build(|_| Vec::new());
+    assert!(policy.candidates.iter().all(|c| c.id.0.starts_with("dental-outer-") || c.id.0.starts_with("dental-opening-")), "belt only");
+    eprintln!("unpainted: {} candidates, left out {:?}, crossings {}, rings {:?}", policy.candidates.len(), out.dropped, built::crossings(&out), out.rings);
+    assert!(built::clear(&out) && built::crossings(&out) == 0);
+    assert_eq!(out.dropped, Vec::<String>::new());
+}
+
+/// Every reachable face painted: suggested tips appear; those left out are listed. B2 asks for at most
+/// 5 % left out; the measured count is 67 of 306 (22 %), pinned here as a measurement for the lead.
+#[test]
+fn reference_painted_everywhere_reveals_suggested_tips_and_leaves_few_out() {
+    // One stamp over the whole part facing down the plate normal reaches every face a support reaches from below.
+    let (policy, out) = built::build(|up| vec![AreaStamp { center: [0.0; 3], radius: 1e6, normal: [-up[0], -up[1], -up[2]], allow: true }]);
+    let fills: Vec<&str> = policy.candidates.iter().map(|c| c.id.0.as_str()).filter(|id| id.starts_with("dental-fill-")).collect();
+    let left_out: Vec<&String> = out.dropped.iter().filter(|id| id.starts_with("dental-fill-")).collect();
+    eprintln!("painted: {} fill tips, left out {} {:?}, all left out {:?}, crossings {}", fills.len(), left_out.len(), left_out, out.dropped, built::crossings(&out));
+    assert!(!fills.is_empty());
+    assert_eq!((left_out.len(), fills.len()), (67, 306), "left out {left_out:?}");
+}
+
+/// Each rim's even step is within 10 % of its spacing (outer 3 mm, opening 4 mm at the defaults).
+#[test]
+fn reference_belt_spacing_per_rim_is_within_ten_percent_of_its_spacing() {
+    let (positions, indices) = reference();
+    let mesh = Mesh::new(&positions, &indices);
+    let profile = reference_aligner();
+    let (_, policy) = policy_of(&mesh, profile, &[], [0.0; 3]);
+    for (ring, spacing) in policy.result.rings.iter().zip([profile.defaults.outer_spacing_mm, profile.defaults.inner_spacing_mm]) {
+        eprintln!("rim: length {:.3} mm, step {:.4} mm (spacing {spacing})", ring.perimeter_mm, ring.spacing_mm);
+        assert!((ring.spacing_mm / spacing - 1.0).abs() <= 0.1, "{} vs {spacing}", ring.spacing_mm);
+        let n = (ring.perimeter_mm / ring.spacing_mm).round();
+        assert!((n * ring.spacing_mm - ring.perimeter_mm).abs() < 1e-9, "a whole number of steps");
+    }
+}
+

@@ -52,19 +52,19 @@ describe('proposeDentalContactFootprint', () => {
     expect(moved.innerContacts.map((contact) => contact.face)).toEqual(original.innerContacts.map((contact) => contact.face));
   }, 30000);
 
-  it('recomputes a distinct phase-zero contact set only on the same approved strip', () => {
+  it('recomputes a distinct half-step contact set only on the same approved strip', () => {
     const mesh = reference();
     const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
     expect(region.kind).toBe('proposal');
     if (region.kind !== 'proposal') return;
     const settings = { low: 0.2, high: 1.2, outerSpacing: 3, innerSpacing: 2, maxSearchDistance: 1.5, minTipSeparation: 0.6 };
     const usual = proposeDentalContactFootprint(mesh, region, settings);
-    const shifted = proposeDentalContactFootprint(mesh, region, { ...settings, samplePhaseFraction: 0 });
+    const shifted = proposeDentalContactFootprint(mesh, region, { ...settings, samplePhaseFraction: 0.5 });
     expect(usual.kind).toBe('proposal');
     expect(shifted.kind).toBe('proposal');
     if (usual.kind !== 'proposal' || shifted.kind !== 'proposal') return;
     expect(shifted.contactFaces).toEqual(usual.contactFaces);
-    expect(shifted.innerContacts[0]?.distanceAlongContour).toBe(0);
+    expect(usual.innerContacts[0]?.distanceAlongContour).toBe(0);
     expect(shifted.innerContacts.map((contact) => contact.position))
       .not.toEqual(usual.innerContacts.map((contact) => contact.position));
     for (const contact of [...shifted.outerContacts, ...shifted.innerContacts]) {

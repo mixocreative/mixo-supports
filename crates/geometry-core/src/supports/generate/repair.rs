@@ -26,6 +26,8 @@ pub struct Run<'a> {
     pub index: Option<&'a CollisionIndex<'a>>,
     pub policy: &'a PolicyResult,
     pub expired: &'a dyn Fn() -> bool,
+    /// Plate frame to unit-local (see `GenerateInput::local`).
+    pub local: Option<&'a crate::core::matrix::Matrix4>,
 }
 
 #[derive(Clone)]
@@ -55,8 +57,11 @@ impl Outcome {
     }
 }
 
-/// Trials the repair keeps back for leaving crossing contacts out and the last all-manual rebuild.
-const FAILSAFE_TRIALS: u32 = 3;
+/// Trials the repair keeps back for the fail-safe steps: leaving crossing contacts out, the
+/// all-manual rebuild, and the graduated structure fallback's structures-off rebuild (D20). Its
+/// later steps (the crossing automatic contacts out, then all of them) spend from what is left; with
+/// no trial left the crossing is reported instead.
+const FAILSAFE_TRIALS: u32 = 4;
 
 /// Insertion-ordered set of IDs (the order contacts were left out is reported).
 #[derive(Default)]
@@ -224,7 +229,10 @@ fn move_to_alternates(run: &Run, slots: &mut [Slot], crossing: &[String], next: 
         next[k] += 1;
         let Candidate { point, normal, source_face, id: alt_id, .. } = alternate.clone();
         let contact = &mut slots[k].contact;
-        contact.candidate = Candidate { id: CandidateId(position_id(point)), source_face, point, normal, origin: Origin::Auto };
+        // Named from its unit-local point, as placed tips are, so neither a lift change nor a fresh
+        // generate at another height renames it (D20).
+        let local = run.local.map_or(point, |m| crate::core::matrix::apply_to_point(m, point[0], point[1], point[2]));
+        contact.candidate = Candidate { id: CandidateId(position_id(local)), source_face, point, normal, origin: Origin::Auto };
         contact.landing = None;
         slots[k].ring_key = Some(alt_id);
         moved += 1;
@@ -286,7 +294,7 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
             let mut crossing = crossing_auto(run, &mut memo, &built, &slots, &effective, None);
             // The policy's alternates first: a crossing contact may move, one rebuild per round.
             let mut next = Vec::new();
-            // Three trials stay reserved for the fail-safe steps below.
+            // FAILSAFE_TRIALS stay reserved for the fail-safe steps below.
             while !crossing.is_empty() && !run.policy.alternates.is_empty() && !(run.expired)() && trials + FAILSAFE_TRIALS < budget {
                 let moved = move_to_alternates(run, &mut slots, &crossing, &mut next);
                 if moved == 0 {
@@ -324,22 +332,41 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
             }
         }
         if !(run.expired)() && !crossing_structures(run, &mut memo, &built, &slots, &effective).is_empty() && spend(&mut trials, budget) {
-            // Rebuilding after a pillar omission can rearrange a tree or brace. Do not keep any
-            // automatic structure if the bounded fallback still intersects the model.
-            let mut omitted = Ids::of(mesh_dropped.clone());
-            omitted.extend(original_auto.iter().cloned());
-            let touched = slots.iter().filter(|s| is_auto(s)).count();
-            slots.retain(|s| !is_auto(s));
+            // Graduated (D20): first Tree and Brace off, every contact kept.
             effective.scatter_auto_tree = false;
             effective.truss_enabled = false;
-            built = rebuild(run, &slots, &effective, &mut memo, "structure-fallback", touched)?;
-            let mut all = Ids::of(ids(&built, &slots));
-            all.extend(omitted.list);
-            mesh_dropped = all.list;
+            built = rebuild(run, &slots, &effective, &mut memo, "structures-off", 0)?;
+            // Contacts left out earlier stay out; this build's own drops replace the previous build's.
+            let mut kept = Ids::of(mesh_dropped.iter().filter(|id| !slots.iter().any(|s| id_of(s) == id.as_str())).cloned().collect());
+            kept.extend(ids(&built, &slots));
+            mesh_dropped = kept.list;
             for f in [Fallback::Tree, Fallback::Brace] {
                 if !fallback.contains(&f) {
                     fallback.push(f);
                 }
+            }
+            // Automatic contacts that still cross are left out, as in the leave-out step (D20).
+            let crossing = if (run.expired)() { Vec::new() } else { crossing_auto(run, &mut memo, &built, &slots, &effective, None) };
+            if !crossing.is_empty() && spend(&mut trials, budget) {
+                let blocked = Ids::of(crossing);
+                slots.retain(|s| !blocked.contains(id_of(s)));
+                built = rebuild(run, &slots, &effective, &mut memo, "structures-off-leave-out", blocked.list.len())?;
+                let mut all = Ids::of(mesh_dropped.iter().filter(|id| !slots.iter().any(|s| id_of(s) == id.as_str())).cloned().collect());
+                all.extend(ids(&built, &slots));
+                all.extend(blocked.list);
+                mesh_dropped = all.list;
+            }
+            // Only if a crossing remains after that are all the automatic contacts left out.
+            let still = !(run.expired)() && (!crossing_structures(run, &mut memo, &built, &slots, &effective).is_empty() || !crossing_auto(run, &mut memo, &built, &slots, &effective, None).is_empty());
+            if still && spend(&mut trials, budget) {
+                let mut omitted = Ids::of(mesh_dropped.clone());
+                omitted.extend(original_auto.iter().cloned());
+                let touched = slots.iter().filter(|s| is_auto(s)).count();
+                slots.retain(|s| !is_auto(s));
+                built = rebuild(run, &slots, &effective, &mut memo, "structure-fallback", touched)?;
+                let mut all = Ids::of(ids(&built, &slots));
+                all.extend(omitted.list);
+                mesh_dropped = all.list;
             }
         }
     }

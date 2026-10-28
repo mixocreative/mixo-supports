@@ -1,12 +1,12 @@
 //! The operator's paint: which faces the ordered brush stamps paint (last stamp wins), and the
-//! contacts that fill painted faces. One fill serves the two-contour area (paint outside the detected
-//! strip) and the legacy area (`legacy::fill_legacy_dental`): points on each face at the contact
-//! spacing, greedily kept `spacing` apart in 3D. Data only; the engine checks every contact.
+//! suggested tips of a two-contour area (`fill_candidates`: every face reachable from below, which
+//! paint reveals). The legacy area (`legacy::fill_legacy_dental`) shares the face sampling: points on
+//! each face at the contact spacing, greedily kept `spacing` apart in 3D. Data only; the engine
+//! checks every contact.
 
 use super::mesh::Mesh;
 use super::sampling::ContourContact;
-use crate::core::matrix::{Matrix4, apply_to_direction};
-use crate::core::vec::{V3, add, cross, length, normalize, scale, sub};
+use crate::core::vec::{V3, add, cross, dot, length, normalize, scale, sub};
 use crate::supports::policy::AreaStamp;
 use std::collections::HashMap;
 
@@ -96,42 +96,29 @@ pub fn faces_painted_by_stamps(mesh: &Mesh, stamps: &[AreaStamp]) -> Vec<u32> {
     painted
 }
 
-/// What the paint fill of a two-contour area needs.
-pub struct PaintFill<'a> {
-    pub mesh: &'a Mesh<'a>,
-    /// Unit-local stamps, in stroke order.
-    pub stamps: &'a [AreaStamp],
-    /// The faces painted by `stamps` (`faces_painted_by_stamps`).
-    pub painted: &'a [u32],
-    /// Faces already covered by the contour sampling (the strip): not filled again.
-    pub skip: &'a [u8],
-    /// Unit-local to the output frame: a filled face must face down there.
-    pub frame: &'a Matrix4,
-    pub spacing: f64,
-    /// Accepted contacts (unit-local) the fill keeps `spacing` clear of.
-    pub keep_clear_of: &'a [V3],
-}
-
-/// Contacts on the painted faces outside the strip that face down in the output frame, each at
-/// least `spacing` (3D) from the others and from `keep_clear_of`, in face order. Unit-local.
-pub fn paint_contacts(fill: &PaintFill) -> Vec<ContourContact> {
-    let mut spacer = Spacer::new(fill.spacing);
-    for &point in fill.keep_clear_of {
-        spacer.seed(point);
+/// The suggested tips of a two-contour area (docs/ROADMAP.md B2): every face a support reaches from
+/// below (its normal at least `tip_min_from_up_deg` from `up`, the plate normal in the mesh frame) is
+/// sampled with [`face_samples`] at `spacing`, the points kept `spacing` apart (3D, [`Spacer`]), in
+/// face-index order. Index K in the list is the candidate `dental-fill-K`; which of them the policy
+/// offers is decided per run (`policy::contacts_of`). Unit-local.
+pub fn fill_candidates(mesh: &Mesh, up: V3, spacing: f64, tip_min_from_up_deg: f64) -> Vec<ContourContact> {
+    let size = length(up);
+    if !size.is_finite() || size < 1e-12 || !spacing.is_finite() || spacing <= 0.0 {
+        return Vec::new();
     }
+    let up = scale(up, 1.0 / size);
+    let max_up = tip_min_from_up_deg.to_radians().cos();
+    let mut spacer = Spacer::new(spacing);
     let mut contacts = Vec::new();
-    for &face in fill.painted {
-        if fill.skip.get(face as usize) == Some(&1) {
-            continue;
-        }
-        let points = fill.mesh.face_points(face as usize);
+    for face in 0..mesh.face_count() {
+        let points = mesh.face_points(face);
         let normal = normalize(cross(sub(points[1], points[0]), sub(points[2], points[0])));
-        if !normal[0].is_finite() || apply_to_direction(fill.frame, normal[0], normal[1], normal[2])[1] >= -1e-6 {
+        if !normal.iter().all(|v| v.is_finite()) || dot(normal, up) > max_up {
             continue;
         }
-        for point in face_samples(points, fill.spacing) {
-            if AreaStamp::resolve(fill.stamps, point, Some(normal)) == Some(true) && spacer.add(point) {
-                contacts.push(ContourContact { face, position: point, normal, distance_along_contour: 0.0, distance_from_contour: 0.0 });
+        for point in face_samples(points, spacing) {
+            if spacer.add(point) {
+                contacts.push(ContourContact { face: face as u32, position: point, normal, distance_along_contour: 0.0, distance_from_contour: 0.0 });
             }
         }
     }
@@ -141,7 +128,6 @@ pub fn paint_contacts(fill: &PaintFill) -> Vec<ContourContact> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::matrix::placement_matrix;
 
     /// A 10 x 10 mm plate at y = 0 split into 0.5 mm cells, normals down (-y).
     fn plate() -> (Vec<f32>, Vec<u32>) {
@@ -153,30 +139,24 @@ mod tests {
     }
 
     #[test]
-    fn the_fill_covers_the_paint_at_the_spacing_and_keeps_clear_of_given_contacts() {
+    fn suggested_tips_cover_every_face_reached_from_below_at_the_spacing_in_face_order() {
         let (positions, indices) = plate();
         let mesh = Mesh::new(&positions, &indices);
-        let down = [0.0, -1.0, 0.0];
-        let paint = AreaStamp { center: [5.0, 0.0, 5.0], radius: 3.0, normal: down, allow: true };
-        let painted = faces_painted_by_stamps(&mesh, &[paint]);
-        assert!(!painted.is_empty());
-        let frame = placement_matrix([0.0; 3], [0.0; 3]);
-        let skip = vec![0u8; mesh.face_count()];
-        let keep = [[5.0, 0.0, 5.0]];
-        let fill = PaintFill { mesh: &mesh, stamps: &[paint], painted: &painted, skip: &skip, frame: &frame, spacing: 1.5, keep_clear_of: &keep };
-        let contacts = paint_contacts(&fill);
-        assert!(contacts.len() > 4);
-        let points: Vec<V3> = contacts.iter().map(|c| c.position).chain(keep).collect();
-        for (at, a) in points.iter().enumerate() {
-            for b in &points[at + 1..] {
-                assert!(length(sub(*a, *b)) >= 1.5 - 1e-9);
+        // The plate's normals point down (-y): with the plate normal +y every face is reached from below.
+        let all = fill_candidates(&mesh, [0.0, 1.0, 0.0], 1.5, 110.0);
+        assert!(all.len() > 20);
+        for (at, a) in all.iter().enumerate() {
+            for b in &all[at + 1..] {
+                assert!(length(sub(a.position, b.position)) >= 1.5 - 1e-9);
             }
         }
-        assert!(contacts.iter().all(|c| length(sub(c.position, paint.center)) <= 3.0 + 0.5));
-        // An erase stamp after the paint removes it; a face that faces up in the frame gets nothing.
-        let erase = AreaStamp { allow: false, ..paint };
-        assert!(faces_painted_by_stamps(&mesh, &[paint, erase]).is_empty());
-        let flipped = placement_matrix([0.0; 3], [std::f64::consts::PI, 0.0, 0.0]);
-        assert!(paint_contacts(&PaintFill { frame: &flipped, ..fill }).is_empty());
+        assert!(all.windows(2).all(|w| w[0].face <= w[1].face), "face-index order");
+        assert_eq!(fill_candidates(&mesh, [0.0, 7.0, 0.0], 1.5, 110.0), all, "up is a direction");
+        // Turned over (plate normal -y) the faces look up: no tip.
+        assert!(fill_candidates(&mesh, [0.0, -1.0, 0.0], 1.5, 110.0).is_empty());
+        // Tilted 30 degrees the faces are 150 degrees from up: still reached; a 160-degree rule refuses them.
+        let tilted = [0.5, 3f64.sqrt() / 2.0, 0.0];
+        assert_eq!(fill_candidates(&mesh, tilted, 1.5, 110.0).len(), all.len());
+        assert!(fill_candidates(&mesh, tilted, 1.5, 160.0).is_empty());
     }
 }

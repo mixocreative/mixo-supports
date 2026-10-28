@@ -181,7 +181,7 @@ export function placementJobOf(unit: PrintUnit): PlacementJob {
 /** Dental placement is unavailable until an accepted dental policy was stored for this unit. */
 export function dentalPlacementJobOf(unit: PrintUnit): DentalPlacementJob | undefined {
   if (!unit.dental) return undefined;
-  return { ...placementJobOf(unit), dental: unit.dental };
+  return { ...placementJobOf(unit), dental: unit.dental, manual: unit.manual };
 }
 
 /** Support check of the unit's current contacts (as its latest build left them), in the same turned frame as placement. */

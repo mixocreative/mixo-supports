@@ -87,7 +87,7 @@ export interface DentalSession {
   /** `kind` 0 older saved policy, 1 painted from scratch, 2 two-contour (see the Rust doc). */
   dental_policy(model: number, profile: string, kind: number, tuning: Float64Array, stamps: Float64Array,
     savedAllowed: Uint8Array, savedContact: Uint8Array, savedOuter: Uint32Array, savedOpening: Uint32Array,
-    structure: Uint8Array, frame: Float64Array): PolicyHandle;
+    structure: Uint8Array, frame: Float64Array, manualPositions: Float64Array): PolicyHandle;
   /** Print-angle search with the host's current support settings; `onTilt(done, total)` after each tilt. */
   dental_tilt_scan(model: number, profile: string, neckLengthMm: number, pillarDiameterMm: number, liftMm: number, braced: boolean,
     onTilt?: (done: number, total: number) => void): DentalTiltScanResultLike;
@@ -116,7 +116,7 @@ export interface DentalInternals {
   dental_side_bands(positions: Float32Array, indices: Uint32Array, allowed: Uint8Array, outer: Uint32Array, opening: Uint32Array,
     setback: number, width: number): { free(): void; ok(): boolean; reason(): string; take_band(index: number): Uint8Array };
   dental_sample_contacts(positions: Float32Array, indices: Uint32Array, contour: Uint32Array, sideBand: Uint8Array,
-    spacing: number, maxSearch: number, phaseMm: number, minSeparation: number): { free(): void; ok(): boolean; reason(): string; skipped_samples(): number;
+    spacing: number, maxSearch: number, phaseFraction: number, minSeparation: number): { free(): void; ok(): boolean; reason(): string; skipped_samples(): number;
     perimeter(): number; faces(): Uint32Array; points(): Float64Array; distances(): Float64Array };
   manual_dental_area(faceCount: number, painted: Uint32Array, detected: boolean, profile: string): Uint8Array;
   manual_dental_area_from_stamps(positions: Float32Array, indices: Uint32Array, stamps: Float64Array, detected: boolean, profile: string): Uint8Array;
