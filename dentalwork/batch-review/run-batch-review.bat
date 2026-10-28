@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 rem Folder review: every STL in the folder(s) through the app's own dental pipeline, then a local viewer.
-rem Drop one or more folders onto this file, or run it and paste a folder path.
+rem Drop one or more folders onto this file, or double-click it and choose a folder.
 set "HERE=%~dp0"
 set "ROOT=%HERE%..\..\"
 set "VITE=%ROOT%node_modules\.bin\vite-node.cmd"
@@ -18,8 +18,13 @@ if not exist "%ROOT%crates\geometry-wasm\pkg-node" (
   pushd "%ROOT%" && call npm run wasm:build && popd
 )
 set "FOLDERS=%*"
-if "%FOLDERS%"=="" set /p "FOLDERS=Folder with STL files (subfolders are included): "
-if "%FOLDERS%"=="" exit /b 1
+if "%~1"=="" set "FOLDERS="
+if not defined FOLDERS (
+  echo Choose the folder with the aligner STL files in the window that opens.
+  for /f "usebackq delims=" %%p in (`powershell -NoProfile -STA -Command "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = 'Folder with aligner STL files (subfolders are included)'; $d.ShowNewFolderButton = $false; if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.SelectedPath }"`) do set "FOLDERS="%%p""
+)
+if not defined FOLDERS set /p "FOLDERS=No folder chosen. Paste a folder path, or press Enter to stop: "
+if not defined FOLDERS exit /b 1
 for /f %%t in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "STAMP=%%t"
 set "OUT=%HERE%..\output\batch-%STAMP%"
 call "%VITE%" --script "%HERE%batch.ts" --out "%OUT%" %FOLDERS%
