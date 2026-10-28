@@ -16,7 +16,7 @@ import type { PrintUnit } from '../../state/project';
 import { resolveSettings } from '../../supports/unitSupports';
 import { PREVIEW } from './style';
 import { toGeometry } from './geometry';
-import { dentalContourSegments, dentalFaceOverlay } from './dentalFaceOverlay';
+import { faceMaskContourSegments, faceMaskOverlay } from './faceMaskOverlay';
 
 export interface Hover {
   /** Unit-local point under the pointer and the surface normal there. */
@@ -227,7 +227,7 @@ export function DentalFaceLayer({ mesh, policy, opacity }: { mesh: TriangleMesh;
     positions: Float32Array; normals: Float32Array; mask: Uint8Array; grid: VertexGrid | undefined;
     applied: readonly DentalAllowStamp[] }>();
   useEffect(() => {
-    const { positions, normals } = dentalFaceOverlay(mesh, dentalContactMask(policy, mesh.indices.length / 3));
+    const { positions, normals } = faceMaskOverlay(mesh, dentalContactMask(policy, mesh.indices.length / 3));
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
@@ -266,7 +266,7 @@ export function DentalFaceLayer({ mesh, policy, opacity }: { mesh: TriangleMesh;
 export function DentalRegionLines({ mesh, policy }: { mesh: TriangleMesh; policy: Extract<DentalPolicy, { kind: 'two-contour' }> }) {
   const lines = useMemo(() => [policy.region.outerEdges, policy.region.openingEdges].map((pairs) => {
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(dentalContourSegments(mesh, pairs), 3));
+    geometry.setAttribute('position', new THREE.BufferAttribute(faceMaskContourSegments(mesh, pairs), 3));
     return geometry;
   }), [mesh, policy.region]);
   useEffect(() => () => lines.forEach((line) => line.dispose()), [lines]);

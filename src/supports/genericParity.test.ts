@@ -76,7 +76,7 @@ describe('browser engine registration', () => {
   it('geometryClient hands the adapters every call they use (the browser build lists its exports by name)', () => {
     const client = sources['../workers/geometryClient.ts']!;
     const adapters = Object.entries(sources).filter(([file]) => file.startsWith('./')).map(([, text]) => text).join(' ');
-    const calls = [...adapters.matchAll(/^  ([a-z][a-z_]+)\(/gm)].map((m) => m[1]!).filter((name) => name.includes('_') && !/^(take|set|add)_/.test(name) && !['build_supports', 'generic_place', 'cast_down', 'load_mesh', 'support_settings_layout', 'island_reason',
+    const calls = [...adapters.matchAll(/^  ([a-z][a-z_]+)\(/gm)].map((m) => m[1]!).filter((name) => name.includes('_') && !/^(take|set|add)_/.test(name) && !['generic_place', 'load_mesh', 'island_reason',
       // GeometrySession methods (the class is registered below), not free exports.
       'load_placed', 'dental_policy', 'generic_policy'].includes(name));
     expect(calls.length).toBeGreaterThan(5);

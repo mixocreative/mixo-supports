@@ -1,5 +1,5 @@
 //! Overlay vertices for display-only layers: a finer copy of a mesh for painting zones
-//! (`refine_for_overlay`), the approved-face overlay and the contour segments of the dental layer.
+//! (`refine_for_overlay`), the approved-face overlay and the contour segments of a face-mask layer.
 
 use std::collections::HashMap;
 
@@ -125,7 +125,7 @@ fn split_triangles(indices: &[u32], tri_edges: &[u32], mid: &[i64], positions: &
 
 /// A separate vertex per approved triangle corner (positions and flat normals); `None` when the
 /// mask length does not match the face count. Forbidden faces get no overlay.
-pub fn dental_face_overlay(positions: &[f32], indices: &[u32], allowed: &[u8]) -> Option<(Vec<f32>, Vec<f32>)> {
+pub fn face_mask_overlay(positions: &[f32], indices: &[u32], allowed: &[u8]) -> Option<(Vec<f32>, Vec<f32>)> {
     let faces = indices.len() / 3;
     if allowed.len() != faces {
         return None;
@@ -155,7 +155,7 @@ pub fn dental_face_overlay(positions: &[f32], indices: &[u32], allowed: &[u8]) -
 }
 
 /// Each pair names one real mesh edge: the positions of its two vertices, back to back.
-pub fn dental_contour_segments(positions: &[f32], pairs: &[u32]) -> Vec<f32> {
+pub fn face_mask_contour_segments(positions: &[f32], pairs: &[u32]) -> Vec<f32> {
     pairs.iter().flat_map(|&v| positions[v as usize * 3..v as usize * 3 + 3].iter().copied()).collect()
 }
 
@@ -184,10 +184,10 @@ mod tests {
     fn face_overlay_keeps_only_allowed_faces_and_rejects_a_wrong_mask() {
         let p = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0];
         let i = [0u32, 1, 2, 1, 3, 2];
-        let (pos, nrm) = dental_face_overlay(&p, &i, &[0, 1]).unwrap();
+        let (pos, nrm) = face_mask_overlay(&p, &i, &[0, 1]).unwrap();
         assert_eq!((pos.len(), nrm.len()), (9, 9));
         assert_eq!(&nrm[0..3], &[0.0, 0.0, 1.0]);
-        assert!(dental_face_overlay(&p, &i, &[1]).is_none());
-        assert_eq!(dental_contour_segments(&p, &[0, 3]), vec![0.0, 0.0, 0.0, 1.0, 1.0, 0.0]);
+        assert!(face_mask_overlay(&p, &i, &[1]).is_none());
+        assert_eq!(face_mask_contour_segments(&p, &[0, 3]), vec![0.0, 0.0, 0.0, 1.0, 1.0, 0.0]);
     }
 }

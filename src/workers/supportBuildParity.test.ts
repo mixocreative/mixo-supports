@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { nodeEngine } from '../../scripts/test-support/rustImport';
 import { defaultSupportSettings, type LiveSupportSettings } from '../core/supports/settings';
-import { SETTINGS_ORDER, buildSupportsWasm, engineSettingsLayout } from '../supports/supportBuildWasm';
+import { SETTINGS_ORDER } from '../supports/supportBuildWasm';
+import { buildSupportsWasm, engineSettingsLayout } from '../../scripts/test-support/supportBuildCall';
 import { expectGolden } from '../../scripts/test-support/golden';
 import { alignerScenario, fixtureScenarios, goldenName, landsOnExactSurface, originMismatches, rustBuild, rustInputs, landingSnapshot, rustLandingHits, rustSnapshot, variantScenarios, withRustModel, withStructures, type Scenario } from '../../scripts/test-support/supportParityHarness';
 

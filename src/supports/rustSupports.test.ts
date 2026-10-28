@@ -5,7 +5,7 @@ import { expectGolden } from '../../scripts/test-support/golden';
 import { buildSnapshot } from '../../scripts/test-support/buildSnapshot';
 import { goldenName } from '../../scripts/test-support/supportParityHarness';
 import { CASES, type Case } from '../../scripts/test-support/rustSupportsCases';
-import { buildSupportMesh } from './rustSupports';
+import { buildSupportMesh } from '../../scripts/test-support/rustSupports';
 
 /*
  * The Rust build (zones and a per-face landing mask as data) against the results of the TS builder

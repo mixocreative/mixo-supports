@@ -1,5 +1,5 @@
 /**
- * The Rust support calls (`supports/rustSupports`, `genericPolicy`, `genericPlacement`, `contactEdits`)
+ * The Rust support calls (`generateSupports`, `genericPolicy`, `genericPlacement`, `contactEdits`)
  * run on. The host registers its engine once it is ready (`geometryReady` in each realm; tests and
  * Node scripts register the pkg-node build), like `state/transformEngine`: support builds are
  * synchronous, so the engine is held here.

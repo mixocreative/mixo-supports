@@ -9,7 +9,7 @@ pub mod conflicts;
 pub mod index;
 pub mod paths;
 pub mod reach;
-pub mod rim;
+pub mod rings;
 pub mod tri;
 
 #[cfg(test)]

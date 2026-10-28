@@ -158,7 +158,7 @@ describe('transform, handedness, normals, overlay vertices', () => {
     expectGolden('knot-vertex-normals', approxArray(engine.vertex_normals(knot.positions, knot.indices) as Float32Array, 31));
   });
 
-  it('refineForOverlay matches the recorded TS refine; dentalFaceOverlay and contour segments match the recorded TS result', () => {
+  it('refineForOverlay matches the recorded TS refine; faceMaskOverlay and contour segments match the recorded TS result', () => {
     const faces = knot.indices.length / 3;
     const refined = ([[1e9, faces * 2], [4, faces * 3], [1.5, faces * 3]] as const).map(([maxEdge, maxTriangles]) => {
       const rust = engine.refine_for_overlay(knot.positions, knot.indices, maxEdge, maxTriangles);
@@ -168,12 +168,12 @@ describe('transform, handedness, normals, overlay vertices', () => {
     });
     expectGolden('knot-refine-overlay', refined);
     const allowed = Uint8Array.from({ length: faces }, (_, f) => (f % 3 === 0 ? 1 : 0));
-    const rustFaces = engine.dental_face_overlay(knot.positions, knot.indices, allowed);
+    const rustFaces = engine.face_mask_overlay(knot.positions, knot.indices, allowed);
     const overlayPositions = rustFaces.take_positions() as Float32Array;
     const overlayNormals = rustFaces.take_normals() as Float32Array;
     rustFaces.free();
     const pairs = Uint32Array.of(0, 5, 7, 9);
-    expectGolden('knot-dental-overlay', { positions: approxArray(overlayPositions, 53), normals: approxArray(overlayNormals, 53), segments: engine.dental_contour_segments(knot.positions, pairs) as Float32Array });
-    expect(() => engine.dental_face_overlay(knot.positions, knot.indices, new Uint8Array(3))).toThrow(expect.objectContaining({ code: 'INVALID_LENGTH' }));
+    expectGolden('knot-dental-overlay', { positions: approxArray(overlayPositions, 53), normals: approxArray(overlayNormals, 53), segments: engine.face_mask_contour_segments(knot.positions, pairs) as Float32Array });
+    expect(() => engine.face_mask_overlay(knot.positions, knot.indices, new Uint8Array(3))).toThrow(expect.objectContaining({ code: 'INVALID_LENGTH' }));
   });
 });

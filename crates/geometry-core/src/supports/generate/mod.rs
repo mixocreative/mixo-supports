@@ -24,7 +24,7 @@ use super::policy::{AllowedStructures, PolicyResult};
 use super::safety::clearance::{BodyIssue, Status, review_body_clearance};
 use super::safety::conflicts::SupportMesh;
 use super::safety::index::CollisionIndex;
-use super::safety::rim::{RingCoverage, ring_coverage};
+use super::safety::rings::{RingCoverage, ring_coverage};
 use super::settings::{RoofMode, SupportSettings};
 use super::policy::AreaStamp;
 use islands::{IslandInput, island_verdict};

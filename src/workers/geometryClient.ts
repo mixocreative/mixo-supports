@@ -1,4 +1,4 @@
-import initWasm, { AsciiStlSession, BinaryStlSession, body_segments, build_pick_index, center_positions_in_place, decimate_display, dental_allowed_vertices, dental_contour_segments, dental_face_overlay, live_mesh_handles, engine_version, GeometrySession, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, transformed_min_y, vertex_normals, weld_positions_in_place, generic_policy_contacts, position_ids, remap_deleted_ids, hiding_removal_ids, contacts_hidden_by_marker_ids, rekey_contact_ids, rekey_hand_work, check_support_problems } from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm.js';
+import initWasm, { AsciiStlSession, BinaryStlSession, body_segments, build_pick_index, center_positions_in_place, decimate_display, dental_allowed_vertices, face_mask_contour_segments, face_mask_overlay, live_mesh_handles, engine_version, GeometrySession, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, transformed_min_y, vertex_normals, weld_positions_in_place, generic_policy_contacts, position_ids, remap_deleted_ids, hiding_removal_ids, contacts_hidden_by_marker_ids, rekey_contact_ids, rekey_hand_work, check_support_problems } from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm.js';
 import wasmUrl from '../../crates/geometry-wasm/pkg-browser/mixo_geometry_wasm_bg.wasm?url';
 import { setDentalEngine } from '../core/analysis/dentalEngine';
 import { setTransformEngine } from '../state/transformEngine';
@@ -20,8 +20,8 @@ export interface GeometryEngine {
   dental_allowed_vertices: typeof dental_allowed_vertices;
   /* Mesh handles alive in this module instance (lifecycle tests: a finished or cancelled job leaves 0). */
   live_mesh_handles: typeof live_mesh_handles;
-  dental_contour_segments: typeof dental_contour_segments;
-  dental_face_overlay: typeof dental_face_overlay;
+  face_mask_contour_segments: typeof face_mask_contour_segments;
+  face_mask_overlay: typeof face_mask_overlay;
   invert_matrix: typeof invert_matrix;
   placement_matrix: typeof placement_matrix;
   refine_for_overlay: typeof refine_for_overlay;
@@ -71,7 +71,7 @@ export function sharedSession(): GeometrySession | undefined {
 export function geometryReady(): Promise<GeometryEngine> {
   ready ??= initWasm({ module_or_path: wasmUrl }).then(() => {
     assertGeometryVersion(engine_version());
-    loaded = { engine_version, GeometrySession, center_positions_in_place, weld_positions_in_place, decimate_display, BinaryStlSession, AsciiStlSession, body_segments, build_pick_index, dental_allowed_vertices, dental_contour_segments, dental_face_overlay, live_mesh_handles, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, transformed_min_y, vertex_normals, generic_policy_contacts, position_ids, remap_deleted_ids, hiding_removal_ids, contacts_hidden_by_marker_ids, rekey_contact_ids, rekey_hand_work, check_support_problems };
+    loaded = { engine_version, GeometrySession, center_positions_in_place, weld_positions_in_place, decimate_display, BinaryStlSession, AsciiStlSession, body_segments, build_pick_index, dental_allowed_vertices, face_mask_contour_segments, face_mask_overlay, live_mesh_handles, invert_matrix, placement_matrix, refine_for_overlay, transform_positions, transform_vectors, transformed_min_y, vertex_normals, generic_policy_contacts, position_ids, remap_deleted_ids, hiding_removal_ids, contacts_hidden_by_marker_ids, rekey_contact_ids, rekey_hand_work, check_support_problems };
     setTransformEngine(loaded);
     setSupportEngine(loaded);
     setDentalEngine(loaded);

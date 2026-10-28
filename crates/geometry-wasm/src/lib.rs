@@ -6,8 +6,7 @@ use mixo_geometry_core::core::brush::{self, BodySegments, Occluder};
 use mixo_geometry_core::core::matrix::{self, Handedness, Matrix4};
 use mixo_geometry_core::core::spatial::{Bvh, FlatBvh, Side};
 use mixo_geometry_core::core::{normals, overlay, pick};
-use mixo_geometry_core::supports::parts::model as support_model;
-use mixo_geometry_core::supports::{error as support_error, settings as support_settings};
+use mixo_geometry_core::supports::error as support_error;
 use std::sync::atomic::{AtomicU32, Ordering};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
 
@@ -15,6 +14,8 @@ mod dental;
 #[cfg(feature = "test-abi")]
 mod dental_test_abi;
 mod generic;
+#[cfg(feature = "test-abi")]
+mod generic_test_abi;
 mod safety;
 
 #[wasm_bindgen]
@@ -275,25 +276,6 @@ impl GeometrySession {
         Ok(matrix::transform_positions(positions, &matrix4(matrix)?, handedness_of(handedness)?))
     }
 
-    /// Vertical landing casts against a loaded model: for each `from` (xyz), the surface straight
-    /// below within `length` as 5 floats (face or -1, y, upward normal xyz).
-    pub fn cast_down(&mut self, model: u32, from: &[f64], length: f64) -> Result<Vec<f64>, JsValue> {
-        if from.len() % 3 != 0 {
-            return Err(coded_error("INVALID_LENGTH"));
-        }
-        self.store.ensure_pick_index(model).map_err(mesh_error)?;
-        let (positions, indices, bvh) = self.store.pick_view(model).map_err(mesh_error)?;
-        let view = support_model::Model::new(positions, indices, bvh);
-        let mut out = Vec::with_capacity(from.len() / 3 * 5);
-        for point in from.chunks(3) {
-            match view.cast_down([point[0], point[1], point[2]], length) {
-                Some(hit) => out.extend([f64::from(hit.face.unwrap_or(0)), hit.point[1], hit.normal[0], hit.normal[1], hit.normal[2]]),
-                None => out.extend([-1.0, 0.0, 0.0, 0.0, 0.0]),
-            }
-        }
-        Ok(out)
-    }
-
     /// First hit of each ray (origin xyz, direction xyz, mesh-local): 5 floats per ray
     /// (face or -1, distance, x, y, z). `side` 0 front, 1 back, 2 double.
     pub fn pick(&mut self, handle: u32, rays: &[f64], near: f64, far: f64, side: u32) -> Result<Vec<f64>, JsValue> {
@@ -541,18 +523,18 @@ impl FaceOverlay {
 }
 
 #[wasm_bindgen]
-pub fn dental_face_overlay(positions: &[f32], indices: &[u32], allowed: &[u8]) -> Result<FaceOverlay, JsValue> {
+pub fn face_mask_overlay(positions: &[f32], indices: &[u32], allowed: &[u8]) -> Result<FaceOverlay, JsValue> {
     check_triangles(positions, indices)?;
-    let (positions, normals) = overlay::dental_face_overlay(positions, indices, allowed).ok_or_else(|| coded_error("INVALID_LENGTH"))?;
+    let (positions, normals) = overlay::face_mask_overlay(positions, indices, allowed).ok_or_else(|| coded_error("INVALID_LENGTH"))?;
     Ok(FaceOverlay { positions, normals })
 }
 
 #[wasm_bindgen]
-pub fn dental_contour_segments(positions: &[f32], pairs: &[u32]) -> Result<Vec<f32>, JsValue> {
+pub fn face_mask_contour_segments(positions: &[f32], pairs: &[u32]) -> Result<Vec<f32>, JsValue> {
     if positions.len() % 3 != 0 || pairs.iter().any(|&i| i as usize * 3 + 3 > positions.len()) {
         return Err(coded_error("INVALID_INDEX"));
     }
-    Ok(overlay::dental_contour_segments(positions, pairs))
+    Ok(overlay::face_mask_contour_segments(positions, pairs))
 }
 
 fn mesh_error(error: MeshError) -> JsValue {
@@ -566,12 +548,6 @@ fn stl_error(error: StlError) -> JsValue {
         StlError::NonFinite => "NON_FINITE",
         StlError::Capacity => "CAPACITY",
     })
-}
-
-/// Flat order of the settings array (`SETTINGS_LAYOUT`), for the host packer to check against.
-#[wasm_bindgen]
-pub fn support_settings_layout() -> Vec<String> {
-    support_settings::SETTINGS_LAYOUT.iter().map(|name| (*name).to_string()).collect()
 }
 
 fn build_error(error: mixo_geometry_core::supports::error::BuildError) -> JsValue {

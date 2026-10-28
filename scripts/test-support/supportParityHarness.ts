@@ -12,7 +12,8 @@ import { GOLDEN_FIXTURES } from '../../src/goldens/fixtures';
 import { supportedUnit } from '../../src/goldens/pipeline';
 import { applyTransform, transformDirection, transformPoint } from '../../src/state/transform';
 import { supportJobOf, resolveSettings } from '../../src/supports/unitSupports';
-import { buildSupportsWasm, castDownWasm, type ColumnInput, type WasmSupportBuild } from '../../src/supports/supportBuildWasm';
+import type { ColumnInput } from '../../src/supports/supportBuildWasm';
+import { buildSupportsWasm, castDownWasm, type WasmSupportBuild } from './supportBuildCall';
 import { add, normalizeOrDown, scale, type Vector } from '../../src/core/vec3';
 
 /*

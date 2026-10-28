@@ -4,8 +4,7 @@ import type { ShapeOverride } from './settings';
 
 /*
  * Types of the support mesh the build produces and the host consumes. The builder itself is the
- * Rust `build_supports` (`src/supports/rustSupports.ts`); the TypeScript builder it replaced is kept as a test reference in
- * scripts/test-support (tests only).
+ * Rust `generate` (`src/supports/generateSupports.ts`).
  */
 
 export type Point2 = [number, number];

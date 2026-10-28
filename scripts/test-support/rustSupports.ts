@@ -1,17 +1,18 @@
-import type { ProgressCallback, TriangleMesh } from '../core/analysis/types';
-import type { GeneratedSupportMesh, SupportContact, SupportPart } from '../core/supports/mesh';
-import type { LiveSupportSettings } from '../core/supports/settings';
-import type { ZoneStamp } from '../core/supports/zones';
-import { buildSupportsWasm, type ColumnInput } from './supportBuildWasm';
-import { withSession } from './supportEngine';
+import type { ProgressCallback, TriangleMesh } from '../../src/core/analysis/types';
+import type { GeneratedSupportMesh, SupportContact, SupportPart } from '../../src/core/supports/mesh';
+import type { LiveSupportSettings } from '../../src/core/supports/settings';
+import type { ZoneStamp } from '../../src/core/supports/zones';
+import type { ColumnInput } from '../../src/supports/supportBuildWasm';
+import { withSession } from '../../src/supports/supportEngine';
+import { buildSupportsWasm } from './supportBuildCall';
 
 /*
  * The low-level Rust `build_supports` call: every solid (tips, necks, pillars, feet, Auto Trees,
  * Braces, raft, label, Roof, Cage) from contacts, with the neck normals, landings, Auto Tree layout
- * and no-support zones computed in Rust. Production builds go through `generateSupports` (the U7
- * `generate` call: policy, safety check, bounded repair, verdicts); this call is the builder alone,
- * kept for the parity tests against the TS builder oracle. A landing rule here is a per-face mask,
- * never a callback.
+ * and no-support zones computed in Rust. TESTS ONLY (golden and parity cases in
+ * `src/supports/rustSupports.test.ts`): production builds go through `generateSupports` (the
+ * `generate` call: policy, safety check, bounded repair, verdicts) and the browser engine has no
+ * `build_supports`. A landing rule here is a per-face mask, never a callback.
  */
 
 export interface SupportBuildOptions {
