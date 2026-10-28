@@ -1,4 +1,7 @@
 {
+ "scripts/dental-region-review/build.ts": {
+  "label": "host-adapter"
+ },
  "src/App.tsx": {
   "label": "host-adapter"
  },
@@ -14,16 +17,16 @@
  "src/components/viewport/AddFlash.tsx": {
   "label": "host-adapter"
  },
+ "src/components/viewport/UnitObject.tsx": {
+  "label": "host-math",
+  "maxMath": 3,
+  "why": "three.js raycast/hover normals for the viewport (render only)"
+ },
  "src/components/viewport/cameras.tsx": {
   "label": "host-adapter"
  },
  "src/components/viewport/types.ts": {
   "label": "host-adapter"
- },
- "src/components/viewport/UnitObject.tsx": {
-  "label": "host-math",
-  "maxMath": 3,
-  "why": "three.js raycast/hover normals for the viewport (render only)"
  },
  "src/components/viewport/useScreenBrush.ts": {
   "label": "host-adapter"
@@ -91,7 +94,9 @@
   "label": "host-adapter"
  },
  "src/supports/export.ts": {
-  "label": "host-adapter"
+  "label": "host-math",
+  "maxMath": 1,
+  "why": "STL file writer: the facet normal of each exported triangle is serialised from its vertices (file format, not a geometry decision); a Rust export call would own this."
  },
  "src/supports/jobRunner.ts": {
   "label": "host-adapter"
@@ -103,9 +108,6 @@
   "label": "host-adapter"
  },
  "src/supports/unitSupports.ts": {
-  "label": "host-adapter"
- },
- "scripts/dental-region-review/build.ts": {
   "label": "host-adapter"
  }
 }

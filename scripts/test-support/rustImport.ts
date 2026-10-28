@@ -1,26 +1,19 @@
 import type { BufferGeometry, Object3D } from 'three';
 import type { TriangleMesh } from '../../src/core/analysis/types';
-import type { GeometryEngine } from '../../src/workers/geometryClient';
 import { centerImportedWithWasm, weldRawWithWasm } from '../../src/workers/prepareImport';
-import { parseStlBytes } from '../../src/workers/stlSession';
 import { gltfRawMeshes, type ImportedMesh, type RawMesh } from '../../src/state/import';
-import * as wasm from '../../crates/geometry-wasm/pkg-node/mixo_geometry_wasm.js';
 
 /*
  * Test/dev-script access to the production Rust import path under Node (the pkg-node build), with the
  * same host glue the import worker uses. Replaces the removed TS parseStl / weldPositions helpers.
  */
 
-export const nodeEngine = wasm as unknown as GeometryEngine;
+export { nodeEngine, parseStl } from '../node-engine';
+import { nodeEngine, parseStl } from '../node-engine';
+
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 const baseName = (fileName: string) => fileName.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
-
-/** A whole STL file (ArrayBuffer, typed array or Node Buffer) as a welded Y-up mesh, through Rust. */
-export function parseStl(data: ArrayBuffer | Uint8Array, name = 'model'): TriangleMesh {
-  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-  return parseStlBytes(nodeEngine, bytes, name);
-}
 
 export function importStl(buffer: ArrayBuffer, fileName: string): ImportedMesh {
   const name = baseName(fileName);

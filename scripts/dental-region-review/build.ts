@@ -1,4 +1,4 @@
-import '../test-support/useNodeEngine';
+import { useNodeEngine } from '../node-engine';
 import { proposeDentalOrientation, rotationToDentalPose } from '../../src/core/analysis/dental';
 import { proposeDentalSupportRegion, type DentalRegionProposal } from '../../src/core/analysis/dentalRegion';
 import { diagnosticDentalSideBands, type DentalDiagnosticBands } from '../../src/core/analysis/dentalContactBand';
@@ -11,6 +11,8 @@ import { runSupportJob } from '../../src/supports/jobRunner';
 import { filterDentalPlacement } from '../../src/dental/placement';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint } from '../../src/state/transform';
 import { REFERENCE_PROFILE, referenceTuning } from './profile';
+
+useNodeEngine();
 
 type Region = Extract<DentalRegionProposal, { kind: 'proposal' }>;
 export type DiagnosticReviewContacts = {

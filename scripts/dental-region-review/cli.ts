@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { proposeDentalSupportRegion } from '../../src/core/analysis/dentalRegion';
 import { exportDentalRegionReview } from './review';
 import { buildDentalReview } from './build';
-import { parseStl } from '../test-support/rustImport';
+import { parseStl } from '../node-engine';
 import { REFERENCE_PROFILE, referenceTuning } from './profile';
 
 const argument = (name: string): string | undefined => {
