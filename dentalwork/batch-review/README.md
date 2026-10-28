@@ -30,6 +30,8 @@ node dentalwork/batch-review/serve.mjs dentalwork/output/batch-test
 
 ## Reading the viewer
 
+Turn the view below the floor (or press Bottom view) to see the aligner and its support tips only: the rest of the supports and the raft hide while the camera is under them.
+
 The left list starts with **Needs a look**: every file that was not built, whose safety check is not `clear`, that has a low point with no support, or whose edge coverage has a gap to review. **All** shows every file. Arrow keys or Previous / Next step through them.
 
 The right panel gives the numbers for the selected file:

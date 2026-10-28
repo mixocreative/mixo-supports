@@ -10,7 +10,7 @@ Reviewed 2026-10-28 by three EGM reviewers (implementation readiness, scope, cod
 2. Every decision about size or spacing is in millimetres, never in counts of faces, edges or pixels.
 3. Everything the user changes shows live.
 4. A stable print comes first; keeping tips off the fitting (tooth-facing) surface comes second.
-5. Results reasonably close to the owner's example (`dentalwork/fixtures/case-001/ideal-supported.stl`), not identical.
+5. The owner's example (`dentalwork/fixtures/case-001/ideal-supported.stl`) guides only where tips go, the support and contact sizes and the print angle. The structure (Tree, Brace) is ours and is meant to be better than the example, so it differs (owner, 2026-10-28).
 6. Evidence before optimisation: a performance or accuracy step starts only when a measurement shows the problem.
 
 ## Decision log
@@ -24,22 +24,22 @@ Decided (by the owner unless noted):
 | D3 | Tree and Brace on by default for dental (reverses the unit C preset). | S3 |
 | D4 | Step 3 is the live adjust step: its controls rebuild live; no separate Adjust screen (lead, from the scope review; matches the owner's intent). | S3 |
 | D5 | Step 2: hidden suggested tips over all reachable overhangs, revealed by paint; tools Paint, Erase, Add, Select (delete only); belt sliders re-space evenly; density only in Step 2. | B2, B3 |
-| D6 | Results reasonably close to the owner's example, not identical. | all |
+| D6 | The example guides tip placement, support and contact sizes and the print angle only; the structure (Tree, Brace on by default) differs on purpose (owner, 2026-10-28; replaces "close to the example"). | all |
 | D7 | Blocked verdict marks real crossings only; the automatic repair re-aims or leaves out crossing necks (built: 09c81be, 836d445). | built |
 | D8 | Low points outside the support area are information only (lead decision, reversible). | built |
 | D9 | The mesh check stays strict; a separate "repair mesh" step only if real files need it. | evidence |
 | D10 | Generate time limit stays 120 s. | built |
 | D11 | A lift change keeps the generated tips, necks and landings exactly and only moves what reaches the plate (lead decision, reversible). Two fresh generates at different lifts differ (the landing remesh grid follows the build frame: tips up to 2.1 mm apart), so "equal to a fresh generate" holds only on the exact surface. | L |
-| D12 | Synthetic test aligners from a procedural generator and perturbations of the reference, no outside data (lead, from Fable's research; licence-free). Specification: `dentalwork/synthetic-aligners/SPEC.md`. | V1 |
+| D12 | No synthetic test aligners: the generated shapes are too unrealistic to use (owner, 2026-10-28). The V1 generator (f717d61) was removed. Its one finding, kept for P2 and real files: the outer-ridge detector needs a trim that is sharp along part of its length; a trim that is sharp all the way round (two closed sharp loops) is refused with `outer-ridge-not-closed`. | V |
+| D13 | Folder review: with the camera below the floor (the bottom of the supports and raft) the viewer shows only the aligner and its support tips (owner, 2026-10-28; built). | review |
 
 Open (owner; Q1, release timing, was answered: pull request #2 merged to `main` as fbac47f on 2026-10-28):
 
 | # | Question | Blocks |
 |---|---|---|
-| Q2 | Shells from public teeth scans (Teeth3DS+) as extra test files: the data licence is "Other, see license.txt" on OSF. Read it and say whether derived local-only files are allowed. The synthetic set (V1) does not need it. | V (optional) |
+| Q2 | Shells from public teeth scans (Teeth3DS+) as extra test files: the data licence is "Other, see license.txt" on OSF. Read it and say whether derived local-only files are allowed.  | V (optional) |
 | Q3 | Dental landings without the remesh (P3b): only if a measurement shows the remesh is a problem. | P3b |
 | Q4 | Switch the reference type to a curvature contour detector: only if a real file defeats the current one. | P2 |
-| Q5 | Order: build O (no central opening) right after R, before F? The scope review's case: V1 delivers no-opening test files (B02, B10), and F's angle search would then be built for both aligner kinds. Today's order is R, F, S3, B2, B3, O, H. | F, O |
 | Q6 | Split F: build the angle scan, the stable band and the slider now (F1), and defer the automatic pick, its retry and the slenderness limits until prints show the start tilt failing? The scope review's case: those thresholds are guesses until V's prints (principle 6). Today F builds all of it. | F |
 
 `dentalwork/open-decisions.md` explains D7–D10 in plain language for the owner.
@@ -62,16 +62,7 @@ Open (owner; Q1, release timing, was answered: pull request #2 merged to `main` 
 ## Steps in order
 
 ### V. Validation on real aligners (owner, in parallel, starts now)
-Owner runs `dentalwork/batch-review/run-batch-review.bat` on 10–20 real aligners (upper and lower, with and without a central opening, attachments, different trim styles, files from more than one design program) and prints 3–5 at the default settings on the owner's printer and resin, checking that supports hold and the parts fit. Sends case numbers and notes. Outcome decides whether O, P2 and the F thresholds need work. The synthetic set (V1) runs before real files arrive; it shows whether the code is specific to one mesh, not whether parts fit.
-
-### V1. Synthetic test aligners (done)
-First run: generator 16.3 s, all output checks pass; folder review: 9 of 10 procedural shells and the reference with 0.03 mm noise are refused with `outer-ridge-not-closed`, the flat trim (B04) with `orientation-ambiguous-cavity`, the mirrored and scaled references build clear but leave 2 and 3 tips out (scaled 1.15: opening gap 16 mm). Details and findings: `dentalwork/synthetic-aligners/README.md`.
-
-### V2. Fixes from the V1 findings (engine; reference goldens unchanged) — *spec before start*
-Diagnose first (Fable): finding 1 (outer ridge not closed) on B01 and C03 — the detector or the generated rims. Then one specification per fix, each checked on the held-out cases (B06, B09, C02) without tuning on them. Comes before F: F's angle search is built on the detector.
-
-Specification as built:
-Build the generator, cases and checks exactly as `dentalwork/synthetic-aligners/SPEC.md` says (12 cases, 3 held out, output git-ignored, manifest committed). Done when: the generator's unit tests pass; all 12 outputs pass the output checks; generation plus checks take under 30 s; the lead has run the folder review on the set and recorded each case against the expected table in `dentalwork/synthetic-aligners/README.md`; differences from the expected table are listed as findings (each fix is a later step with its own spec), not fixed in V1.
+Owner runs `dentalwork/batch-review/run-batch-review.bat` on 10–20 real aligners (upper and lower, with and without a central opening, attachments, different trim styles, files from more than one design program) and prints 3–5 at the default settings on the owner's printer and resin, checking that supports hold and the parts fit. Sends case numbers and notes. Outcome decides whether O, P2 and the F thresholds need work. 
 
 ### L. Lift as a plate offset (done)
 Lift moves the plate, not the model, so a lift change keeps the model-space caches. Goldens must not change. Done when: a lift change through the offset equals a fresh generate at that lift (within 1e-5 mm; same components, contact ids and verdicts); the session keeps the same mesh handles across the change (handle count asserted); lift-change time before and after with `scripts/perf/live-bench.mjs`. Time-box: if not done within the unit, stop and report.
@@ -106,7 +97,7 @@ Known parts: candidates over every face that passes the existing reachable-from-
 Known parts: extend `EditTool` (`src/editing/types.ts`, today `'add' | 'select'`) and the session (`session.ts`, `pick.ts`) so Step 2 offers Paint and Erase (today `DentalKind 'allow' | 'erase'`) plus Add and Select; Step 3 keeps `EditTools` (`EditBar.tsx`, already used by `DentalSupports.tsx`) and loses Paint, Erase and density (D5). Delete stays the existing `edit.deleteSelection` command (`editing/commands.ts`, handler `deleteSelected` in `App.tsx`). Add places a manual contact at the exact hit (snap to a candidate within `clickReach` mm if B2 is done), warns when the face points up; manual contacts are kept by `compose_contacts`. To write first: the key bindings (check `editing/keys.ts`), the warning text and the walk scenarios.
 
 ### O. Aligners without a central opening (1 unit, engine) — *spec before start*
-Today a profile with `"opening": "yes"` refuses an aligner without an opening (`central-opening-absent`, `dental/region.rs`), and nothing places tips on the outer rim alone. Build the outer-rim-only path (region cut, belt, rings, policy) behind a profile value accepted by `profiles/mod.rs`. Test meshes: V1's B02 and B10 (synthetic, no opening), or real files from V.
+Today a profile with `"opening": "yes"` refuses an aligner without an opening (`central-opening-absent`, `dental/region.rs`), and nothing places tips on the outer rim alone. Build the outer-rim-only path (region cut, belt, rings, policy) behind a profile value accepted by `profiles/mod.rs`. Test meshes: real files from V. Starts when V shows such files, or earlier if the owner confirms they exist.
 
 ### H. Host deliverable (0.5 unit)
 A Node script that drives orient, region, policy, generate and diagnose on an STL through the browser package's ABI with no React (start from `scripts/geometry-wasm-smoke.mjs`). Proves the "future host app" principle and becomes its example.
