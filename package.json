@@ -11,6 +11,7 @@
     "postbuild": "node scripts/third-party-notices.mjs",
     "wasm:build": "node scripts/build-geometry-wasm.mjs",
     "wasm:test": "node scripts/geometry-wasm-smoke.mjs",
+    "host-example": "node scripts/host-example.mjs",
     "prewalk": "npm run wasm:build",
     "pretest": "npm run wasm:build",
     "test": "vitest run",
