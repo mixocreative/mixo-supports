@@ -161,6 +161,12 @@ Today a profile with `"opening": "yes"` refuses an aligner without an opening (`
 
 ### H. Host deliverable (0.5 unit)
 A Node script that drives orient, region, policy, generate and diagnose on an STL through the browser package's ABI with no React (start from `scripts/geometry-wasm-smoke.mjs`). Proves the "future host app" principle and becomes its example.
+Pinned (lead, 2026-10-29):
+- **File**: `scripts/host-example.mjs`, plain JavaScript (no TypeScript, no import from `src/`), loading the Node build of `crates/geometry-wasm` the way `geometry-wasm-smoke.mjs` does. Usage: `node scripts/host-example.mjs <aligner.stl> <out-dir>`.
+- **Steps**, each through the engine's ABI: read the STL and weld; centre as the import does (`center_positions_in_place`); orient (dental profile `reference-aligner`); propose the region; tilt scan and pick (the profile's Step 3 support settings: Tree and Brace on, lift, pillar, tip); policy; generate; check (verdict, crossings, left-out, gaps).
+- **Output**: `<out-dir>/supported.stl` (the aligner in its print pose plus all supports, one binary STL) and `<out-dir>/summary.json` (angle, band, tips placed, left out, crossings, gaps, seconds per step, engine_version).
+- **Comments**: each step has a one-line comment saying which ABI call it is and what it returns, so the file serves as the host example (D16, A1).
+- **Done when**: on `dentalwork/fixtures/case-001/aligner.stl` the summary matches the folder review (44.5°, clear, 93 tips, 1 left out, 0 crossings); runs in under 30 s; `npm run host-example` script added; a section "Driving the engine without the app" in `dentalwork/wasm-geometry-design.md` points to it. Tier: `node scripts/host-example.mjs` on the reference, `npx tsc --noEmit`, `npx vitest run`.
 
 ## After H: dental-only mixosupports, generic supports in mixomesh (D16)
 
