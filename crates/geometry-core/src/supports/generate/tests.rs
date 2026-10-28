@@ -190,8 +190,8 @@ fn a_secondary_landing_off_the_approved_faces_is_left_out_by_the_landing_rule() 
 }
 
 #[test]
-fn a_brace_through_the_model_is_a_blocked_structure_or_switched_off_by_the_repair() {
-    // Two columns under a shelf with a thin wall between them that the brace has to pass through.
+fn a_brace_through_the_model_is_a_blocked_structure_or_pruned_by_the_repair() {
+    // Two columns under a shelf with a thin wall between them that every brace segment has to pass through.
     let fixture = Fixture::new(&[([-9.0, 20.0, -5.0], [9.0, 24.0, 5.0]), ([-0.4, 0.0, -5.0], [0.4, 19.0, 5.0])]);
     let s = settings(&[("trussEnabled", 1.0), ("raftEnabled", 0.0), ("scatterAutoTree", 0.0), ("lowPolyMode", 1.0), ("trussMinHeight", 1.0)]);
     let two = || vec![contact("left", [-6.0, 20.0, 0.0], Origin::Auto), contact("right", [6.0, 20.0, 0.0], Origin::Auto)];
@@ -199,7 +199,8 @@ fn a_brace_through_the_model_is_a_blocked_structure_or_switched_off_by_the_repai
     assert!(reporting.built.components.iter().any(|c| c.tag.part == Part::Brace), "no brace was built");
     assert!(reporting.verdict.issues.iter().any(|i| i.part == Part::Brace && i.blocked), "{:?}", reporting.verdict);
     let repaired = fixture.run(two(), &s, &policy(fixture.faces(), Vec::new(), 8, AutomaticRule::AsGiven), &never);
-    assert!(repaired.fallback.contains(&Fallback::Brace));
+    // Every segment crosses, so pruning leaves none; Brace (all off) is reported only if a crossing remained.
+    assert_eq!(repaired.fallback, [Fallback::BracePruned]);
     assert!(!repaired.built.components.iter().any(|c| c.tag.part == Part::Brace));
     assert!(repaired.verdict.status != Status::Blocked, "{:?}", repaired.verdict);
     assert_eq!(repaired.contact_ids, vec!["left", "right"]);

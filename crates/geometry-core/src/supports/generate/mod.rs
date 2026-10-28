@@ -52,6 +52,8 @@ pub struct GenerateInput<'a> {
 pub enum Fallback {
     Tree,
     Brace,
+    /// Only the brace segments that crossed were left out; the other braces stay.
+    BracePruned,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -104,7 +106,7 @@ pub fn generate(input: GenerateInput) -> Result<Generated, BuildError> {
     let rejected = permitted.rejected.clone();
     let allowed = model.and_then(|m| landing_allowed(m, policy));
     let rule: Option<&dyn Fn(&Landing) -> bool> = allowed.as_ref().map(|f| f as &dyn Fn(&Landing) -> bool);
-    let host = HostChoices { label_text, zones, landing_allowed: rule };
+    let host = HostChoices { label_text, zones, landing_allowed: rule, pruned_braces: None };
     let index = model.map(|m| CollisionIndex::new(m.positions(), m.indices()));
     let run = repair::Run { settings: &settings, mode, model, host: &host, index: index.as_ref(), policy, expired, local };
     let mut outcome = repair::run(&run, permitted)?;

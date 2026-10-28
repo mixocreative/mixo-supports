@@ -95,7 +95,7 @@ export interface GenerateOptions {
 export interface GenerateOutput {
   mesh: GeneratedSupportMesh;
   rings: RingMeasure[];
-  fallback: Array<'tree' | 'brace'>;
+  fallback: Array<'tree' | 'brace' | 'brace-pruned'>;
   trials: number;
   revision: number;
 }
@@ -192,7 +192,7 @@ export function generateSupports(contacts: readonly SupportContact[], settings: 
         positions: result.take_positions(), indices: result.take_indices(), parts, components,
         dropped: result.take_dropped(), droppedByZones: result.take_dropped_by_zones(), verdict, islands,
       };
-      return { mesh, rings, fallback: Array.from(result.take_fallback(), (f) => (f === 1 ? 'tree' as const : 'brace' as const)), trials: result.trials(), revision };
+      return { mesh, rings, fallback: Array.from(result.take_fallback(), (f) => (f === 1 ? 'tree' as const : f === 3 ? 'brace-pruned' as const : 'brace' as const)), trials: result.trials(), revision };
     } finally {
       result.free();
     }

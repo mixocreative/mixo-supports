@@ -90,6 +90,10 @@ describe('DentalBar', () => {
     const fallbackHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={stepUi} reviewReady
       review={{ ...base, structureFallback: ['tree'] }} send={() => {}} run={() => {}} />);
     expect(fallbackHtml).toContain('Tree branches were omitted');
+    const prunedHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={stepUi} reviewReady
+      review={{ ...base, structureFallback: ['brace-pruned'] }} send={() => {}} run={() => {}} />);
+    expect(prunedHtml).toContain('Some cross-braces were left out where they crossed the model');
+    expect(prunedHtml).not.toContain('Cross-braces were omitted');
     const buildingHtml = renderToStaticMarkup(<DentalBar gesture={review} unitName="sample" ui={{ ...stepUi, dentalReviewReady: false } as UiState} reviewReady={false} review={base} send={() => {}} run={() => {}} />);
     expect(buildingHtml).toContain('Building supports');
     expect(buildingHtml).toMatch(/<button[^>]*disabled[^>]*>OK</);

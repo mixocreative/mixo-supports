@@ -86,7 +86,7 @@ function parity(name: string, model: TriangleMesh, contacts: SupportContact[], s
   expectGolden(slug(name), { ...summary(mesh), indices: exactArray(mesh.indices, 'u32'), positions: approxArray(mesh.positions, mesh.positions.length > 30000 ? 41 : 1) });
   seen.builds += 1;
   seen.dropped += mesh.dropped.length;
-  seen.braceFallback += mesh.dentalStructureFallback?.includes('brace') ? 1 : 0;
+  seen.braceFallback += mesh.dentalStructureFallback?.some((f) => f !== 'tree') ? 1 : 0;
   seen.treeBuilt += mesh.components.some((c) => c.part === 'tree-branch') ? 1 : 0;
   return { ts: mesh, out };
 }
@@ -102,11 +102,12 @@ describe('generate against the TS safety flow: synthetic models', () => {
     expect(out.mesh.verdict?.status).toBeDefined();
   });
 
-  it('a brace through the model is switched off, the contacts stay', () => {
+  it('a brace through the model is pruned (every segment crosses here), the contacts stay', () => {
     const wall = boxes([[-9, 20, -5], [9, 24, 5]], [[-0.4, 0, -5], [0.4, 19, 5]]);
     const contacts = [contact(wall, 'auto-l', [-6, 20, 0]), contact(wall, 'auto-r', [6, 20, 0])];
     const { ts } = parity('brace', wall, contacts, lowPoly({ trussEnabled: true, trussMinHeight: 1 }));
-    expect(ts.dentalStructureFallback).toContain('brace');
+    expect(ts.dentalStructureFallback).toEqual(['brace-pruned']);
+    expect(ts.components.some((c) => c.part === 'brace')).toBe(false);
     expect(ts.dropped).toEqual([]);
   });
 

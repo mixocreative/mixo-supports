@@ -12,11 +12,11 @@ use crate::supports::parts::model::Model;
 use crate::supports::policy::{Candidate, CandidateId, Origin, PolicyResult};
 use crate::supports::contact_id::position_id;
 use crate::supports::safety::clearance::{StructurePart, crossing_automatic_body_contacts, crossing_automatic_neck_contacts, crossing_structure_parts};
-use crate::supports::parts::tags::Component;
+use crate::supports::parts::tags::{BraceKey, Component};
 use crate::supports::safety::conflicts::SupportMesh;
 use crate::supports::safety::index::CollisionIndex;
 use crate::supports::settings::SupportSettings;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 pub struct Run<'a> {
     pub settings: &'a SupportSettings,
@@ -63,6 +63,9 @@ impl Outcome {
 /// no trial left the crossing is reported instead.
 const FAILSAFE_TRIALS: u32 = 4;
 
+/// Passes of the brace pruning before all braces are switched off.
+const BRACE_PRUNE_PASSES: u32 = 2;
+
 /// Insertion-ordered set of IDs (the order contacts were left out is reported).
 #[derive(Default)]
 struct Ids {
@@ -99,19 +102,20 @@ fn is_auto(slot: &Slot) -> bool {
     slot.contact.candidate.origin != Origin::Manual
 }
 
-fn build(run: &Run, slots: &[Slot], settings: &SupportSettings) -> Result<BuiltSupports, BuildError> {
+fn build(run: &Run, slots: &[Slot], settings: &SupportSettings, pruned: &BTreeSet<BraceKey>) -> Result<BuiltSupports, BuildError> {
     if slots.is_empty() {
         return Ok(empty_built());
     }
     let contacts: Vec<ColumnContact> = slots.iter().map(|s| s.contact.clone()).collect();
     let source = if run.model.is_some() { LandingSource::Target } else { LandingSource::Model };
-    build_supports(&contacts, settings, run.mode, run.model, source, run.host)
+    let host = HostChoices { label_text: run.host.label_text, zones: run.host.zones, landing_allowed: run.host.landing_allowed, pruned_braces: Some(pruned) };
+    build_supports(&contacts, settings, run.mode, run.model, source, &host)
 }
 
 /// A repair trial's rebuild: the build the next check starts from, so the per-build memo is dropped.
-fn rebuild(run: &Run, slots: &[Slot], settings: &SupportSettings, memo: &mut Memo, step: &'static str, touched: usize) -> Result<BuiltSupports, BuildError> {
+fn rebuild(run: &Run, slots: &[Slot], settings: &SupportSettings, pruned: &BTreeSet<BraceKey>, memo: &mut Memo, step: &'static str, touched: usize) -> Result<BuiltSupports, BuildError> {
     let started = trace::now();
-    let built = build(run, slots, settings)?;
+    let built = build(run, slots, settings, pruned)?;
     let same = trace::seen(&built);
     trace::trial(step, touched, trace::now() - started, same);
     *memo = Memo::default();
@@ -253,7 +257,8 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
     let mut effective = run.settings.clone();
     let mut trials = 0;
     let mut fallback: Vec<Fallback> = Vec::new();
-    let mut built = build(run, &slots, &effective)?;
+    let mut pruned: BTreeSet<BraceKey> = BTreeSet::new();
+    let mut built = build(run, &slots, &effective, &pruned)?;
     trace::seen(&built);
     let mut memo = Memo::default();
     let mut mesh_dropped = ids(&built, &slots);
@@ -264,13 +269,34 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
         if effective.scatter_auto_tree && !(run.expired)() && crossing_structures(run, &mut memo, &built, &slots, &effective).iter().any(|p| matches!(p, StructurePart::TreeBranch | StructurePart::TreeTrunk)) && spend(&mut trials, budget) {
             effective.scatter_auto_tree = false;
             fallback.push(Fallback::Tree);
-            built = rebuild(run, &slots, &effective, &mut memo, "tree-fallback", 0)?;
+            built = rebuild(run, &slots, &effective, &pruned, &mut memo, "tree-fallback", 0)?;
             mesh_dropped = ids(&built, &slots);
         }
-        if effective.truss_enabled && !(run.expired)() && crossing_structures(run, &mut memo, &built, &slots, &effective).contains(&StructurePart::Brace) && spend(&mut trials, budget) {
-            effective.truss_enabled = false;
-            fallback.push(Fallback::Brace);
-            built = rebuild(run, &slots, &effective, &mut memo, "brace-fallback", 0)?;
+        // Brace pruning: only the crossing segments are left out, at most two passes, one trial each; if
+        // a brace still crosses after the second, all braces go off.
+        let mut passes = 0;
+        while effective.truss_enabled && !(run.expired)() {
+            let crossing: Vec<BraceKey> = crossing_structures(run, &mut memo, &built, &slots, &effective)
+                .iter()
+                .filter_map(|p| match p {
+                    StructurePart::Brace(key) => Some(*key),
+                    _ => None,
+                })
+                .collect();
+            if crossing.is_empty() || !spend(&mut trials, budget) {
+                break;
+            }
+            if passes == BRACE_PRUNE_PASSES {
+                effective.truss_enabled = false;
+                fallback.push(Fallback::Brace);
+                built = rebuild(run, &slots, &effective, &pruned, &mut memo, "brace-fallback", 0)?;
+                mesh_dropped = ids(&built, &slots);
+                break;
+            }
+            passes += 1;
+            let touched = crossing.len();
+            pruned.extend(crossing);
+            built = rebuild(run, &slots, &effective, &pruned, &mut memo, "brace-prune", touched)?;
             mesh_dropped = ids(&built, &slots);
         }
         if slots.iter().any(is_auto) && !(run.expired)() {
@@ -287,7 +313,7 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
                 let touched = reaim_necks(run, &mut slots, &necks, aim);
                 if touched > 0 {
                     spend(&mut trials, budget);
-                    built = rebuild(run, &slots, &effective, &mut memo, if aim == Aim::Face { "reaim-normal" } else { "reaim-down" }, touched)?;
+                    built = rebuild(run, &slots, &effective, &pruned, &mut memo, if aim == Aim::Face { "reaim-normal" } else { "reaim-down" }, touched)?;
                     mesh_dropped = ids(&built, &slots);
                 }
             }
@@ -301,7 +327,7 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
                     break;
                 }
                 spend(&mut trials, budget);
-                built = rebuild(run, &slots, &effective, &mut memo, "alternates", moved)?;
+                built = rebuild(run, &slots, &effective, &pruned, &mut memo, "alternates", moved)?;
                 mesh_dropped = ids(&built, &slots);
                 crossing = crossing_auto(run, &mut memo, &built, &slots, &effective, None);
             }
@@ -310,7 +336,7 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
                 let mut dropped = Ids::of(mesh_dropped.clone());
                 let automatic: Vec<String> = slots.iter().filter(|s| is_auto(s)).map(|s| id_of(s).to_string()).collect();
                 slots.retain(|s| !blocked.contains(id_of(s)));
-                built = rebuild(run, &slots, &effective, &mut memo, "leave-out", blocked.list.len())?;
+                built = rebuild(run, &slots, &effective, &pruned, &mut memo, "leave-out", blocked.list.len())?;
                 mesh_dropped = ids(&built, &slots);
                 dropped.extend(mesh_dropped.clone());
                 // A changed tree/brace layout can expose another shaft. Bound the rebuild cost and refuse
@@ -322,7 +348,7 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
                     let automatic_count = automatic.len();
                     blocked.extend(automatic);
                     slots.retain(|s| !is_auto(s));
-                    built = rebuild(run, &slots, &effective, &mut memo, "all-manual", automatic_count)?;
+                    built = rebuild(run, &slots, &effective, &pruned, &mut memo, "all-manual", automatic_count)?;
                     mesh_dropped = ids(&built, &slots);
                 }
                 let mut all = dropped;
@@ -336,7 +362,7 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
             let was_on = [(Fallback::Tree, effective.scatter_auto_tree), (Fallback::Brace, effective.truss_enabled)];
             effective.scatter_auto_tree = false;
             effective.truss_enabled = false;
-            built = rebuild(run, &slots, &effective, &mut memo, "structures-off", 0)?;
+            built = rebuild(run, &slots, &effective, &pruned, &mut memo, "structures-off", 0)?;
             // Contacts left out earlier stay out; this build's own drops replace the previous build's.
             let mut kept = Ids::of(mesh_dropped.iter().filter(|id| !slots.iter().any(|s| id_of(s) == id.as_str())).cloned().collect());
             kept.extend(ids(&built, &slots));
@@ -351,7 +377,7 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
             if !crossing.is_empty() && spend(&mut trials, budget) {
                 let blocked = Ids::of(crossing);
                 slots.retain(|s| !blocked.contains(id_of(s)));
-                built = rebuild(run, &slots, &effective, &mut memo, "structures-off-leave-out", blocked.list.len())?;
+                built = rebuild(run, &slots, &effective, &pruned, &mut memo, "structures-off-leave-out", blocked.list.len())?;
                 let mut all = Ids::of(mesh_dropped.iter().filter(|id| !slots.iter().any(|s| id_of(s) == id.as_str())).cloned().collect());
                 all.extend(ids(&built, &slots));
                 all.extend(blocked.list);
@@ -364,12 +390,16 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
                 omitted.extend(original_auto.iter().cloned());
                 let touched = slots.iter().filter(|s| is_auto(s)).count();
                 slots.retain(|s| !is_auto(s));
-                built = rebuild(run, &slots, &effective, &mut memo, "structure-fallback", touched)?;
+                built = rebuild(run, &slots, &effective, &pruned, &mut memo, "structure-fallback", touched)?;
                 let mut all = Ids::of(ids(&built, &slots));
                 all.extend(omitted.list);
                 mesh_dropped = all.list;
             }
         }
+    }
+    // Reported once; a run that ended with all braces off reports that (Brace) alone.
+    if !pruned.is_empty() && !fallback.contains(&Fallback::Brace) {
+        fallback.push(Fallback::BracePruned);
     }
     Ok(Outcome {
         contacts: slots.iter().map(|s| s.contact.clone()).collect(),

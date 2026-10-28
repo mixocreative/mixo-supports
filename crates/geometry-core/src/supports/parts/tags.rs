@@ -48,6 +48,11 @@ pub struct ContactIntent {
     pub face: Option<u32>,
 }
 
+/// Identity of one brace segment: its two endpoints in the generation frame, each coordinate
+/// `round(mm * 100)`, the endpoints ordered lexicographically. Stable across rebuilds, so the repair
+/// can name the segments it leaves out.
+pub type BraceKey = [i32; 6];
+
 /// Tags of one component, set before its triangles are emitted.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tag {
@@ -59,11 +64,13 @@ pub struct Tag {
     /// A pillar landing on the model with its tip built into the tube: its last mm show in the tips view.
     pub landing_reach: Option<f64>,
     pub intents: Vec<ContactIntent>,
+    /// Which segment a brace is (set by `emit_braces`; no other part has one).
+    pub brace: Option<BraceKey>,
 }
 
 impl Tag {
     pub fn new(part: Part) -> Self {
-        Self { part, contact: None, origin: None, structure_kind: None, landing_reach: None, intents: Vec::new() }
+        Self { part, contact: None, origin: None, structure_kind: None, landing_reach: None, intents: Vec::new(), brace: None }
     }
     pub fn owned(part: Part, contact: u32, origin: Origin) -> Self {
         Self { contact: Some(contact), origin: Some(origin), ..Self::new(part) }
@@ -74,6 +81,10 @@ impl Tag {
     }
     pub fn intents(mut self, intents: Vec<ContactIntent>) -> Self {
         self.intents = intents;
+        self
+    }
+    pub fn brace(mut self, key: BraceKey) -> Self {
+        self.brace = Some(key);
         self
     }
     pub fn structure(mut self, kind: StructureKind) -> Self {

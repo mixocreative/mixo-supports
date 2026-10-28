@@ -178,9 +178,13 @@ fn structures(model: &[f32], idx: &[u32], built: &Built) -> Vec<StructurePart> {
 
 #[test]
 fn crossing_structures_never_count_an_intended_neck() {
-    for (part, expected) in [(Part::TreeBranch, StructurePart::TreeBranch), (Part::TreeTrunk, StructurePart::TreeTrunk), (Part::Brace, StructurePart::Brace)] {
+    for (part, expected) in [(Part::TreeBranch, StructurePart::TreeBranch), (Part::TreeTrunk, StructurePart::TreeTrunk)] {
         assert_eq!(structures(&MODEL, &[0, 1, 2], &plain(part, &PIERCING)), vec![expected]);
     }
+    // A brace names its segment.
+    let mut brace = plain(Part::Brace, &PIERCING);
+    brace.components[0].tag.brace = Some([1, 2, 3, 4, 5, 6]);
+    assert_eq!(structures(&MODEL, &[0, 1, 2], &brace), vec![StructurePart::Brace([1, 2, 3, 4, 5, 6])]);
     assert!(structures(&MODEL, &[0, 1, 2], &plain(Part::Neck, &PIERCING)).is_empty());
     assert!(structures(&MODEL, &[0, 1, 2], &plain(Part::TreeBranch, &CLEAR)).is_empty());
     // A tree neck is a branch for the fallback.

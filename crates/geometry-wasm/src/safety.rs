@@ -152,7 +152,7 @@ impl Generation {
     pub fn take_dropped_by_zones(&mut self) -> Vec<String> {
         std::mem::take(&mut self.dropped_by_zones)
     }
-    /// Structures the repair switched off: 1 tree, 2 brace.
+    /// Structures the repair switched off: 1 tree, 2 brace, 3 only the crossing brace segments.
     pub fn take_fallback(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.fallback)
     }
@@ -287,7 +287,7 @@ impl GeometrySession {
             contact_ids: out.contact_ids,
             dropped: out.dropped,
             dropped_by_zones: out.dropped_by_zones,
-            fallback: out.fallback.iter().map(|f| if *f == Fallback::Tree { 1 } else { 2 }).collect(),
+            fallback: out.fallback.iter().map(|f| match f { Fallback::Tree => 1, Fallback::Brace => 2, Fallback::BracePruned => 3 }).collect(),
             status: match out.verdict.status {
                 Status::Clear => 0,
                 Status::Blocked => 1,

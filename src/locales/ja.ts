@@ -606,6 +606,7 @@ export const ja: Dictionary = {
   'Cross-braces': '交差補強材',
   'Tree branches were omitted because they crossed the model. Review the supports before finishing.': 'ツリー分岐がモデルを貫通するため省略しました。完了前にサポートを確認してください。',
   'Cross-braces were omitted because they crossed the model. Review the supports before finishing.': '交差補強材がモデルを貫通するため省略しました。完了前にサポートを確認してください。',
+  'Some cross-braces were left out where they crossed the model. Review the supports before finishing.': '一部の交差補強材は、モデルを貫通する箇所で省略されました。完了前にサポートを確認してください。',
   'Updating support area and tips…': 'サポート領域と先端を更新中…',
   'Could not update the support strip. The previous area is still active.': 'サポート接触帯を更新できませんでした。以前の領域が引き続き有効です。',
   'Updating dental support area on {name}': '{name} のアライナーサポート領域を更新中',

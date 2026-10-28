@@ -1,5 +1,5 @@
 /** Must equal the Rust `engine_version()`; both change together on any ABI change. */
-export const HOST_GEOMETRY_VERSION = 8;
+export const HOST_GEOMETRY_VERSION = 9;
 
 export class GeometryVersionMismatch extends Error {
   readonly code = 'geometry-version-mismatch';
