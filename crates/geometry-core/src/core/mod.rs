@@ -2,6 +2,7 @@
 
 pub mod brush;
 pub mod decimate;
+pub mod digest;
 pub mod jsnum;
 pub mod matrix;
 pub mod mesh;

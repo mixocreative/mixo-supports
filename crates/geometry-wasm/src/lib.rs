@@ -246,6 +246,7 @@ impl GeometrySession {
     pub fn release_mesh(&mut self, handle: u32) -> Result<(), JsValue> {
         // The voxel remesh cache (keyed on mesh bits) may hold this model's state: free it with the mesh.
         mixo_geometry_core::supports::remesh::clear_cache();
+        mixo_geometry_core::dental::cache::clear_cache();
         self.store.release_mesh(handle).map_err(mesh_error)?;
         LIVE_HANDLES.fetch_sub(1, Ordering::Relaxed);
         Ok(())

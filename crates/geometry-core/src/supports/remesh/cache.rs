@@ -10,8 +10,8 @@
 //! `release_mesh`) frees them all.
 
 use super::grid::Remesh;
+use crate::core::digest::mesh_digest;
 use std::cell::{Cell, RefCell};
-use std::hash::{Hash, Hasher};
 
 /// Remeshes kept: the line target's and the scatter's voxel sizes, plus one spare.
 const KEPT: usize = 3;
@@ -28,19 +28,7 @@ pub(super) struct Key {
 
 impl Key {
     pub(super) fn of(positions: &[f32], indices: &[u32], voxel: f64, adaptivity: f64) -> Self {
-        let mut first = std::collections::hash_map::DefaultHasher::new();
-        let mut second: u64 = 0xcbf2_9ce4_8422_2325;
-        for (n, &v) in positions.iter().enumerate() {
-            let bits = v.to_bits();
-            first.write_u32(bits);
-            second = (second ^ u64::from(bits).wrapping_add(n as u64)).wrapping_mul(0x0000_0100_0000_01b3);
-        }
-        for (n, &v) in indices.iter().enumerate() {
-            first.write_u32(v);
-            second = (second ^ u64::from(v).rotate_left(17).wrapping_add(n as u64)).wrapping_mul(0x0000_0100_0000_01b3);
-        }
-        positions.len().hash(&mut first);
-        Self { positions: positions.len(), indices: indices.len(), voxel: voxel.to_bits(), adaptivity: adaptivity.to_bits(), digest: [first.finish(), second] }
+        Self { positions: positions.len(), indices: indices.len(), voxel: voxel.to_bits(), adaptivity: adaptivity.to_bits(), digest: mesh_digest(positions, indices) }
     }
 }
 

@@ -3,6 +3,7 @@
 //! collision, landing, repair or mesh-building code lives in this folder (docs/SHIP-PLAN.md rule 1).
 
 pub mod bands;
+pub mod cache;
 pub mod contour;
 pub mod footprint;
 pub mod incidence;

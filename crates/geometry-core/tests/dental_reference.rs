@@ -146,3 +146,32 @@ fn a_cube_abstains_and_a_malformed_mesh_fails() {
     let tiny = [0f32; 9];
     assert!(matches!(orient_dental(&Mesh::new(&tiny, &[0, 1, 2]), profile), Orientation::Failed { mesh_ok: false, .. }));
 }
+
+/// The detection is kept per (mesh bits, profile): another tuning reuses it, a changed key recomputes.
+#[test]
+fn detection_is_cached_and_a_changed_key_recomputes() {
+    use mixo_geometry_core::dental::cache::{cache_stats, clear_cache};
+    clear_cache();
+    let (positions, indices) = reference();
+    let profile = reference_aligner();
+    let mesh = Mesh::new(&positions, &indices);
+    let base = Tuning::defaults(profile);
+    let (h0, m0) = cache_stats();
+    let first = propose_region(&mesh, &base, profile).expect("region");
+    assert_eq!(cache_stats(), (h0, m0 + 1), "the first detection is computed");
+    let again = propose_region(&mesh, &base, profile).expect("region");
+    assert_eq!(cache_stats(), (h0 + 1, m0 + 1), "the same mesh and profile reuse it");
+    assert_eq!(again, first, "a cached detection gives the same region");
+    let wider = Tuning { strip_width_mm: base.strip_width_mm + 0.5, ..base };
+    let retuned = propose_region(&mesh, &wider, profile).expect("region");
+    assert_eq!(cache_stats(), (h0 + 2, m0 + 1), "another tuning reuses the detection and re-tunes the strip");
+    assert_eq!(retuned.contours, first.contours);
+    // One moved vertex coordinate (one bit) is another mesh: recompute.
+    let mut moved = positions.clone();
+    moved[0] = f32::from_bits(moved[0].to_bits() ^ 1);
+    let _ = propose_region(&Mesh::new(&moved, &indices), &base, profile);
+    assert_eq!(cache_stats().1, m0 + 2, "a changed mesh recomputes");
+    clear_cache();
+    let _ = propose_region(&mesh, &base, profile);
+    assert_eq!(cache_stats().1, m0 + 3, "a cleared cache recomputes");
+}

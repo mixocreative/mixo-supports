@@ -1,6 +1,7 @@
 //! The two-contour support region: outer ridge loop + central opening loop, the face cut they
 //! make, and the narrow contact footprint on the non-fitting side. Produces data only.
 
+use super::cache;
 use super::contour::outer_contour;
 use super::footprint::{Contact, Footprint, RimSide, Tuning, footprint_settings, propose_footprint};
 use super::mesh::Mesh;
@@ -108,8 +109,15 @@ fn classify_faces(context: &Context, outer: &[usize], opening: &[usize], profile
 }
 
 /// Detects the contours and the face cut, then tunes the strip. `Err` is the reason detection
-/// found no area (never a silent empty area).
+/// found no area (never a silent empty area). The detection is kept in `cache` (same mesh bits and
+/// profile), the tuning is applied on top each time.
 pub fn propose_region(mesh: &Mesh, tuning: &Tuning, profile: &AlignerProfile) -> Result<Region, Inconclusive> {
+    let detected = cache::detection(cache::Key::of(mesh.positions, mesh.indices, &profile.id), || detect_region(mesh, profile))?;
+    retune_region(mesh, detected, tuning, profile, None)
+}
+
+/// The contours and the face cut, before any strip is tuned (a function of the mesh and the profile).
+fn detect_region(mesh: &Mesh, profile: &AlignerProfile) -> Result<Region, Inconclusive> {
     let rim = match propose_orientation(mesh, profile) {
         Proposal::Proposal { rim, .. } => rim,
         Proposal::Inconclusive { reason, .. } => return Err(format!("orientation-{}", reason.code())),
@@ -137,7 +145,7 @@ pub fn propose_region(mesh: &Mesh, tuning: &Tuning, profile: &AlignerProfile) ->
         contact_faces: Vec::new(),
         contacts: Vec::new(),
     };
-    retune_region(mesh, region, tuning, profile, None)
+    Ok(region)
 }
 
 /// Recomputes only the narrow strip and exact contacts after operator tuning (or at another
