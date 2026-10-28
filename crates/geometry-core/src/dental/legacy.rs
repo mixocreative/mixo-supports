@@ -119,19 +119,7 @@ impl<'a> OpeningRaycaster<'a> {
 impl LegacyArea<'_> {
     /// The baseline footprint and the ordered edits, the last stamp that reaches the point wins.
     pub fn allowed_at(&self, point: V3, normal: Option<V3>) -> bool {
-        for stamp in self.stamps.iter().rev() {
-            let d = sub(point, stamp.center);
-            if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] > stamp.radius * stamp.radius {
-                continue;
-            }
-            if let Some(n) = normal
-                && n[0] * stamp.normal[0] + n[1] * stamp.normal[1] + n[2] * stamp.normal[2] <= 0.0
-            {
-                continue;
-            }
-            return stamp.allow;
-        }
-        !self.manual_area && rim_contains(self.rim, point)
+        AreaStamp::resolve(self.stamps, point, normal).unwrap_or_else(|| !self.manual_area && rim_contains(self.rim, point))
     }
 
     /// The final automatic-contact gate: approval never bypasses the cavity opening's view of the point.

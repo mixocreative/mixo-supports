@@ -26,7 +26,7 @@ use super::safety::conflicts::SupportMesh;
 use super::safety::index::CollisionIndex;
 use super::safety::rim::{RingCoverage, ring_coverage};
 use super::settings::{RoofMode, SupportSettings};
-use super::zones::ZoneStamp;
+use super::policy::AreaStamp;
 use islands::{IslandInput, island_verdict};
 
 pub struct GenerateInput<'a> {
@@ -36,7 +36,7 @@ pub struct GenerateInput<'a> {
     /// The model in plate space; without one nothing can cross it and the verdict is `Clear`.
     pub model: Option<&'a Model<'a>>,
     pub label_text: &'a str,
-    pub zones: &'a [ZoneStamp],
+    pub zones: &'a [AreaStamp],
     pub policy: &'a PolicyResult,
     /// Polled between steps; once true the remaining work is skipped and the verdict is inconclusive.
     pub expired: &'a dyn Fn() -> bool,

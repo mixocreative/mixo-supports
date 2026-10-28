@@ -62,7 +62,7 @@ fn raft_label_roof_and_cage_build_from_the_column_feet_without_a_model() {
 
 #[test]
 fn zones_leave_out_the_columns_that_land_in_them_and_report_them() {
-    let zone = ZoneStamp { center: [3.0, 0.0, 0.0], normal: [0.0, 1.0, 0.0], radius: 1.0, paint: true };
+    let zone = AreaStamp { center: [3.0, 0.0, 0.0], normal: [0.0, 1.0, 0.0], radius: 1.0, allow: true };
     let host = HostChoices { zones: &[zone], ..HostChoices::default() };
     let plate = |host: &HostChoices| build_supports(&contacts(), &columns_only(), BuildMode::Export, None, LandingSource::Model, host).unwrap();
     // Without a model nothing lands on it, so nothing is zoned.

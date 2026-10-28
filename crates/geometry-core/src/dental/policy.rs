@@ -6,7 +6,7 @@
 
 use super::footprint::{RimSide, Tuning, footprint_settings};
 use super::mesh::Mesh;
-use crate::core::vec::{add, cross, dot, normalize, scale, sub};
+use crate::core::vec::{add, cross, normalize, scale, sub};
 use super::profiles::AlignerProfile;
 use super::region::{Region, propose_region, retune_region};
 use crate::core::matrix::{Matrix4, apply_to_direction, apply_to_point};
@@ -95,14 +95,7 @@ pub fn area_allows(contact_faces: &[u8], stamps: &[AreaStamp], face: u32, point:
     if contact_faces.get(face as usize) != Some(&1) {
         return false;
     }
-    for stamp in stamps.iter().rev() {
-        let d = sub(point, stamp.center);
-        if dot(d, d) > stamp.radius * stamp.radius || dot(normal, stamp.normal) <= 0.0 {
-            continue;
-        }
-        return stamp.allow;
-    }
-    true
+    AreaStamp::resolve(stamps, point, Some(normal)).unwrap_or(true)
 }
 
 fn mask_of(flags: impl Iterator<Item = bool>, len: usize) -> FaceMask {
@@ -290,11 +283,7 @@ pub fn faces_painted_by_stamps(mesh: &Mesh, stamps: &[Stamp]) -> Vec<u32> {
         let [a, b, c] = mesh.face_points(face);
         let centroid = scale(add(add(add([0.0; 3], a), b), c), 1.0 / 3.0);
         let normal = normalize(cross(sub(b, a), sub(c, a)));
-        let verdict = stamps.iter().rev().find(|stamp| {
-            let d = sub(centroid, stamp.center);
-            dot(d, d) <= stamp.radius * stamp.radius && dot(normal, stamp.normal) > 0.0
-        });
-        if verdict.is_some_and(|stamp| stamp.allow) {
+        if AreaStamp::resolve(stamps, centroid, Some(normal)) == Some(true) {
             painted.push(face as u32);
         }
     }

@@ -19,7 +19,7 @@ use crate::core::vec::{V3, normalize_or_down, scale, sub};
 use super::parts::tree::{emit_tree, landing_source};
 use super::parts::structures::emit_structures;
 use super::settings::{PreviewMode, SupportSettings};
-use super::zones::ZoneStamp;
+use super::policy::AreaStamp;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BuildMode {
@@ -64,7 +64,7 @@ pub struct BuiltSupports {
 #[derive(Default)]
 pub struct HostChoices<'a> {
     pub label_text: &'a str,
-    pub zones: &'a [ZoneStamp],
+    pub zones: &'a [AreaStamp],
     /// True where a support may land; an automatic support landing elsewhere is left out.
     pub landing_allowed: Option<&'a dyn Fn(&Landing) -> bool>,
 }

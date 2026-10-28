@@ -9,7 +9,8 @@ use crate::supports::edits::compose_contacts;
 use crate::supports::parts::column::ContactKind;
 use crate::supports::policy::{AllowedStructures, Candidate, CandidateId, FaceMask, Origin, PolicyResult};
 use crate::supports::settings::{RoofMode, SupportSettings};
-use crate::supports::zones::{ZoneStamp, zoned_at};
+use crate::supports::policy::AreaStamp;
+use crate::supports::zones::zoned_at;
 
 /// A stored contact of a unit (unit-local space).
 #[derive(Clone, Debug, PartialEq)]
@@ -26,7 +27,7 @@ pub struct GenericInput<'a> {
     pub auto: &'a [PolicyPoint],
     pub manual: &'a [PolicyPoint],
     pub deleted: &'a [String],
-    pub zones: &'a [ZoneStamp],
+    pub zones: &'a [AreaStamp],
 }
 
 /// The result and, per candidate, the SLASG point class the build samples its neck normal by.
@@ -88,7 +89,7 @@ mod tests {
         let settings = SupportSettings::from_slice(&default_values()).unwrap();
         let auto = [point("auto-0_500_0", 0.0, Source::Interior), point("auto-100_500_0", 1.0, Source::Island), point("auto-200_500_0", 2.0, Source::SharpRidge)];
         let manual = [point("manual-1", 2.0, Source::Interior)];
-        let zone = ZoneStamp { center: [2.0, 5.0, 0.0], normal: [0.0, -1.0, 0.0], radius: 0.5, paint: true };
+        let zone = AreaStamp { center: [2.0, 5.0, 0.0], normal: [0.0, -1.0, 0.0], radius: 0.5, allow: true };
         let policy = generic_policy(&GenericInput { face_count: 4, auto: &auto, manual: &manual, deleted: &["auto-0_500_0".into()], zones: &[zone] }, &settings);
         let ids: Vec<&str> = policy.result.candidates.iter().map(|c| c.id.0.as_str()).collect();
         assert_eq!(ids, vec!["auto-100_500_0", "manual-1"]);

@@ -1,5 +1,8 @@
 //! The policy contract (docs/SHIP-PLAN.md, Contracts). A policy is data: it produces a
-//! `PolicyResult` that the support engine consumes. No behavior lives here.
+//! `PolicyResult` that the support engine consumes. No behavior lives here except `AreaStamp::resolve`,
+//! the one statement of the brush-stamp rule.
+
+use crate::core::vec::{dot, sub};
 
 /// Bitset over the faces of the source mesh.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -88,6 +91,22 @@ pub struct AreaStamp {
     pub radius: f64,
     pub normal: [f64; 3],
     pub allow: bool,
+}
+
+impl AreaStamp {
+    /// What the ordered `stamps` say about a point: the last stamp whose sphere holds it (and, given a
+    /// `normal`, that faces the same side as the stamp, so a thin wall's far side is not reached) wins;
+    /// `None` when none reaches it. The one place this rule is written.
+    pub fn resolve(stamps: &[AreaStamp], point: [f64; 3], normal: Option<[f64; 3]>) -> Option<bool> {
+        stamps
+            .iter()
+            .rev()
+            .find(|stamp| {
+                let d = sub(point, stamp.center);
+                dot(d, d) <= stamp.radius * stamp.radius && normal.is_none_or(|n| dot(n, stamp.normal) > 0.0)
+            })
+            .map(|stamp| stamp.allow)
+    }
 }
 
 /// Where a support's secondary contact (a column or tree landing on the model) may land.

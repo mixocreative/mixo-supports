@@ -8,14 +8,15 @@ use super::parts::landing::Landing;
 use crate::core::vec::{normalize_or_down, scale, sub};
 use super::settings::SupportSettings;
 use super::policy::Origin;
-use super::zones::{ZoneStamp, zoned_at};
+use super::policy::AreaStamp;
+use super::zones::zoned_at;
 
 pub struct OmitInput<'a, 'f> {
     pub contacts: &'a [ColumnContact],
     pub settings: &'a SupportSettings,
     pub tip_only: bool,
     pub layout: Option<&'a AutoTreeLayout>,
-    pub zones: &'a [ZoneStamp],
+    pub zones: &'a [AreaStamp],
     /// Landing rule (`PolicyResult::landing_rule`): true when a support may land there. An automatic
     /// column or tree whose landing it rejects is left out.
     pub landing_allowed: Option<&'a dyn Fn(&Landing) -> bool>,
@@ -34,14 +35,14 @@ pub struct Omissions {
     pub by_zones: Vec<u32>,
 }
 
-pub fn policy_active(zones: &[ZoneStamp], landing_allowed: Option<&dyn Fn(&Landing) -> bool>) -> bool {
-    zones.iter().any(|z| z.paint) || landing_allowed.is_some()
+pub fn policy_active(zones: &[AreaStamp], landing_allowed: Option<&dyn Fn(&Landing) -> bool>) -> bool {
+    zones.iter().any(|z| z.allow) || landing_allowed.is_some()
 }
 
 pub fn omissions(input: OmitInput) -> Omissions {
     let OmitInput { contacts, settings, tip_only, layout, zones, landing_allowed, column_hit, tree_hit } = input;
     let rejected = |landing: &Option<Landing>| landing.as_ref().is_some_and(|l| landing_allowed.is_some_and(|allowed| !allowed(l)));
-    let zones_on = zones.iter().any(|z| z.paint);
+    let zones_on = zones.iter().any(|z| z.allow);
     let zoned = |landing: &Option<Landing>| zones_on && landing.as_ref().is_some_and(|l| zoned_at(zones, l.point, Some(l.normal)));
     let n = contacts.len();
     let mut dropped = vec![false; n];

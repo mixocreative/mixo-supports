@@ -6,7 +6,7 @@ use crate::supports::parts::column::ColumnContact;
 use crate::supports::parts::landing::Landing;
 use crate::supports::parts::model::Model;
 use crate::core::vec::{V3, cross, dot, sub};
-use crate::supports::policy::{AutomaticRule, Candidate, LandingRule, Origin, PolicyResult};
+use crate::supports::policy::{AutomaticRule, AreaStamp, Candidate, LandingRule, Origin, PolicyResult};
 use crate::supports::settings::SupportSettings;
 
 /// Whether a contact at `point` with `normal` reproduces `candidate`: within `tol_mm` and with
@@ -97,13 +97,6 @@ pub fn landing_allowed<'a>(model: &'a Model<'a>, policy: &'a PolicyResult) -> Op
             return false;
         }
         let point = landing.source_point.unwrap_or(landing.point);
-        for stamp in stamps.iter().rev() {
-            let d = sub(point, stamp.center);
-            if dot(d, d) > stamp.radius * stamp.radius || dot(normal, stamp.normal) <= 0.0 {
-                continue;
-            }
-            return stamp.allow;
-        }
-        true
+        AreaStamp::resolve(stamps, point, Some(normal)).unwrap_or(true)
     })
 }
