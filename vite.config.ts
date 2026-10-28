@@ -1,3 +1,4 @@
+import { configDefaults } from 'vitest/config';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
@@ -12,5 +13,7 @@ export default defineConfig({
     testTimeout: 60000,
     // Worker threads drop onTaskUpdate RPCs under heavy WASM load; forks do not.
     pool: 'forks',
+    // Agent worktrees live under .claude/worktrees; their copies are not this checkout's tests.
+    exclude: [...configDefaults.exclude, '.claude/**'],
   },
 });

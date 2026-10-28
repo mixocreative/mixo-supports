@@ -268,7 +268,7 @@ impl GeometrySession {
             ..empty_region()
         };
         let phase = (!phase_fraction.is_nan()).then_some(phase_fraction);
-        Ok(finish(retune_region(&mesh, region, &tuning_of(tuning)?, profile, phase)))
+        Ok(finish(retune_region(&mesh, region, &tuning_of(tuning)?, profile, phase, None)))
     }
 }
 

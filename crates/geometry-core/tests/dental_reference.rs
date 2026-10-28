@@ -9,7 +9,7 @@ use mixo_geometry_core::core::matrix::placement_matrix;
 use mixo_geometry_core::dental::policy::{AreaOrigin, DentalArea, DentalPolicyInput, DentalStructure, SavedRegion, dental_policy};
 use mixo_geometry_core::dental::profiles::{AlignerProfile, parse, reference_aligner};
 use mixo_geometry_core::supports::policy::{AreaStamp, AutomaticRule, LandingRule};
-use mixo_geometry_core::dental::region::propose_region;
+use mixo_geometry_core::dental::region::{propose_region, propose_region_facing};
 
 fn reference() -> (Vec<f32>, Vec<u32>) {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/dental-reference/reference-aligner.stl");
@@ -44,7 +44,8 @@ fn reference_region_matches_the_pinned_counts() {
 
 fn policy_of(mesh: &Mesh, profile: &AlignerProfile, stamps: &[AreaStamp], frame: [f64; 3]) -> (mixo_geometry_core::dental::region::Region, mixo_geometry_core::dental::policy::DentalPolicy) {
     let tuning = Tuning::defaults(profile);
-    let region = propose_region(mesh, &tuning, profile).expect("region");
+    // The policy places tips for its frame's plate normal; these frames only translate, so +Y.
+    let region = propose_region_facing(mesh, &tuning, profile, Some([0.0, 1.0, 0.0])).expect("region");
     let saved = SavedRegion { allowed_faces: &region.allowed_faces, contact_faces: &region.contact_faces, outer_edges: &region.contours.outer_edges, opening_edges: &region.contours.opening_edges };
     let frame = placement_matrix(frame, [0.0; 3]);
     let input = DentalPolicyInput { mesh, profile, area: DentalArea::TwoContour { tuning, saved }, stamps, structure: DentalStructure { tree: true, brace: false }, frame: &frame };
@@ -70,7 +71,14 @@ fn reference_policy_is_built_in_rust() {
     assert!(r.candidates.iter().any(|c| c.id.0 == "dental-outer-0") && r.candidates.iter().any(|c| c.id.0 == "dental-opening-0"));
     // Candidates are in the output frame (lifted by 7 mm), the strip is the permitted area.
     assert!((r.candidates[0].point[1] - region.contacts[0].contact.position[1] - 7.0).abs() < 1e-9);
-    assert_eq!(r.permitted_faces.count(), region.contact_faces.iter().filter(|&&f| f == 1).count());
+    // The permitted area is the strip plus the faces tips moved to so a support reaches them from
+    // below: each such tip faces down at least as far as the profile asks.
+    let strip = region.contact_faces.iter().filter(|&&f| f == 1).count();
+    let off_strip: std::collections::HashSet<u32> = r.candidates.iter().chain(r.alternates.iter().flat_map(|(_, o)| o)).filter_map(|c| c.source_face).filter(|&f| region.contact_faces[f as usize] == 0).collect();
+    assert!(!off_strip.is_empty());
+    assert_eq!(r.permitted_faces.count(), strip + off_strip.len());
+    let max_up = profile.defaults.tip_min_from_up_deg.to_radians().cos();
+    assert!(r.candidates.iter().all(|c| c.normal[1] <= max_up + 1e-9), "every reference tip is reachable from below");
     assert_eq!(r.automatic, AutomaticRule::MatchCandidates { tol_mm: 0.03, min_dot: 0.95 });
     assert!(matches!(r.landing_rule, LandingRule::ApprovedFaces { .. }) && r.islands_outside_permitted);
     assert_eq!(r.repair_budget, profile.defaults.repair_budget);
@@ -89,6 +97,30 @@ fn reference_policy_is_built_in_rust() {
     assert_eq!(r.rings.len(), 2);
     assert!(r.rings[0].perimeter_mm > 0.0 && r.rings[1].perimeter_mm > 0.0);
     assert_eq!(r.rings.iter().map(|ring| ring.arcs.len()).sum::<usize>(), r.candidates.len() + seen.len());
+}
+
+/// Tips a support cannot reach from below move to a face within the profile's move distance that
+/// it can: on the reference the 13 up-facing opening tips (normal y 0.84-0.98 in the print pose)
+/// move across the edge. The masks do not depend on the pose; every slider setting still places.
+#[test]
+fn reference_tips_move_where_a_support_reaches_them_from_below() {
+    let (positions, indices) = reference();
+    let mesh = Mesh::new(&positions, &indices);
+    let profile = reference_aligner();
+    let up = Some([0.0, 1.0, 0.0]);
+    let max_up = profile.defaults.tip_min_from_up_deg.to_radians().cos();
+    for tuning in [Tuning::defaults(profile), Tuning { position_mm: 1.2, strip_width_mm: 2.4, density: 2.0 }, Tuning { position_mm: -0.4, strip_width_mm: 0.2, density: 0.5 }] {
+        let plain = propose_region(&mesh, &tuning, profile).expect("region");
+        let facing = propose_region_facing(&mesh, &tuning, profile, up).expect("region");
+        assert_eq!((&plain.contact_faces, &plain.allowed_faces), (&facing.contact_faces, &facing.allowed_faces));
+        let up_facing = |r: &mixo_geometry_core::dental::region::Region| r.contacts.iter().filter(|c| c.contact.normal[1] > max_up).count();
+        assert!(up_facing(&facing) < up_facing(&plain), "{tuning:?}: {} -> {}", up_facing(&plain), up_facing(&facing));
+        assert!(facing.contacts.len() + 2 >= plain.contacts.len(), "{tuning:?}: the move keeps the samples");
+    }
+    let facing = propose_region_facing(&mesh, &Tuning::defaults(profile), profile, up).expect("region");
+    assert_eq!(facing.contacts.iter().filter(|c| c.contact.normal[1] > max_up).count(), 0);
+    let opening = facing.contacts.iter().filter(|c| c.rim == mixo_geometry_core::dental::footprint::RimSide::Opening).count();
+    assert_eq!((facing.contacts.len(), opening), (94, 23));
 }
 
 #[test]

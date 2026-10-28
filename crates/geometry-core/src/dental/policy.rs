@@ -9,7 +9,7 @@ use super::mesh::Mesh;
 use super::paint::{PaintFill, paint_contacts};
 use crate::core::vec::{V3, distance, sub};
 use super::profiles::AlignerProfile;
-use super::region::{Region, propose_region, retune_region};
+use super::region::{Region, propose_region_facing, retune_region};
 use crate::core::matrix::{Matrix4, apply_to_direction, apply_to_point};
 use crate::supports::policy::{AllowedStructures, AreaStamp, AutomaticRule, Candidate, CandidateId, FaceMask, LandingRule, Origin, PolicyResult, Ring, StructureChoice};
 use crate::core::jsnum::hypot3;
@@ -113,6 +113,22 @@ fn mask_of(flags: impl Iterator<Item = bool>, len: usize) -> FaceMask {
     mask
 }
 
+/// The plate normal (+Y of `frame`) in the unit-local frame: tips must be reachable from below it.
+fn plate_up(frame: &Matrix4) -> V3 {
+    [frame[1], frame[5], frame[9]]
+}
+
+/// Gate of a contour contact: on the strip as [`area_allows`]; off the strip it was moved there to
+/// be reachable from below (`sampling::FromBelow`, the only way a contour contact leaves the
+/// strip), and an erase stamp reaching it still takes it out.
+fn contour_allows(contact_faces: &[u8], stamps: &[AreaStamp], c: &super::sampling::ContourContact) -> bool {
+    match contact_faces.get(c.face as usize) {
+        Some(1) => area_allows(contact_faces, stamps, c.face, c.position, c.normal),
+        Some(_) => AreaStamp::resolve(stamps, c.position, Some(c.normal)).unwrap_or(true),
+        None => false,
+    }
+}
+
 fn through(frame: &Matrix4, point: [f64; 3], normal: [f64; 3]) -> ([f64; 3], [f64; 3]) {
     (apply_to_point(frame, point[0], point[1], point[2]), apply_to_direction(frame, normal[0], normal[1], normal[2]))
 }
@@ -166,13 +182,15 @@ pub fn dental_policy(input: &DentalPolicyInput) -> DentalPolicy {
                 islands_outside_permitted: true,
                 ..base.clone()
             };
-            let Some(region) = reproduce(mesh, tuning, saved, profile) else { return finish(closed, AreaOrigin::Detected, false) };
-            // The area is the strip plus every painted face; erase stamps take faces back out
-            // through the landing rule and the candidate gate.
+            let Some(region) = reproduce(mesh, tuning, saved, profile, plate_up(frame)) else { return finish(closed, AreaOrigin::Detected, false) };
+            // The area is the strip plus every painted face plus the faces tips moved to so a
+            // support reaches them from below; erase stamps take faces back out through the
+            // landing rule and the candidate gate.
             let painted = faces_painted_by_stamps(mesh, stamps);
             let (candidates, alternates, rings) = contacts_of(input, &region, tuning, &painted);
             let mut permitted = mask_of(region.contact_faces.iter().map(|&f| f == 1), faces);
-            for &face in &painted {
+            let moved = candidates.iter().chain(alternates.iter().flat_map(|(_, list)| list)).filter(|c| c.origin == Origin::Auto).filter_map(|c| c.source_face);
+            for face in painted.iter().copied().chain(moved) {
                 permitted.set(face as usize, true);
             }
             let result = PolicyResult {
@@ -187,9 +205,10 @@ pub fn dental_policy(input: &DentalPolicyInput) -> DentalPolicy {
     }
 }
 
-/// The region detection gives now, only when it is exactly the saved one.
-fn reproduce(mesh: &Mesh, tuning: &Tuning, saved: &SavedRegion, profile: &AlignerProfile) -> Option<Region> {
-    let region = propose_region(mesh, tuning, profile).ok()?;
+/// The region detection gives now, only when it is exactly the saved one (its contacts placed for
+/// plate normal `up`, which does not change the masks).
+fn reproduce(mesh: &Mesh, tuning: &Tuning, saved: &SavedRegion, profile: &AlignerProfile, up: V3) -> Option<Region> {
+    let region = propose_region_facing(mesh, tuning, profile, Some(up)).ok()?;
     let same = region.allowed_faces == saved.allowed_faces
         && region.contact_faces == saved.contact_faces
         && region.contours.outer_edges == saved.outer_edges
@@ -203,7 +222,7 @@ type Alternates = Vec<(CandidateId, Vec<Candidate>)>;
 /// phase-zero repair alternates and the two contact rings.
 fn contacts_of(input: &DentalPolicyInput, region: &Region, tuning: &Tuning, painted: &[u32]) -> (Vec<Candidate>, Alternates, Vec<Ring>) {
     let DentalPolicyInput { mesh, profile, stamps, frame, .. } = input;
-    let gate = |c: &super::sampling::ContourContact| area_allows(&region.contact_faces, stamps, c.face, c.position, c.normal);
+    let gate = |c: &super::sampling::ContourContact| contour_allows(&region.contact_faces, stamps, c);
     let candidate = |id: CandidateId, c: &super::sampling::ContourContact| {
         let (point, normal) = through(frame, c.position, c.normal);
         Candidate { id, source_face: Some(c.face), point, normal, origin: Origin::Auto }
@@ -224,7 +243,7 @@ fn contacts_of(input: &DentalPolicyInput, region: &Region, tuning: &Tuning, pain
     // Phase-zero samples sit half a spacing before each primary; each is offered to the primary
     // that follows it on its rim (within one spacing), so no two contacts can move to one spot.
     let settings = footprint_settings(tuning, profile).ok();
-    let phase_zero = retune_region(mesh, region.clone(), tuning, profile, Some(0.0)).map(|r| r.contacts).unwrap_or_default();
+    let phase_zero = retune_region(mesh, region.clone(), tuning, profile, Some(0.0), Some(plate_up(frame))).map(|r| r.contacts).unwrap_or_default();
     let mut alternates: Alternates = Vec::new();
     let mut alternate_arcs: Vec<(RimSide, CandidateId, f64)> = Vec::new();
     let mut alt_counters = [0usize; 2];

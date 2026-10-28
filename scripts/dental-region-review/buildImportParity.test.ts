@@ -27,13 +27,17 @@ describe('dental import and preview parity', () => {
     if (review.kind !== 'proposal') return;
     expect(review.supports.droppedByPath).toBeUndefined();
     const retained = new Set(review.supports.components.flatMap((part) => part.contactId ? [part.contactId] : []));
-    // 80 of the 94 placed primaries (71 outer, 23 opening; none closer than 0.6 mm) are built as placed;
-    // the other 14 crossed the model with their pillar or their tip (after the neck re-aim) and were
-    // left out (no repair alternate cleared).
+    // All 94 placed primaries (71 outer, 23 opening; none closer than 0.6 mm) are built: a tip whose
+    // face a support could not reach from below was moved to one it can before placement (80 before
+    // that move; the other 14 crossed the model and were left out). In this centred frame one opening
+    // primary still crosses and the repair builds its phase-zero alternate instead (an id that is not
+    // a placed primary), so the count stays.
     const placed = new Set(review.placement.points.map((point) => point.id));
     expect(placed.size).toBe(94);
-    expect(retained.size).toBe(80);
-    expect([...retained].filter((id) => !placed.has(id))).toHaveLength(0);
+    expect(retained.size).toBe(94);
+    const substituted = [...retained].filter((id) => !placed.has(id));
+    expect(substituted.length).toBeLessThanOrEqual(1);
+    expect([...placed].filter((id) => !retained.has(id))).toHaveLength(substituted.length);
   }, 180000);
 
   it('keeps dental automatic contact IDs the same in preview and export', () => {

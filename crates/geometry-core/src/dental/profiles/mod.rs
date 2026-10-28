@@ -113,6 +113,16 @@ pub struct Defaults {
     /// 0.6: just over one 0.5 mm tip, so it removes the reference's 0.31 mm hairpin pair but keeps
     /// density 1.5 (opening tips 0.64-1.0 mm apart in space) intact.
     pub min_tip_separation_mm: f64,
+    /// A tip must be reachable by a support from below in the print pose: its face normal at least
+    /// this many degrees from straight up (90: sideways; profile 110: at least 20 degrees below
+    /// horizontal). Far stricter than the neck's geometric limit (a 45-degree neck leaves any face
+    /// more than 45 degrees from up), because the pillar under a nearly sideways rim face still
+    /// crosses the aligner. Calibrated on case-001: 90-105 leave 2-3 opening tips out, 110 none,
+    /// 120 six (fewer faces within reach qualify).
+    pub tip_min_from_up_deg: f64,
+    /// ... otherwise the tip moves to the best face that is, within this surface distance (mm) of
+    /// the area on either side of the edge; with none there it stays (the repair decides).
+    pub tip_move_max_mm: f64,
 }
 
 /// The Step 3 support settings a new aligner of this type starts with (the operator can change
@@ -204,6 +214,7 @@ mod tests {
         assert_eq!(profile.thresholds.ridge_first_min_mm, 35.0);
         assert_eq!(profile.pose.tilt_deg, 46.4577512332);
         assert_eq!(profile.defaults.min_tip_separation_mm, 0.6);
+        assert_eq!((profile.defaults.tip_min_from_up_deg, profile.defaults.tip_move_max_mm), (110.0, 1.0));
         assert_eq!(profile.thresholds.region_forbidden_mean_max, -0.15);
         assert_eq!((profile.defaults.position_mm, profile.defaults.strip_width_mm, profile.defaults.density), (0.25, 0.5, 1.0));
         assert_eq!((profile.defaults.position_min_mm, profile.defaults.position_max_mm), (-0.4, 2.5));

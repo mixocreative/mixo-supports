@@ -4,7 +4,7 @@
 use super::bands::{FaceGraph, face_graph};
 use super::incidence::inspect_contour_incidence;
 use super::mesh::{Mesh, MinHeap};
-use crate::core::vec::{V3, distance};
+use crate::core::vec::{V3, distance, dot};
 use crate::core::jsnum::hypot3;
 use std::collections::{HashMap, HashSet};
 
@@ -24,6 +24,8 @@ pub struct Sampled {
     /// Samples left out for lying closer than the minimum separation to an accepted contact.
     pub crowded_samples: usize,
     pub perimeter: f64,
+    /// Samples whose tip moved to a face a support can reach from below ([`FromBelow`]).
+    pub moved_samples: usize,
 }
 
 /// How one contour is sampled: every `spacing` mm of contour length, starting `phase_mm` along
@@ -40,6 +42,20 @@ pub struct SampleSettings<'a> {
     pub keep_clear_of: &'a [ContourContact],
     /// Where on the band a tip goes. `None`: the band face nearest the sample point.
     pub tip_line: Option<TipLine<'a>>,
+    /// Tips a support must reach from below in the print pose. `None`: tips stay where the line puts them.
+    pub from_below: Option<FromBelow<'a>>,
+}
+
+/// A support reaches a tip from below: a chosen face whose normal points up more than `max_up`
+/// (`dot(normal, up)`, `up` the print pose's plate normal in the mesh frame) moves the tip to the
+/// best face of `reachable` that does not, by the same line score, searched from both incident
+/// faces (so either side of the edge). `reachable` is the area widened by the profile's move
+/// distance. With no such face the tip stays and the engine's repair decides.
+#[derive(Clone, Copy, Debug)]
+pub struct FromBelow<'a> {
+    pub up: V3,
+    pub max_up: f64,
+    pub reachable: &'a [u8],
 }
 
 /// The area's middle line: tips go to the band face whose signed contour distance is closest to
@@ -171,10 +187,11 @@ pub fn sample_contour_contacts(mesh: &Mesh, contour: &[u32], side_band: &[u8], s
 }
 
 fn check_settings(mesh: &Mesh, side_band: &[u8], settings: &SampleSettings) -> Result<(), &'static str> {
-    let SampleSettings { spacing, max_search, phase_mm, min_separation, tip_line, .. } = *settings;
+    let SampleSettings { spacing, max_search, phase_mm, min_separation, tip_line, from_below, .. } = *settings;
     let phase = phase_mm.unwrap_or(spacing / 2.0);
     let line_ok = tip_line.is_none_or(|l| l.at.is_finite() && l.signed.len() == mesh.face_count());
-    if !spacing.is_finite() || spacing <= 0.0 || !max_search.is_finite() || max_search <= 0.0 || !phase.is_finite() || phase < 0.0 || phase >= spacing || !(min_separation >= 0.0) || !min_separation.is_finite() || side_band.len() != mesh.face_count() || !line_ok {
+    let below_ok = from_below.is_none_or(|b| b.up.iter().chain([&b.max_up]).all(|v| v.is_finite()) && b.reachable.len() == mesh.face_count());
+    if !spacing.is_finite() || spacing <= 0.0 || !max_search.is_finite() || max_search <= 0.0 || !phase.is_finite() || phase < 0.0 || phase >= spacing || !(min_separation >= 0.0) || !min_separation.is_finite() || side_band.len() != mesh.face_count() || !line_ok || !below_ok {
         return Err("invalid-sampling-input");
     }
     Ok(())
@@ -183,7 +200,7 @@ fn check_settings(mesh: &Mesh, side_band: &[u8], settings: &SampleSettings) -> R
 /// Samples one contour whose incident face pairs (`pairs`) and cut face graph (`walk`) are known.
 pub fn sample_with(mesh: &Mesh, contour: &[u32], pairs: &[u32], walk: &Walk, side_band: &[u8], settings: &SampleSettings) -> Result<Sampled, &'static str> {
     check_settings(mesh, side_band, settings)?;
-    let SampleSettings { spacing, max_search, phase_mm, min_separation, keep_clear_of, tip_line } = *settings;
+    let SampleSettings { spacing, max_search, phase_mm, min_separation, keep_clear_of, tip_line, from_below } = *settings;
     let phase = phase_mm.unwrap_or(spacing / 2.0);
     let ordered = ordered_vertices(contour);
     let faces = band_faces(mesh, side_band);
@@ -193,6 +210,14 @@ pub fn sample_with(mesh: &Mesh, contour: &[u32], pairs: &[u32], walk: &Walk, sid
     }
     let reach = max_search + tip_line.map_or(0.0, |l| l.at.abs());
     let face_data: HashMap<u32, ContourContact> = faces.iter().map(|f| (f.face, *f)).collect();
+    // The faces a tip may move to when its own face looks up: reachable and not looking up.
+    let below = match from_below {
+        Some(b) => {
+            let faces = band_faces(mesh, b.reachable).ok_or("empty-or-invalid-band")?;
+            Some((b, faces.into_iter().filter(|f| dot(f.normal, b.up) <= b.max_up).map(|f| (f.face, f)).collect::<HashMap<u32, ContourContact>>()))
+        }
+        None => None,
+    };
     let vertex_count = mesh.vertex_count() as u64;
     let edge_key = |a: u32, b: u32| u64::from(a.min(b)) * vertex_count + u64::from(a.max(b));
     let incident: HashMap<u64, [u32; 2]> = contour.chunks_exact(2).enumerate().map(|(at, p)| (edge_key(p[0], p[1]), [pairs[at * 2], pairs[at * 2 + 1]])).collect();
@@ -219,6 +244,7 @@ pub fn sample_with(mesh: &Mesh, contour: &[u32], pairs: &[u32], walk: &Walk, sid
     let mut used: HashSet<u32> = HashSet::new();
     let mut skipped = 0;
     let mut crowded = 0;
+    let mut moved = 0;
     // Arclength alone does not keep tips apart where the contour folds back on itself (the
     // arch's distal hairpin) or passes close to the other contour: check the 3D distance too.
     let crowds = |position: V3, contacts: &[ContourContact]| keep_clear_of.iter().chain(contacts).any(|c| distance(c.position, position) < min_separation);
@@ -241,6 +267,19 @@ pub fn sample_with(mesh: &Mesh, contour: &[u32], pairs: &[u32], walk: &Walk, sid
             (Some(a), Some(b)) if tip_line.is_some_and(|l| l.either_side) => Some(if b.2 < a.2 || (b.2 == a.2 && b.0.face < a.0.face) { b } else { a }),
             _ => None,
         };
+        let chosen = match (chosen, &below) {
+            (Some(c), Some((b, reachable))) if dot(c.0.normal, b.up) > b.max_up => {
+                let one = local_candidate(segment.sides[0] as usize, point, walk, reachable, &used, reach, tip_line.as_ref());
+                let two = local_candidate(segment.sides[1] as usize, point, walk, reachable, &used, reach, tip_line.as_ref());
+                let better = match (one, two) {
+                    (Some(a), Some(b)) => Some(if b.2 < a.2 || (b.2 == a.2 && b.0.face < a.0.face) { b } else { a }),
+                    (a, b) => a.or(b),
+                };
+                moved += usize::from(better.is_some());
+                better.or(Some(c))
+            }
+            (chosen, _) => chosen,
+        };
         match chosen {
             None => skipped += 1,
             Some((contact, ..)) if crowds(contact.position, &contacts) => crowded += 1,
@@ -251,7 +290,7 @@ pub fn sample_with(mesh: &Mesh, contour: &[u32], pairs: &[u32], walk: &Walk, sid
         }
         along += spacing;
     }
-    Ok(Sampled { contacts, skipped_samples: skipped, crowded_samples: crowded, perimeter })
+    Ok(Sampled { contacts, skipped_samples: skipped, crowded_samples: crowded, perimeter, moved_samples: moved })
 }
 
 #[cfg(test)]
@@ -294,7 +333,7 @@ mod tests {
     fn a_hairpin_keeps_its_tips_the_minimum_separation_apart() {
         let (positions, indices, contour, band) = hairpin();
         let mesh = Mesh::new(&positions, &indices);
-        let settings = SampleSettings { spacing: 1.0, max_search: 1.0, phase_mm: None, min_separation: 0.0, keep_clear_of: &[], tip_line: None };
+        let settings = SampleSettings { spacing: 1.0, max_search: 1.0, phase_mm: None, min_separation: 0.0, keep_clear_of: &[], tip_line: None, from_below: None };
         let free = sample_contour_contacts(&mesh, &contour, &band, &settings).unwrap();
         assert!(closest_pair(&free.contacts, &[]) < 1.0, "arclength alone puts tips across the hairpin closer than 1 mm");
         assert_eq!(free.crowded_samples, 0);
@@ -313,7 +352,7 @@ mod tests {
         let mesh = Mesh::new(&positions, &indices);
         // Distance inside the 0.6 mm wide hairpin from its lower side (y = 0.6).
         let signed: Vec<f64> = (0..mesh.face_count()).map(|f| mesh.face_points(f).iter().map(|p| p[1]).sum::<f64>() / 3.0 - 0.6).collect();
-        let base = SampleSettings { spacing: 1.0, max_search: 1.0, phase_mm: None, min_separation: 0.0, keep_clear_of: &[], tip_line: None };
+        let base = SampleSettings { spacing: 1.0, max_search: 1.0, phase_mm: None, min_separation: 0.0, keep_clear_of: &[], tip_line: None, from_below: None };
         let nearest = sample_contour_contacts(&mesh, &contour, &band, &base).unwrap();
         let line = TipLine { at: 0.3, signed: &signed, either_side: false };
         let middle = sample_contour_contacts(&mesh, &contour, &band, &SampleSettings { tip_line: Some(line), ..base }).unwrap();
@@ -321,5 +360,32 @@ mod tests {
         assert!(off_middle(&nearest) > 0.2, "without a line the tips hug the contour");
         assert!(off_middle(&middle) < 0.1, "with it they sit on the middle line");
         assert!(sample_contour_contacts(&mesh, &contour, &band, &SampleSettings { tip_line: Some(TipLine { signed: &[], ..line }), ..base }).is_err());
+    }
+
+    #[test]
+    fn a_tip_on_a_face_that_looks_up_moves_across_the_edge_to_one_a_support_reaches() {
+        let (mut positions, indices, contour, band) = hairpin();
+        // Past the hairpin's upper side (y 1.2) the sheet rises at 45 degrees: normal (0, -1, 1)/sqrt 2.
+        for vertex in positions.chunks_exact_mut(3) {
+            vertex[2] = (vertex[1] - 1.2).max(0.0);
+        }
+        let mesh = Mesh::new(&positions, &indices);
+        let everywhere = vec![1u8; mesh.face_count()];
+        let base = SampleSettings { spacing: 1.0, max_search: 1.0, phase_mm: None, min_separation: 0.0, keep_clear_of: &[], tip_line: None, from_below: None };
+        let stay = sample_contour_contacts(&mesh, &contour, &band, &base).unwrap();
+        assert!(stay.contacts.iter().all(|c| c.normal[2] > 0.99) && stay.moved_samples == 0);
+        // Plate normal +Z, at most 0.8 of a tip's normal along it: the flat band looks up (1.0).
+        let below = FromBelow { up: [0.0, 0.0, 1.0], max_up: 0.8, reachable: &everywhere };
+        let moved = sample_contour_contacts(&mesh, &contour, &band, &SampleSettings { from_below: Some(below), ..base }).unwrap();
+        assert_eq!(moved.contacts.len(), stay.contacts.len());
+        assert!(moved.moved_samples > 0);
+        for c in &moved.contacts {
+            // Upper-side samples reach the slope across their edge; lower-side ones have nothing
+            // within reach (the walk never crosses the contour) and stay.
+            assert!(dot(c.normal, below.up) <= 0.8 || c.position[1] < 1.0, "{c:?}");
+        }
+        assert!(moved.contacts.iter().any(|c| c.position[1] > 1.2), "a tip moved across the upper edge");
+        let short = FromBelow { reachable: &everywhere[1..], ..below };
+        assert!(sample_contour_contacts(&mesh, &contour, &band, &SampleSettings { from_below: Some(short), ..base }).is_err());
     }
 }

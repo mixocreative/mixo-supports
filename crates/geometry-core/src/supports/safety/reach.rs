@@ -73,8 +73,8 @@ pub fn is_intentional_contact_reach(index: &CollisionIndex, supports: &SupportMe
             continue;
         }
         // The surface is judged by the intent face's own normal. `intent.normal` is the neck
-        // direction, which the build may take from a smoothed remesh normal tens of degrees away
-        // from the face on a thin rim.
+        // direction, which the build limits to the maximum neck angle (and, for generic contacts,
+        // may take from the remesh), so it can be tens of degrees away from the face.
         let Some(normal) = face_normal_of(model_positions, model_indices, face) else { continue };
         if dot(normal, intent.normal) <= 0.0 {
             continue;

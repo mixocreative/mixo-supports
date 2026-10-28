@@ -71,7 +71,9 @@
     "repairBudget": 3,
     "matchToleranceMm": 0.05,
     "matchMinDot": 0.95,
-    "minTipSeparationMm": 0.6
+    "minTipSeparationMm": 0.6,
+    "tipMinFromUpDeg": 110,
+    "tipMoveMaxMm": 1
   },
   "supports": {
     "pillarDiameterMm": 1.4,

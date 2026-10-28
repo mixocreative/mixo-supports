@@ -26,6 +26,8 @@ export interface ProfileDefaults {
   matchToleranceMm: number;
   matchMinDot: number;
   minTipSeparationMm: number;
+  tipMinFromUpDeg: number;
+  tipMoveMaxMm: number;
 }
 
 /** The target print pose (Rust `profiles::Pose`; only the geometry uses it). */
@@ -76,7 +78,7 @@ const THRESHOLD_KEYS = ['axialVarianceMax', 'terminalAreaRatioMin', 'terminalBan
 const POSE_KEYS: readonly (keyof ProfilePose)[] = ['tiltDeg', 'headingDeg', 'rollDeg'];
 const DEFAULT_KEYS: readonly (keyof ProfileDefaults)[] = ['positionMm', 'stripWidthMm', 'density', 'positionMinMm', 'positionMaxMm', 'stripWidthMinMm',
   'stripWidthMaxMm', 'densityMin', 'densityMax', 'outerSpacingMm', 'innerSpacingMm', 'maxSearchMm', 'repairBudget',
-  'matchToleranceMm', 'matchMinDot', 'minTipSeparationMm'];
+  'matchToleranceMm', 'matchMinDot', 'minTipSeparationMm', 'tipMinFromUpDeg', 'tipMoveMaxMm'];
 const SUPPORT_NUMBERS = ['pillarDiameterMm', 'tipDiameterMm', 'liftHeightMm'] as const;
 const SUPPORT_SWITCHES = ['tree', 'brace', 'raft'] as const;
 

@@ -166,7 +166,7 @@ pub fn dental_sample_contacts(positions: &[f32], indices: &[u32], contour: &[u32
         return Ok(DentalSampleResult { ok: false, reason: "invalid-contour".into(), skipped: 0, perimeter: 0.0, contacts: Vec::new() });
     }
     let phase = (!phase_mm.is_nan()).then_some(phase_mm);
-    let settings = SampleSettings { spacing, max_search, phase_mm: phase, min_separation, keep_clear_of: &[], tip_line: None };
+    let settings = SampleSettings { spacing, max_search, phase_mm: phase, min_separation, keep_clear_of: &[], tip_line: None, from_below: None };
     Ok(match sample_contour_contacts(&mesh, contour, side_band, &settings) {
         Ok(s) => DentalSampleResult { ok: true, reason: String::new(), skipped: s.skipped_samples as u32, perimeter: s.perimeter, contacts: s.contacts },
         Err(reason) => DentalSampleResult { ok: false, reason: reason.into(), skipped: 0, perimeter: 0.0, contacts: Vec::new() },
@@ -186,27 +186,31 @@ pub fn dental_area_band(tuning: &[f64], profile: &str) -> Result<Vec<f64>, JsVal
 /// The contact footprint for explicit strip settings:
 /// `[low, high, outerSpacing, innerSpacing, maxSearch, phaseFraction, minTipSeparation]`: the area is
 /// the faces whose signed contour distance lies in `[low, high]` (negative across the edge), tips on
-/// its middle line (phase NaN = default half-spacing; separation 0 = off). `ok()` false carries the
-/// raw reason.
+/// its middle line (phase NaN = default half-spacing; separation 0 = off), optionally followed by
+/// `[upX, upY, upZ, maxUp, moveMm]`: tips a support cannot reach from below the plate normal `up`
+/// move (`footprint::Facing`). `ok()` false carries the raw reason.
 #[wasm_bindgen]
 pub fn dental_footprint(positions: &[f32], indices: &[u32], allowed_faces: &[u8], outer_edges: &[u32], opening_edges: &[u32], settings: &[f64]) -> Result<DentalRegionResult, JsValue> {
     use mixo_geometry_core::dental::footprint::{FootprintSettings, propose_footprint};
     let mesh = mesh_of(positions, indices)?;
-    if allowed_faces.len() != mesh.face_count() || outer_edges.len() % 2 != 0 || opening_edges.len() % 2 != 0 || settings.len() != 7 {
+    if allowed_faces.len() != mesh.face_count() || outer_edges.len() % 2 != 0 || opening_edges.len() % 2 != 0 || !(settings.len() == 7 || settings.len() == 12) {
         return Err(error("INVALID_LENGTH"));
     }
     if outer_edges.iter().chain(opening_edges).any(|&i| i as usize >= mesh.vertex_count()) {
         return Err(error("INVALID_INDEX"));
     }
+    use mixo_geometry_core::dental::footprint::Facing;
+    let from_below = (settings.len() == 12).then(|| Facing { up: [settings[7], settings[8], settings[9]], max_up: settings[10], move_mm: settings[11] });
     let settings = FootprintSettings {
         low: settings[0],
         high: settings[1],
-        reach: [settings[1].max(0.0), (-settings[0]).max(0.0)],
+        reach: [settings[1].max(0.0), (-settings[0]).max(0.0) + from_below.map_or(0.0, |f| f.move_mm)],
         outer_spacing: settings[2],
         inner_spacing: settings[3],
         max_search_distance: settings[4],
         sample_phase_fraction: (!settings[5].is_nan()).then_some(settings[5]),
         min_tip_separation: settings[6],
+        from_below,
     };
     Ok(match propose_footprint(&mesh, allowed_faces, outer_edges, opening_edges, &settings) {
         Ok(footprint) => {
