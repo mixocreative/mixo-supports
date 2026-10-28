@@ -36,6 +36,7 @@ Decided (by the owner unless noted):
 | D15 | F's criteria are the measured reference band (braced 26.46–44.46°, pick 44.46°), not the earlier 35–46° estimate; the example's 46.46° passes but is not robust (cups from 48.46°). Scan once per file off the UI thread, ≤ 5 s; gap rule = `needs_review`; slenderness from the plate at the host's lift, braced per the host's settings (Fable, lead, reversible; prints in V are the real check). | F |
 | D16 | Target split (owner, 2026-10-28): mixosupports becomes dental-only; mixomesh becomes the generic 3D tool with auto supports. Electron stays (it provides automation, batch jobs, a 4 GB heap, file opening and publishing; WASM runs inside it). Shared: the WASM engine, the framework-free editing logic and the style tokens, not UI components (Fable, EGM-reviewed). | After H |
 | D17 | No real aligners besides the reference for now: step V is skipped and the remaining steps go on best guesses from the reference alone (owner, 2026-10-28). O moves to deferred until a no-opening file exists (lead: nothing to test it on). | V, O |
+| D18 | The app starts on a full-screen start: choose the task, then the aligner type, then the file; built right after S3, before B2 (owner, 2026-10-28; replaces A2's timing). | ST |
 
 Open (owner; Q1, release timing, was answered: pull request #2 merged to `main` as fbac47f on 2026-10-28):
 
@@ -97,6 +98,27 @@ Specification as built:
 - **Goldens**: the dental goldens built with the profile preset re-record once; the commit lists each and its change (Tree/Brace on). Generic goldens unchanged.
 - **Done when**: the walk drags each Step 3 control (Tip size, Pillar size, Support density, Lift height; toggles Raft, Tree branches, Cross-braces) and checks a new verdict arrives and `is-stale` clears; change-to-preview time for each recorded in `perf-current.json` (step R's keys); the folder review of case-001 with the new defaults is in the commit message (tips, left out, crossings, structure fallbacks).
 
+### ST. Full-screen start (0.5–1 unit, UI only; goldens unchanged)
+Today the generic editor opens first; the dental flow is the command `supports.dentalAuto` ("Aligner Support Production", `src/editing/commands.ts`), whose Step 0 is `DentalTypeStep` (`src/components/DentalSteps.tsx`, one card per `ALIGNER_PROFILES` entry).
+- **Screen 1, task**: shown on launch with no model loaded and after closing the last model. Full-screen, two large buttons: "Aligner supports" (primary) and "Any model". A smaller link "Open a saved project" runs the existing open-project command. Any model leads to today's empty generic editor, unchanged.
+- **Screen 2, aligner type**: the `DentalTypeStep` cards, full-screen, with a Back button to screen 1.
+- **Screen 3, file**: "Open the aligner STL", a file button and a drop zone, with Back to screen 2. A loaded file enters the dental flow at Step 1 with the chosen profile (as `supports.dentalAuto` does, skipping Step 0).
+- **Drops**: an STL dropped on screen 1 or 2 is held; the type step follows (from screen 1, as if "Aligner supports" was pressed); choosing the type with a held file goes straight to Step 1.
+- **Back from Step 1** returns to screen 2 (the loaded aligner stays until a new file is chosen or the task screen is reached; reaching screen 1 closes it).
+- **Keys**: Escape on screen 2 or 3 is Back. Buttons are real buttons (Tab, Enter, Space).
+- **Style**: Mixo app style tokens; cards as in Step 0. Strings in en, ja, zh-Hant (Taiwan wording through Gemini).
+- **Walk**: new scenarios: screen 1 → Aligner supports → type → load the reference → Step 1 reached; screen 1 → Any model → empty generic editor; a drop on screen 1 → type → Step 1; Back and Escape on each screen. Existing scenarios that load a model keep their assertions; only their entry steps may change. Locale walk: screens 1–3 in each language.
+- **Done when**: walk and locale walk green; goldens unchanged; one screenshot per start screen in the commit message.
+- **Pinned (review)**:
+  - State: `startScreen: 'task' | 'type' | 'file' | null` as `useState` in `App.tsx` (null = editor); a `StartScreen` component (`src/components/StartScreen.tsx`) renders instead of the whole workspace while it is non-null; initial value `'task'`; it returns to `'task'` when `scene.units.length` goes from > 0 to 0 (a `useEffect`).
+  - Hand-off: a new session event `startDental {profile: string, file?: File}` sets the gesture to `dental-aligner` for that profile and, with a file, imports it through the same path as the Step 1 upload (`DentalAlignerPrompt.onFiles`). The held file is `useState<File | undefined>` in `StartScreen`. `ALIGNER_PROFILES` is in `src/dental/alignerProfiles.ts`.
+  - Back at Step 1 sets `startScreen = 'type'` and leaves the scene untouched; reaching `'task'` removes all units through the existing delete-all path with no undo toast.
+  - Drops: `StartScreen` has its own drop handler (the app's `dropImport` is not used while it is mounted): the first `.stl` only, others ignored; other types show the existing unsupported-file toast; a project file goes to `openProject`.
+  - Any model sets `startScreen = null`; a successful `project.open` sets it to null; a cancelled picker changes nothing.
+  - Escape: `onKeyDown` in `StartScreen` while mounted; screen 1 ignores it.
+  - Screen 2 after Back keeps the chosen profile `aria-pressed`.
+  - Strings: "Aligner supports", "Any model", "Open a saved project", "Open the aligner STL", "Back", "Drop the aligner STL here"; reuse "Choose the aligner type".
+
 ### B2. Suggested tips and even belt spacing (1 unit, engine; dental goldens re-record once) — *spec before start*
 Known parts: candidates over every face that passes the existing reachable-from-below rule (`defaults.tip_min_from_up_deg`) in the print pose, at outer spacing × density, in face-index order, ids `dental-fill-K`, cached by mesh digest, profile, up vector (quantised to 0.25°) and density; paint reveals, erase hides; candidates inside the belt or within half a spacing of a belt tip are skipped; belt tips spaced N = round(L / spacing) per closed rim, phase from the lowest vertex (lowest index on ties). Deleting automatic tips reuses `supports/edits.rs` `compose_contacts` and `src/supports/contactEdits.ts` (`remapDeleted`, `rekeyHandWork`) as generic mode does (`generic/policy.rs` `GenericInput.deleted`), not a new dental field. To write first: the `dental_policy` input change, what happens to painted tips when the tilt or density changes, and the golden list.
 
@@ -117,7 +139,7 @@ Not started before H is merged. Each step gets a specification and review first.
 |---|---|---|---|
 | A0 | Licence audit: per-file provenance of `supports/`, `core/`, `generic/` (several files cite Blender nodes or follow OpenVDB); set `license` in `Cargo.toml`; rewrite or gate what cannot ship under mixomesh's EULA | 0.5 + rewrites | ruling on derived vs re-implemented (possibly counsel) |
 | A1 | Package the WASM engine: built `.wasm`, glue, `.d.ts`, `VERSION` (engine_version, wasm-bindgen version, hash); mixomesh vendors it like `manifold.wasm` and asserts the version at load | 1 | — |
-| A2 | Dental front door in mixosupports (generic stays a second entry until A6) | 0.5–1 | wording |
+| A2 | Superseded by ST (D18): the full-screen start is built before B2 | — | — |
 | A3 | mixomesh spike: engine in a worker, supports on one selected mesh, tips shown in Babylon (right-handed adapter, one parity fixture); checks size, CSP, memory | 1 | go / no-go |
 | A4 | Support UX in mixomesh on selected models, no orientation: paint and erase the support area, select by paint, edit each tip, via the shared framework-free editing logic and a one-page UX contract (modes, keys, brush, cursors, strings) | 2 | sign the UX contract |
 | A5 | Tips preview and export in mixomesh through the engine | 1 | export as merged or separate parts |
