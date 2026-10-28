@@ -316,3 +316,27 @@ describe('placementPending (a placement setting changed since the contacts were 
     expect(placementPending({ ...unit, supports: undefined })).toBe(false);
   });
 });
+
+describe('withRekeyedHandWork (a saved project meets a recomputed placement)', () => {
+  it('moves a deletion saved under an old position id, off the new grid, to the nearest new tip', async () => {
+    const { withRekeyedHandWork, contactsWith } = await import('./unitSupports');
+    const { positionId, positionIds } = await import('./contactEdits');
+    const spots: [number, number, number][] = [[0, -5, 0], [3, -5, 0], [6, -5, 0]];
+    const grid = spots.map((position, k) => ({ ...point('x', 0), position, id: positionIds(spots)[k]! }));
+    // Saved before the even belt: the tip stood 0.4 mm from the new tip at x = 3, so its id names no new tip.
+    const old = positionId([3.4, -5, 0]);
+    expect(grid.some((p) => p.id === old)).toBe(false);
+    const out = withRekeyedHandWork({ ...unit, deleted: [old], manual: [] }, grid);
+    expect(out.deleted).toEqual([grid[1]!.id]);
+    expect(contactsWith(out, grid).map((c) => c.id)).toEqual([grid[0]!.id, grid[2]!.id]);
+  });
+
+  it('resets a deletion when no new tip is near, and keeps one already on the grid', async () => {
+    const { withRekeyedHandWork } = await import('./unitSupports');
+    const { positionId, positionIds } = await import('./contactEdits');
+    const spots: [number, number, number][] = [[0, -5, 0], [3, -5, 0]];
+    const grid = spots.map((position, k) => ({ ...point('x', 0), position, id: positionIds(spots)[k]! }));
+    expect(withRekeyedHandWork({ ...unit, deleted: [positionId([40, -5, 0])], manual: [] }, grid).deleted).toEqual([]);
+    expect(withRekeyedHandWork({ ...unit, deleted: [grid[0]!.id], manual: [] }, grid).deleted).toEqual([grid[0]!.id]);
+  });
+});

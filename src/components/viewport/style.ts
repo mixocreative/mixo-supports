@@ -21,7 +21,7 @@ export function canvasCursor(gesture: Gesture, overBrush: boolean): string {
     case 'add': return 'crosshair';
     case 'zones': return overBrush ? BRUSH_CURSOR[gesture.brush.kind] : 'crosshair';
     case 'dental-type': case 'dental-aligner': return 'default';
-    case 'dental-review': return 'default';
+    case 'dental-review': return gesture.edit.kind === 'add' ? 'crosshair' : 'default';
     case 'dental-area': return overBrush && gesture.brush ? BRUSH_CURSOR[gesture.brush.kind === 'allow' ? 'paint' : 'erase'] : 'crosshair';
     case 'drag': return overBrush ? BRUSH_CURSOR[gesture.brush.mode] : 'grab';
   }

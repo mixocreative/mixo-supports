@@ -283,6 +283,9 @@ h3 .count { margin-left: 6px; font-weight: 400; color: var(--muted); font-varian
 .tool-option input[type='range'] { width: 100%; margin: 0; accent-color: var(--ink); }
 /* The circle at the centre of the view while its size slider moves. */
 .brush-circle.brush-circle--preview { left: 50%; top: 50%; transform: translate(-50%, -50%); }
+/* Dental Step 3: the engaged tool and what a click does, under the tool switch. */
+.tool-engaged { margin: 0; font-size: 11.5px; color: var(--muted); }
+.tool-engaged strong { color: var(--red); font-weight: 600; }
 /* One-line guidance inside the edit bar (zones above the plate). */
 .edit-note { margin: 0; max-width: 100%; white-space: normal; text-align: right; color: var(--muted); }
 kbd {

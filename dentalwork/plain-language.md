@@ -33,10 +33,11 @@ The app opens on a full-screen start: **Aligner supports** or **Any model** (or 
 
 **Step 3. Supports.** Supports are built with the settings of the aligner type. For the reference aligner these are: straight columns 1.4 mm thick, a tip 0.45 mm across where it touches the aligner, the aligner 3.5 mm above the plate, a raft, Brace on (cross-braces between neighbouring columns) and Tree off, so every column goes straight down to the plate. If the braces would cross the aligner they are left out, and a notice says so. These are reasonable starting values, close to an example of good supports on the reference aligner, not a copy of it.
 - You can change tip size, pillar size, lift height, raft on or off, and Tree and Brace on or off. Your changes are kept for this aligner. Supports are rebuilt after each change. Supports you added by hand are kept. A message tells you what was kept and what was reset.
-- You can add a support or delete a selected one.
+- Step 3 starts with **Add supports** engaged; a line under the tool switch always names the engaged tool and what a click does. Click the aligner to add a support; right-click or Ctrl+click removes one. **Select supports** picks supports (click or drag over) so Delete removes them.
 - The **Label** field is text printed on the support base. The default is `X`. It holds up to 8 characters: letters A to Z, digits 0 to 9 and `-`. Other characters are dropped and letters become capitals.
 - **OK** finishes this aligner. **Add another aligner** also finishes it, and sends you back to Step 1 with the same type.
 - After OK, all finished aligners stay on the plate as normal objects. Every time you add one, the software moves the aligners so they do not overlap. You can then export an STL or save the project.
+- **Back** always goes back exactly one step and never deletes anything, also on the start screens: an aligner you loaded stays on the plate. Replacing it with a new file can be undone with Undo.
 - Back is allowed from Step 3 to 2 to 1. It asks first if you would lose supports you edited by hand. Exit leaves the current aligner on the plate with no supports. Aligners you already finished are kept.
 
 ## What the colors mean in the review file

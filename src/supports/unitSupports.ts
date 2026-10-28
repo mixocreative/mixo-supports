@@ -98,6 +98,26 @@ export function contactsWith(unit: PrintUnit, points: readonly SupportPoint[]): 
   return jobContacts({ ...contactInputs(unit), points });
 }
 
+const rekeyedCache = new WeakMap<PrintUnit, { points: readonly SupportPoint[]; unit: PrintUnit }>();
+
+/**
+ * The unit with its removals and per-support settings followed onto `points`, a recomputed placement
+ * (the dental tip preview). A project saved before the even belt names deleted tips by positions that
+ * the new belt does not have; each removal moves to the nearest new tip, or resets when none is near.
+ * It is the same match a fresh placement makes (`placementCommands`), so Generate lands what was shown.
+ */
+export function withRekeyedHandWork(unit: PrintUnit, points: readonly SupportPoint[]): PrintUnit {
+  const cached = rekeyedCache.get(unit);
+  if (cached?.points === points) return cached.unit;
+  const matchRadius = resolveSettings(unit.settings).scatterSpacing / 2;
+  const handWork = rekeyHandWork(unit.deleted, unit.contactSettings, new Set(unit.manual.map((point) => point.id)), points, matchRadius);
+  const sameDeleted = handWork.deleted.length === unit.deleted.length && handWork.deleted.every((id, k) => id === unit.deleted[k]);
+  const out = sameDeleted && Object.keys(handWork.overrides).length === Object.keys(unit.contactSettings).length && Object.keys(handWork.overrides).every((id) => id in unit.contactSettings)
+    ? unit : { ...unit, deleted: handWork.deleted, contactSettings: handWork.overrides };
+  rekeyedCache.set(unit, { points, unit: out });
+  return out;
+}
+
 const hiddenCache = new WeakMap<PrintUnit, { droppedByZones: readonly string[] | undefined; count: number }>();
 
 /**

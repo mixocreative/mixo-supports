@@ -105,7 +105,7 @@ export function DentalSupportsStep({ gesture, ui, review, ready, send, run }: {
     <section className="dental-block" aria-label={t('Edit supports')}>
       <h3>{t('Edit supports')}</h3>
       <div className="dental-tools">
-        <EditTools gesture={gesture} ui={ui} clickReach={review.clickReach} send={send} run={run} />
+        <EditTools gesture={gesture} ui={ui} clickReach={review.clickReach} send={send} run={run} engaged />
       </div>
     </section>
     <section className={stale ? 'dental-block is-stale' : 'dental-block'} aria-label={t('Problems')} aria-busy={stale}>

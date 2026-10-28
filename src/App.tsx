@@ -30,7 +30,7 @@ import { isAbort, RUNTIME, triangleCount } from './components/appShared';
 import { useFixSpot } from './components/useFixSpot';
 import { useExport } from './components/useExport';
 import { useRegenerate } from './components/useRegenerate';
-import { currentDentalPreview, useDentalPreview } from './components/useDentalPreview';
+import { currentDentalPreview, shownDentalPreview, useDentalPreview } from './components/useDentalPreview';
 import { useDentalTuning } from './components/useDentalTuning';
 import { useDentalFlow } from './components/useDentalFlow';
 import { useProjectFile } from './components/useProjectFile';
@@ -59,7 +59,7 @@ import { TIPS_START, tipsButton, tipsCamera, tipsPress } from './editing/view';
 import { applyPreset, defaultSupportSettings, setRoofMode, updateSetting, withShape, type LiveSupportSettings, type SettingKey, type ShapeKey } from './core/supports/settings';
 import { islandProblems } from './supports/islandProblems';
 import { omittedProblems } from './supports/omittedProblem';
-import { checkJobOf, contactsWith, currentBuild, hiddenByZones, liftCommands, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, type UnitBuild } from './supports/unitSupports';
+import { checkJobOf, contactsWith, currentBuild, hiddenByZones, liftCommands, orientationOf, placementPending, PLACEMENT_KEYS, resolveSettings, supportJobOf, unitContacts, unitRemovedCount, unitSupportMesh, withRekeyedHandWork, type UnitBuild } from './supports/unitSupports';
 import { COMMAND_IDS, resolve, type CommandId, type UiState } from './editing/commands';
 import { effectiveBrushMode } from './editing/selection';
 import { keyAction } from './editing/keys';
@@ -273,7 +273,7 @@ export default function App() {
   const contactsOf = useCallback((unit: PrintUnit) => {
     const { inArea: stepTwo, dentalPreview: preview } = areaRef.current;
     // Step 2 works on the tip preview's tips; the build of an earlier Step 3 does not count.
-    if (stepTwo && unit.id === preview?.unitId && unit === preview.unit) return contactsWith(unit, preview.localPoints);
+    if (stepTwo && unit.id === preview?.unitId) return contactsWith(withRekeyedHandWork(unit, preview.localPoints), preview.localPoints);
     return stepTwo ? NO_CONTACTS : unitContacts(unit, builtRef.current.get(unit.id)?.mesh);
   }, []);
   /** Whether the unit changed since its shown supports were built (counts follow once the build returns). */
@@ -335,11 +335,13 @@ export default function App() {
 
   // The tips that can be picked, deleted and counted: in Step 2 the tip preview's (with the unit's deletions and manual tips applied), else the build's.
   const inArea = editMode === 'dental' && session.dentalStage === 'area';
-  const areaContacts = useMemo(() => (inArea && activeUnit && dentalPreview ? contactsWith(activeUnit, dentalPreview.localPoints) : NO_CONTACTS), [inArea, activeUnit, dentalPreview]);
+  // While a new preview loads, the last one's tips stay shown and pickable (a click in that window acts on them).
+  const shownPreview = shownDentalPreview(dentalPreviewState, activeUnit);
+  const areaContacts = useMemo(() => (inArea && activeUnit && shownPreview ? contactsWith(withRekeyedHandWork(activeUnit, shownPreview.localPoints), shownPreview.localPoints) : NO_CONTACTS), [inArea, activeUnit, shownPreview]);
   const builtContacts = useMemo(() => (activeUnit ? unitContacts(activeUnit, activeMesh) : []), [activeUnit, activeMesh]);
   const activeContacts = inArea ? areaContacts : builtContacts;
-  const areaRef = useRef({ inArea, dentalPreview });
-  areaRef.current = { inArea, dentalPreview };
+  const areaRef = useRef({ inArea, dentalPreview: shownPreview });
+  areaRef.current = { inArea, dentalPreview: shownPreview };
   useEffect(() => send({ type: 'contactsChanged', contacts: activeContacts }), [activeContacts, send]);
   /** Supports the active object's zones hide, in the build the viewport shows. */
   const zonesHidden = useMemo(() => (activeUnit ? hiddenByZones(activeUnit, activeMesh) : 0), [activeUnit, activeMesh]);
@@ -759,10 +761,10 @@ export default function App() {
    */
   const addTip = useCallback((unit: PrintUnit, point: [number, number, number], normal: [number, number, number]) => {
     const preview = areaRef.current.dentalPreview;
-    if (!preview || preview.unit !== unit) return setStatus('Finding safe support tips…');
+    if (!preview || preview.unitId !== unit.id) return setStatus('Finding safe support tips…');
     const local = inverseTransformPoint(unit.transform, point);
     const reach = resolveSettings(unit.settings).eraseRadius;
-    const gone = new Set(unit.deleted);
+    const gone = new Set(withRekeyedHandWork(unit, preview.localPoints).deleted);
     let snapped: SupportPoint | undefined;
     let nearest = Infinity;
     for (const candidate of [...preview.localPoints, ...preview.localSuggested]) {
@@ -1074,11 +1076,8 @@ export default function App() {
     }
   }, [analysis, checkSupports, chooseProject, saveProject, clearActiveZones, clearManual, clearSelection, deleteSelected, deleteUnits, dentalPreview, dispatch, generate, generateDental, removeSupports, requestView, resetSelected, runExport, selectCustomised, send, setStatus, undo, unitName]);
 
-  /** A start screen was reached: the task screen closes the loaded aligner (all units go, no undo toast). */
-  const goStart = (next: StartScreenId) => {
-    if (next === 'task' && sceneRef.current.units.length > 0) dispatch({ type: 'batch', commands: sceneRef.current.units.map((unit) => ({ type: 'unit/remove' as const, unitId: unit.id })) });
-    setStartScreen(next);
-  };
+  /** A start screen was reached. Back goes one step and removes nothing: the loaded aligner stays on the plate. */
+  const goStart = (next: StartScreenId) => setStartScreen(next);
   // The footer says what each start screen asks for.
   useEffect(() => { if (startScreen !== null) setStatusMessage({ key: START_HINT[startScreen] }); }, [startScreen]);
   const startDental = (profile: string, file?: File) => {
@@ -1255,7 +1254,7 @@ export default function App() {
         <ObjectViewport
           scene={scene}
           supportMeshes={supportMeshes}
-          {...(dentalPreview ? { dentalTips: { unitId: dentalPreview.unitId, points: areaContacts } } : {})}
+          {...(shownPreview ? { dentalTips: { unitId: shownPreview.unitId, points: areaContacts } } : {})}
           {...(inArea ? { dentalArea: true } : {})}
           onPickTip={onPickTip}
           gesture={canvasGesture(press)}

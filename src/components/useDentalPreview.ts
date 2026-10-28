@@ -20,9 +20,23 @@ export function currentDentalPreview(unit: PrintUnit | undefined, preview: Denta
 
 export type DentalPreviewState =
   | { kind: 'idle' }
-  | { kind: 'loading'; unit: PrintUnit }
+  /** `last`: the previous preview of this aligner, still shown and pickable until the new one lands. */
+  | { kind: 'loading'; unit: PrintUnit; last?: DentalTipPreview }
   | { kind: 'ready'; unit: PrintUnit; preview: DentalTipPreview }
   | { kind: 'error'; unit: PrintUnit };
+
+/** The preview whose tips are shown: the ready one, or while a new one loads the last one of the same aligner. */
+export function shownDentalPreview(state: DentalPreviewState, unit: PrintUnit | undefined): DentalTipPreview | undefined {
+  if (!unit) return undefined;
+  if (state.kind === 'ready') return currentDentalPreview(unit, state.preview);
+  return state.kind === 'loading' && state.last?.unitId === unit.id ? state.last : undefined;
+}
+
+/** A unit change starts a load; the shown preview of the same aligner is kept meanwhile (its tips stay pickable). */
+export function loadingFrom(previous: DentalPreviewState, unit: PrintUnit): DentalPreviewState {
+  const last = previous.kind === 'ready' ? previous.preview : previous.kind === 'loading' ? previous.last : undefined;
+  return last?.unitId === unit.id ? { kind: 'loading', unit, last } : { kind: 'loading', unit };
+}
 
 /** Debounced placement preview: worker result (or the one a retune made with the policy), never a support mesh or raft. */
 export function useDentalPreview(unit: PrintUnit | undefined, active: boolean, analysis: () => AnalysisClient, unitName: (unitId: string) => string): DentalPreviewState {
@@ -45,7 +59,7 @@ export function useDentalPreview(unit: PrintUnit | undefined, active: boolean, a
     let live = true;
     let client: AnalysisClient | undefined;
     const key = `dental-preview:${unit.id}`;
-    setStored({ kind: 'loading', unit });
+    setStored((previous) => loadingFrom(previous, unit));
     const timer = window.setTimeout(() => {
       client = analysis();
       void client.dentalPlace(key, job, { key: 'Placing dental contacts on {name}', vars: { name: unitName(unit.id) } }).then((result) => {
@@ -57,5 +71,5 @@ export function useDentalPreview(unit: PrintUnit | undefined, active: boolean, a
     return () => { live = false; window.clearTimeout(timer); client?.cancel(key); };
   }, [unit, active, analysis, unitName]);
   if (!active || !unit) return { kind: 'idle' };
-  return stored.kind !== 'idle' && stored.unit === unit ? stored : { kind: 'loading', unit };
+  return stored.kind !== 'idle' && stored.unit === unit ? stored : loadingFrom(stored, unit);
 }
