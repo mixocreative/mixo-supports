@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { dentalLabelOf, DEFAULT_DENTAL_LABEL, DENTAL_LABEL_MAX, filterDentalLabel } from './label';
-import FONT from '../core/supports/labelFont.json';
+import FONT from '../../crates/geometry-core/src/supports/parts/labelFont.json';
 
 describe('dental label field', () => {
   it('uppercases letters and drops everything but A-Z 0-9 and -', () => {

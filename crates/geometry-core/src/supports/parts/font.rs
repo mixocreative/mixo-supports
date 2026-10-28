@@ -1,11 +1,11 @@
 //! Label font data: Inter Regular glyph outlines, triangulated, exported by tools/fonts/export_label_font.py
 //! (Inter, Copyright (c) 2016 The Inter Project Authors, SIL Open Font License 1.1). The one data
-//! file is shared with the TypeScript host (`src/core/supports/labelFont.json`), embedded at build time.
+//! file lives in this crate (`labelFont.json`, written by tools/fonts/export_label_font.py), embedded at build time.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-const FONT_JSON: &str = include_str!("../../../../../src/core/supports/labelFont.json");
+const FONT_JSON: &str = include_str!("labelFont.json");
 
 pub struct Glyph {
     pub advance: f64,

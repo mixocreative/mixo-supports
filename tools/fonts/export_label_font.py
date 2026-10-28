@@ -1,6 +1,6 @@
 """Export the label glyphs (Inter, OFL-1.1) exactly as Resin UV's MIXO_Label fills them.
 
-    blender --background --factory-startup --python tools/fonts/export_label_font.py -- src/core/supports/labelFont.json
+    blender --background --factory-startup --python tools/fonts/export_label_font.py -- crates/geometry-core/src/supports/parts/labelFont.json
 
 Uses tools/fonts/Inter-Regular.ttf (official Inter 4.1 release, static Regular, overlaps
 removed; the same file the add-on ships as mixo3d/assets/fonts/Inter-Regular.ttf for
