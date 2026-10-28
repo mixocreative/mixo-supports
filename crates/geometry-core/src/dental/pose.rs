@@ -25,22 +25,49 @@ pub fn target_frame(pose: &Pose) -> (V3, V3) {
 /// Euler XYZ rotation (radians) that restores the profile's target pose, or `None` for an
 /// ambiguous arch. A convenience proposal, not a universal clinical print orientation.
 pub fn rotation_to_dental_pose(mesh: &Mesh, rim: &Rim, profile: &AlignerProfile) -> Option<[f64; 3]> {
-    let front = estimate_arch_front(mesh, rim, &profile.thresholds)?;
-    let (target_opening, target_front) = target_frame(&profile.pose);
-    let target_side = normalize(cross(target_front, target_opening));
+    Some(euler_to_pose(&source_frame(mesh, rim, &profile.thresholds)?, &profile.pose))
+}
+
+/// The aligner's own frame in the mesh: side, arch front and opening axis (the rows the target
+/// frame's side, front and opening are matched to), or `None` for an ambiguous arch.
+pub fn source_frame(mesh: &Mesh, rim: &Rim, t: &Thresholds) -> Option<[V3; 3]> {
+    let front = estimate_arch_front(mesh, rim, t)?;
     let source_side = normalize(cross(front, rim.opening_direction));
-    let source = [source_side, front, rim.opening_direction];
-    let target = [target_side, target_front, target_opening];
-    let at = |row: usize, column: usize| target.iter().enumerate().fold(0.0, |sum, (index, axis)| sum + axis[row] * source[index][column]);
-    let (m11, m12, m13) = (at(0, 0), at(0, 1), at(0, 2));
-    let (m22, m23) = (at(1, 1), at(1, 2));
-    let (m32, m33) = (at(2, 1), at(2, 2));
+    Some([source_side, front, rim.opening_direction])
+}
+
+/// The target frame of `pose` as side, front and opening (build plate normal +Y).
+fn target_axes(pose: &Pose) -> [V3; 3] {
+    let (target_opening, target_front) = target_frame(pose);
+    let target_side = normalize(cross(target_front, target_opening));
+    [target_side, target_front, target_opening]
+}
+
+/// Entry (row, column) of the rotation that maps the `source` frame onto `pose`'s target frame.
+fn pose_matrix(source: &[V3; 3], pose: &Pose) -> [[f64; 3]; 3] {
+    let target = target_axes(pose);
+    std::array::from_fn(|row| std::array::from_fn(|column| target.iter().enumerate().fold(0.0, |sum, (index, axis)| sum + axis[row] * source[index][column])))
+}
+
+/// Euler XYZ rotation (radians) that turns the `source` frame into `pose`'s target frame.
+pub fn euler_to_pose(source: &[V3; 3], pose: &Pose) -> [f64; 3] {
+    let m = pose_matrix(source, pose);
+    let (m11, m12, m13) = (m[0][0], m[0][1], m[0][2]);
+    let (m22, m23) = (m[1][1], m[1][2]);
+    let (m32, m33) = (m[2][1], m[2][2]);
     let y = m13.clamp(-1.0, 1.0).asin();
-    Some(if m13.abs() < 0.9999999 {
+    if m13.abs() < 0.9999999 {
         [(-m23).atan2(m33), y, (-m12).atan2(m11)]
     } else {
         [m32.atan2(m22), y, 0.0]
-    })
+    }
+}
+
+/// The build plate normal (+Y) of `pose` in the mesh frame, when the `source` frame is turned
+/// onto `pose`'s target frame (the transposed rotation applied to +Y).
+pub fn plate_up_in_mesh(source: &[V3; 3], pose: &Pose) -> V3 {
+    let m = pose_matrix(source, pose);
+    normalize([m[1][0], m[1][1], m[1][2]])
 }
 
 fn estimate_arch_front(mesh: &Mesh, rim: &Rim, t: &Thresholds) -> Option<V3> {
@@ -133,7 +160,7 @@ mod tests {
             assert!((front[axis] - approved_front[axis]).abs() < 1e-12, "{front:?}");
         }
         assert!(dot(opening, front).abs() < 1e-12);
-        let flat = target_frame(&Pose { tilt_deg: 0.0, heading_deg: 0.0, roll_deg: 0.0 });
+        let flat = target_frame(&Pose { tilt_deg: 0.0, heading_deg: 0.0, roll_deg: 0.0, ..reference_aligner().pose.clone() });
         assert_eq!(flat.0, [0.0, -1.0, -0.0]);
         assert!((flat.1[2] - -1.0).abs() < 1e-12, "with no tilt the front lies along -Z: {:?}", flat.1);
     }

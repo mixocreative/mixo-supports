@@ -13,6 +13,9 @@ import { filterDentalPlacement } from '../../src/dental/placement';
 import { dentalStructureOf, dentalSupportSettings } from '../../src/dental/supportPreset';
 import { applyTransform, inverseTransformDirection, inverseTransformPoint } from '../../src/state/transform';
 import { REFERENCE_PROFILE, referenceTuning } from './profile';
+import { scanDentalTilts, type TiltScan } from '../../src/core/analysis/dentalTilt';
+import { confirmPick } from '../../src/dental/confirmTilt';
+import type { Vector } from '../../src/core/vec3';
 
 useNodeEngine();
 
@@ -26,8 +29,40 @@ export type DentalReviewBuild =
     placement: PlacementResult; supports: GeneratedSupportMesh }
   | { kind: 'inconclusive'; reason: string };
 
-/** Runs the same detector, dental placement filter, and support builder used by the app. */
-export function buildDentalReview(mesh: TriangleMesh): DentalReviewBuild {
+/** The aligner type's Step 3 settings and switches, as the app gives a new aligner. */
+function appSettings() {
+  return { ...dentalSupportSettings(REFERENCE_PROFILE, defaultSupportSettings), roofSeededModes: [] };
+}
+
+export type PrintAngle =
+  | { kind: 'angle'; scan: Extract<TiltScan, { kind: 'scan' }>; index: number; rotation: Vector; confirmed: boolean; tried: number }
+  | { kind: 'inconclusive'; reason: string };
+
+/**
+ * The app's Step 1 print angle: the scan with the new aligner's settings, then the confirm builds
+ * of the automatic pick (the pick, then at most two more tilts in pick order).
+ */
+export function pickPrintAngle(mesh: TriangleMesh): PrintAngle {
+  const settings = appSettings();
+  const structure = dentalStructureOf(REFERENCE_PROFILE);
+  const scan = scanDentalTilts(mesh, REFERENCE_PROFILE, { neckLengthMm: settings.neckLength, pillarDiameterMm: settings.pillarDiameter,
+    liftMm: settings.liftHeight, braced: structure.treeEnabled || structure.bracesEnabled });
+  if (scan.kind !== 'scan') return { kind: 'inconclusive', reason: `tilt-scan-${scan.reason}` };
+  const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
+  const orientation = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
+  const pick = scan.order[0]!;
+  if (region.kind !== 'proposal' || orientation.kind !== 'proposal') return { kind: 'angle', scan, index: pick, rotation: scan.rows[pick]!.rotation, confirmed: false, tried: 0 };
+  const dental = { kind: 'two-contour' as const, profileId: REFERENCE_PROFILE, rim: orientation.rim, region, stamps: [], structure };
+  const { confirmed, tried } = confirmPick({ mesh, dental, settings, labelText: 'A' }, scan.order.map((index) => scan.rows[index]!.rotation));
+  const index = confirmed === undefined ? pick : scan.order[confirmed]!;
+  return { kind: 'angle', scan, index, rotation: scan.rows[index]!.rotation, confirmed: confirmed !== undefined, tried };
+}
+
+/**
+ * Runs the same detector, dental placement filter, and support builder used by the app, at the
+ * profile's pose or at `poseRotation` (Euler XYZ, e.g. the print angle `pickPrintAngle` chose).
+ */
+export function buildDentalReview(mesh: TriangleMesh, poseRotation?: Vector): DentalReviewBuild {
   const region = proposeDentalSupportRegion(mesh, referenceTuning, REFERENCE_PROFILE);
   if (region.kind !== 'proposal') return region;
   // The diagnostic strips and samples use the profile's own area and spacing (the app's defaults).
@@ -44,11 +79,10 @@ export function buildDentalReview(mesh: TriangleMesh): DentalReviewBuild {
   }
   const orientation = proposeDentalOrientation(mesh, REFERENCE_PROFILE);
   if (orientation.kind !== 'proposal') return { kind: 'inconclusive', reason: `orientation-${orientation.reason}` };
-  const rotation = rotationToDentalPose(mesh, orientation.rim, REFERENCE_PROFILE);
+  const rotation = poseRotation ?? rotationToDentalPose(mesh, orientation.rim, REFERENCE_PROFILE);
   if (!rotation) return { kind: 'inconclusive', reason: 'dental-pose-inconclusive' };
 
-  // The aligner type's Step 3 settings and switches, as the app gives a new aligner.
-  const settings = { ...dentalSupportSettings(REFERENCE_PROFILE, defaultSupportSettings), roofSeededModes: [] };
+  const settings = appSettings();
   const orientationOnly: JobTransform = { position: [0, 0, 0], rotation };
   const turned = applyTransform(mesh, orientationOnly);
   let lowestY = Infinity;

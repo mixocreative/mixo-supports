@@ -134,7 +134,9 @@ if (outFile || checkFile) {
   const current = { dentalGenerateMs: dental.medianMs, step2SliderMs: round(ms(() => step2(k++))) };
   for (const [name, change] of Object.entries(step3)) { let n = 0; current[`step3${name}Ms`] = round(ms(() => runSupportJob(change(n++), undefined, 0, undefined))); }
   if (outFile) {
-    writeFileSync(resolve(root, outFile), JSON.stringify({ date: new Date().toISOString(), machine: { cpu: os.cpus()[0]?.model, cores: os.cpus().length, node: process.version }, method: `median of ${RUNS} in-process runs (vite-node, Node); Step 2 = Area width step: region proposal + placement filter; Step 3 = runSupportJob after one control change, one-shot session`, ...current }, null, 2) + '\n');
+    // The browser-only keys (scripts/perf/live-bench.mjs) are kept.
+    const kept = (() => { try { const { tiltScanMs, tiltScanMethod } = JSON.parse(readFileSync(resolve(root, outFile), 'utf8')); return tiltScanMs === undefined ? {} : { tiltScanMs, tiltScanMethod }; } catch { return {}; } })();
+    writeFileSync(resolve(root, outFile), JSON.stringify({ ...kept, date: new Date().toISOString(), machine: { cpu: os.cpus()[0]?.model, cores: os.cpus().length, node: process.version }, method: `median of ${RUNS} in-process runs (vite-node, Node); Step 2 = Area width step: region proposal + placement filter; Step 3 = runSupportJob after one control change, one-shot session`, ...current }, null, 2) + '\n');
     console.log(JSON.stringify(current, null, 2));
   } else {
     const saved = JSON.parse(readFileSync(resolve(root, checkFile), 'utf8'));

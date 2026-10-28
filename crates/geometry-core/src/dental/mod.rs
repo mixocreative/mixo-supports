@@ -21,4 +21,5 @@ pub mod region;
 pub mod review;
 pub mod rim;
 pub mod sampling;
+pub mod tilt;
 pub mod topology;

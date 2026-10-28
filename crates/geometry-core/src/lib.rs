@@ -9,7 +9,7 @@ pub mod supports;
 /// added or removed call, argument layout or result shape, together with `HOST_GEOMETRY_VERSION` in
 /// `src/workers/geometryVersion.ts` and the smoke test.
 pub fn engine_version() -> u32 {
-    5
+    6
 }
 
 #[cfg(test)]
@@ -18,6 +18,6 @@ mod tests {
 
     #[test]
     fn reports_the_current_abi_version() {
-        assert_eq!(engine_version(), 5);
+        assert_eq!(engine_version(), 6);
     }
 }

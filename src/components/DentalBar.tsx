@@ -10,11 +10,12 @@ import { DentalAlignerBar, DentalAlignerPrompt, DentalTypeStep, noticeText } fro
 import { DentalSupportsStep, type DentalReview } from './DentalSupports';
 import { RangeField } from './RangeField';
 import { SurfaceBrushBar } from './SurfaceBrushBar';
+import type { DentalTiltState } from './useDentalFlow';
 
 /** Dental Auto Generate chrome: review the detector first, then mark only permitted support area. */
 export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus = 'loading', reviewReady = true,
   lang = 'en', selectedName, onFiles, onUseSelected, tuning, tuningLimits, tuningBusy = false, tuningError = false, onTuningChange,
-  review, send, run }: {
+  review, tilt, onTilt, send, run }: {
   gesture: Extract<Gesture, { kind: 'dental-type' | 'dental-aligner' | 'dental-area' | 'dental-review' }>;
   lang?: Lang;
   /** Step 1: the object selected on the plate, offered as the aligner without a drop. */
@@ -34,6 +35,9 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
   onTuningChange?: (tuning: DentalTuning) => void;
   /** Step 3's settings, results and actions. */
   review?: DentalReview;
+  /** Step 1's print-angle search (of the aligner in the step) and its slider. */
+  tilt?: DentalTiltState | undefined;
+  onTilt?: (index: number) => void;
   send: (event: SessionEvent) => void;
   run: (id: CommandId) => void;
 }) {
@@ -53,7 +57,8 @@ export function DentalBar({ gesture, unitName, ui, tipCount = 0, previewStatus =
       <b>{gesture.phase === 'ready' ? t('Review the orientation. Turn the aligner with the gizmo if needed.') : t('Add the aligner STL.')}</b>
     </div>
     {gesture.phase === 'ready'
-      ? <DentalAlignerBar notices={gesture.notices} proposal={gesture.proposal} profile={gesture.profile} lang={lang} ui={ui} send={send} run={run} />
+      ? <DentalAlignerBar notices={gesture.notices} proposal={gesture.proposal} profile={gesture.profile} lang={lang} ui={ui} send={send} run={run}
+        tilt={tilt} onTilt={onTilt} />
       : <>
         <div className="edit-bar"><div className="edit-row">
           <CommandButton command={resolve('dental.back', ui)} run={run} />

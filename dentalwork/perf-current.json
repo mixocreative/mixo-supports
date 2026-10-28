@@ -11,5 +11,7 @@
   "step3PillarDiameterMs": 1277.2,
   "step3TipSizeMs": 943.9,
   "step3LiftHeightMs": 980.1,
-  "step3RaftToggleMs": 943.1
+  "step3RaftToggleMs": 943.1,
+  "tiltScanMs": 4373,
+  "tiltScanMethod": "headless Chromium (swiftshader), vite dev server, reference aligner: the analysis worker's dental-tilt-scan job, post to reply (scripts/perf/live-bench.mjs)"
 }

@@ -183,6 +183,7 @@ Dental mode is a visible feature. Entering it dims the rest of the editor.
 | R: repair loop cost | done | 626e1ef | Each crossing query runs once per build (per-build memo in `repair.rs`), trial order unchanged; reference 1 trial at the Step 3 defaults, 3 at defaults; dental generate ~1200 -> ~1060 ms; goldens unchanged; `perf-baseline.mjs --out/--check`, `dentalwork/perf-current.json`. Verified: cargo 206+9+3+1, tsc, vitest 1195, build, walk 72, locale 18, folder review case-001 (94 tips, 0 left out, 0 crossings). |
 | V1: synthetic test aligners | removed | f717d61, removed 100ee44 | Owner: the generated shapes are too unrealistic to use (D12). Kept finding: a trim that is sharp all the way round is refused with `outer-ridge-not-closed`. |
 | Folder review underside view | done | 100ee44 | Below the floor the viewer shows only the aligner and its support tips (D13). |
+| F: print-angle search | done | (this commit) | Tilt scan over 46° ± 22° with four rules (resin trap, rim gap, crossing, slenderness), robust pick, stable band and slider in Step 1, confirm on Next with up to two retries; engine_version 6. Reference: unbraced pick 36.46° (band 26.46–36.46), braced 44.46°. Verified: cargo 212+9+3+1+1, tsc, vitest 1199, build, walk 78, locale 21, folder review clear 94 tips / 0 left out; goldens unchanged. |
 
 ## Reference material (detail only; do not track progress there)
 

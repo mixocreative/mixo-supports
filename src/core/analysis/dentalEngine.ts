@@ -59,6 +59,19 @@ export interface PolicyHandle {
   free(): void;
 }
 
+/** The print-angle search result (Rust `DentalTiltScanResult`; layout in `dentalTilt.ts`). */
+export interface DentalTiltScanResultLike {
+  free(): void;
+  ok(): boolean;
+  reason(): string;
+  start_deg(): number;
+  rows(): Float64Array;
+  failing(): string[];
+  order(): Uint32Array;
+  pick_reason(): number;
+  band(): Uint32Array;
+}
+
 export interface LegacyFillLike {
   free(): void; take_kept(): Uint32Array; take_positions(): Float64Array; take_normals(): Float64Array; take_ids(): string[];
 }
@@ -75,6 +88,9 @@ export interface DentalSession {
   dental_policy(model: number, profile: string, kind: number, tuning: Float64Array, stamps: Float64Array,
     savedAllowed: Uint8Array, savedContact: Uint8Array, savedOuter: Uint32Array, savedOpening: Uint32Array,
     structure: Uint8Array, frame: Float64Array): PolicyHandle;
+  /** Print-angle search with the host's current support settings; `onTilt(done, total)` after each tilt. */
+  dental_tilt_scan(model: number, profile: string, neckLengthMm: number, pillarDiameterMm: number, liftMm: number, braced: boolean,
+    onTilt?: (done: number, total: number) => void): DentalTiltScanResultLike;
   dental_legacy_fill(model: number, profile: string, rim: Float64Array, visibilityMask: Uint8Array, manualArea: boolean,
     stamps: Float64Array, rotation: Float64Array, spacing: number, overhangAngleDegrees: number,
     initialPositions: Float64Array, initialNormals: Float64Array): LegacyFillLike;

@@ -49,7 +49,10 @@
   "pose": {
     "tiltDeg": 46.4577512332,
     "headingDeg": 2.9376675175,
-    "rollDeg": 2.7827557871
+    "rollDeg": 2.7827557871,
+    "tiltRangeDeg": 22,
+    "tiltStepDeg": 1,
+    "tiltMarginDeg": 2
   },
   "defaults": {
     "positionMm": 0.25,
@@ -78,5 +81,10 @@
     "tree": false,
     "brace": false,
     "raft": true
+  },
+  "stability": {
+    "maxSlendernessUnbraced": 20,
+    "maxSlendernessBraced": 35,
+    "cupProminenceMm": 1.5
   }
 }

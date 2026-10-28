@@ -1,6 +1,7 @@
 /*
  * Folder review: every STL under the given folders goes through the app's own dental pipeline
- * (import, orientation, region, placement, Rust `generate` with its safety and island checks), and
+ * (import, orientation, print-angle search and its confirm, region, placement, Rust `generate` with
+ * its safety and island checks), and
  * each result is written as a review GLB plus one summary for the viewer (`serve.mjs`).
  *
  *   npx vite-node --script dentalwork/batch-review/batch.ts --out <folder> <stl folder> [more folders]
@@ -11,7 +12,8 @@
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseStl } from '../../scripts/node-engine';
-import { buildDentalReview } from '../../scripts/dental-region-review/build';
+import { buildDentalReview, pickPrintAngle } from '../../scripts/dental-region-review/build';
+import { tiltLabel } from '../../src/core/analysis/dentalTilt';
 import { exportDentalRegionReview } from '../../scripts/dental-region-review/review';
 
 const args = process.argv.slice(2);
@@ -38,6 +40,8 @@ export type CaseRow = {
   verdict: string; crossings: number; uncertain: number; islandsUnresolved: number; islandsOutsideArea: number;
   tipsPlaced: number; tipsLeftOut: number; outerGapMm: number | null; openingGapMm: number | null;
   rimNeedsReview: boolean; needsLook: boolean; glb: string;
+  /** The print angle the app's Step 1 chose (degrees), its stable band, and whether the confirm held. */
+  printAngleDeg: number | null; stableBand: string; angleReason: string; angleConfirmed: boolean;
 };
 
 const rows: CaseRow[] = [];
@@ -46,12 +50,18 @@ for (const [k, file] of files.entries()) {
   const started = performance.now();
   const row: CaseRow = { case: name, source: file, result: 'error', reason: '', seconds: 0, verdict: '', crossings: 0, uncertain: 0,
     islandsUnresolved: 0, islandsOutsideArea: 0, tipsPlaced: 0, tipsLeftOut: 0, outerGapMm: null, openingGapMm: null,
-    rimNeedsReview: false, needsLook: true, glb: '' };
+    rimNeedsReview: false, needsLook: true, glb: '', printAngleDeg: null, stableBand: '', angleReason: '', angleConfirmed: false };
   process.stdout.write(`[${k + 1}/${files.length}] ${name} ... `);
   try {
     const bytes = readFileSync(file);
     const mesh = parseStl(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-    const review = buildDentalReview(mesh);
+    const angle = pickPrintAngle(mesh);
+    if (angle.kind === 'angle') {
+      const { scan } = angle;
+      Object.assign(row, { printAngleDeg: Number(tiltLabel(scan.rows[angle.index]!.tiltDeg)), angleReason: scan.reason, angleConfirmed: angle.confirmed,
+        stableBand: scan.band ? `${tiltLabel(scan.rows[scan.band[0]]!.tiltDeg)}-${tiltLabel(scan.rows[scan.band[1]]!.tiltDeg)}` : 'none' });
+    }
+    const review = buildDentalReview(mesh, angle.kind === 'angle' ? angle.rotation : undefined);
     if (review.kind === 'inconclusive') {
       Object.assign(row, { result: 'inconclusive', reason: review.reason });
     } else {
@@ -88,7 +98,7 @@ for (const [k, file] of files.entries()) {
   row.seconds = +((performance.now() - started) / 1000).toFixed(1);
   row.needsLook = row.result !== 'built' || row.verdict !== 'clear' || row.islandsUnresolved > 0 || row.rimNeedsReview;
   rows.push(row);
-  process.stdout.write(`${row.result}${row.verdict ? ` / ${row.verdict}` : ''}${row.reason ? ` (${row.reason})` : ''} in ${row.seconds} s\n`);
+  process.stdout.write(`${row.result}${row.verdict ? ` / ${row.verdict}` : ''}${row.reason ? ` (${row.reason})` : ''}${row.printAngleDeg === null ? '' : `, print angle ${row.printAngleDeg}° (stable ${row.stableBand})`} in ${row.seconds} s\n`);
   writeSummary();
 }
 
