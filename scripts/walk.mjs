@@ -1363,7 +1363,7 @@ async function walk(url, scratch, dentalFixture) {
       await onScreen('task');
       await page.getByRole('button', { name: 'Any model', exact: true }).click();
       await page.waitForSelector('.workspace');
-      check('s11 reaching the task screen closed the aligner: the editor opens empty', await unitsOnPlate() === 0 && (await page.locator('footer').innerText()).includes('0 objects'));
+      check('s11 reaching the task screen removed nothing: Any model opens the editor with the aligner still on the plate', await unitsOnPlate() === 1 && (await page.locator('footer').innerText()).includes('1 object'));
 
       // Any model: the empty generic editor, unchanged.
       await page.goto(url);
@@ -1395,7 +1395,7 @@ async function walk(url, scratch, dentalFixture) {
       await onScreen('task');
       await page.getByRole('button', { name: 'Any model', exact: true }).click();
       await page.waitForSelector('.workspace');
-      check('s17 Back to the task screen closes the loaded file', await unitsOnPlate() === 0);
+      check('s17 Back to the task screen keeps the loaded file on the plate', await unitsOnPlate() === 1);
       await page.goto(url);
       await supports().click();
       await onScreen('type');

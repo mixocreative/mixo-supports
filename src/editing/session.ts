@@ -198,8 +198,8 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
         : state;
     case 'acceptDentalArea':
       return state.mode === 'dental' && state.dentalStage === 'area'
-        // Step 3 starts on picking supports: a stray click adds none.
-        ? { ...state, dentalStage: 'review', dentalNotices: [], tool: areaTool(state.tool) ? 'select' : state.tool, selectStyle: 'click', addAction: 'add', selection: NO_SELECTION }
+        // Step 3 always starts on Add (add action), whatever Step 2 left on.
+        ? { ...state, dentalStage: 'review', dentalNotices: [], tool: 'add', selectStyle: 'click', addAction: 'add', selection: NO_SELECTION }
         : state;
     case 'finishDental':
       return state.mode === 'dental' && state.dentalStage === 'review'

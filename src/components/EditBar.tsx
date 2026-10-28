@@ -59,8 +59,10 @@ export function EditBar({ gesture, unitName, ui, clickReach, send, run }: {
  * The tools of Support Edit Mode without its frame, badge or Done: the tool switch, how to select,
  * what a click does, the selection's actions. Dental Step 3 reuses them; `children` end the last row.
  */
-export function EditTools({ gesture, ui, clickReach, send, run, children }: {
+export function EditTools({ gesture, ui, clickReach, send, run, children, engaged }: {
   gesture: EditGesture;
+  /** Name the engaged tool and what a click does, under the tool switch (dental Step 3). */
+  engaged?: boolean;
   ui: UiState;
   clickReach: { value: number; onChange: (value: number, edit?: string) => void };
   send: (event: SessionEvent) => void;
@@ -75,6 +77,7 @@ export function EditTools({ gesture, ui, clickReach, send, run, children }: {
       ]} />
       {gesture.kind !== 'add' && <SelectStyleSwitch gesture={gesture} ui={ui} send={send} run={run} />}
     </div>
+    {engaged && <p className="tool-engaged" role="status"><strong>{gesture.kind === 'add' ? t('Adding supports:') : t('Selecting supports:')}</strong> {gesture.kind === 'add' ? t('click the aligner to add one; right-click or Ctrl+click removes.') : t('click or drag over supports, then press Delete.')}</p>}
     {gesture.kind === 'add' && <div className="edit-row">
       <Segmented label={t('What a click does')} value={ui.addAction} onChange={(action) => run(action === 'add' ? 'edit.add' : 'edit.remove')} options={(['edit.add', 'edit.remove'] as const).map((id) => {
         const { label, hint: text } = resolve(id, ui);

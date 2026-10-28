@@ -29,12 +29,13 @@ describe('dental Step 2 tools (B3)', () => {
     expect(canvasGesture(gesture(remove))).toEqual({ kind: 'add', remove: false });
   });
 
-  it('Step 2 selects tips; Step 3 starts on Select when Paint or Erase was on, and keeps Add or Select', () => {
+  it('Step 2 selects tips; Step 3 always starts on Add, whatever Step 2 left on', () => {
     const picked = run(area, { type: 'setTool', tool: 'select' }, { type: 'toggleContact', id: 'a' });
     expect([...picked.selection]).toEqual(['a']);
-    expect(run(area, { type: 'acceptDentalArea' })).toMatchObject({ dentalStage: 'review', tool: 'select' });
-    expect(run(area, { type: 'setTool', tool: 'erase' }, { type: 'acceptDentalArea' })).toMatchObject({ tool: 'select' });
-    expect(run(area, { type: 'setTool', tool: 'add' }, { type: 'acceptDentalArea' })).toMatchObject({ tool: 'add' });
+    expect(run(area, { type: 'acceptDentalArea' })).toMatchObject({ dentalStage: 'review', tool: 'add', addAction: 'add' });
+    expect(run(area, { type: 'setTool', tool: 'erase' }, { type: 'acceptDentalArea' })).toMatchObject({ tool: 'add', addAction: 'add' });
+    expect(run(area, { type: 'setTool', tool: 'select' }, { type: 'acceptDentalArea' })).toMatchObject({ tool: 'add', addAction: 'add' });
+    expect(run(area, { type: 'setTool', tool: 'add' }, { type: 'setAddAction', action: 'remove' }, { type: 'acceptDentalArea' })).toMatchObject({ tool: 'add', addAction: 'add' });
     // Back into Step 2 is a Paint start again.
     expect(run(area, { type: 'setTool', tool: 'select' }, { type: 'acceptDentalArea' }, { type: 'backDental' })).toMatchObject({ dentalStage: 'area', tool: 'paint' });
   });

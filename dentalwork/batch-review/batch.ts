@@ -42,6 +42,8 @@ export type CaseRow = {
   rimNeedsReview: boolean; needsLook: boolean; glb: string;
   /** The print angle the app's Step 1 chose (degrees), its stable band, and whether the confirm held. */
   printAngleDeg: number | null; stableBand: string; angleReason: string; angleConfirmed: boolean;
+  /** Structures the repair switched off because they crossed the aligner (tree, brace), joined by '+'. */
+  structuresLeftOut: string;
 };
 
 const rows: CaseRow[] = [];
@@ -50,7 +52,7 @@ for (const [k, file] of files.entries()) {
   const started = performance.now();
   const row: CaseRow = { case: name, source: file, result: 'error', reason: '', seconds: 0, verdict: '', crossings: 0, uncertain: 0,
     islandsUnresolved: 0, islandsOutsideArea: 0, tipsPlaced: 0, tipsLeftOut: 0, outerGapMm: null, openingGapMm: null,
-    rimNeedsReview: false, needsLook: true, glb: '', printAngleDeg: null, stableBand: '', angleReason: '', angleConfirmed: false };
+    rimNeedsReview: false, needsLook: true, glb: '', printAngleDeg: null, stableBand: '', angleReason: '', angleConfirmed: false, structuresLeftOut: '' };
   process.stdout.write(`[${k + 1}/${files.length}] ${name} ... `);
   try {
     const bytes = readFileSync(file);
@@ -92,6 +94,7 @@ for (const [k, file] of files.entries()) {
         tipsPlaced: review.placement.points.length - supports.dropped.length, tipsLeftOut: supports.dropped.length,
         outerGapMm: rim ? +rim.outer.maxGapMm.toFixed(2) : null, openingGapMm: rim ? +rim.opening.maxGapMm.toFixed(2) : null,
         rimNeedsReview: rim?.needsReview ?? false, glb: `${name}.glb`,
+        structuresLeftOut: (supports.dentalStructureFallback ?? []).join('+'),
       });
     }
   } catch (error) {

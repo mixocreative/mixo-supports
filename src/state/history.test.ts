@@ -10,6 +10,18 @@ const unit: PrintUnit = {
 };
 
 describe('scene history', () => {
+  it('a new aligner replacing the loaded one is one step, and Undo brings the previous aligner back', () => {
+    const before = withSceneCommand(createSceneHistory(emptyScene), { type: 'unit/add', unit });
+    const next: PrintUnit = { ...unit, id: 'unit-b', name: 'Unit B' };
+    const after = withSceneCommand(before, { type: 'batch', commands: [
+      { type: 'unit/remove', unitId: 'unit-a' }, { type: 'unit/add', unit: next },
+      { type: 'selection/set', unitIds: ['unit-b'], activeUnitId: 'unit-b' },
+    ] });
+    expect(after.present.units.map((u) => u.id)).toEqual(['unit-b']);
+    expect(undoScene(after).present.units.map((u) => u.id)).toEqual(['unit-a']);
+    expect(canUndo(after, before.present)).toBe(true);
+  });
+
   it('stores scene snapshots and restores them through undo and redo', () => {
     const initial = createSceneHistory(emptyScene);
     const added = withSceneCommand(initial, { type: 'unit/add', unit });

@@ -282,9 +282,11 @@ describe('reduceSession: dental Step 3 and finishing', () => {
     { type: 'dentalOriented', proposal, notices: [] }, { type: 'acceptDentalOrientation' }, { type: 'acceptDentalArea' });
 
   it('Step 3 reuses the Support Edit Mode tools: selecting works, the canvas gets the edit gesture', () => {
-    expect(step3).toMatchObject({ mode: 'dental', dentalStage: 'review', tool: 'select', selectStyle: 'click', dentalUnitId: 'u1' });
-    expect(gesture(step3)).toMatchObject({ kind: 'dental-review', edit: { kind: 'pick' } });
-    const picked = run(step3, { type: 'toggleContact', id: 'a' }, { type: 'toggleContact', id: 'b' });
+    expect(step3).toMatchObject({ mode: 'dental', dentalStage: 'review', tool: 'add', addAction: 'add', selectStyle: 'click', dentalUnitId: 'u1' });
+    expect(gesture(step3)).toMatchObject({ kind: 'dental-review', edit: { kind: 'add', remove: false } });
+    const selecting = run(step3, { type: 'setTool', tool: 'select' });
+    expect(gesture(selecting)).toMatchObject({ kind: 'dental-review', edit: { kind: 'pick' } });
+    const picked = run(selecting, { type: 'toggleContact', id: 'a' }, { type: 'toggleContact', id: 'b' });
     expect([...picked.selection]).toEqual(['a', 'b']);
     expect(gesture(run(step3, { type: 'setTool', tool: 'add' }))).toMatchObject({ kind: 'dental-review', edit: { kind: 'add', remove: false } });
     // Step 1 takes no tip picks (Step 2 does, under Select).

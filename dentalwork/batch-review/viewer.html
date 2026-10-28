@@ -227,6 +227,8 @@ function facts(c) {
     ['Crossings not judged', c.uncertain, c.uncertain > 0],
     ['Low points with no support', c.islandsUnresolved, c.islandsUnresolved > 0],
     ['Low points outside the area', c.islandsOutsideArea, false],
+    ['Print angle', c.printAngleDeg == null ? '-' : `${c.printAngleDeg}° (stable ${c.stableBand || 'none'})${c.printAngleDeg == null ? '' : c.angleConfirmed ? ', confirm build passed' : ', confirm build did not pass'}`, false],
+    ['Structures left out', c.structuresLeftOut || 'none', false],
     ['Tips placed', c.tipsPlaced, false],
     ['Tips left out', c.tipsLeftOut, false],
     ['Largest gap, outer edge (mm)', c.outerGapMm ?? '-', false],
