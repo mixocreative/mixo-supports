@@ -59,6 +59,10 @@ Two things about the shape are worth knowing without the table:
 
 `scripts/third-party-notices.mjs` appends the Rust crates (the normal dependency closure of `mixo-geometry-wasm` for wasm32, from `cargo metadata --locked`) to `dist/THIRD-PARTY-NOTICES.txt`, with licence texts from the registry sources, sorted and reproducible. A copyleft or missing licence text fails the build. `public/THIRD-PARTY-NOTICES.txt` also names the OpenVDB VolumeToMesh port (Apache-2.0: licence text and copyright kept, change stated). The build prints the count; at this revision the notice file holds 83 npm packages and 24 Rust crates.
 
+## Driving the engine without the app
+
+`scripts/host-example.mjs` (`npm run host-example -- <aligner.stl> <out-dir>`) is the example of a host with no React and no import from `src/`: it loads the Node build of the package and calls, in order, the STL sessions, `center_positions_in_place`, `orient_dental`, `propose_dental_region`, `dental_tilt_scan`, `dental_policy`, `generic_policy_contacts` and `generate`, then writes `supported.stl` (the aligner in its print pose plus the supports) and `summary.json` (angle, band, tips placed and left out, crossings, rim gaps, seconds per step, engine version). Each step carries a one-line comment naming its call. On `dentalwork/fixtures/case-001/aligner.stl` it gives 44.5 degrees, clear, 94 tips, 0 left out, 0 crossings, as the folder review does (Tree off, Brace on: D21).
+
 ## Handoff discipline
 
 After each unit, update [the ship plan](../docs/SHIP-PLAN.md) progress table and append evidence to `docs/dental-rework-handoff.md`. When behavior or ownership changes, update `technical-algorithm.md`, `support-module-boundaries.md` and `plain-language.md` in the same change. Never claim clinical validation from one STL.

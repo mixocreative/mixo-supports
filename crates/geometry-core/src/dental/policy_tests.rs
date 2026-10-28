@@ -8,7 +8,7 @@ const INDICES: [u32; 9] = [0, 2, 1, 3, 5, 4, 6, 7, 8];
 const BOTH: DentalStructure = DentalStructure { tree: true, brace: true };
 
 fn input<'a>(mesh: &'a Mesh<'a>, area: DentalArea<'a>, stamps: &'a [AreaStamp], frame: &'a Matrix4) -> DentalPolicyInput<'a> {
-    DentalPolicyInput { mesh, profile: reference_aligner(), area, stamps, structure: BOTH, frame }
+    DentalPolicyInput { mesh, profile: reference_aligner(), area, stamps, structure: BOTH, frame, keep_clear_of: &[] }
 }
 
 #[test]
@@ -107,4 +107,27 @@ fn the_switches_decide_tree_and_brace_whatever_the_settings_say() {
     // The generic policy has no choice: the settings stay as they are.
     let generic = PolicyResult::plain(FaceMask::new(0), Vec::new(), dental_structures(BOTH), 0);
     assert_eq!(chosen_settings(&settings, &generic), settings);
+}
+
+#[test]
+fn a_suggested_tip_is_offered_only_off_the_strip_clear_of_belt_and_manual_tips_and_painted() {
+    use super::super::sampling::ContourContact;
+    let tip = |face: u32, x: f64| ContourContact { face, position: [x, 0.0, 0.0], normal: [0.0, -1.0, 0.0], distance_along_contour: 0.0, distance_from_contour: 0.0 };
+    // K 0 on a strip face, 1 next to a belt tip, 2 next to a manual tip, 3 clear, 4 under an erase.
+    let fills = [tip(0, 0.0), tip(1, 10.0), tip(1, 20.0), tip(1, 30.0), tip(1, 40.0)];
+    let paint = AreaStamp { center: [20.0, 0.0, 0.0], radius: 100.0, normal: [0.0, -1.0, 0.0], allow: true };
+    let erase = AreaStamp { center: [40.0, 0.0, 0.0], radius: 1.0, allow: false, ..paint };
+    let stamps = [paint, erase];
+    let skip = FillSkip { contact_faces: &[1, 0], belt: &[[11.0, 0.0, 0.0]], belt_clear: 1.5, manual: &[[20.5, 0.0, 0.0]], manual_clear: 0.6, stamps: &stamps };
+    assert_eq!(offered_fills(&fills, &skip, true).collect::<Vec<_>>(), vec![3], "ids are kept: K 3 stays K 3");
+    // (b) and (c) are distance rules: farther away the tips are offered.
+    let far = FillSkip { belt_clear: 0.9, manual_clear: 0.4, ..skip };
+    assert_eq!(offered_fills(&fills, &far, true).collect::<Vec<_>>(), vec![1, 2, 3]);
+    // (d) unpainted is not offered, nor painted on the far side (the stamp faces the other way).
+    let none = FillSkip { stamps: &[], ..far };
+    assert_eq!(offered_fills(&fills, &none, true).count(), 0);
+    let far_side = [AreaStamp { normal: [0.0, 1.0, 0.0], ..paint }];
+    assert_eq!(offered_fills(&fills, &FillSkip { stamps: &far_side, ..far }, true).count(), 0);
+    // Without (d) the tips Add can snap to are all offered, painted or not (B3).
+    assert_eq!(offered_fills(&fills, &none, false).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
 }

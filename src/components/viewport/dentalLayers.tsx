@@ -111,23 +111,48 @@ export function DentalRimLine({ rim }: { rim: DentalRim }) {
   </group>;
 }
 
-/** Step 2's actual reviewed contact set, drawn directly without building any support body. */
-export function DentalTipMarkers({ points }: { points: readonly SupportPoint[] }) {
+/** A tip as the markers need it (the preview's points and Step 2's contacts both fit). */
+export type TipMark = Pick<SupportPoint, 'id' | 'position' | 'normal'>;
+/** Tips shown selected (solid red), or previewed under Drag over (`ghost`, red to select or grey to unselect). */
+export interface TipMarks { solid: ReadonlySet<string>; ghost: readonly string[]; ghostTone: 'remove' | 'ring' }
+
+const MARKER_MATERIALS = {
+  remove: new THREE.MeshStandardMaterial({ color: PREVIEW.remove, roughness: 0.65 }),
+  ring: new THREE.MeshStandardMaterial({ color: PREVIEW.ring, roughness: 0.65 }),
+};
+
+function TipInstances({ points, material, scale }: { points: readonly TipMark[]; material: THREE.Material; scale: number }) {
   const ref = useRef<THREE.InstancedMesh>(null);
   useLayoutEffect(() => {
     const mesh = ref.current;
     if (!mesh) return;
     const matrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
-    const size = new THREE.Vector3(0.42, 0.42, 0.42);
+    const size = new THREE.Vector3(scale, scale, scale);
     points.forEach((point, index) => {
       position.set(...point.position).addScaledVector(new THREE.Vector3(...point.normal), 0.08);
       mesh.setMatrixAt(index, matrix.compose(position, new THREE.Quaternion(), size));
     });
     mesh.instanceMatrix.needsUpdate = true;
-  }, [points]);
+  }, [points, scale]);
   if (points.length === 0) return null;
   // Shared geometry and material: a new count remounts the mesh but never recompiles its shader.
-  return <instancedMesh key={points.length} ref={ref} args={[TIP_MARKER_GEOMETRY, TIP_MARKER_MATERIAL, points.length]} raycast={() => undefined} frustumCulled={false} dispose={null} />;
+  return <instancedMesh key={points.length} ref={ref} args={[TIP_MARKER_GEOMETRY, material, points.length]} raycast={() => undefined} frustumCulled={false} dispose={null} />;
+}
+
+/** Step 2's actual reviewed contact set, drawn directly without building any support body. */
+export function DentalTipMarkers({ points, marks }: { points: readonly TipMark[]; marks?: TipMarks }) {
+  const { plain, solid, ghost } = useMemo(() => {
+    if (!marks) return { plain: points, solid: [] as TipMark[], ghost: [] as TipMark[] };
+    const ghosted = new Set(marks.ghost);
+    const out = { plain: [] as TipMark[], solid: [] as TipMark[], ghost: [] as TipMark[] };
+    for (const point of points) (marks.solid.has(point.id) ? out.solid : ghosted.has(point.id) ? out.ghost : out.plain).push(point);
+    return out;
+  }, [points, marks]);
+  return <>
+    <TipInstances points={plain} material={TIP_MARKER_MATERIAL} scale={0.42} />
+    <TipInstances points={solid} material={MARKER_MATERIALS.remove} scale={0.6} />
+    <TipInstances points={ghost} material={MARKER_MATERIALS[marks?.ghostTone ?? 'remove']} scale={0.6} />
+  </>;
 }
 

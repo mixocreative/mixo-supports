@@ -97,6 +97,21 @@ function screenBrushView(bodies: BodySegments, camera: THREE.Camera, scene: THRE
   };
 }
 
+/**
+ * Dental Step 2 has tips but no support bodies: each tip stands as a short stub off the surface along its
+ * normal (clear of the model it sits on), so Drag over finds it as it finds a support.
+ */
+export function tipSegments(tips: readonly { id: string; position: readonly number[]; normal: readonly number[] }[]): BodySegments {
+  const points = new Float32Array(tips.length * 6);
+  tips.forEach((tip, k) => {
+    for (let axis = 0; axis < 3; axis += 1) {
+      points[k * 6 + axis] = tip.position[axis]! + tip.normal[axis]! * 0.15;
+      points[k * 6 + 3 + axis] = tip.position[axis]! + tip.normal[axis]! * 0.5;
+    }
+  });
+  return { ids: tips.map((tip) => tip.id), first: Uint32Array.from({ length: tips.length + 1 }, (_, k) => k), points };
+}
+
 /** Dev builds time each frame of hit tests (read with performance.getEntriesByName('mixo-brush-frame')). */
 const measureBrushFrame = import.meta.env?.DEV ? (start: number) => void performance.measure('mixo-brush-frame', { start }) : undefined;
 
@@ -111,6 +126,8 @@ export function useScreenBrush(options: {
   /** `mode` is the Select | Unselect switch; Shift flips it as the pointer reports it (`event.shiftKey`). */
   brush: Brush | undefined;
   supports: GeneratedSupportMesh | undefined;
+  /** Without support bodies (dental Step 2): the tips to select. */
+  tips?: readonly { id: string; position: readonly number[]; normal: readonly number[] }[] | undefined;
   group: { current: THREE.Group | null };
   selection: ReadonlySet<string>;
   stroke: Stroke;
@@ -128,7 +145,9 @@ export function useScreenBrush(options: {
   /** The circle is showing: the pointer is over the canvas with the brush live. */
   const [over, setOver] = useState(false);
   const wanted = Boolean(options.brush);
-  const bodies = useMemo<BodySegments | undefined>(() => (wanted && options.supports ? bodySegments(geometryNow()!, options.supports) : undefined), [wanted, options.supports]);
+  const bodies = useMemo<BodySegments | undefined>(
+    () => (!wanted ? undefined : options.supports ? bodySegments(geometryNow()!, options.supports) : options.tips ? tipSegments(options.tips) : undefined),
+    [wanted, options.supports, options.tips]);
   const view = useMemo(() => bodies && screenBrushView(bodies, camera, scene, options.group, gl.domElement), [bodies, camera, scene, options.group, gl]);
   /** Shows the hover again with the brush as it is now (set while the pointer listeners are attached). */
   const refreshHover = useRef<() => void>(() => undefined);

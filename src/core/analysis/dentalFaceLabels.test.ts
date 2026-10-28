@@ -77,7 +77,7 @@ describe('reference aligner face labels', () => {
     expect(moved).toBeLessThan(policy.candidates.length / 4);
   }, 60000);
 
-  it('put every repair alternate (a phase-zero sample) on an allowed face, or moved from it like a tip', () => {
+  it('put every repair alternate (a half-step sample) on an allowed face, or moved from it like a tip', () => {
     const { alternates } = dentalPolicyOf(mesh, saved());
     expect(alternates.length).toBeGreaterThan(70);
     for (const alternate of alternates) expectOnAreaOrMovedFromBelow(alternate);
@@ -89,16 +89,16 @@ describe('reference aligner face labels', () => {
     // support reaches from below, which paint does not change.
     const stamp = { center: [0, 0, 0] as [number, number, number], radius: 1e6, normal: [0, 0, 1] as [number, number, number], kind: 'allow' as const };
     const policy = dentalPolicyOf(mesh, saved([stamp]));
-    const detected = policy.candidates.filter((c) => !c.id.startsWith('dental-paint-'));
+    const detected = policy.candidates.filter((c) => !c.id.startsWith('dental-fill-'));
     const plain = dentalPolicyOf(mesh, saved());
     const movedFaces = new Set([...plain.candidates, ...plain.alternates].filter((c) => forbidden[c.face] === 1).map((c) => c.face));
     for (const face of [...detected, ...policy.alternates].map((c) => c.face)) expect(forbidden[face] === 0 || movedFaces.has(face), `face ${face}`).toBe(true);
-    const painted = policy.candidates.filter((c) => c.id.startsWith('dental-paint-'));
+    const painted = policy.candidates.filter((c) => c.id.startsWith('dental-fill-'));
     expect(painted.length).toBeGreaterThan(0);
     for (const { face } of painted) expect(policy.permittedFaces[face], `paint tip on face ${face}`).toBe(1);
     // An erase stamp after it takes the paint, and the detected tips under it (faces turned the same way), away again.
     const erased = dentalPolicyOf(mesh, saved([stamp, { ...stamp, kind: 'erase' }]));
-    expect(erased.candidates.filter((c) => c.id.startsWith('dental-paint-'))).toEqual([]);
+    expect(erased.candidates.filter((c) => c.id.startsWith('dental-fill-'))).toEqual([]);
     expect(erased.candidates.length).toBeGreaterThan(0);
     expect(erased.candidates.length).toBeLessThan(detected.length);
   }, 120000);

@@ -10,29 +10,29 @@ You give it a scan of an aligner. It finds the trim edge of the aligner. It then
 
 By default the supports are placed only on a narrow area next to the trim edge, on the outside face. The software never puts them on the inner surface that touches the teeth by itself. You can move that area, widen it, and paint more area anywhere (see Step 2); painting is your decision.
 
-## The four steps
+## The start screen and three steps
 
-Dental mode dims the rest of the editor so you can focus on one aligner at a time.
-
-**Step 0. Aligner type.** You pick a card for the type of aligner. Each card shows a line drawing, a name and one sentence. Today there is one type, the reference aligner. The card is still shown, so the steps are always the same. The last type you chose is highlighted.
+The app opens on a full-screen start: **Aligner supports** or **Any model** (or open a saved project). For aligners you then pick a card for the type of aligner (today there is one, the reference aligner) and open or drop the STL. During the three steps only the dental controls are shown; the general editor is hidden.
 
 **Step 1. Aligner.** Drop or upload the STL file.
 - The software first checks the mesh. If it has holes or broken geometry, it warns you and marks the detection as unreliable.
 - It then turns the aligner into a good print position by itself.
+- It then tries a range of print angles (tilts, one degree apart) and checks each with four rules: no pocket that would trap resin, no long gap in the rim supports, no support that would cross the aligner, no support too thin for its height. It picks an angle that passes, whose neighbours two degrees either side also pass, and shows the stable range on the angle slider (reference: 44.5°, stable 26.5° to 44.5°). This takes a few seconds. When you press Next it builds once at that angle to confirm; if that build finds a problem, it moves to the next best angle and says so.
 - If the scan does not match the type you chose (for example, no central opening was found on a type that has one), it says "This looks like a different aligner type: no central opening was found." and offers **Switch to** each other type that has no central opening, and **Keep** the type you chose. It does not carry on silently. Today there is only one type, so only **Keep** is shown.
 - You can turn the aligner by hand with the gizmo, then press Next.
 - If the software is not sure about the position, it says so and keeps the pose you dropped it in. You then turn it yourself.
 - If the file is wrong, broken or too large, you get a clear message and stay in Step 1.
 
-**Step 2. Support area.** The support area is shown in teal: by default a narrow band along each detected edge, on its outer side. The proposed support tips are shown as dots and follow every change within about a second.
+**Step 2. Support area.** The support area is shown in teal: by default a narrow band along each detected edge, on its outer side. The proposed support tips are shown as dots and follow every change within about a second. The tools are **Paint**, **Erase**, **Add** and **Select** (keys P, E, A, S). Tips along each edge are spread evenly: the edge length is divided into equal steps close to the target spacing, so there is no short or long gap where the loop closes.
 - **Area width** makes the area wider or narrower around its middle line (0.2 to 2.4 mm; default 0.5 mm). Widening never spreads the area across the edge onto the inner surface.
 - **Area position** moves the area's middle line: higher values move it farther onto the outer surface, lower values toward the edge and, below 0, across it (from -0.4 to 2.5 mm; default 0.25 mm, so the tips sit about 0.25 mm onto the outer face). The tips sit on the middle line, so they move with the area.
 - **Support density** changes how close together the tips are (0.5 to 2 times; at 1 the tips are about 3 mm apart on the outer edge and 4 mm apart on the central opening).
+- **Add** puts a tip where you click; it snaps to a nearby suggested spot within the click reach, and warns if the spot faces up. **Select** picks tips (click or drag over) so Delete removes them.
 - **Paint** adds support area anywhere on the aligner, inside or outside the band. The tips follow about half a second after you let go of the mouse. Painted area away from the band gets its own tips, spaced like the band's tips (about 3 mm at density 1) and kept that far from the band's tips. Only faces that face down in the print position get tips. **Erase** removes area anywhere, and the tips on it. The last stroke over a place wins. **Brush size** is the brush radius.
 - If the software found no area, it says so, and you paint an area from scratch. Next stays off until something is painted. The software still checks every tip you create this way.
 
-**Step 3. Supports.** Supports are built with the settings of the aligner type. For the reference aligner these are: straight columns 1.4 mm thick, a tip 0.45 mm across where it touches the aligner, the aligner 3.5 mm above the plate, a raft, and Tree and Brace off, so every column goes straight down to the plate. These are reasonable starting values, close to an example of good supports on the reference aligner, not a copy of it.
-- You can change tip size, density, lift height, raft on or off, and Tree and Brace on or off. Your changes are kept for this aligner. Supports are rebuilt after each change. Supports you added by hand are kept. A message tells you what was kept and what was reset.
+**Step 3. Supports.** Supports are built with the settings of the aligner type. For the reference aligner these are: straight columns 1.4 mm thick, a tip 0.45 mm across where it touches the aligner, the aligner 3.5 mm above the plate, a raft, Brace on (cross-braces between neighbouring columns) and Tree off, so every column goes straight down to the plate. If the braces would cross the aligner they are left out, and a notice says so. These are reasonable starting values, close to an example of good supports on the reference aligner, not a copy of it.
+- You can change tip size, pillar size, lift height, raft on or off, and Tree and Brace on or off. Your changes are kept for this aligner. Supports are rebuilt after each change. Supports you added by hand are kept. A message tells you what was kept and what was reset.
 - You can add a support or delete a selected one.
 - The **Label** field is text printed on the support base. The default is `X`. It holds up to 8 characters: letters A to Z, digits 0 to 9 and `-`. Other characters are dropped and letters become capitals.
 - **OK** finishes this aligner. **Add another aligner** also finishes it, and sends you back to Step 1 with the same type.

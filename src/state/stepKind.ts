@@ -11,6 +11,7 @@ function unitStep(before: PrintUnit, after: PrintUnit): StepKind | undefined {
   if (handWorkGone || after.deleted.length > before.deleted.length) return 'deleteSupports';
   if (before.zones !== after.zones) return 'zones';
   if (before.contactSettings !== after.contactSettings) return 'settings';
+  if (before.dental !== after.dental) return 'dentalArea';
   if (before.supports !== after.supports || before.placement !== after.placement) return after.supports ? 'generate' : 'removeSupports';
   return undefined;
 }

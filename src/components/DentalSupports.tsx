@@ -22,10 +22,6 @@ type Problem = SupportProblem & { unitId: string; inZone: boolean };
 export interface DentalReview {
   settings: Readonly<LiveSupportSettings>;
   onSetting: <K extends SettingKey>(key: K, value: LiveSupportSettings[K], edit?: string) => void;
-  /** Support density of the strip (Step 2's setting, kept in step); a change places the contacts again. */
-  density: number;
-  densityBusy: boolean;
-  onDensity: (density: number) => void;
   structure: Readonly<DentalStructure>;
   onStructure: (structure: DentalStructure) => void;
   clickReach: { value: number; onChange: (value: number, edit?: string) => void };
@@ -95,10 +91,6 @@ export function DentalSupportsStep({ gesture, ui, review, ready, send, run }: {
       <RangeField layout="stack" label="Pillar size" unit="{n} mm" hint="Diameter of each support pillar"
         min={0.8} max={2.5} step={0.1} value={settings.pillarDiameter}
         onChange={(v) => onSetting('pillarDiameter', v, 'dental-pillarDiameter')} onAdjust={setAdjusting} />
-      <RangeField layout="stack" label="Support density" unit="{n}×" hint="Higher density places support tips closer together. Your manual edits are kept where they still fit"
-        min={0.5} max={2} step={0.1} value={review.density}
-        onChange={review.onDensity} onAdjust={setAdjusting} />
-      {review.densityBusy && <p className="edit-note" role="status">{t('Updating support area and tips…')}</p>}
       <RangeField layout="stack" label="Lift height" unit="{n} mm" hint="How high the aligner stands above the plate. Supports are placed again"
         min={settingLimits.liftHeight.min} max={15} step={0.5} value={settings.liftHeight}
         onChange={(value) => onSetting('liftHeight', value, 'dental-lift')} onAdjust={setAdjusting} />

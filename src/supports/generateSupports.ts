@@ -18,7 +18,7 @@ import { supportEngine, SESSION_BYTES, type SupportSession } from './supportEngi
 export interface PolicySession extends SupportSession {
   dental_policy(model: number, profile: string, kind: number, tuning: Float64Array, stamps: Float64Array,
     savedAllowed: Uint8Array, savedContact: Uint8Array, savedOuter: Uint32Array, savedOpening: Uint32Array,
-    structure: Uint8Array, frame: Float64Array): PolicyHandle;
+    structure: Uint8Array, frame: Float64Array, manualPositions: Float64Array): PolicyHandle;
   generic_policy(model: number, settings: Float64Array,
     autoIds: string[], autoPositions: Float64Array, autoNormals: Float64Array, autoSources: Uint8Array,
     manualIds: string[], manualPositions: Float64Array, manualNormals: Float64Array, manualSources: Uint8Array,
@@ -113,7 +113,7 @@ export interface GenerateSession extends PolicySession {
   release_mesh(handle: number): void;
   load_placed(model: number, frame: Float64Array): number;
   generate(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number,
-    labelText: string, zones: Float64Array, policy: PolicyHandle, timeoutMs: number, revision: number, plateY: number): Generation;
+    labelText: string, zones: Float64Array, policy: PolicyHandle, timeoutMs: number, revision: number, plateY: number, frame: Float64Array): Generation;
 }
 
 const PARTS: readonly SupportPart[] = [
@@ -154,7 +154,8 @@ export function generateSupports(contacts: readonly SupportContact[], settings: 
     let result: Generation;
     try {
       result = wasm.generate(handle, inputs.map((c) => c.id), packed.contacts, packed.shapes, packSettings(settings), options.mode === 'export' ? 1 : 0,
-        options.labelText ?? '', packZones(options.zones ?? []), data.handle, options.timeoutMs ?? 0, options.revision ?? 0, options.plateY ?? 0);
+        options.labelText ?? '', packZones(options.zones ?? []), data.handle, options.timeoutMs ?? 0, options.revision ?? 0, options.plateY ?? 0,
+        options.frame ? frameArray(options.frame) : new Float64Array());
     } finally {
       data.release();
     }

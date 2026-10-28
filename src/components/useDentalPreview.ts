@@ -10,6 +10,8 @@ import { seededDentalPlacement } from './dentalPlacementSeed';
 export interface DentalTipPreview extends FinishedPlacement {
   unit: PrintUnit;
   localPoints: readonly SupportPoint[];
+  /** Every suggested tip, painted or not (where Add snaps), unit-local. */
+  localSuggested: readonly SupportPoint[];
 }
 
 export function currentDentalPreview(unit: PrintUnit | undefined, preview: DentalTipPreview | undefined): DentalTipPreview | undefined {
@@ -34,6 +36,7 @@ export function useDentalPreview(unit: PrintUnit | undefined, active: boolean, a
       setStored({ kind: 'ready', unit, preview: {
         unit, unitId: unit.id, orientation, settings: resolveSettings(unit.settings), result,
         localPoints: placedPoints(orientation, result),
+        localSuggested: placedPoints(orientation, { points: result.suggested ?? [] }),
       } });
     };
     // A retune placed the contacts for this very policy already: shown at once, no second job.

@@ -4,6 +4,7 @@
 //! Rust makes it (`dental_policy` / `generic_policy`) and the host passes the `PolicyHandle` on.
 
 use super::{GeometrySession, build_error, coded_error, mesh_error};
+use mixo_geometry_core::core::matrix;
 use mixo_geometry_core::supports::build::BuildMode;
 use mixo_geometry_core::supports::check::{CheckSettings, check_supports};
 use mixo_geometry_core::supports::flat::{self as support_flat, NO_CONTACT};
@@ -25,11 +26,12 @@ pub struct PolicyHandle {
     pub(crate) result: PolicyResult,
     pub(crate) reproduced: bool,
     pub(crate) profile_id: String,
+    pub(crate) suggestions: Vec<mixo_geometry_core::supports::policy::Candidate>,
 }
 
 impl PolicyHandle {
     pub(crate) fn new(result: PolicyResult) -> Self {
-        Self { result, reproduced: true, profile_id: String::new() }
+        Self { result, reproduced: true, profile_id: String::new(), suggestions: Vec::new() }
     }
 }
 
@@ -42,6 +44,10 @@ impl PolicyHandle {
     /// Point xyz then normal xyz per candidate (the frame the policy was made in).
     pub fn candidate_points(&self) -> Vec<f64> {
         self.result.candidates.iter().flat_map(|c| c.point.into_iter().chain(c.normal)).collect()
+    }
+    /// Point xyz then normal xyz per suggested tip Add can snap to, painted or not (a dental policy only).
+    pub fn suggested_points(&self) -> Vec<f64> {
+        self.suggestions.iter().flat_map(|c| c.point.into_iter().chain(c.normal)).collect()
     }
     /// Source face per candidate (-1 none).
     pub fn candidate_faces(&self) -> Vec<f64> {
@@ -209,10 +215,19 @@ impl GeometrySession {
         timeout_ms: f64,
         revision: u32,
         plate_y: f64,
+        frame: &[f64],
     ) -> Result<Generation, JsValue> {
         if !plate_y.is_finite() {
             return Err(coded_error("NON_FINITE"));
         }
+        // The generation frame `[position xyz, rotation xyz]` (empty: the contacts are unit-local): a
+        // repaired contact is named from its unit-local point.
+        let local = match frame.len() {
+            0 => None,
+            6 if frame.iter().all(|v| v.is_finite()) => Some(matrix::invert_matrix(&matrix::placement_matrix([frame[0], frame[1], frame[2]], [frame[3], frame[4], frame[5]]))),
+            6 => return Err(coded_error("NON_FINITE")),
+            _ => return Err(coded_error("INVALID_LENGTH")),
+        };
         let mut settings = support_settings::SupportSettings::from_slice(settings).map_err(build_error)?;
         settings.plate_y = plate_y;
         let contacts = flat::decode_contacts(&ids, contacts, shapes, &settings.shape).map_err(build_error)?;
@@ -230,7 +245,7 @@ impl GeometrySession {
         }
         let started = if timeout_ms > 0.0 { js_sys::Date::now() } else { 0.0 };
         let expired = move || timeout_ms > 0.0 && js_sys::Date::now() - started > timeout_ms;
-        let out = generate(GenerateInput { contacts, settings: &settings, mode, model: Some(&view), label_text, zones: &zones, policy: &policy.result, expired: &expired }).map_err(build_error)?;
+        let out = generate(GenerateInput { contacts, settings: &settings, mode, model: Some(&view), label_text, zones: &zones, policy: &policy.result, expired: &expired, local: local.as_ref() }).map_err(build_error)?;
         let table = support_flat::encode_components(&out.built);
         let mut issues = Vec::new();
         for issue in &out.verdict.issues {

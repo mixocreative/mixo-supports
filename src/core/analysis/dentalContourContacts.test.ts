@@ -32,11 +32,13 @@ describe('sampleDiagnosticContourContacts', () => {
     expect(result.contacts.length).toBeGreaterThan(0);
     expect(result.contacts.every((contact) => contact.face < 4)).toBe(true);
     const shifted = sampleDiagnosticContourContacts(mesh, new Uint32Array([0, 1, 1, 2, 2, 0]), band,
-      { spacing: 0.5, phaseMm: 0.1, maxSearchDistance: 1.5 });
+      { spacing: 0.5, phaseFraction: 0.2, maxSearchDistance: 1.5 });
     expect(shifted.kind).toBe('proposal');
     if (shifted.kind === 'proposal') {
       expect(shifted.contacts.every((contact) => contact.face < 4)).toBe(true);
-      expect(shifted.contacts[0]?.distanceAlongContour).toBeCloseTo(0.1, 6);
+      // Even steps: the perimeter 2 + 2 sqrt 5 in round(L / 0.5) = 13 steps, the first sample a fifth of one in.
+      const perimeter = 2 + 2 * Math.sqrt(5);
+      expect(shifted.contacts[0]?.distanceAlongContour).toBeCloseTo(0.2 * perimeter / Math.round(perimeter / 0.5), 6);
     }
   });
 
@@ -83,6 +85,6 @@ describe('sampleDiagnosticContourContacts', () => {
     expect(sampleDiagnosticContourContacts(mesh, region.outerEdges, band,
       { spacing: -1, maxSearchDistance: 1.5 }).kind).toBe('inconclusive');
     expect(sampleDiagnosticContourContacts(mesh, region.outerEdges, band,
-      { spacing: 2, phaseMm: 2, maxSearchDistance: 1.5 }).kind).toBe('inconclusive');
+      { spacing: 2, phaseFraction: 1, maxSearchDistance: 1.5 }).kind).toBe('inconclusive');
   }, 30000);
 });

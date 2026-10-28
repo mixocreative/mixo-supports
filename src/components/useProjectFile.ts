@@ -31,8 +31,10 @@ export function useProjectFile(host: {
   refused: (message: StatusMessage) => void;
   /** The scene the history shows now (it moves with every step, so the leave prompt follows it). */
   scene: PrintScene;
+  /** The file replaced the plate. */
+  onOpened?: () => void;
 }) {
-  const { sceneRef, modeRef, replace, setStatusMessage, offerUndo, refused, scene } = host;
+  const { sceneRef, modeRef, replace, setStatusMessage, offerUndo, refused, scene, onOpened } = host;
   const saved = useRef<PrintScene>(scene);
   const busy = useRef(false);
   const projectClient = useRef<ProjectClient>();
@@ -55,15 +57,16 @@ export function useProjectFile(host: {
     if (busy.current) return;
     busy.current = true;
     try {
-      await openProjectFile(file, {
+      const opened = await openProjectFile(file, {
         runtime: RUNTIME, read: (blob, limit) => client().open(blob, limit), mode: () => modeRef.current.mode,
         hadObjects: () => sceneRef.current.units.length > 0, replace, markSaved: (opened) => { saved.current = opened; },
         setStatusMessage, offerUndo, refused,
       }, modelsIgnored);
+      if (opened) onOpened?.();
     } finally {
       busy.current = false;
     }
-  }, [modeRef, offerUndo, refused, replace, sceneRef, setStatusMessage]);
+  }, [modeRef, offerUndo, onOpened, refused, replace, sceneRef, setStatusMessage]);
 
   const saveProject = useCallback(async () => {
     const current = sceneRef.current;

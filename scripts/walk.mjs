@@ -151,6 +151,12 @@ async function launch() {
   }
 }
 
+/** The start screen (docs/ROADMAP.md ST) is the first thing the app shows: "Any model" opens the empty editor the scenarios below begin in. */
+async function enterEditor(page) {
+  await page.getByRole('button', { name: 'Any model', exact: true }).click();
+  await page.waitForSelector('.workspace');
+}
+
 // ---- page helpers -----------------------------------------------------------------------------
 
 /** Runs in the page: the React props of the viewport (selection, built support meshes) and of the scene owner. */
@@ -205,6 +211,55 @@ function readProps() {
   };
 }
 
+
+/** Waits until Step 2's tip preview is ready again after an edit (no "Updating" or "Finding" note, tips counted). */
+async function previewReady(page) {
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 400)));
+  await page.waitForFunction(() => !/Updating support area|Finding safe/.test(document.body.innerText) && /[1-9]/.test([...document.querySelectorAll('.edit-note')].map((note) => note.innerText).join(' ')), null, { timeout: 120000 });
+}
+
+/**
+ * Step 2, Add: orbits the view from below to look down on the aligner (a vertical drag across empty
+ * canvas), then clicks a grid of spots until one answers with `expected` (the "faces up" line).
+ * Every tip added on the way, the one with the warning too, is undone. Returns what was seen.
+ */
+async function addOnUpFacingSpot(page, expected) {
+  const idle = (ms) => page.evaluate((span) => new Promise((resolve) => setTimeout(resolve, span)), ms);
+  const box = await page.locator('canvas').first().boundingBox();
+  const at = (fx, fy) => [box.x + box.width * fx, box.y + box.height * fy];
+  const manual = async () => (await page.evaluate(readProps)).units[0]?.manual ?? -1;
+  const status = () => page.evaluate(() => document.querySelector('footer strong')?.innerText ?? '');
+  const tried = [];
+  // The first drag turns the view one way; if it was already there, the second turns it the other way.
+  for (const [from, to] of [[0.4, 0.85], [0.85, 0.4]]) {
+  // Along the right edge, clear of the bar on top and the buttons below: empty canvas turns the view.
+  for (let sweep = 0; sweep < 2; sweep += 1) {
+    await page.mouse.move(...at(0.97, from));
+    await page.mouse.down();
+    for (let k = 0; k <= 20; k += 1) await page.mouse.move(...at(0.97, from + (to - from) * k / 20));
+    await page.mouse.up();
+  }
+  await idle(1000);
+  for (const fy of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+    for (const fx of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+      await previewReady(page);
+      const was = await manual();
+      await page.mouse.click(...at(fx, fy));
+      await idle(700);
+      const line = await status();
+      const now = await manual();
+      tried.push(`${fx},${fy}:${now > was ? 'added' : 'none'}`);
+      if (now > was) {
+        await page.keyboard.press('Control+z');
+        for (let wait = 0; wait < 20 && (await manual()) !== was; wait += 1) await idle(300);
+      }
+      if (line === expected) return { found: true, added: now > was, status: line, tried };
+    }
+  }
+  }
+  return { found: false, added: false, status: await status(), tried };
+}
+
 /** One Chromium page with the helpers the checks share. */
 function makeDriver(page) {
   const idle = (ms) => page.evaluate((span) => new Promise((resolve) => setTimeout(resolve, span)), ms);
@@ -252,6 +307,7 @@ function makeDriver(page) {
     /** Generates the supports; with `whileBuilding`, presses Drag over in the window where the first build is still running. */
     async generate(url, whileBuilding) {
       await page.goto(url);
+      await enterEditor(page);
       await page.setInputFiles('.drop input[type=file]', FIXTURE);
       await page.waitForFunction(() => document.body.innerText.includes('knot'), null, { timeout: 60000 });
       if (whileBuilding) await page.evaluate(() => { window.__meshDelay = 8000; });
@@ -571,6 +627,8 @@ async function walk(url, scratch, dentalFixture) {
       `file ${saved.suggestedFilename()}, header ${JSON.stringify(header)}, prompt before the save ${unsaved}, status "${await d.status()}"`);
 
     await page.goto(url);
+
+    await enterEditor(page);
     await d.idle(1500);
     await page.evaluate(() => {
       window.__longTasks = [];
@@ -587,6 +645,8 @@ async function walk(url, scratch, dentalFixture) {
     check('i4 a freshly opened project has nothing unsaved', (await leavePrompt()) === false && (await d.status()) === 'Opened knot.mixosupports.', `status "${await d.status()}"`);
 
     await page.goto(url);
+
+    await enterEditor(page);
     await page.setInputFiles('.drop input[type=file]', FIXTURE);
     await page.waitForFunction(() => document.body.innerText.includes('knot'), null, { timeout: 60000 });
     await d.settled();
@@ -633,18 +693,21 @@ async function walk(url, scratch, dentalFixture) {
       cut.writeUInt32LE(count - 40, 80);
       writeFileSync(holed, cut);
       const drop = (file) => page.setInputFiles('input[aria-label="Choose aligner file"]', file);
+      /** Back from Step 1 lands on the start screen's aligner type; its card leads to the file screen, whose drop starts Step 1. */
+      const onTypeScreen = () => page.waitForSelector('.start-screen .dental-cards');
       const badge = () => page.locator('.edit-badge').innerText();
       const objects = async () => (await page.locator('footer').innerText()).match(/(\d+) objects?/)?.[1];
       const stepTo = async (text, ms = 20000) => page.waitForFunction((word) => document.querySelector('.edit-badge')?.innerText.includes(word), text, { timeout: ms });
       const noticeShown = (text) => page.waitForFunction((word) => [...document.querySelectorAll('[role="alert"]')].some((node) => node.innerText.includes(word)), text, { timeout: 120000 });
 
       await page.goto(url);
+
+      await enterEditor(page);
       await d.button('Aligner Support Production').click();
       await stepTo('Step 0 · Aligner type');
-      const inertLeft = await page.locator('.panel.left [inert]').count();
-      const inertRight = await page.locator('.panel.right [inert]').count();
-      check('u0 entering the dental flow dims both side panels and shows the type card', inertLeft >= 3 && inertRight >= 2 && await page.locator('.dental-card').count() === 1 && /Reference aligner/.test(await page.locator('.dental-card').innerText()) && await page.locator('.dental-card svg').count() === 1,
-        `inert left ${inertLeft}, right ${inertRight}, cards ${await page.locator('.dental-card').count()}`);
+      const panelsShown = await page.locator('.panel.left, .panel.right').count();
+      check('u0 entering the dental flow shows no generic side panels (U1) and shows the type card', panelsShown === 0 && await page.locator('.dental-card').count() === 1 && /Reference aligner/.test(await page.locator('.dental-card').innerText()) && await page.locator('.dental-card svg').count() === 1,
+        `panels ${panelsShown}, cards ${await page.locator('.dental-card').count()}`);
       await page.screenshot({ path: path.join(scratch, 'ux-a-step0.png') });
       await d.button('Exit').click();
       await page.waitForFunction(() => !document.querySelector('.edit-badge'), null, { timeout: 5000 });
@@ -672,17 +735,15 @@ async function walk(url, scratch, dentalFixture) {
       await page.waitForFunction(() => /No aligner opening was found/.test(document.querySelector('footer strong')?.innerText ?? ''), null, { timeout: 10000 });
       check('u5b Next without a detected opening explains itself and stays in Step 1', (await badge()).includes('Step 1 · Aligner'), `status "${await d.status()}"`);
       await d.button('Back').click();
-      await stepTo('Step 0');
+      await onTypeScreen();
       await page.locator('.dental-card').click();
-      await stepTo('Step 1 · Aligner');
 
       await drop(holed);
       await noticeShown('holes or non-manifold');
       check('u6 a mesh with holes is warned about before detection is trusted', await page.getByText('holes or non-manifold').isVisible());
       await d.button('Back').click();
-      await stepTo('Step 0');
+      await onTypeScreen();
       await page.locator('.dental-card').click();
-      await stepTo('Step 1 · Aligner');
       await drop(cup);
       await noticeShown('different aligner type');
       check('u7 a model with no central opening offers a type switch or Keep instead of silently continuing', await page.getByRole('button', { name: /^Keep / }).isVisible());
@@ -697,10 +758,9 @@ async function walk(url, scratch, dentalFixture) {
       await d.button('Back').click();
       await stepTo('Step 1 · Aligner');
       await d.button('Back').click();
-      await stepTo('Step 0');
+      await onTypeScreen();
 
       await page.locator('.dental-card').click();
-      await stepTo('Step 1 · Aligner');
       const dropped = Date.now();
       // Step 1's print-angle search (F): record whether its progress line showed.
       await page.evaluate(() => { window.__scanSeen = false; new MutationObserver(() => { if (/Scanning print angles \d+\/\d+/.test(document.body.innerText)) window.__scanSeen = true; }).observe(document.body, { subtree: true, childList: true, characterData: true }); });
@@ -740,6 +800,7 @@ async function walk(url, scratch, dentalFixture) {
       await stepTo('Step 2 · Support area', 180000);
       await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /Proposed support tips: [1-9]/.test(note.innerText)), null, { timeout: 240000 });
       check('u10 Step 2 shows the detected area with tips, and Next is on', await d.button('Next').isEnabled() && (await page.getByText('No support area was detected').count()) === 0);
+      check('u1b in Step 2 the generic left and right panels are absent and the viewport buttons stay', (await page.locator('.panel.left, .panel.right').count()) === 0 && await page.getByRole('button', { name: 'Fit view', exact: true }).isVisible());
       // F's confirm rule: the pick holds, or the angle moves to the next tilt and says so (D15).
       const movedNotes = await page.getByText('Print angle moved to').allInnerTexts();
       const movedTo = movedNotes.map((note) => note.match(/([\d.]+)°/)?.[1]).find(Boolean);
@@ -782,7 +843,7 @@ async function walk(url, scratch, dentalFixture) {
         `position ${area1.tuning?.positionMm} -> ${area2.tuning?.positionMm} mm, faces ${area1.faces} -> ${area2.faces}, tips ${area1.tips} -> ${area2.tips}, ${positionMs} ms`);
       note(`u10 live Step 2 updates (key press to tip preview, one debounce and one worker job included): width ${widthMs} ms, position ${positionMs} ms`);
       // Paint on the aligner body, well away from both edges (bottom view): new tips there; Erase the same stroke removes them.
-      const bodyStrokes = [[[0.28, 0.47], [0.36, 0.52]], [[0.62, 0.62], [0.7, 0.55]], [[0.3, 0.42], [0.38, 0.47]]];
+      const bodyStrokes = [[[0.37, 0.47], [0.42, 0.52]], [[0.57, 0.62], [0.62, 0.55]], [[0.38, 0.42], [0.43, 0.47]]];
       const paintStroke = async (kind) => {
         await bar.getByRole('button', { name: kind, exact: true }).click();
         await d.measureCanvas();
@@ -818,6 +879,107 @@ async function walk(url, scratch, dentalFixture) {
           erasedTips <= tipsBefore && /Dental support area erased/.test(await d.status()),
           `tips ${paintedTips} -> ${erasedTips} (before paint ${tipsBefore}), ${eraseMs} ms (drag ${released - t0} ms, release to tip preview ${t0 + eraseMs - released} ms)`);
       }
+
+      // B3: Step 2's four tools, their keys, Add (exact hit, snapping, the up-facing warning) and Select with Delete.
+      {
+        const tools = bar.getByRole('group', { name: 'Dental area tools' });
+        const pressedTool = async () => { for (const name of ['Paint', 'Erase', 'Add', 'Select']) if ((await tools.getByRole('button', { name, exact: true }).getAttribute('aria-pressed')) === 'true') return name; return ''; };
+        const toolNames = await tools.getByRole('button').allInnerTexts();
+        check('b3a Step 2 offers the four tools Paint, Erase, Add and Select', toolNames.join('|') === 'Paint|Erase|Add|Select', toolNames.join('|'));
+        const byKey = [];
+        for (const key of ['p', 'e', 'a', 's']) { await page.keyboard.press(key); byKey.push(await pressedTool()); }
+        check('b3b the keys P, E, A and S switch the tools', byKey.join('|') === 'Paint|Erase|Add|Select', byKey.join('|'));
+        const unitNow = async () => (await d.props()).units[0];
+        const reach = bar.locator('label.field-row').filter({ hasText: 'Click reach' }).locator('input');
+        const setReach = async (value) => { await page.keyboard.press('a'); await reach.fill(value); await reach.press('Enter'); await previewReady(page); };
+        const spots = [[0.38, 0.47], [0.42, 0.52], [0.57, 0.62], [0.5, 0.5], [0.44, 0.55], [0.53, 0.45], [0.47, 0.6], [0.62, 0.55]];
+        /** Add at the first spot from `skip` on that takes a tip: the unit before and after, and the status line. */
+        const addSomewhere = async (skip = 0) => {
+          for (const spot of spots.slice(skip)) {
+            await previewReady(page);
+            const was = await unitNow();
+            await page.mouse.click(...d.at(...spot));
+            await d.idle(700);
+            const now = await unitNow();
+            if (now.manual === was.manual + 1) return { was, now, status: await d.status(), spot };
+          }
+          return undefined;
+        };
+        if (painted) {
+          await page.keyboard.press('p');
+          const shownBefore = await tipCount();
+          const t0 = Date.now();
+          await d.stroke(...painted.stroke, 20);
+          await step2Settled(t0);
+          const shownAfter = await tipCount();
+          await page.keyboard.press('e');
+          const t1 = Date.now();
+          await d.stroke(...painted.stroke, 20);
+          await step2Settled(t1);
+          const hiddenAgain = await tipCount();
+          check('b3c with the keys: Paint reveals suggested tips, Erase hides them again', shownAfter > shownBefore && hiddenAgain <= shownBefore, `tips ${shownBefore} -> ${shownAfter} -> ${hiddenAgain}`);
+        }
+        // Add with a tiny reach lands on the exact hit; the tip is a manual one and survives a density change.
+        await setReach('0.1');
+        const exact = await addSomewhere();
+        check('b3d Add on the aligner places a manual tip at the hit and says so', exact !== undefined && exact.now.deleted === exact.was.deleted && exact.status === 'Support added.', exact ? `manual ${exact.was.manual} -> ${exact.now.manual}, deleted ${exact.was.deleted} -> ${exact.now.deleted}, status "${exact.status}"` : 'no spot took a tip');
+        await nudge('Support density', 1);
+        const kept = await unitNow();
+        check('b3e a manual tip survives a density change', exact !== undefined && kept.manual === exact.now.manual, `manual ${exact?.now.manual} -> ${kept.manual}`);
+        // Add within Click reach of a suggested tip (shown or hidden) lands on it: that tip is deleted in the same step, so the two never stand together.
+        await setReach('40');
+        const snapped = await addSomewhere(1);
+        let undone;
+        if (snapped) {
+          await page.keyboard.press('Control+z');
+          await d.idle(800);
+          undone = await unitNow();
+        }
+        check('b3f Add within Click reach of a suggested tip takes its place in one step (manual +1, that tip deleted; one Undo gives both back)',
+          snapped !== undefined && snapped.now.deleted === snapped.was.deleted + 1 && undone?.manual === snapped.was.manual && undone?.deleted === snapped.was.deleted,
+          snapped ? `manual ${snapped.was.manual} -> ${snapped.now.manual} -> ${undone?.manual}, deleted ${snapped.was.deleted} -> ${snapped.now.deleted} -> ${undone?.deleted}` : 'no spot took a tip');
+        // Select a tip (Click) and Delete: it is gone, and stays gone after the next rebuild.
+        await previewReady(page);
+        await page.keyboard.press('s');
+        const tipsBeforeDelete = await tipCount();
+        const beforeDelete = await unitNow();
+        let picked = 0;
+        for (const spot of spots) {
+          await page.mouse.click(...d.at(...spot));
+          await d.idle(500);
+          picked = (await d.props()).selected;
+          if (picked > 0) break;
+        }
+        await page.keyboard.press('Delete');
+        await d.idle(500);
+        await previewReady(page);
+        const afterDelete = await unitNow();
+        const tipsAfterDelete = await tipCount();
+        check('b3g Select (Click) a tip and Delete removes it', picked === 1 && (await d.props()).selected === 0 && (beforeDelete.manual - afterDelete.manual) + (afterDelete.deleted - beforeDelete.deleted) === 1 && tipsAfterDelete === tipsBeforeDelete - 1,
+          `selected ${picked}, manual ${beforeDelete.manual} -> ${afterDelete.manual}, deleted ${beforeDelete.deleted} -> ${afterDelete.deleted}, tips ${tipsBeforeDelete} -> ${tipsAfterDelete}`);
+        await setReach('0.1');
+        const rebuilt = await addSomewhere(2);
+        await previewReady(page);
+        const tipsAfterRebuild = await tipCount();
+        check('b3h a deleted tip stays removed after the next rebuild', rebuilt !== undefined && tipsAfterRebuild === tipsAfterDelete + 1 && rebuilt.now.deleted === afterDelete.deleted, `tips ${tipsAfterDelete} -> ${tipsAfterRebuild}, deleted ${afterDelete.deleted} -> ${rebuilt?.now.deleted}`);
+        // Select (Drag over) takes several tips, and Esc drops the selection before it leaves the step.
+        await page.keyboard.press('s');
+        const howToSelect = page.getByRole('group', { name: 'How to select' });
+        await howToSelect.getByRole('button', { name: 'Drag over', exact: true }).click();
+        await d.idle(500);
+        await d.stroke([0.38, 0.5], [0.62, 0.5], 25);
+        const swept = await d.settle();
+        await page.keyboard.press('Escape');
+        await d.idle(400);
+        check('b3i Select (Drag over) takes several tips, and Esc drops the selection first', swept.selected > 1 && (await d.props()).selected === 0 && (await page.locator('.edit-badge').innerText()).includes('Step 2'), `selected ${swept.selected}`);
+        await howToSelect.getByRole('button', { name: 'Click', exact: true }).click();
+        // Add on a spot that faces up shows the warning on the status line.
+        await page.keyboard.press('a');
+        const up = await addOnUpFacingSpot(page, 'This spot faces up, so a tip here may not hold.');
+        check('b3j Add on an up-facing spot still adds, and the status line warns that it may not hold', up.found && up.added, `${up.status} (${up.tried.join(' ')})`);
+        await page.getByRole('button', { name: 'Bottom view', exact: true }).click();
+        await d.idle(600);
+      }
       await d.button('Back').click();
       await stepTo('Step 1 · Aligner');
       check('u11 Back from Step 2 returns to Step 1 with the oriented aligner kept', await d.button('Next').isEnabled() && (await page.getByText('Drop the aligner STL here').count()) === 0);
@@ -839,6 +1001,7 @@ async function walk(url, scratch, dentalFixture) {
       const toStep3 = async (first) => {
         if (first) {
           await page.goto(url);
+          await enterEditor(page);
           await d.button('Aligner Support Production').click();
           await stepTo('Step 0 · Aligner type');
           await page.locator('.dental-card').click();
@@ -880,12 +1043,31 @@ async function walk(url, scratch, dentalFixture) {
       await d.measureCanvas();
       check('x1b Step 3 finish controls (Label, Back, Exit, OK, Add another aligner) are in view without scrolling at 1440x900 and 1280x720', at1440 && at1280, `1440x900 ${at1440}, 1280x720 ${at1280}`);
       const side = await page.locator('.dental-side').innerText();
-      check('x1 Step 3 lists tip size, density, lift height, raft, Tree, Brace, the support tools, problems, Label, OK and Add another aligner',
-        ['Tip size', 'Support density', 'Lift height', 'Raft', 'Tree branches', 'Cross-braces', 'Add supports', 'Problems', 'Label', 'OK', 'Add another aligner'].every((word) => side.includes(word)), side.replace(/\s+/g, ' ').slice(0, 200));
+      check('x1 Step 3 lists tip size, lift height, raft, Tree, Brace, the support tools, problems, Label, OK and Add another aligner',
+        ['Tip size', 'Lift height', 'Raft', 'Tree branches', 'Cross-braces', 'Add supports', 'Problems', 'Label', 'OK', 'Add another aligner'].every((word) => side.includes(word)), side.replace(/\s+/g, ' ').slice(0, 200));
+      // U1: every notice in the panel uses its full width, its buttons on their own row below the text, inside the scroll content.
+      const notices = await page.evaluate(() => {
+        const panel = document.querySelector('.dental-side');
+        const box = panel.getBoundingClientRect();
+        const rows = [...panel.querySelectorAll('.dental-block li')];
+        return {
+          count: rows.length,
+          scrolls: getComputedStyle(panel).overflowY === 'auto' && [...panel.querySelectorAll('.dental-scroll, .dental-block')].every((el) => getComputedStyle(el).overflowY === 'visible'),
+          bad: rows.filter((row) => {
+            const r = row.getBoundingClientRect();
+            const text = row.querySelector('.problem-text')?.getBoundingClientRect();
+            const buttons = [...row.querySelectorAll('button')].map((b) => b.getBoundingClientRect());
+            const inside = r.left >= box.left && r.right <= box.right + 1 && row.offsetTop + row.offsetHeight <= panel.scrollHeight + panel.scrollTop + 1000;
+            return !(inside && text && text.right <= box.right + 1 && buttons.every((b) => b.top >= text.bottom - 1 && b.right <= box.right + 1 && b.bottom <= r.bottom + 1));
+          }).length,
+        };
+      });
+      check('u1c Step 3 panel is one scroll area (the blocks do not scroll) and each notice shows in full: text on top, buttons on their own row below', notices.scrolls && notices.bad === 0, JSON.stringify(notices));
+      check('b3k Step 3 shows no Paint, Erase or density', (await page.getByRole('button', { name: 'Paint', exact: true }).count()) === 0 && (await page.getByRole('button', { name: 'Erase', exact: true }).count()) === 0 && !side.includes('Support density') && !side.includes('Dental area tools'), side.replace(/\s+/g, ' ').slice(0, 160));
       const switchOn = (name) => page.locator('.dental-side label.check').filter({ hasText: name }).locator('input').isChecked();
       const startValues = { tip: await slider('Tip size').inputValue(), lift: await slider('Lift height').inputValue(), tree: await switchOn('Tree branches'), brace: await switchOn('Cross-braces'), raft: await switchOn('Raft') };
-      check('x1c Step 3 starts with the aligner type defaults: 0.45 mm tip, 3.5 mm lift, raft on, Tree and Brace on (D3)',
-        Number(startValues.tip) === 0.45 && Number(startValues.lift) === 3.5 && startValues.raft && startValues.tree && startValues.brace, JSON.stringify(startValues));
+      check('x1c Step 3 starts with the aligner type defaults: 0.45 mm tip, 3.5 mm lift, raft on, Tree off, Brace on (D21)',
+        Number(startValues.tip) === 0.45 && Number(startValues.lift) === 3.5 && startValues.raft && !startValues.tree && startValues.brace, JSON.stringify(startValues));
       check('x2 the Label field is titled Label and starts as X', (await label.inputValue()) === 'X' && (await page.getByLabel('Label', { exact: true }).count()) >= 1, `value "${await label.inputValue()}"`);
       await label.fill('');
       await label.pressSequentially('a-1b_$%é .');
@@ -962,7 +1144,6 @@ async function walk(url, scratch, dentalFixture) {
         const controls = [
           ['Tip size', async () => { await slider('Tip size').focus(); await slider('Tip size').press('ArrowRight'); }],
           ['Pillar size', async () => { await slider('Pillar size').focus(); await slider('Pillar size').press('ArrowRight'); }],
-          ['Support density', async () => { await slider('Support density').focus(); await slider('Support density').press('ArrowRight'); }],
           ['Lift height', async () => { await slider('Lift height').focus(); await slider('Lift height').press('ArrowLeft'); }],
           ['Raft', async () => { const box = page.locator('.dental-side label.check').filter({ hasText: 'Raft' }).locator('input'); await box.uncheck(); await d.idle(700); await verdictBack(); await box.check(); }],
           ['Tree branches', async () => { await page.locator('.dental-side label.check').filter({ hasText: 'Tree branches' }).locator('input').click(); }],
@@ -976,7 +1157,7 @@ async function walk(url, scratch, dentalFixture) {
           outcome.push(`${name}: stale seen ${await page.evaluate(() => window.__staleSeen)}x`);
         }
         const seenAll = outcome.every((line) => !line.endsWith(' 0x'));
-        check('x9b each Step 3 control (Tip size, Pillar size, Support density, Lift height, Raft, Tree branches, Cross-braces) greys the Problems section until its new verdict arrives, then clears it', seenAll && (await problems.getAttribute('aria-busy')) === 'false', outcome.join('; '));
+        check('x9b each Step 3 control (Tip size, Pillar size, Lift height, Raft, Tree branches, Cross-braces) greys the Problems section until its new verdict arrives, then clears it', seenAll && (await problems.getAttribute('aria-busy')) === 'false', outcome.join('; '));
       }
 
       // Problems: the check runs inside the step and lists what it finds with Show and Fix.
@@ -1049,6 +1230,7 @@ async function walk(url, scratch, dentalFixture) {
       // The opt-in Dental lane never checks a patient model into the repository. The caller gives
       // its local fixture explicitly (for example, `DENTAL_WALK_FIXTURE=... npm run walk`).
       await page.goto(url);
+      await enterEditor(page);
       await d.button('Aligner Support Production').click();
       await page.locator('.dental-card').click();
       await page.setInputFiles('input[aria-label="Choose aligner file"]', dentalFixture);
@@ -1116,6 +1298,121 @@ async function walk(url, scratch, dentalFixture) {
         /Automatic rim gaps: outer [\d.]+ mm, opening [\d.]+ mm/.test(rimWarning) && /Review the rim/.test(rimWarning),
         `warning "${rimWarning}"`);
     }
+
+    // s. The full-screen start (ST): task, aligner type, file; Back and Escape; drops; Any model.
+    {
+      const reference = dentalFixture ?? path.join(ROOT, 'docs', 'dental-reference', 'reference-aligner.stl');
+      const onScreen = (which) => page.waitForSelector({ task: '.start-task', type: '.start-screen .dental-cards', file: '.start-screen .dental-drop' }[which], { timeout: 10000 });
+      const unitsOnPlate = async () => Number((await page.locator('footer').innerText()).match(/(\d+) objects?/)?.[1] ?? -1);
+      /** The footer count once the dropped file has been read onto the plate. */
+      const plateHas = (n) => page.waitForFunction((count) => new RegExp(`(^|\\D)${count} objects?`).test(document.querySelector('footer')?.innerText ?? ''), n, { timeout: 60000 }).then(() => true, () => false);
+      const dropOnStart = (name, content) => page.evaluate(({ fileName, text }) => {
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([text], fileName));
+        document.querySelector('.start-screen').dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
+      }, { fileName: name, text: content });
+      const atStep1 = (ms = 180000) => page.waitForFunction(() => document.querySelector('.edit-badge')?.innerText.includes('Step 1 · Aligner'), null, { timeout: ms });
+      const supports = () => page.getByRole('button', { name: 'Aligner supports', exact: true });
+
+      await page.goto(url);
+      await onScreen('task');
+      const names = await page.locator('.start-task button').allInnerTexts();
+      check('s1 the app opens on the task screen: Aligner supports (primary), Any model, Open a saved project, and no workspace',
+        names.join('|') === 'Aligner supports|Any model|Open a saved project' && await page.locator('.start-task .primary').innerText() === 'Aligner supports' && (await page.locator('.workspace').count()) === 0, names.join('|'));
+      check('u1a on the task screen the header has no Undo, Redo, Hide models or Wireframe, the language switch stays, the heading is present, and the footer says what to choose',
+        (await page.locator('header').getByRole('button', { name: /^(Undo|Redo|Hide models|Wireframe)/ }).count()) === 0 && await page.locator('header .lang').isVisible() &&
+        await page.getByRole('heading', { name: 'What would you like to support?' }).isVisible() && (await page.locator('footer strong').innerText()) === 'Choose what to make supports for.', await page.locator('footer strong').innerText());
+      await supports().click();
+      await onScreen('type');
+      check('s2 Aligner supports shows the type cards full-screen with Back', (await page.locator('.start-screen .dental-card').count()) === 1 && await d.button('Back').isVisible() && (await page.locator('.workspace').count()) === 0);
+      await page.keyboard.press('Escape');
+      await onScreen('task');
+      check('s3 Escape on the type screen is Back to the task screen', true);
+      await supports().click();
+      await onScreen('type');
+      await d.button('Back').click();
+      await onScreen('task');
+      check('s4 Back on the type screen returns to the task screen', true);
+      await page.keyboard.press('Escape');
+      check('s5 Escape on the task screen does nothing', await page.locator('.start-task').isVisible());
+
+      await supports().click();
+      await page.locator('.dental-card').click();
+      await onScreen('file');
+      check('s6 choosing the type opens the file screen: Open the aligner STL, a file button, a drop zone, Back',
+        await page.getByText('Open the aligner STL').isVisible() && await page.getByText('Drop the aligner STL here').isVisible() && await d.button('Choose STL file').isVisible() && await d.button('Back').isVisible());
+      await page.keyboard.press('Escape');
+      await onScreen('type');
+      check('s7 Escape on the file screen is Back to the type screen, which keeps the chosen type pressed', (await page.locator('.dental-card').getAttribute('aria-pressed')) === 'true');
+      await page.locator('.dental-card').click();
+      await onScreen('file');
+      await d.button('Back').click();
+      await onScreen('type');
+      check('s8 Back on the file screen returns to the type screen', true);
+
+      // The reference aligner chosen on the file screen enters Step 1.
+      await page.locator('.dental-card').click();
+      await onScreen('file');
+      await page.setInputFiles('input[aria-label="Choose aligner file"]', reference);
+      await page.waitForFunction(() => document.querySelector('.edit-badge')?.innerText.includes('Step 1 · Aligner') && document.body.innerText.includes('Review the orientation'), null, { timeout: 180000 });
+      check('s9 the reference aligner chosen on the file screen reaches Step 1 with its type, in the editor', (await page.locator('.start-screen').count()) === 0 && (await page.locator('.workspace').count()) === 1 && await unitsOnPlate() === 1);
+      await d.button('Back').click();
+      await onScreen('type');
+      check('s10 Back from Step 1 returns to the type screen (type kept pressed) and the aligner stays on the plate', (await page.locator('.dental-card').getAttribute('aria-pressed')) === 'true' && await unitsOnPlate() === 1 && (await page.locator('.workspace').count()) === 0);
+      await page.keyboard.press('Escape');
+      await onScreen('task');
+      await page.getByRole('button', { name: 'Any model', exact: true }).click();
+      await page.waitForSelector('.workspace');
+      check('s11 reaching the task screen closed the aligner: the editor opens empty', await unitsOnPlate() === 0 && (await page.locator('footer').innerText()).includes('0 objects'));
+
+      // Any model: the empty generic editor, unchanged.
+      await page.goto(url);
+      await onScreen('task');
+      await page.getByRole('button', { name: 'Any model', exact: true }).click();
+      await page.waitForSelector('.workspace');
+      check('s12 Any model opens the empty generic editor with its import control', await unitsOnPlate() === 0 && await page.locator('.panel.left .drop').isVisible() && await d.button('Aligner Support Production').isVisible());
+      await page.setInputFiles('.drop input[type=file]', FIXTURE);
+      await page.waitForFunction(() => document.body.innerText.includes('knot'), null, { timeout: 60000 });
+      await page.locator('.panel.left').getByRole('button', { name: 'Delete', exact: false }).first().click();
+      await page.waitForSelector('.start-task', { timeout: 10000 }).catch(() => {});
+      check('s13 closing the last model returns to the task screen', (await page.locator('.start-task').count()) === 1);
+
+      // Drops: an STL on the task screen is held, the type step follows, choosing the type goes straight to Step 1.
+      await page.goto(url);
+      await onScreen('task');
+      await dropOnStart('notes.txt', 'not a model');
+      await d.idle(500);
+      check('s14 a non-STL dropped on the task screen is refused and the screen stays', await page.locator('.start-task').isVisible() && /Unsupported|not supported|file type|STL/i.test(await d.status()), `status "${await d.status()}"`);
+      await dropOnStart('cube.stl', cubeStl());
+      await onScreen('type');
+      check('s15 an STL dropped on the task screen is held and the type step follows', (await page.locator('.dental-card').count()) === 1);
+      await page.locator('.dental-card').click();
+      await atStep1();
+      check('s16 choosing the type with a held file goes straight to Step 1', (await page.locator('.start-screen').count()) === 0 && await plateHas(1));
+      await d.button('Back').click();
+      await onScreen('type');
+      await d.button('Back').click();
+      await onScreen('task');
+      await page.getByRole('button', { name: 'Any model', exact: true }).click();
+      await page.waitForSelector('.workspace');
+      check('s17 Back to the task screen closes the loaded file', await unitsOnPlate() === 0);
+      await page.goto(url);
+      await supports().click();
+      await onScreen('type');
+      await dropOnStart('cube.stl', cubeStl());
+      await page.locator('.dental-card').click();
+      await atStep1();
+      check('s18 an STL dropped on the type screen is held and enters Step 1 with the chosen type', (await page.locator('.start-screen').count()) === 0);
+      await d.button('Back').click();
+      await onScreen('type');
+      await page.locator('.dental-card').click();
+      await onScreen('file');
+      await dropOnStart('cube.stl', cubeStl());
+      await atStep1();
+      check('s19 an STL dropped on the file screen enters Step 1, replacing the aligner that stayed', await plateHas(1));
+      // Leave the flow so the checks after this block start with no mode on.
+      await d.button('Exit').click();
+    }
   } catch (error) {
     check('walk ran to the end', false, error.message);
     await page.screenshot({ path: path.join(scratch, 'walk-error.png') }).catch(() => {});
@@ -1168,8 +1465,31 @@ async function walkLocale(url, scratch, lang, dentalFixture) {
   const quiet = () => page.waitForFunction(() => !!document.querySelector('.job-activity')?.hidden, null, { timeout: 300000 });
   const idle = (ms) => page.evaluate((span) => new Promise((resolve) => setTimeout(resolve, span)), ms);
   try {
-    // Generic: knot -> Generate -> Check supports. The knot's island verdict is inconclusive (non-manifold tube).
+    // The full-screen start (ST): the three screens in the language, then Any model for the generic walk.
     await page.goto(url);
+    await page.waitForSelector('.start-task');
+    const labels = await page.locator('.start-task button').allInnerTexts();
+    const wanted = ['Aligner supports', 'Any model', 'Open a saved project'].map(tr);
+    check(tag('t1 the task screen is in the language'), labels.join('|') === wanted.join('|') && (lang === 'en' || !labels.some((label) => wanted.indexOf(label) >= 0 && ['Aligner supports', 'Any model', 'Open a saved project'].includes(label))), labels.join('|'));
+    await shot(page, 'start-1-task');
+    await button('Aligner supports').click();
+    await page.waitForSelector('.start-screen .dental-cards');
+    await shot(page, 'start-2-type');
+    const backLabel = await page.locator('.start-back').innerText();
+    const heading = await page.locator('.dental-stage h2').innerText();
+    check(tag('t2 the type screen is in the language'), backLabel === tr('Back') && heading === tr('Choose the aligner type'), `${backLabel} / ${heading}`);
+    await page.locator('.dental-card').click();
+    await page.waitForSelector('.start-screen .dental-drop');
+    await shot(page, 'start-3-file');
+    const fileTexts = await page.locator('.dental-drop').innerText();
+    check(tag('t3 the file screen is in the language'), fileTexts.includes(tr('Open the aligner STL')) && fileTexts.includes(tr('Drop the aligner STL here')) && fileTexts.includes(tr('Choose STL file')), fileTexts.replace(/\s+/g, ' '));
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('.start-screen .dental-cards');
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('.start-task');
+    await button('Any model').click();
+    await page.waitForSelector('.workspace');
+    // Generic: knot -> Generate -> Check supports. The knot's island verdict is inconclusive (non-manifold tube).
     await page.setInputFiles('.drop input[type=file]', FIXTURE);
     await page.waitForFunction(() => document.body.innerText.includes('knot'), null, { timeout: 60000 });
     const htmlLang = await page.evaluate(() => document.documentElement.lang);
@@ -1212,6 +1532,8 @@ async function walkLocale(url, scratch, lang, dentalFixture) {
     // Dental: Step 0 -> 3 on the reference aligner, then Check.
     const reference = dentalFixture ?? path.join(ROOT, 'docs', 'dental-reference', 'reference-aligner.stl');
     await page.goto(url);
+    await button('Any model').click();
+    await page.waitForSelector('.workspace');
     await button('Aligner Support Production').click();
     await badgeHas('Step 0 · Aligner type');
     await shot(page, 'dental-step0');
@@ -1230,6 +1552,20 @@ async function walkLocale(url, scratch, lang, dentalFixture) {
     await page.waitForFunction(() => [...document.querySelectorAll('.edit-note')].some((note) => /[1-9]/.test(note.innerText)), null, { timeout: 240000 });
     await idle(800);
     await shot(page, 'dental-step2');
+    // B3: the four tools and the up-facing warning in the language.
+    {
+      const tools = page.locator('.dental-brush').getByRole('group', { name: tr('Dental area tools') });
+      const names = await tools.getByRole('button').allInnerTexts();
+      const wantedTools = ['Paint', 'Erase', 'Add', 'Select'].map(tr);
+      check(tag('b1 Step 2 offers the four tools in the language'), names.join('|') === wantedTools.join('|'), names.join('|'));
+      await page.keyboard.press('a');
+      const english = 'This spot faces up, so a tip here may not hold.';
+      const facesUp = tr(english);
+      const up = await addOnUpFacingSpot(page, facesUp);
+      check(tag('b2 the up-facing warning is in the language'), up.found && up.added && (lang === 'en' || facesUp !== english), `${up.status} (${up.tried.join(' ')})`);
+      await shot(page, 'dental-step2-add');
+      await previewReady(page);
+    }
     await button('Next').click();
     await badgeHas('Step 3 · Supports', 240000);
     await page.waitForFunction((ok) => { const b = [...document.querySelectorAll('button')].find((x) => x.innerText.trim() === ok); return b && !b.disabled; }, tr('OK'), { timeout: 300000 });

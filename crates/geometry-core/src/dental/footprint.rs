@@ -64,7 +64,8 @@ pub struct FootprintSettings {
     pub outer_spacing: f64,
     pub inner_spacing: f64,
     pub max_search_distance: f64,
-    /// 0 samples at the contour origin; `None` keeps the usual half-spacing phase.
+    /// Where the samples sit within each even step, as a fraction of it (`None`: 0, the primaries;
+    /// 0.5 puts them halfway between, the repair alternates).
     pub sample_phase_fraction: Option<f64>,
     /// No two contacts (either contour) closer than this, 3D mm; 0 = off.
     pub min_tip_separation: f64,
@@ -154,7 +155,8 @@ pub fn propose_footprint(mesh: &Mesh, allowed_faces: &[u8], outer: &[u32], openi
         let settings = SampleSettings {
             spacing,
             max_search: settings.max_search_distance,
-            phase_mm: settings.sample_phase_fraction.map(|f| spacing * f),
+            phase: settings.sample_phase_fraction,
+            up: settings.from_below.map(|f| f.up),
             min_separation: settings.min_tip_separation,
             keep_clear_of,
             tip_line: Some(TipLine { at: settings.tip_line(), signed: &field.signed, either_side: low < 0.0 && high > 0.0 }),

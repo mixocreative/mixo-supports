@@ -23,20 +23,40 @@ export function orientationOnly(transform: JobTransform): JobTransform {
 /** `dental_policy` area kinds: 0 older saved policy, 1 painted from scratch, 2 two-contour. */
 const areaKind = (policy: DentalPolicy) => (policy.kind === 'two-contour' ? 2 : isManualArea(policy) ? 1 : 0);
 
-/** The unit's dental policy made in Rust from its saved data, expressed in `frame`. */
-export function makeDentalPolicy(session: Pick<PolicySession, 'dental_policy'>, model: number, policy: DentalPolicy, frame: JobTransform) {
+/**
+ * The unit's dental policy made in Rust from its saved data, expressed in `frame`. `manual` are the
+ * unit's manual tips (unit-local): no suggested tip is offered next to one.
+ */
+export function makeDentalPolicy(session: Pick<PolicySession, 'dental_policy'>, model: number, policy: DentalPolicy, frame: JobTransform,
+  manual: readonly Pick<SupportPoint, 'position'>[] = []) {
   const region = policy.kind === 'two-contour' ? policy.region : undefined;
   const tuning = (policy.kind === 'two-contour' ? policy.tuning : undefined) ?? defaultDentalTuning(policy.profileId);
   const structure = (policy.kind === 'two-contour' ? policy.structure : undefined) ?? defaultDentalStructure;
   return session.dental_policy(model, policy.profileId, areaKind(policy), tuningArray(tuning), stampRows(policy),
     region?.allowedFaces ?? new Uint8Array(), region?.contactFaces ?? new Uint8Array(),
     region?.outerEdges ?? new Uint32Array(), region?.openingEdges ?? new Uint32Array(),
-    Uint8Array.of(Number(structure.treeEnabled), Number(structure.bracesEnabled)), frameArray(frame));
+    Uint8Array.of(Number(structure.treeEnabled), Number(structure.bracesEnabled)), frameArray(frame),
+    Float64Array.from(manual.flatMap((point) => point.position)));
 }
 
 /** `makeDentalPolicy` for `generateSupports`. */
-export const dentalPolicy = (policy: DentalPolicy, frame: JobTransform): MakePolicy =>
-  (session, model) => makeDentalPolicy(session, model, policy, frame);
+export const dentalPolicy = (policy: DentalPolicy, frame: JobTransform, manual: readonly Pick<SupportPoint, 'position'>[] = []): MakePolicy =>
+  (session, model) => makeDentalPolicy(session, model, policy, frame, manual);
+
+/** Points (xyz then normal xyz each) with position ids; a repeated spot counts once when `unique`. */
+function pointsOf(flat: Float64Array, unique: boolean): SupportPoint[] {
+  const count = flat.length / 6;
+  const at = (k: number, offset: number): [number, number, number] => [flat[k * 6 + offset]!, flat[k * 6 + offset + 1]!, flat[k * 6 + offset + 2]!];
+  const ids = positionIds(Array.from({ length: count }, (_, k) => at(k, 0)));
+  const seen = new Set<string>();
+  const points: SupportPoint[] = [];
+  for (let k = 0; k < count; k += 1) {
+    if (unique && seen.has(ids[k]!)) continue;
+    seen.add(ids[k]!);
+    points.push({ id: ids[k]!, regionId: -1, position: at(k, 0), normal: at(k, 3), source: 'interior' });
+  }
+  return points;
+}
 
 const EMPTY: PlacementResult = { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() };
 
@@ -50,26 +70,18 @@ const EMPTY: PlacementResult = { points: [], regions: [], contactPositions: new 
 export function filterDentalPlacement(job: DentalPlacementJob, placement: PlacementResult): PlacementResult {
   const { mesh, orientation, dental: policy } = job;
   if (policy.kind !== 'two-contour') return legacyDentalPlacement({ ...job, dental: policy }, placement);
-  const candidates = withDentalMesh(mesh, (session, model) => {
-    const handle = makeDentalPolicy(session, model, policy, orientationOnly(orientation));
+  const { candidates, suggestions } = withDentalMesh(mesh, (session, model) => {
+    const handle = makeDentalPolicy(session, model, policy, orientationOnly(orientation), job.manual);
     try {
-      return handle.reproduced() ? handle.candidate_points() : new Float64Array();
+      return handle.reproduced() ? { candidates: handle.candidate_points(), suggestions: handle.suggested_points() } : { candidates: new Float64Array(), suggestions: new Float64Array() };
     } finally {
       handle.free();
     }
   });
   if (candidates.length === 0) return { ...EMPTY, regions: placement.regions };
-  const count = candidates.length / 6;
-  const at = (k: number, offset: number): [number, number, number] => [candidates[k * 6 + offset]!, candidates[k * 6 + offset + 1]!, candidates[k * 6 + offset + 2]!];
-  const ids = positionIds(Array.from({ length: count }, (_, k) => at(k, 0)));
-  const seen = new Set<string>();
-  const points: SupportPoint[] = [];
-  for (let k = 0; k < count; k += 1) {
-    if (seen.has(ids[k]!)) continue;
-    seen.add(ids[k]!);
-    points.push({ id: ids[k]!, regionId: -1, position: at(k, 0), normal: at(k, 3), source: 'interior' });
-  }
+  const points = pointsOf(candidates, true);
   return { points, regions: placement.regions,
     contactPositions: new Float32Array(points.flatMap((point) => point.position)),
-    contactNormals: new Float32Array(points.flatMap((point) => point.normal)) };
+    contactNormals: new Float32Array(points.flatMap((point) => point.normal)),
+    suggested: pointsOf(suggestions, false) };
 }

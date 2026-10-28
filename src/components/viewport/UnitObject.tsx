@@ -2,7 +2,6 @@ import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { SupportProblem } from '../../core/analysis/supportCheck';
-import type { SupportPoint } from '../../core/analysis/types';
 import type { GeneratedSupportMesh } from '../../core/supports/mesh';
 import { contactAtTriangle, tipsOf } from '../../core/supports/meshQuery';
 import type { ZoneStamp } from '../../core/supports/zones';
@@ -21,7 +20,7 @@ import { PREVIEW, ZONE_OPACITY, SEE_THROUGH } from './style';
 import { useGeometry } from './geometry';
 import { rustRaycast } from './rustRaycast';
 import { type Hover, EditPreview, SupportBodies, ZoneLayer, useDoomed, useWarmZoneOverlay, ProblemMarkers, CustomisedMarks, useSelectionColors } from './supportLayers';
-import { DentalFaceLayer, DentalPaintLayer, DentalRegionLines, DentalRimLine, DentalStampLayer, DentalTipMarkers } from './dentalLayers';
+import { DentalFaceLayer, DentalPaintLayer, DentalRegionLines, DentalRimLine, DentalStampLayer, DentalTipMarkers, type TipMark } from './dentalLayers';
 import type { ObjectViewportProps } from './types';
 import { MODEL_MESH, SUPPORT_MESH, useScreenBrush } from './useScreenBrush';
 
@@ -32,13 +31,15 @@ function toVector(vector: THREE.Vector3): Vector {
 /** The viewport settings and callbacks one object takes, plus its own unit, supports and state. */
 interface UnitObjectProps extends Pick<ObjectViewportProps,
   | 'gesture' | 'liveTool' | 'selection' | 'tipsView' | 'modelVisible' | 'wireframe'
-  | 'onSelect' | 'onAddContact' | 'onRemoveContact' | 'onErase' | 'onEditMiss' | 'onToggleContact' | 'onPaint' | 'onShift' | 'onZoneStroke' | 'onDentalStroke' | 'onNoBodies'> {
+  | 'onSelect' | 'onPickTip' | 'onAddContact' | 'onRemoveContact' | 'onErase' | 'onEditMiss' | 'onToggleContact' | 'onPaint' | 'onShift' | 'onZoneStroke' | 'onDentalStroke' | 'onNoBodies'> {
   problems: readonly SupportProblem[];
   /** A support just added to this object: a ring flashes at its tip. */
   added?: AddedAt;
   unit: PrintUnit;
   supports?: GeneratedSupportMesh;
-  dentalTips?: readonly SupportPoint[];
+  dentalTips?: readonly TipMark[];
+  /** Dental Step 2, whichever tool: tips and the area are drawn, no support bodies, and Select works on the tips. */
+  dentalArea?: boolean;
   selected: boolean;
   active: boolean;
   /** The unit's group, with the unit it belongs to, so a stale group of a removed unit is never taken for the active one. */
@@ -53,7 +54,8 @@ export function UnitObject(props: UnitObjectProps) {
   const editing = editMode !== 'off' && props.active;
   // The tips view draws (and picks) only the contact tips of the built supports.
   const tips = useMemo(() => (props.tipsView && props.supports ? tipsOf(props.supports) : undefined), [props.tipsView, props.supports]);
-  const supports = gesture.kind === 'dental-area' ? undefined : tips ?? props.supports;
+  const stepTwo = props.dentalArea === true;
+  const supports = gesture.kind === 'dental-area' || stepTwo ? undefined : tips ?? props.supports;
   // A heavy model draws its simplified copy (it takes no hand edits); supports and export use the full one.
   const shown = displayMesh(unit.source);
   const model = useGeometry(shown);
@@ -61,6 +63,8 @@ export function UnitObject(props: UnitObjectProps) {
   // Painting zones: supports are drawn but take no pointer events (presses reach the model).
   const zoning = editing && gesture.kind === 'zones';
   const dentalPainting = editing && gesture.kind === 'dental-area';
+  /** Step 2's area layers and tip markers show under every tool. */
+  const areaShown = editing && stepTwo;
   const surfacePainting = zoning || dentalPainting;
   const supportGeometry = useGeometry(supports);
   // Select supports: Click picks one support at a time; Drag over (the brush) owns the left button.
@@ -139,6 +143,7 @@ export function UnitObject(props: UnitObjectProps) {
   const { brushed, over: circleOver } = useScreenBrush({
     brush: switchBrush,
     supports,
+    tips: stepTwo ? props.dentalTips : undefined,
     group: groupRef,
     selection: props.selection,
     stroke: brushStroke,
@@ -153,6 +158,7 @@ export function UnitObject(props: UnitObjectProps) {
     return () => onBrushOver?.(false);
   }, [brushOver, onBrushOver]);
   const preview = useMemo(() => brushPreview(props.selection, brushed, brush?.mode), [props.selection, brushed, brush?.mode]);
+  const tipMarks = useMemo(() => (stepTwo ? { solid: preview.solid, ghost: preview.ghost, ghostTone: preview.ghostTone === 'ring' ? 'ring' as const : 'remove' as const } : undefined), [stepTwo, preview]);
   const selectionColored = useSelectionColors(supportGeometry, supports, editing && !surfacePainting, preview.solid, supportColor);
   // The brush going away mid-stroke (tool or mode changed, another object made active) ends the
   // stroke at once, so the orbit is back without waiting for the release.
@@ -238,10 +244,16 @@ export function UnitObject(props: UnitObjectProps) {
   });
 
   const clickModel = (event: ThreeEvent<MouseEvent>, right: boolean) => {
+    // Paint and Erase work through the stroke; the click that ends one is not an Add.
+    if (dentalPainting) return;
     const action = pickFor(event, 'model', right, false);
     if (action.type === 'pass') return;
+    // Step 2 removes only through a selection and Delete: a right or Ctrl click does nothing there.
+    if (stepTwo && action.type === 'erase') return;
     event.stopPropagation();
     const point: Vector = [event.point.x, event.point.y, event.point.z];
+    // Step 2, Select → Click: the tip nearest the click (within Click reach) is picked.
+    if (stepTwo && action.type === 'miss' && gesture.kind === 'pick') return props.onPickTip(unit.id, point);
     if (action.type === 'select') props.onSelect(unit.id, action.additive);
     else if (action.type === 'erase') props.onErase(unit.id, point);
     else if (action.type === 'miss') props.onEditMiss();
@@ -267,7 +279,7 @@ export function UnitObject(props: UnitObjectProps) {
       visible={props.modelVisible}
       userData={MODEL_MESH}
       // Painting zones: other objects take no pointer events (a press passes through to the active one).
-      raycast={(gesture.kind === 'zones' || gesture.kind === 'dental-area') && !props.active ? () => undefined : rustRaycast}
+      raycast={(gesture.kind === 'zones' || gesture.kind === 'dental-area' || stepTwo) && !props.active ? () => undefined : rustRaycast}
       onClick={(event) => clickModel(event, false)}
       onContextMenu={(event) => clickModel(event, true)}
       {...(editing ? { onPointerDown: startStroke, onPointerMove: hoverModel, onPointerOut: leave } : {})}
@@ -285,7 +297,7 @@ export function UnitObject(props: UnitObjectProps) {
     {model && editing && shown === unit.source && zones.length > 0 && <group visible={props.modelVisible}>
       <ZoneLayer mesh={unit.source} geometry={model} zones={zones} opacity={ZONE_OPACITY[zoning ? 'full' : 'faint']} />
     </group>}
-    {model && dentalPainting && shown === unit.source && unit.dental && <group visible={props.modelVisible}>
+    {model && areaShown && shown === unit.source && unit.dental && <group visible={props.modelVisible}>
       {unit.dental.kind === 'two-contour'
         ? <><DentalFaceLayer mesh={unit.source} policy={{ ...unit.dental, stamps: dentalStamps ?? unit.dental.stamps }} opacity={0.7} />
           {(dentalStamps ?? unit.dental.stamps).some((stamp) => stamp.kind === 'allow') &&
@@ -294,7 +306,7 @@ export function UnitObject(props: UnitObjectProps) {
         : <><DentalStampLayer mesh={unit.source} geometry={model} policy={{ ...unit.dental, stamps: dentalStamps ?? unit.dental.stamps }} opacity={0.7} />
           <DentalRimLine rim={unit.dental.rim} /></>}
     </group>}
-    {dentalPainting && props.dentalTips && <DentalTipMarkers points={props.dentalTips} />}
+    {areaShown && props.dentalTips && <DentalTipMarkers points={props.dentalTips} {...(tipMarks ? { marks: tipMarks } : {})} />}
     {supportGeometry && <mesh
       geometry={supportGeometry}
       userData={SUPPORT_MESH}

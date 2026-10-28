@@ -28,15 +28,16 @@ export function decodeContacts(faces: Uint32Array, points: Float64Array, distanc
 }
 
 /**
- * Diagnostic arclength sampler (Rust `dental_sample_contacts`, Node test package only). The mask is an input from a
+ * Diagnostic arclength sampler (Rust `dental_sample_contacts`, Node test package only): even steps of
+ * `L / max(3, round(L / spacing))`, `phaseFraction` of a step in (default 0). The mask is an input from a
  * separate side-band detector, not a safety certificate. Search stays locally connected on the
  * mesh: it does not prove a collision-free support body, correct anatomy, or an acceptable
  * first-layer island.
  */
 export function sampleDiagnosticContourContacts(mesh: TriangleMesh, contour: Uint32Array,
-  sideBand: Uint8Array, settings: { spacing: number; maxSearchDistance: number; phaseMm?: number; minSeparation?: number }): DiagnosticContactSample {
+  sideBand: Uint8Array, settings: { spacing: number; maxSearchDistance: number; phaseFraction?: number; minSeparation?: number }): DiagnosticContactSample {
   const result = dentalInternals().dental_sample_contacts(mesh.positions, mesh.indices, contour, sideBand,
-    settings.spacing, settings.maxSearchDistance, settings.phaseMm ?? Number.NaN, settings.minSeparation ?? 0);
+    settings.spacing, settings.maxSearchDistance, settings.phaseFraction ?? Number.NaN, settings.minSeparation ?? 0);
   try {
     if (!result.ok()) return { kind: 'inconclusive', reason: result.reason() };
     return { kind: 'proposal', contacts: decodeContacts(result.faces(), result.points(), result.distances()),

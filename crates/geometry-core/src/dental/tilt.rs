@@ -406,7 +406,7 @@ impl<'a> Prepared<'a> {
             let perimeter = contour_length(mesh, edges);
             let tips: Vec<(f64, &String)> = region.contacts.iter().zip(&ids).filter(|(c, _)| c.rim == rim).map(|(c, id)| (c.contact.distance_along_contour.min(perimeter * (1.0 - 1e-12)), id)).collect();
             let arcs: Vec<f64> = tips.iter().map(|t| t.0).collect();
-            let (gap, fails) = rim_gap(perimeter, spacing, &arcs)?;
+            let (gap, fails) = rim_gap(perimeter, super::sampling::even_step(perimeter, spacing), &arcs)?;
             largest_gap = largest_gap.max(gap);
             if fails && failing[Rule::Gap as usize].is_none() {
                 failing[Rule::Gap as usize] = Some(Failing::Tip(gap_end(&tips, perimeter, rim)));

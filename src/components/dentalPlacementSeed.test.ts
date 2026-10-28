@@ -9,8 +9,8 @@ const region = () => ({ kind: 'proposal' as const, allowedFaces: Uint8Array.of(1
 const policy = (density = 1): DentalPolicy => ({ kind: 'two-contour', profileId: 'reference-aligner', region: region(), stamps: [],
   tuning: { positionMm: 0.5, stripWidthMm: 0.4, density } } as unknown as DentalPolicy);
 const result: PlacementResult = { points: [], regions: [], contactPositions: new Float32Array(), contactNormals: new Float32Array() };
-const unitWith = (source: object, dental: DentalPolicy, rotation: [number, number, number] = [0, 0, 0]) =>
-  ({ id: 'a', source, dental, transform: { position: [0, 0, 0], rotation } }) as unknown as PrintUnit;
+const unitWith = (source: object, dental: DentalPolicy, rotation: [number, number, number] = [0, 0, 0], manual: { position: number[] }[] = []) =>
+  ({ id: 'a', source, dental, manual, transform: { position: [0, 0, 0], rotation } }) as unknown as PrintUnit;
 
 describe('dental placement seed (a retune placed the tips already)', () => {
   it('is used for the stored copy of the retuned policy (equal by value) at the same rotation', () => {
@@ -30,5 +30,7 @@ describe('dental placement seed (a retune placed the tips already)', () => {
     (moved as { region: { contactFaces: Uint8Array } }).region.contactFaces = Uint8Array.of(0, 1, 0);
     expect(seededDentalPlacement(unitWith(source, moved))).toBeUndefined();
     expect(seededDentalPlacement(unitWith({}, policy()))).toBeUndefined();
+    // A manual tip added since: suggested tips near it are no longer offered, so the placement is made again (B3).
+    expect(seededDentalPlacement(unitWith(source, policy(), [0, 0, 0], [{ position: [1, 2, 3] }]))).toBeUndefined();
   });
 });

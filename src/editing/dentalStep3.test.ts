@@ -36,7 +36,9 @@ describe('dental Step 3 commands', () => {
   it('the Support Edit Mode tools are offered inside Step 3', () => {
     expect(resolve('edit.deleteSelection', ui({ selection: 1 })).visible).toBe(true);
     expect(resolve('edit.add', ui({ tool: 'add' })).visible).toBe(true);
-    expect(resolve('edit.deleteSelection', ui({ dentalStage: 'area' })).visible).toBe(false);
+    // Step 2 (B3) deletes selected tips with the same command; Step 1 has none.
+    expect(resolve('edit.deleteSelection', ui({ dentalStage: 'area' })).visible).toBe(true);
+    expect(resolve('edit.deleteSelection', ui({ dentalStage: 'aligner' })).visible).toBe(false);
   });
 });
 

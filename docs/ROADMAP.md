@@ -37,6 +37,9 @@ Decided (by the owner unless noted):
 | D16 | Target split (owner, 2026-10-28): mixosupports becomes dental-only; mixomesh becomes the generic 3D tool with auto supports. Electron stays (it provides automation, batch jobs, a 4 GB heap, file opening and publishing; WASM runs inside it). Shared: the WASM engine, the framework-free editing logic and the style tokens, not UI components (Fable, EGM-reviewed). | After H |
 | D17 | No real aligners besides the reference for now: step V is skipped and the remaining steps go on best guesses from the reference alone (owner, 2026-10-28). O moves to deferred until a no-opening file exists (lead: nothing to test it on). | V, O |
 | D18 | The app starts on a full-screen start: choose the task, then the aligner type, then the file; built right after S3, before B2 (owner, 2026-10-28; replaces A2's timing). | ST |
+| D19 | B2 corrections from the build (lead): (1) each rim reports its actual step L/N as its spacing, so the gap rule (> 2 × spacing) stays one-missing-tip-tolerant with even spacing; F's recorded band and pick are re-measured after B2; (2) deletions stay keyed by position ids (`auto-X_Y_Z`, `filterDentalPlacement`): a deletion survives where a tip keeps its spot; the `dropFillDeletions` step and the `dental-paint-*` migration are not built; (3) the half-step alternate after a rim's last primary belongs to its first primary (the rim is closed). | B2, F |
+| D20 | The repair's last structure fallback is graduated (lead, from B2's build): when a tree or brace still crosses after the contact repairs, it first turns Tree and Brace off and rebuilds keeping the automatic contacts (one trial); only if a crossing remains are the automatic contacts left out. After Tree and Brace are off, automatic contacts that still cross are left out one by one (as in the leave-out step), not all of them. A repaired contact's id comes from its unit-local point, as placed contacts' ids do, so neither a lift change nor the frame renames it. | B2, R |
+| D21 | Tree off by default for aligners; Brace stays on (owner, 2026-10-29; replaces the Tree half of D3: on the reference the tree branches cross and fall back). Result: reference 44.5°, clear, 94 tips, 0 left out, 0 crossings, gaps 6.03 / 3.92 mm. | profiles |
 
 Open (owner; Q1, release timing, was answered: pull request #2 merged to `main` as fbac47f on 2026-10-28):
 
@@ -101,7 +104,10 @@ Specification as built:
 - **Goldens**: the dental goldens built with the profile preset re-record once; the commit lists each and its change (Tree/Brace on). Generic goldens unchanged.
 - **Done when**: the walk drags each Step 3 control (Tip size, Pillar size, Support density, Lift height; toggles Raft, Tree branches, Cross-braces) and checks a new verdict arrives and `is-stale` clears; change-to-preview time for each recorded in `perf-current.json` (step R's keys); the folder review of case-001 with the new defaults is in the commit message (tips, left out, crossings, structure fallbacks).
 
-### ST. Full-screen start (0.5–1 unit, UI only; goldens unchanged)
+### ST. Full-screen start (done)
+Implementer readings: Step 1's Back lands on the type cards (the old Step 0 waits in the walk changed to them); the loaded aligner is removed in the same batch that adds the new file; reaching screen 1 also drops a held file; after "Add another aligner", reaching screen 1 removes all units. `supports.dentalAuto` still works from the editor.
+
+Specification as built:
 Today the generic editor opens first; the dental flow is the command `supports.dentalAuto` ("Aligner Support Production", `src/editing/commands.ts`), whose Step 0 is `DentalTypeStep` (`src/components/DentalSteps.tsx`, one card per `ALIGNER_PROFILES` entry).
 - **Screen 1, task**: shown on launch with no model loaded and after closing the last model. Full-screen, two large buttons: "Aligner supports" (primary) and "Any model". A smaller link "Open a saved project" runs the existing open-project command. Any model leads to today's empty generic editor, unchanged.
 - **Screen 2, aligner type**: the `DentalTypeStep` cards, full-screen, with a Back button to screen 1.
@@ -122,7 +128,19 @@ Today the generic editor opens first; the dental flow is the command `supports.d
   - Screen 2 after Back keeps the chosen profile `aria-pressed`.
   - Strings: "Aligner supports", "Any model", "Open a saved project", "Open the aligner STL", "Back", "Drop the aligner STL here"; reuse "Choose the aligner type".
 
-### B2. Suggested tips and even belt spacing (1 unit, engine; dental goldens re-record once)
+### U1. Dental UI simplification (0.5 unit, UI only; goldens unchanged)
+From the lead's screenshot review (2026-10-29, `WALK_LOCALES=en WALK_OUT=…` screenshots):
+- **Dental steps show only dental controls**: while `mode === 'dental'` (Steps 1–3), the generic left panel (Import, project, Objects, Transform, Supports, Modes, Check supports) and right panel (object settings, Pillar, Raft, Letter label, Advanced, Support shape, Contact tip, Foot, Export) are not rendered; the viewport takes their width; the step panel, the viewport buttons (Tips only, Fit view, Bottom view), the header and the footer status stay. Leaving dental mode shows them again unchanged.
+- **Start screen**: while `startScreen` is non-null, the header's Undo, Redo, Hide models and Wireframe buttons are not rendered (the language switch stays); the footer hint reads "Choose what to make supports for." on screen 1, "Choose the aligner type." on screen 2, "Open or drop the aligner STL." on screen 3; screen 1 gets the heading "What would you like to support?" above the two buttons.
+- **Step 3 panel**: the panel scrolls as a whole (one scroll area, `overflow-y: auto` on the panel, none on the Problems block); each problem notice uses the panel's full width with its action buttons on their own row below the text, so no notice is clipped.
+- Strings in en, ja, zh-Hant (Taiwan wording through Gemini); Mixo app style tokens only.
+- **Walk**: existing assertions unchanged unless they asserted a generic panel inside dental mode (then the entry or the target changes, never the claim about behaviour); new checks: in Step 2 the left and right generic panels are absent; on screen 1 Undo is absent and the heading is present; a Step 3 notice is fully visible (its bottom inside the panel's scroll content). Screenshots of Steps 1–3 and screen 1 in the commit message.
+- **Done when**: tsc, vitest, build, walk, locale walk green.
+
+### B2. Suggested tips and even belt spacing (done)
+Result: belt N = round(L/s) per rim (outer 72 × 3.017 mm, opening 23 × 3.917 mm), fill tips `dental-fill-K` revealed by paint; D19 and D20 applied; engine_version 7 (`generate` gained the unit frame). Reference (app and folder review): 44.5°, clear, 93 tips, 1 left out (measured; the spec's 0 holds only at the nominal frame in the Rust test); painted everywhere: 67 of 306 fill tips left out (pinned). F's band and pick unchanged.
+
+Specification as built:
 Known parts: candidates over every face that passes the reachable-from-below rule (`defaults.tipMinFromUpDeg`) in the print pose, at outer spacing × density, in face-index order, ids `dental-fill-K`; `dental-fill-K` **replaces** `dental-paint-K` (`paint_id`, `paint_contacts` and the `PaintFill` call in `contacts_of` are deleted; the fill is the superset). Specified by Fable after an EGM review (2026-10-28):
 - **Where**: `crates/geometry-core/src/dental/paint.rs` gains `pub fn fill_candidates(mesh, up: V3, spacing: f64, tip_min_from_up_deg: f64) -> Vec<ContourContact>`: every face whose normal is ≥ `tip_min_from_up_deg` from `up` is sampled with `face_samples` at `spacing`, kept `spacing` apart by `Spacer`, in face-index order; K is the index in this list. `contacts_of` (`policy.rs`) calls it for `DentalArea::TwoContour` only (ManualArea and Legacy unchanged) with `spacing = footprint_settings(tuning, profile).outer_spacing` (already density-scaled; density is `tuning.density`, `tuning[2]` in the wasm ABI) and `up = plate_up(frame)`.
 - **Cache**: `cache.rs` gains `KEPT_FILLS` (same `KEPT = 2` and eviction as `detection`) keyed by `FillKey { base: Key (mesh digest + profile id), up_q: [i32; 2], density_q: i32 }`, `up_q = [round(acos(up·Y)/0.25°), round(atan2(up·X, up·Z)/0.25°)]`, `density_q = round(density × 1000)`. The cached list depends only on mesh, up and density: stamps, setback and width never change K.
@@ -133,7 +151,10 @@ Known parts: candidates over every face that passes the reachable-from-below rul
 - **Goldens**: the dental goldens re-record once; generic goldens unchanged; the commit lists each changed golden and its tip-count change.
 - **Done when**: `dental_reference.rs`: unpainted at defaults → candidates are belt only, 0 crossings, **0 left out**; a second test painting every reachable face → fill count > 0 and left out ≤ 5 % of the fill count, each listed; belt spacing per rim within ±10 % of its `s`; Rust unit tests for N, phase, lowest-vertex tie and skips (a)–(d); walk: paint reveals fill tips within one rebuild, erase hides them.
 
-### B3. Step 2 tools (1.5 units, UI + small engine)
+### B3. Step 2 tools (done)
+Implementer readings: the policy also returns every suggested tip that passes the skips (painted or not) as `suggested_points()` for Add's snapping (engine_version 8); snapping and the up-facing notice apply in Step 2 only; click-select picks the nearest tip within Click reach; right-click and Ctrl+click do nothing in Step 2; the strings use the English text as the key, as the codebase does; walk x1 and x9b lost "Support density" with Step 3's density (D5).
+
+Specification as built:
 Known parts: Step 2 offers Paint, Erase, Add and Select; Step 3 keeps `EditTools` (`EditBar.tsx`, used by `DentalSupports.tsx`) and loses Paint, Erase and density (D5). Delete stays the existing `edit.deleteSelection` command (`editing/commands.ts`, handler `deleteSelected` in `App.tsx`). Specified by Fable after an EGM review (2026-10-28):
 - **Tool model**: `EditTool = 'add' | 'select' | 'paint' | 'erase'`; `DentalKind`, `dentalKind` and `setDentalKind` are removed; `gesture.ts` maps `tool === 'paint'` → stamp `allow: true`, `'erase'` → `allow: false`, radius `dentalRadius`. Select in Step 2 honours `selectStyle` (Click | Drag over) and `brushMode`; `addAction` is forced to `'add'` in Step 2. Entering stage `'area'` sets `tool: 'paint'`; entering `'review'` with paint or erase active sets `'select'`.
 - **Commands** (`commands.ts`): `dental.tool.paint|erase|add|select`, enabled when `mode === 'dental' && dentalStage === 'area' && !heavy`.
@@ -150,6 +171,12 @@ Today a profile with `"opening": "yes"` refuses an aligner without an opening (`
 
 ### H. Host deliverable (0.5 unit)
 A Node script that drives orient, region, policy, generate and diagnose on an STL through the browser package's ABI with no React (start from `scripts/geometry-wasm-smoke.mjs`). Proves the "future host app" principle and becomes its example.
+Pinned (lead, 2026-10-29):
+- **File**: `scripts/host-example.mjs`, plain JavaScript (no TypeScript, no import from `src/`), loading the Node build of `crates/geometry-wasm` the way `geometry-wasm-smoke.mjs` does. Usage: `node scripts/host-example.mjs <aligner.stl> <out-dir>`.
+- **Steps**, each through the engine's ABI: read the STL and weld; centre as the import does (`center_positions_in_place`); orient (dental profile `reference-aligner`); propose the region; tilt scan and pick (the profile's Step 3 support settings: Tree and Brace on, lift, pillar, tip); policy; generate; check (verdict, crossings, left-out, gaps).
+- **Output**: `<out-dir>/supported.stl` (the aligner in its print pose plus all supports, one binary STL) and `<out-dir>/summary.json` (angle, band, tips placed, left out, crossings, gaps, seconds per step, engine_version).
+- **Comments**: each step has a one-line comment saying which ABI call it is and what it returns, so the file serves as the host example (D16, A1).
+- **Done when**: on `dentalwork/fixtures/case-001/aligner.stl` the summary matches the folder review (44.5°, clear, 93 tips, 1 left out, 0 crossings); runs in under 30 s; `npm run host-example` script added; a section "Driving the engine without the app" in `dentalwork/wasm-geometry-design.md` points to it. Tier: `node scripts/host-example.mjs` on the reference, `npx tsc --noEmit`, `npx vitest run`.
 
 ## After H: dental-only mixosupports, generic supports in mixomesh (D16)
 

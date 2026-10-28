@@ -42,6 +42,9 @@ pub struct GenerateInput<'a> {
     pub policy: &'a PolicyResult,
     /// Polled between steps; once true the remaining work is skipped and the verdict is inconclusive.
     pub expired: &'a dyn Fn() -> bool,
+    /// The plate frame back to the unit-local frame (the inverse of the generation frame; `None`: the
+    /// contacts are unit-local already). A repaired contact is named from its unit-local point (D20).
+    pub local: Option<&'a crate::core::matrix::Matrix4>,
 }
 
 /// A structure the repair switched off because its built geometry crossed the model.
@@ -95,7 +98,7 @@ pub(crate) fn empty_built() -> BuiltSupports {
 }
 
 pub fn generate(input: GenerateInput) -> Result<Generated, BuildError> {
-    let GenerateInput { contacts, settings, mode, model, label_text, zones, policy, expired } = input;
+    let GenerateInput { contacts, settings, mode, model, label_text, zones, policy, expired, local } = input;
     let settings = limit_structures(&chosen_settings(settings, policy), &policy.structures);
     let permitted = permit(contacts, policy);
     let rejected = permitted.rejected.clone();
@@ -103,7 +106,7 @@ pub fn generate(input: GenerateInput) -> Result<Generated, BuildError> {
     let rule: Option<&dyn Fn(&Landing) -> bool> = allowed.as_ref().map(|f| f as &dyn Fn(&Landing) -> bool);
     let host = HostChoices { label_text, zones, landing_allowed: rule };
     let index = model.map(|m| CollisionIndex::new(m.positions(), m.indices()));
-    let run = repair::Run { settings: &settings, mode, model, host: &host, index: index.as_ref(), policy, expired };
+    let run = repair::Run { settings: &settings, mode, model, host: &host, index: index.as_ref(), policy, expired, local };
     let mut outcome = repair::run(&run, permitted)?;
     // Contacts the policy never permitted are reported with the rest (after the build's own).
     for id in rejected {

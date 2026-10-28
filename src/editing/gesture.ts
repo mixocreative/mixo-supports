@@ -1,7 +1,7 @@
 import type { Brush } from './brushScheduler';
 import { effectiveBrushMode } from './selection';
 import type { EditSession } from './session';
-import type { BrushMode, DentalKind, EditMode, ZoneKind } from './types';
+import type { BrushMode, EditMode, ZoneKind } from './types';
 
 /**
  * What a press or a drag on the canvas does now: nothing special outside the modes, the zone brush
@@ -13,7 +13,11 @@ export type Gesture =
   | { kind: 'zones'; brush: { radius: number; kind: ZoneKind } }
   | { kind: 'dental-type'; profile: string | undefined }
   | { kind: 'dental-aligner'; phase: EditSession['dentalAligner']; proposal: EditSession['dentalProposal']; notices: EditSession['dentalNotices']; profile: string | undefined }
-  | { kind: 'dental-area'; brush: { radius: number; kind: DentalKind }; notices: EditSession['dentalNotices'] }
+  /**
+   * Step 2: `brush` is the area brush while Paint or Erase is on (`kind` is the stamp's `allow`);
+   * with Add or Select it is undefined and `edit` is the tool, working on the suggested tips.
+   */
+  | { kind: 'dental-area'; brush: { radius: number; kind: 'allow' | 'erase' } | undefined; edit: EditGesture | undefined; notices: EditSession['dentalNotices'] }
   /** Step 3: the Support Edit Mode tools (`edit`) work inside the step. */
   | { kind: 'dental-review'; edit: EditGesture }
   /** `remove`: a click removes the support it hits instead of adding one. */
@@ -27,14 +31,26 @@ export type EditGesture = Extract<Gesture, { kind: 'add' | 'pick' | 'drag' }>;
 
 export type GestureKind = Gesture['kind'];
 
-/** The gesture the canvas acts on: Step 3 hands the canvas its Support Edit Mode tool. */
+/** The gesture the canvas acts on: Step 3, and Step 2 under Add or Select, hand the canvas a Support Edit Mode tool. */
 export function canvasGesture(press: Gesture): Gesture {
+  if (press.kind === 'dental-area') return press.edit ?? press;
   return press.kind === 'dental-review' ? press.edit : press;
 }
 
-function editGesture(session: EditSession): EditGesture {
-  if (session.tool === 'add') return { kind: 'add', remove: session.addAction === 'remove' };
+/** `forceAdd`: Step 2 has no Remove, so a Remove left on in Step 3 does not follow. */
+function editGesture(session: EditSession, forceAdd = false): EditGesture {
+  if (session.tool === 'add') return { kind: 'add', remove: !forceAdd && session.addAction === 'remove' };
   return session.selectStyle === 'click' ? { kind: 'pick' } : { kind: 'drag', brush: { radius: session.brushRadius, mode: effectiveBrushMode(session.brushMode, session.shiftHeld) }, base: session.brushMode, flipped: session.shiftHeld, sizing: session.brushSizing };
+}
+
+function areaGesture(session: EditSession): Gesture {
+  const brushing = session.tool === 'paint' || session.tool === 'erase';
+  return {
+    kind: 'dental-area',
+    brush: brushing ? { radius: session.dentalRadius, kind: session.tool === 'paint' ? 'allow' : 'erase' } : undefined,
+    edit: brushing ? undefined : editGesture(session, true),
+    notices: session.dentalNotices,
+  };
 }
 
 export function gesture(session: EditSession): Gesture {
@@ -47,7 +63,7 @@ export function gesture(session: EditSession): Gesture {
         : session.dentalStage === 'aligner'
           ? { kind: 'dental-aligner', phase: session.dentalAligner, proposal: session.dentalProposal, notices: session.dentalNotices, profile: session.dentalProfile }
           : session.dentalStage === 'area'
-            ? { kind: 'dental-area', brush: { radius: session.dentalRadius, kind: session.dentalKind }, notices: session.dentalNotices }
+            ? areaGesture(session)
             : { kind: 'dental-review', edit: editGesture(session) };
     case 'edit':
       return editGesture(session);

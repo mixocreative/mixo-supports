@@ -10,7 +10,7 @@ assert.ok(existsSync(packageFile), 'Node WASM package must be built before its s
 const require = createRequire(import.meta.url);
 const { engine_version: engineVersion, GeometrySession, center_positions_in_place: centerPositionsInPlace,
   weld_positions_in_place: weldPositionsInPlace, zoned_at: zonedAt, decimate_display: decimateDisplay, BinaryStlSession, AsciiStlSession } = require(packageFile);
-assert.equal(engineVersion(), 6, 'Node WASM and host must agree on the geometry schema');
+assert.equal(engineVersion(), 8, 'Node WASM and host must agree on the geometry schema');
 
 // The stamp rule behind no-support zones: [centre xyz, normal xyz, radius, 1 paint / 0 erase], the last covering stamp wins.
 const paint = [0, 0, 0, 0, -1, 0, 2, 1];
@@ -130,15 +130,15 @@ limited.free();
   assert.match(region.reason(), /^orientation-/);
   region.free();
   const none = new Uint8Array(), noEdges = new Uint32Array(), still = new Float64Array(6), both = Uint8Array.of(1, 1);
-  assert.throws(() => session.dental_policy(model, 'nope', 2, new Float64Array([0.2, 1, 1]), new Float64Array(), none, none, noEdges, noEdges, both, still), { code: 'UNKNOWN_PROFILE' });
-  const closed = session.dental_policy(model, 'reference-aligner', 2, new Float64Array([0.2, 1, 1]), new Float64Array(), new Uint8Array(12), none, noEdges, noEdges, both, still);
+  assert.throws(() => session.dental_policy(model, 'nope', 2, new Float64Array([0.2, 1, 1]), new Float64Array(), none, none, noEdges, noEdges, both, still, new Float64Array()), { code: 'UNKNOWN_PROFILE' });
+  const closed = session.dental_policy(model, 'reference-aligner', 2, new Float64Array([0.2, 1, 1]), new Float64Array(), new Uint8Array(12), none, noEdges, noEdges, both, still, new Float64Array());
   assert.equal(closed.reproduced(), false, 'a saved area detection does not reproduce permits nothing');
   assert.equal(closed.candidate_ids().length, 0);
   assert.equal(closed.automatic(), 1);
   assert.deepEqual(Array.from(closed.structures()), [1, 1, 1, 0, 0, 1]);
   assert.equal(closed.profile_id(), 'reference-aligner');
   closed.free();
-  const painted = session.dental_policy(model, 'reference-aligner', 1, new Float64Array([0.2, 1, 1]), new Float64Array([0, -1, 0, 5, 0, -1, 0, 1]), none, none, noEdges, noEdges, both, still);
+  const painted = session.dental_policy(model, 'reference-aligner', 1, new Float64Array([0.2, 1, 1]), new Float64Array([0, -1, 0, 5, 0, -1, 0, 1]), none, none, noEdges, noEdges, both, still, new Float64Array());
   assert.equal(painted.automatic(), 0, 'a painted area permits its own fill contacts');
   assert.equal(painted.landing_rule(), 1);
   assert.ok(Array.from(painted.permitted_faces()).some((f) => f === 1));

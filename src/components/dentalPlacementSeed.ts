@@ -11,17 +11,19 @@ import type { PrintUnit } from '../state/project';
  * what the retune placed for. The scene stores a validated copy of the policy, so they are compared
  * by value, not by identity.
  */
-interface Seed { policy: DentalPolicy; rotation: readonly number[]; result: PlacementResult }
+interface Seed { policy: DentalPolicy; rotation: readonly number[]; manual: string; result: PlacementResult }
+/** The manual tips' positions: a suggested tip near one is not offered, so the placement depends on them. */
+const manualKey = (unit: PrintUnit): string => JSON.stringify(unit.manual.map((point) => point.position))
 const seeds = new WeakMap<object, Seed>();
 
 export function seedDentalPlacement(unit: PrintUnit, policy: DentalPolicy, rotation: readonly number[], result: PlacementResult): void {
-  seeds.set(unit.source, { policy, rotation: [...rotation], result });
+  seeds.set(unit.source, { policy, rotation: [...rotation], manual: manualKey(unit), result });
 }
 
 /** The placement a retune made for the unit's current policy and rotation, if any. */
 export function seededDentalPlacement(unit: PrintUnit): PlacementResult | undefined {
   const seed = seeds.get(unit.source);
-  if (!seed || !unit.dental || !seed.rotation.every((angle, axis) => angle === unit.transform.rotation[axis])) return undefined;
+  if (!seed || !unit.dental || seed.manual !== manualKey(unit) || !seed.rotation.every((angle, axis) => angle === unit.transform.rotation[axis])) return undefined;
   return samePlacementInputs(seed.policy, unit.dental) ? seed.result : undefined;
 }
 

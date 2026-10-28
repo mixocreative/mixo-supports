@@ -158,15 +158,15 @@ impl DentalSampleResult {
     }
 }
 
-/// `phase_mm` NaN keeps the half-spacing phase; `min_separation` 0 turns the 3D minimum off.
+/// `phase_fraction` (of the even step) NaN keeps phase 0; `min_separation` 0 turns the 3D minimum off.
 #[wasm_bindgen]
-pub fn dental_sample_contacts(positions: &[f32], indices: &[u32], contour: &[u32], side_band: &[u8], spacing: f64, max_search: f64, phase_mm: f64, min_separation: f64) -> Result<DentalSampleResult, JsValue> {
+pub fn dental_sample_contacts(positions: &[f32], indices: &[u32], contour: &[u32], side_band: &[u8], spacing: f64, max_search: f64, phase_fraction: f64, min_separation: f64) -> Result<DentalSampleResult, JsValue> {
     let mesh = mesh_of(positions, indices)?;
     if contour.iter().any(|&i| i as usize >= mesh.vertex_count()) {
         return Ok(DentalSampleResult { ok: false, reason: "invalid-contour".into(), skipped: 0, perimeter: 0.0, contacts: Vec::new() });
     }
-    let phase = (!phase_mm.is_nan()).then_some(phase_mm);
-    let settings = SampleSettings { spacing, max_search, phase_mm: phase, min_separation, keep_clear_of: &[], tip_line: None, from_below: None };
+    let phase = (!phase_fraction.is_nan()).then_some(phase_fraction);
+    let settings = SampleSettings { spacing, max_search, phase, up: None, min_separation, keep_clear_of: &[], tip_line: None, from_below: None };
     Ok(match sample_contour_contacts(&mesh, contour, side_band, &settings) {
         Ok(s) => DentalSampleResult { ok: true, reason: String::new(), skipped: s.skipped_samples as u32, perimeter: s.perimeter, contacts: s.contacts },
         Err(reason) => DentalSampleResult { ok: false, reason: reason.into(), skipped: 0, perimeter: 0.0, contacts: Vec::new() },
@@ -186,7 +186,7 @@ pub fn dental_area_band(tuning: &[f64], profile: &str) -> Result<Vec<f64>, JsVal
 /// The contact footprint for explicit strip settings:
 /// `[low, high, outerSpacing, innerSpacing, maxSearch, phaseFraction, minTipSeparation]`: the area is
 /// the faces whose signed contour distance lies in `[low, high]` (negative across the edge), tips on
-/// its middle line (phase NaN = default half-spacing; separation 0 = off), optionally followed by
+/// its middle line (phase NaN = 0, a fraction of the even step; separation 0 = off), optionally followed by
 /// `[upX, upY, upZ, maxUp, moveMm]`: tips a support cannot reach from below the plate normal `up`
 /// move (`footprint::Facing`). `ok()` false carries the raw reason.
 #[wasm_bindgen]

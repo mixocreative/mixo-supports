@@ -13,8 +13,8 @@ describe('dental Step 3 defaults from the aligner profile', () => {
     expect(settings.contactShape).toBe(defaultSupportSettings.contactShape);
   });
 
-  it('turn Tree and Brace on for a new aligner (D3; an older project without switches keeps both on)', () => {
-    expect(dentalStructureOf('reference-aligner')).toEqual({ treeEnabled: true, bracesEnabled: true });
-    expect(profileData('reference-aligner').supports).toEqual({ pillarDiameterMm: 1.4, tipDiameterMm: 0.45, liftHeightMm: 3.5, tree: true, brace: true, raft: true });
+  it('turn Brace on and Tree off for a new aligner (D21; an older project without switches keeps both on)', () => {
+    expect(dentalStructureOf('reference-aligner')).toEqual({ treeEnabled: false, bracesEnabled: true });
+    expect(profileData('reference-aligner').supports).toEqual({ pillarDiameterMm: 1.4, tipDiameterMm: 0.45, liftHeightMm: 3.5, tree: false, brace: true, raft: true });
   });
 });
