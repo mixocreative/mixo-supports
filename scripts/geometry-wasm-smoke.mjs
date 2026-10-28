@@ -10,7 +10,7 @@ assert.ok(existsSync(packageFile), 'Node WASM package must be built before its s
 const require = createRequire(import.meta.url);
 const { engine_version: engineVersion, GeometrySession, center_positions_in_place: centerPositionsInPlace,
   weld_positions_in_place: weldPositionsInPlace, decimate_display: decimateDisplay, BinaryStlSession, AsciiStlSession } = require(packageFile);
-assert.equal(engineVersion(), 1, 'Node WASM and host must agree on the geometry schema');
+assert.equal(engineVersion(), 2, 'Node WASM and host must agree on the geometry schema');
 
 const shifted = new Float32Array([8, -2, 4, 12, 4, 6]);
 assert.deepEqual(Array.from(centerPositionsInPlace(shifted)), [10, 1, 5, 8, -2, 4, 12, 4, 6]);
