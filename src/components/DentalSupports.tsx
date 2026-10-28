@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { resolve, type CommandId, type UiState } from '../editing/commands';
 import type { EditGesture } from '../editing/gesture';
 import { FIX_TOOL_EVENTS, type SessionEvent } from '../editing/session';
@@ -28,6 +29,8 @@ export interface DentalReview {
   structure: Readonly<DentalStructure>;
   onStructure: (structure: DentalStructure) => void;
   clickReach: { value: number; onChange: (value: number, edit?: string) => void };
+  /** A change is on its way to a new verdict (rebuild, re-check, retune): the Problems section shows stale. */
+  verdictPending: boolean;
   rimGap: RimGap | undefined;
   structureFallback: readonly ('tree' | 'brace')[] | undefined;
   problems: readonly Problem[];
@@ -68,6 +71,8 @@ export function DentalSupportsStep({ gesture, ui, review, ready, send, run }: {
   run: (id: CommandId) => void;
 }) {
   const { settings, onSetting } = review;
+  const [adjusting, setAdjusting] = useState(false);
+  const stale = adjusting || review.verdictPending;
   const tipKey: 'pointDiameter' | 'touchDiameter' = settings.contactShape === 'SPHERE' ? 'touchDiameter' : 'pointDiameter';
   const rimNote = review.rimGap === 'unavailable'
     ? t('Rim coverage could not be verified. Review the rim and supports before finishing.')
@@ -86,14 +91,17 @@ export function DentalSupportsStep({ gesture, ui, review, ready, send, run }: {
       <h3>{t('Support settings')}</h3>
       <RangeField layout="stack" label="Tip size" unit="{n} mm" hint="Diameter of each support tip where it touches the aligner"
         min={0.1} max={1} step={0.05} value={Number(settings[tipKey].toFixed(2))}
-        onChange={(value) => onSetting(tipKey, value, `dental-${tipKey}`)} />
+        onChange={(value) => onSetting(tipKey, value, `dental-${tipKey}`)} onAdjust={setAdjusting} />
+      <RangeField layout="stack" label="Pillar size" unit="{n} mm" hint="Diameter of each support pillar"
+        min={0.8} max={2.5} step={0.1} value={settings.pillarDiameter}
+        onChange={(v) => onSetting('pillarDiameter', v, 'dental-pillarDiameter')} onAdjust={setAdjusting} />
       <RangeField layout="stack" label="Support density" unit="{n}×" hint="Higher density places support tips closer together. Your manual edits are kept where they still fit"
         min={0.5} max={2} step={0.1} value={review.density}
-        onChange={review.onDensity} />
+        onChange={review.onDensity} onAdjust={setAdjusting} />
       {review.densityBusy && <p className="edit-note" role="status">{t('Updating support area and tips…')}</p>}
       <RangeField layout="stack" label="Lift height" unit="{n} mm" hint="How high the aligner stands above the plate. Supports are placed again"
         min={settingLimits.liftHeight.min} max={15} step={0.5} value={settings.liftHeight}
-        onChange={(value) => onSetting('liftHeight', value, 'dental-lift')} />
+        onChange={(value) => onSetting('liftHeight', value, 'dental-lift')} onAdjust={setAdjusting} />
       <label className="check" {...hint('Build a raft under the supports. The label needs it')}>
         <input type="checkbox" checked={settings.raftEnabled} onChange={(event) => onSetting('raftEnabled', event.target.checked)} />{t('Raft')}
       </label>
@@ -108,7 +116,7 @@ export function DentalSupportsStep({ gesture, ui, review, ready, send, run }: {
         <EditTools gesture={gesture} ui={ui} clickReach={review.clickReach} send={send} run={run} />
       </div>
     </section>
-    <section className="dental-block" aria-label={t('Problems')}>
+    <section className={stale ? 'dental-block is-stale' : 'dental-block'} aria-label={t('Problems')} aria-busy={stale}>
       <h3>{t('Problems')}</h3>
       <CommandButton command={resolve('check.run', ui)} run={run} />
       {notes.length > 0 && <ul className="problems">

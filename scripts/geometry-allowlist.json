@@ -37,6 +37,9 @@
  "src/core/analysis/dentalOrient.ts": {
   "label": "host-adapter"
  },
+ "src/core/analysis/dentalTilt.ts": {
+  "label": "host-adapter"
+ },
  "src/core/analysis/supportCheck.ts": {
   "label": "host-adapter"
  },
@@ -66,6 +69,9 @@
   "why": "D4: the small vec3 helper set used by render, camera and UI glue; shrinks as callers move to Rust, may not grow"
  },
  "src/dental/arrange.ts": {
+  "label": "host-adapter"
+ },
+ "src/dental/confirmTilt.ts": {
   "label": "host-adapter"
  },
  "src/editing/check.ts": {
@@ -114,6 +120,12 @@
   "label": "host-adapter"
  },
  "src/supports/zoneCheck.ts": {
+  "label": "host-adapter"
+ },
+ "src/workers/analysisClient.ts": {
+  "label": "host-adapter"
+ },
+ "src/workers/analysisProtocol.ts": {
   "label": "host-adapter"
  }
 }

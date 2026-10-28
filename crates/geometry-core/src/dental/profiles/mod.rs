@@ -77,12 +77,29 @@ pub struct Thresholds {
 /// The target print pose (`pose.rs`): the opening axis tilted `tilt_deg` from the downward build
 /// plate normal (−Y), toward `heading_deg` about the plate normal (0 = toward −Z, positive toward
 /// +X), and the arch front rolled `roll_deg` about the opening axis from the plate-up direction.
+/// The print-angle search (`tilt.rs`) scans tilts `tilt_deg ± tilt_range_deg` in steps of
+/// `tilt_step_deg`; a tilt is robust when the tilts `tilt_margin_deg` either side pass too. Heading
+/// and roll stay fixed.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Pose {
     pub tilt_deg: f64,
     pub heading_deg: f64,
     pub roll_deg: f64,
+    pub tilt_range_deg: f64,
+    pub tilt_step_deg: f64,
+    pub tilt_margin_deg: f64,
+}
+
+/// The print-angle search's hard rules (`tilt.rs`): the most a support may rise per millimetre of
+/// pillar diameter (tip height above the plate / pillar diameter) without and with Tree or Brace,
+/// and the smallest rise (mm) that makes a lowest point outside the permitted area a resin trap.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Stability {
+    pub max_slenderness_unbraced: f64,
+    pub max_slenderness_braced: f64,
+    pub cup_prominence_mm: f64,
 }
 
 /// Default area position, width and density, their operator limits, the contact spacing, the
@@ -167,6 +184,7 @@ pub struct AlignerProfile {
     pub pose: Pose,
     pub defaults: Defaults,
     pub supports: SupportDefaults,
+    pub stability: Stability,
 }
 
 /// Parses one profile file strictly (unknown or missing keys are errors).
@@ -213,6 +231,9 @@ mod tests {
         assert_eq!(profile.thresholds.axial_variance_max, 0.6);
         assert_eq!(profile.thresholds.ridge_first_min_mm, 35.0);
         assert_eq!(profile.pose.tilt_deg, 46.4577512332);
+        assert_eq!((profile.pose.tilt_range_deg, profile.pose.tilt_step_deg, profile.pose.tilt_margin_deg), (22.0, 1.0, 2.0));
+        let st = &profile.stability;
+        assert_eq!((st.max_slenderness_unbraced, st.max_slenderness_braced, st.cup_prominence_mm), (20.0, 35.0, 1.5));
         assert_eq!(profile.defaults.min_tip_separation_mm, 0.6);
         assert_eq!((profile.defaults.tip_min_from_up_deg, profile.defaults.tip_move_max_mm), (110.0, 1.0));
         assert_eq!(profile.thresholds.region_forbidden_mean_max, -0.15);
@@ -223,7 +244,7 @@ mod tests {
         assert_eq!(profile.name.zh_hant, "標準牙套");
         let s = &profile.supports;
         assert_eq!((s.pillar_diameter_mm, s.tip_diameter_mm, s.lift_height_mm), (1.4, 0.45, 3.5));
-        assert_eq!((s.tree, s.brace, s.raft), (false, false, true));
+        assert_eq!((s.tree, s.brace, s.raft), (true, true, true));
     }
 
     /// Every profile file in the folder (and the test-only fixture) parses strictly.
@@ -255,6 +276,14 @@ mod tests {
         value["supports"].as_object_mut().unwrap().remove("roof");
         value["supports"].as_object_mut().unwrap().remove("liftHeightMm");
         assert!(parse(&value.to_string()).unwrap_err().contains("liftHeightMm"));
+        let mut value: serde_json::Value = serde_json::from_str(source).unwrap();
+        value["pose"].as_object_mut().unwrap().remove("tiltMarginDeg");
+        assert!(parse(&value.to_string()).unwrap_err().contains("tiltMarginDeg"));
+        let mut value: serde_json::Value = serde_json::from_str(source).unwrap();
+        value["stability"].as_object_mut().unwrap().insert("extra".into(), 1.into());
+        assert!(parse(&value.to_string()).unwrap_err().contains("extra"));
+        value.as_object_mut().unwrap().remove("stability");
+        assert!(parse(&value.to_string()).unwrap_err().contains("stability"));
     }
 
     #[test]

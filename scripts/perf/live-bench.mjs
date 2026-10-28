@@ -1,6 +1,8 @@
 // Live-update bench (E1): how long a Step 2 or Step 3 change takes to reach the preview on the
 // reference aligner, in headless Chromium against the dev server, and which worker jobs it ran.
 // Run: npm run wasm:build && node scripts/perf/live-bench.mjs [runs]
+// It also times Step 1's print-angle search in the browser (the worker's dental-tilt-scan job, F) and
+// records it as `tiltScanMs` in dentalwork/perf-current.json (the other keys are kept).
 //
 // Method: every worker `run` message the page posts and every `done`/`error` reply is timestamped
 // by a Worker wrapper (init script). A change starts the clock at the key press or click; it ends
@@ -8,7 +10,7 @@
 // inside the measured time). Each change runs `runs` times (default 3; it alternates direction);
 // the median is reported with every sample and the jobs one change posted.
 import { spawn, execFileSync } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -128,6 +130,15 @@ async function main() {
     await stepTo('Step 1 · Aligner');
     await page.setInputFiles('input[aria-label="Choose aligner file"]', REFERENCE);
     await stepTo('Review the orientation');
+    await page.waitForSelector('.print-angle .edit-hint', { timeout: 240000 });
+    const scanJob = await page.evaluate(() => window.__jobs.find((job) => job.kind === 'dental-tilt-scan' && job.end > 0));
+    const tiltScanMs = scanJob ? Math.round(scanJob.end - scanJob.start) : undefined;
+    console.log(JSON.stringify({ change: 'step1 print-angle scan (worker job)', tiltScanMs }));
+    if (tiltScanMs !== undefined) {
+      const file = path.join(ROOT, 'dentalwork', 'perf-current.json');
+      const current = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
+      writeFileSync(file, JSON.stringify({ ...current, tiltScanMs, tiltScanMethod: 'headless Chromium (swiftshader), vite dev server, reference aligner: the analysis worker\'s dental-tilt-scan job, post to reply (scripts/perf/live-bench.mjs)' }, null, 2) + '\n');
+    }
     await button('Next').click();
     await stepTo('Step 2 · Support area');
     await page.waitForFunction(() => /Proposed support tips: [1-9]/.test(document.body.innerText), null, { timeout: 240000 });

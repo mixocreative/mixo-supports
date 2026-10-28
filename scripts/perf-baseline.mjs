@@ -1,5 +1,8 @@
 // U0 performance baseline (SHIP-PLAN: no hard target; act only on an obvious regression).
 // Run: npx vite-node scripts/perf-baseline.mjs [--save]
+//      npx vite-node scripts/perf-baseline.mjs --out dentalwork/perf-current.json   (also Step 2 / Step 3 change times)
+//      npx vite-node scripts/perf-baseline.mjs --check dentalwork/perf-current.json (exit 1 when a median is over 2x the file's)
+// perf-baseline.json is history (--save); perf-current.json is the file --check compares to. Local only (the machine is shared).
 // Times, median of 3 (run 1 is also reported because it includes JIT warm-up):
 //   import   - reference aligner through the import worker's code path (WASM BinaryStlSession + prepare())
 //   dental   - region proposal, dental placement filter and full runSupportJob on the aligner (as jobRunner tests do)
@@ -80,17 +83,15 @@ let lowest = Infinity;
 for (let at = 1; at < alignerMesh.positions.length; at += 3) lowest = Math.min(lowest, alignerMesh.positions[at]);
 const frame = { position: [0, defaultSupportSettings.liftHeight - lowest, 0], rotation: [0, 0, 0] };
 
+const policyRim = {
+  boundaryKind: 'projection-fallback', points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]), openingDirection: [0, 1, 0],
+  centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1], visibilityMask: new Uint8Array([0]),
+  visibilityResolution: 1, visibilityMin: [-1, -1], visibilityMax: [1, 1],
+};
 const dental = time('aligner dental Generate (region + filter + runSupportJob)', () => {
   const region = proposeDentalSupportRegion(alignerMesh, referenceTuning, REFERENCE_PROFILE);
   if (region.kind !== 'proposal') throw new Error(`aligner region ${region.reason}`);
-  const policy = {
-    kind: 'two-contour', profileId: REFERENCE_PROFILE, region, stamps: [],
-    rim: {
-      boundaryKind: 'projection-fallback', points: new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]), openingDirection: [0, 1, 0],
-      centroid: [0, 0, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1], visibilityMask: new Uint8Array([0]),
-      visibilityResolution: 1, visibilityMin: [-1, -1], visibilityMax: [1, 1],
-    },
-  };
+  const policy = { kind: 'two-contour', profileId: REFERENCE_PROFILE, region, stamps: [], rim: policyRim };
   const placed = filterDentalPlacement({ mesh: alignerMesh, orientation: still, settings: placementSettings, dental: policy }, empty);
   const built = runSupportJob({
     mesh: alignerMesh, frame, settings: defaultSupportSettings, dental: policy,
@@ -106,6 +107,46 @@ const knot = time("knot Generate (golden default: placement + preview mesh)", ()
   const built = unitSupportMesh(unit, 0, 'preview');
   return { sourceTriangles: unit.source.indices.length / 3, contacts: unit.placement.points.length, supportTriangles: built.indices.length / 3 };
 });
+
+// --out / --check: the keys perf-current.json records (median of 3 each, after the warm-up the first dental run gave).
+const flag = (name) => { const at = process.argv.indexOf(name); return at < 0 ? undefined : process.argv[at + 1]; };
+const outFile = flag('--out');
+const checkFile = flag('--check');
+if (outFile || checkFile) {
+  const { proposeDentalSupportRegion: propose } = await import('../src/core/analysis/dentalRegion');
+  const { base, jobAt } = await import('./test-support/referenceStep3');
+  const ms = (fn) => { fn(); return median(Array.from({ length: RUNS }, () => { const start = performance.now(); fn(); return performance.now() - start; })); };
+  // Step 2 slider: one Area width step re-proposes the region and re-filters the placement (no support build).
+  const step2 = (k) => {
+    const tuning = { ...referenceTuning, stripWidthMm: referenceTuning.stripWidthMm + (k % 2 ? 0.1 : 0.2) };
+    const region = propose(alignerMesh, tuning, REFERENCE_PROFILE);
+    if (region.kind !== 'proposal') throw new Error(`aligner region ${region.reason}`);
+    return filterDentalPlacement({ mesh: alignerMesh, orientation: still, settings: placementSettings, dental: { kind: 'two-contour', profileId: REFERENCE_PROFILE, region, stamps: [], tuning, rim: policyRim } }, empty);
+  };
+  let k = 0;
+  // Step 3 changes: the job the worker builds after one control moves (as scripts/perf/live-engine.ts), cold session.
+  const step3 = {
+    PillarDiameter: (n) => jobAt({ ...base, pillarDiameter: base.pillarDiameter + (n % 2 ? 0.1 : 0.2), trussDiameter: base.pillarDiameter + (n % 2 ? 0.1 : 0.2) }),
+    TipSize: (n) => jobAt({ ...base, pointDiameter: base.pointDiameter + (n % 2 ? 0.05 : 0.1), touchDiameter: base.touchDiameter + (n % 2 ? 0.05 : 0.1) }),
+    LiftHeight: (n) => jobAt({ ...base, liftHeight: base.liftHeight + (n % 2 ? 0.5 : 1) }),
+    RaftToggle: (n) => jobAt({ ...base, raftEnabled: n % 2 === 0 ? !base.raftEnabled : base.raftEnabled }),
+  };
+  const current = { dentalGenerateMs: dental.medianMs, step2SliderMs: round(ms(() => step2(k++))) };
+  for (const [name, change] of Object.entries(step3)) { let n = 0; current[`step3${name}Ms`] = round(ms(() => runSupportJob(change(n++), undefined, 0, undefined))); }
+  if (outFile) {
+    // The browser-only keys (scripts/perf/live-bench.mjs) are kept.
+    const kept = (() => { try { const { tiltScanMs, tiltScanMethod } = JSON.parse(readFileSync(resolve(root, outFile), 'utf8')); return tiltScanMs === undefined ? {} : { tiltScanMs, tiltScanMethod }; } catch { return {}; } })();
+    writeFileSync(resolve(root, outFile), JSON.stringify({ ...kept, date: new Date().toISOString(), machine: { cpu: os.cpus()[0]?.model, cores: os.cpus().length, node: process.version }, method: `median of ${RUNS} in-process runs (vite-node, Node); Step 2 = Area width step: region proposal + placement filter; Step 3 = runSupportJob after one control change, one-shot session`, ...current }, null, 2) + '\n');
+    console.log(JSON.stringify(current, null, 2));
+  } else {
+    const saved = JSON.parse(readFileSync(resolve(root, checkFile), 'utf8'));
+    const rows = Object.keys(current).map((key) => ({ key, now: current[key], saved: saved[key], over: typeof saved[key] === 'number' && current[key] > 2 * saved[key] }));
+    console.table(rows);
+    if (rows.some((row) => row.over)) { console.error(`regression: ${rows.filter((row) => row.over).map((row) => row.key).join(', ')} over 2x ${checkFile}`); process.exit(1); }
+    console.log(`ok: every median within 2x of ${checkFile}`);
+  }
+  process.exit(0);
+}
 
 const report = {
   date: new Date().toISOString(),

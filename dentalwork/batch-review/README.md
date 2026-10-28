@@ -7,7 +7,7 @@ Check a whole folder of aligner STLs on your own computer, without the app and w
 ## Run it
 
 1. Once per computer: install Node.js 22 and run `npm ci` in the project folder. The first run also builds the geometry engine (a minute or two).
-2. Drop one or more folders onto `run-batch-review.bat`, or double-click it and paste a folder path. Subfolders are included.
+2. Double-click `run-batch-review.bat` and choose the folder in the window that opens, or drag one or more folders onto it in File Explorer. Subfolders are included. If you close the window without choosing, it asks for a folder path to paste instead.
 3. The window prints one line per file. When it ends, the viewer opens in your browser. Keep the window open while you look; close it when you are done.
 
 To look at an earlier run again, double-click `view-batch-review.bat` (it opens the newest run) or drop a `batch-...` folder from `dentalwork/output` onto it.
@@ -29,6 +29,8 @@ node dentalwork/batch-review/serve.mjs dentalwork/output/batch-test
 `dentalwork/output` is ignored by Git: the GLBs are patient geometry and the summary lists the original file paths. Do not commit or share them without the owner's approval.
 
 ## Reading the viewer
+
+Turn the view below the floor (or press Bottom view) to see the aligner and its support tips only: the rest of the supports and the raft hide while the camera is under them.
 
 The left list starts with **Needs a look**: every file that was not built, whose safety check is not `clear`, that has a low point with no support, or whose edge coverage has a gap to review. **All** shows every file. Arrow keys or Previous / Next step through them.
 

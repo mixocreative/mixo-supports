@@ -121,10 +121,11 @@ pub fn tree_geometry(tree: &AutoTree, contacts: &[ColumnContact], s: &SupportSet
         let (x, z) = (junction[0], junction[2]);
         trunk = Some(vec![
             CurveNode { point: junction, radius: tree_radius },
-            CurveNode { point: [x, s.shape.base_height, z], radius: tree_radius },
-            CurveNode { point: [x, 0.0, z], radius: s.shape.base_diameter / 2.0 + (tree_radius - pillar_radius) },
+            CurveNode { point: [x, s.plate_y + s.shape.base_height, z], radius: tree_radius },
+            CurveNode { point: [x, s.plate_y, z], radius: s.shape.base_diameter / 2.0 + (tree_radius - pillar_radius) },
         ]);
-        out.trunk = Some(Column { x, z, bottom: s.shape.base_height, top: junction[1] });
+        // Measured from the plate, like every brace column.
+        out.trunk = Some(Column { x, z, bottom: s.shape.base_height, top: junction[1] - s.plate_y });
     }
     let centre = end[end.len() - 1].point;
     let secondary: Vec<ContactIntent> = hit

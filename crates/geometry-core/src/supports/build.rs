@@ -168,7 +168,7 @@ pub fn build_supports(
     } else {
         settings.resolution as usize
     };
-    let raft_top = if settings.raft_enabled { settings.raft_floor_thickness } else { 0.0 };
+    let raft_top = settings.raft_top();
     // Indices into the layout of the trees that are built (all trees but the omitted ones; none in a tips-only preview).
     let built_trees: Vec<usize> = match layout {
         Some(layout) if !tip_only => (0..layout.trees.len()).filter(|&t| !omit_tree[t]).collect(),
@@ -201,10 +201,12 @@ pub fn build_supports(
         }
     }
     if !tip_only {
-        emit_feet(&mut builder, &anchors, settings.pillar_diameter / 2.0, segments);
+        let plate = settings.plate_y;
+        emit_feet(&mut builder, &anchors, settings.pillar_diameter / 2.0, segments, plate);
+        // Brace columns are measured from the plate; the braces are built at 0 and raised onto it.
         let mut columns: Vec<Column> = anchors
             .iter()
-            .map(|a| Column { x: a.position[0], z: a.position[2], bottom: a.shape.base_height, top: a.position[1] })
+            .map(|a| Column { x: a.position[0], z: a.position[2], bottom: a.shape.base_height, top: a.position[1] - plate })
             .collect();
         for &t in &built_trees {
             let tree = &layout.as_ref().expect("built trees need a layout").trees[t];
@@ -215,11 +217,13 @@ pub fn build_supports(
             }
             columns.extend(emit_tree(&mut builder, tree, contacts, settings, hit, segments));
         }
+        let start = builder.vertex_count();
         if settings.truss_enabled {
             emit_braces(&mut builder, &columns, settings, segments);
         }
         let footprints: Vec<[f64; 2]> = columns.iter().map(|c| [c.x, c.z]).collect();
         emit_structures(&mut builder, &footprints, settings, prepared.model, host.label_text);
+        builder.raise_from(start, plate);
     }
     let mesh = builder.finish();
     Ok(BuiltSupports { positions: mesh.positions, indices: mesh.indices, components: mesh.components, dropped: omitted.contacts, dropped_by_zones: omitted.by_zones, grounds })

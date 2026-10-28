@@ -12,6 +12,7 @@ use crate::supports::parts::model::Model;
 use crate::supports::policy::{Candidate, CandidateId, Origin, PolicyResult};
 use crate::supports::contact_id::position_id;
 use crate::supports::safety::clearance::{StructurePart, crossing_automatic_body_contacts, crossing_automatic_neck_contacts, crossing_structure_parts};
+use crate::supports::parts::tags::Component;
 use crate::supports::safety::conflicts::SupportMesh;
 use crate::supports::safety::index::CollisionIndex;
 use crate::supports::settings::SupportSettings;
@@ -102,6 +103,16 @@ fn build(run: &Run, slots: &[Slot], settings: &SupportSettings) -> Result<BuiltS
     build_supports(&contacts, settings, run.mode, run.model, source, run.host)
 }
 
+/// A repair trial's rebuild: the build the next check starts from, so the per-build memo is dropped.
+fn rebuild(run: &Run, slots: &[Slot], settings: &SupportSettings, memo: &mut Memo, step: &'static str, touched: usize) -> Result<BuiltSupports, BuildError> {
+    let started = trace::now();
+    let built = build(run, slots, settings)?;
+    let same = trace::seen(&built);
+    trace::trial(step, touched, trace::now() - started, same);
+    *memo = Memo::default();
+    Ok(built)
+}
+
 fn ids(built: &BuiltSupports, slots: &[Slot]) -> Vec<String> {
     built.dropped.iter().map(|&k| id_of(&slots[k as usize]).to_string()).collect()
 }
@@ -114,49 +125,80 @@ fn mesh(built: &BuiltSupports) -> SupportMesh<'_> {
 fn crossing_pillars(run: &Run, built: &BuiltSupports, slots: &[Slot], among: &dyn Fn(&str) -> bool) -> Vec<String> {
     let Some(index) = run.index else { return Vec::new() };
     let automatic = |k: u32| is_auto(&slots[k as usize]) && among(id_of(&slots[k as usize]));
-    let mut found: Vec<String> = crossing_automatic_body_contacts(index, &mesh(built), &automatic, run.expired).into_iter().map(|k| id_of(&slots[k as usize]).to_string()).collect();
+    let mut found: Vec<String> = trace::check(|| crossing_automatic_body_contacts(index, &mesh(built), &automatic, run.expired)).into_iter().map(|k| id_of(&slots[k as usize]).to_string()).collect();
+    found.sort();
+    found.dedup();
+    found
+}
+
+/// What the queries on one `built` computed; dropped at every rebuild, so each runs once per build.
+#[derive(Default)]
+struct Memo {
+    components: Option<Vec<Component>>,
+    /// The neck query over every automatic contact (the restricted queries are not cached).
+    necks: Option<Vec<String>>,
+    structures: Option<Vec<StructurePart>>,
+}
+
+impl Memo {
+    fn components(&mut self, index: &CollisionIndex, slots: &[Slot], built: &BuiltSupports) -> &[Component] {
+        self.components.get_or_insert_with(|| {
+            let contacts: Vec<ColumnContact> = slots.iter().map(|s| s.contact.clone()).collect();
+            trace::check(|| review_components(index, &contacts, built))
+        })
+    }
+}
+
+fn query_necks(run: &Run, memo: &mut Memo, built: &BuiltSupports, slots: &[Slot], settings: &SupportSettings, among: &dyn Fn(&str) -> bool) -> Vec<String> {
+    let Some(index) = run.index else { return Vec::new() };
+    let view = SupportMesh { positions: &built.positions, indices: &built.indices, components: memo.components(index, slots, built) };
+    let automatic = |k: u32| is_auto(&slots[k as usize]) && among(id_of(&slots[k as usize]));
+    let mut found: Vec<String> = trace::check(|| crossing_automatic_neck_contacts(index, &view, settings, &automatic, run.expired)).into_iter().map(|k| id_of(&slots[k as usize]).to_string()).collect();
     found.sort();
     found.dedup();
     found
 }
 
 /// IDs (sorted) of the automatic contacts whose tip or neck crosses the model beyond its own reach.
-fn crossing_necks(run: &Run, built: &BuiltSupports, slots: &[Slot], settings: &SupportSettings, among: &dyn Fn(&str) -> bool) -> Vec<String> {
-    let Some(index) = run.index else { return Vec::new() };
-    let contacts: Vec<ColumnContact> = slots.iter().map(|s| s.contact.clone()).collect();
-    let components = review_components(index, &contacts, built);
-    let view = SupportMesh { positions: &built.positions, indices: &built.indices, components: &components };
-    let automatic = |k: u32| is_auto(&slots[k as usize]) && among(id_of(&slots[k as usize]));
-    let mut found: Vec<String> = crossing_automatic_neck_contacts(index, &view, settings, &automatic, run.expired).into_iter().map(|k| id_of(&slots[k as usize]).to_string()).collect();
+fn crossing_necks(run: &Run, memo: &mut Memo, built: &BuiltSupports, slots: &[Slot], settings: &SupportSettings) -> Vec<String> {
+    if let Some(found) = &memo.necks {
+        return found.clone();
+    }
+    let found = query_necks(run, memo, built, slots, settings, &|_| true);
+    memo.necks = Some(found.clone());
+    found
+}
+
+/// IDs (sorted) of the automatic contacts whose pillar, tip or neck crosses the model; `among` limits the contacts judged.
+fn crossing_auto(run: &Run, memo: &mut Memo, built: &BuiltSupports, slots: &[Slot], settings: &SupportSettings, among: Option<&dyn Fn(&str) -> bool>) -> Vec<String> {
+    let mut found = crossing_pillars(run, built, slots, among.unwrap_or(&|_| true));
+    found.extend(match among {
+        None => crossing_necks(run, memo, built, slots, settings),
+        Some(among) => query_necks(run, memo, built, slots, settings, among),
+    });
     found.sort();
     found.dedup();
     found
 }
 
-/// IDs (sorted) of the automatic contacts whose pillar, tip or neck crosses the model.
-fn crossing_auto(run: &Run, built: &BuiltSupports, slots: &[Slot], settings: &SupportSettings, among: &dyn Fn(&str) -> bool) -> Vec<String> {
-    let mut found = crossing_pillars(run, built, slots, among);
-    found.extend(crossing_necks(run, built, slots, settings, among));
-    found.sort();
-    found.dedup();
-    found
-}
-
-/// Re-aims the necks of the listed contacts (`reaim`); true when any changed.
-fn reaim_necks(run: &Run, slots: &mut [Slot], crossing: &[String], aim: Aim) -> bool {
-    let mut changed = false;
+/// Re-aims the necks of the listed contacts (`reaim`); how many changed.
+fn reaim_necks(run: &Run, slots: &mut [Slot], crossing: &[String], aim: Aim) -> usize {
+    let mut changed = 0;
     for slot in slots.iter_mut().filter(|s| crossing.iter().any(|id| id == id_of(s))) {
-        changed |= reaim(run.model, &mut slot.contact, aim);
+        changed += usize::from(reaim(run.model, &mut slot.contact, aim));
     }
     changed
 }
 
-fn crossing_structures(run: &Run, built: &BuiltSupports, slots: &[Slot], settings: &SupportSettings) -> Vec<StructurePart> {
+fn crossing_structures(run: &Run, memo: &mut Memo, built: &BuiltSupports, slots: &[Slot], settings: &SupportSettings) -> Vec<StructurePart> {
     let Some(index) = run.index else { return Vec::new() };
-    let contacts: Vec<ColumnContact> = slots.iter().map(|s| s.contact.clone()).collect();
-    let components = review_components(index, &contacts, built);
-    let view = SupportMesh { positions: &built.positions, indices: &built.indices, components: &components };
-    crossing_structure_parts(index, &view, settings, run.expired)
+    if let Some(found) = &memo.structures {
+        return found.clone();
+    }
+    let view = SupportMesh { positions: &built.positions, indices: &built.indices, components: memo.components(index, slots, built) };
+    let found = trace::check(|| crossing_structure_parts(index, &view, settings, run.expired));
+    memo.structures = Some(found.clone());
+    found
 }
 
 fn spend(trials: &mut u32, budget: u32) -> bool {
@@ -167,9 +209,9 @@ fn spend(trials: &mut u32, budget: u32) -> bool {
     true
 }
 
-/// Moves each crossing automatic contact to the next alternate its candidate offers; true when any moved.
-fn move_to_alternates(run: &Run, slots: &mut [Slot], crossing: &[String], next: &mut Vec<usize>) -> bool {
-    let mut moved = false;
+/// Moves each crossing automatic contact to the next alternate its candidate offers; how many moved.
+fn move_to_alternates(run: &Run, slots: &mut [Slot], crossing: &[String], next: &mut Vec<usize>) -> usize {
+    let mut moved = 0;
     for id in crossing {
         let Some(k) = slots.iter().position(|s| id_of(s) == id) else { continue };
         let Some(candidate) = slots[k].candidate else { continue };
@@ -185,7 +227,7 @@ fn move_to_alternates(run: &Run, slots: &mut [Slot], crossing: &[String], next: 
         contact.candidate = Candidate { id: CandidateId(position_id(point)), source_face, point, normal, origin: Origin::Auto };
         contact.landing = None;
         slots[k].ring_key = Some(alt_id);
-        moved = true;
+        moved += 1;
     }
     moved
 }
@@ -204,21 +246,23 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
     let mut trials = 0;
     let mut fallback: Vec<Fallback> = Vec::new();
     let mut built = build(run, &slots, &effective)?;
+    trace::seen(&built);
+    let mut memo = Memo::default();
     let mut mesh_dropped = ids(&built, &slots);
 
     if repairing {
         // A tree or brace cannot be assigned to one contact (a trunk may serve many): switch off only
         // the unsafe structure, rebuild, keep the approved contacts.
-        if effective.scatter_auto_tree && !(run.expired)() && crossing_structures(run, &built, &slots, &effective).iter().any(|p| matches!(p, StructurePart::TreeBranch | StructurePart::TreeTrunk)) && spend(&mut trials, budget) {
+        if effective.scatter_auto_tree && !(run.expired)() && crossing_structures(run, &mut memo, &built, &slots, &effective).iter().any(|p| matches!(p, StructurePart::TreeBranch | StructurePart::TreeTrunk)) && spend(&mut trials, budget) {
             effective.scatter_auto_tree = false;
             fallback.push(Fallback::Tree);
-            built = build(run, &slots, &effective)?;
+            built = rebuild(run, &slots, &effective, &mut memo, "tree-fallback", 0)?;
             mesh_dropped = ids(&built, &slots);
         }
-        if effective.truss_enabled && !(run.expired)() && crossing_structures(run, &built, &slots, &effective).contains(&StructurePart::Brace) && spend(&mut trials, budget) {
+        if effective.truss_enabled && !(run.expired)() && crossing_structures(run, &mut memo, &built, &slots, &effective).contains(&StructurePart::Brace) && spend(&mut trials, budget) {
             effective.truss_enabled = false;
             fallback.push(Fallback::Brace);
-            built = build(run, &slots, &effective)?;
+            built = rebuild(run, &slots, &effective, &mut memo, "brace-fallback", 0)?;
             mesh_dropped = ids(&built, &slots);
         }
         if slots.iter().any(is_auto) && !(run.expired)() {
@@ -228,46 +272,49 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
                 if (run.expired)() || trials + FAILSAFE_TRIALS >= budget {
                     break;
                 }
-                let necks = crossing_necks(run, &built, &slots, &effective, &|_| true);
+                let necks = crossing_necks(run, &mut memo, &built, &slots, &effective);
                 if necks.is_empty() {
                     break;
                 }
-                if reaim_necks(run, &mut slots, &necks, aim) {
+                let touched = reaim_necks(run, &mut slots, &necks, aim);
+                if touched > 0 {
                     spend(&mut trials, budget);
-                    built = build(run, &slots, &effective)?;
+                    built = rebuild(run, &slots, &effective, &mut memo, if aim == Aim::Face { "reaim-normal" } else { "reaim-down" }, touched)?;
                     mesh_dropped = ids(&built, &slots);
                 }
             }
-            let mut crossing = crossing_auto(run, &built, &slots, &effective, &|_| true);
+            let mut crossing = crossing_auto(run, &mut memo, &built, &slots, &effective, None);
             // The policy's alternates first: a crossing contact may move, one rebuild per round.
             let mut next = Vec::new();
             // Three trials stay reserved for the fail-safe steps below.
             while !crossing.is_empty() && !run.policy.alternates.is_empty() && !(run.expired)() && trials + FAILSAFE_TRIALS < budget {
-                if !move_to_alternates(run, &mut slots, &crossing, &mut next) {
+                let moved = move_to_alternates(run, &mut slots, &crossing, &mut next);
+                if moved == 0 {
                     break;
                 }
                 spend(&mut trials, budget);
-                built = build(run, &slots, &effective)?;
+                built = rebuild(run, &slots, &effective, &mut memo, "alternates", moved)?;
                 mesh_dropped = ids(&built, &slots);
-                crossing = crossing_auto(run, &built, &slots, &effective, &|_| true);
+                crossing = crossing_auto(run, &mut memo, &built, &slots, &effective, None);
             }
             if !crossing.is_empty() && spend(&mut trials, budget) {
                 let mut blocked = Ids::of(crossing);
                 let mut dropped = Ids::of(mesh_dropped.clone());
                 let automatic: Vec<String> = slots.iter().filter(|s| is_auto(s)).map(|s| id_of(s).to_string()).collect();
                 slots.retain(|s| !blocked.contains(id_of(s)));
-                built = build(run, &slots, &effective)?;
+                built = rebuild(run, &slots, &effective, &mut memo, "leave-out", blocked.list.len())?;
                 mesh_dropped = ids(&built, &slots);
                 dropped.extend(mesh_dropped.clone());
                 // A changed tree/brace layout can expose another shaft. Bound the rebuild cost and refuse
                 // all remaining automatic supports if that happens rather than returning a crossing body.
                 let still: Vec<String> = automatic.iter().filter(|id| !blocked.contains(id)).cloned().collect();
-                let remaining = crossing_auto(run, &built, &slots, &effective, &|id| still.iter().any(|s| s == id));
+                let remaining = crossing_auto(run, &mut memo, &built, &slots, &effective, Some(&|id| still.iter().any(|s| s == id)));
                 // Every rebuild counts against the budget; without one left the crossing is reported.
                 if !remaining.is_empty() && spend(&mut trials, budget) {
+                    let automatic_count = automatic.len();
                     blocked.extend(automatic);
                     slots.retain(|s| !is_auto(s));
-                    built = build(run, &slots, &effective)?;
+                    built = rebuild(run, &slots, &effective, &mut memo, "all-manual", automatic_count)?;
                     mesh_dropped = ids(&built, &slots);
                 }
                 let mut all = dropped;
@@ -276,15 +323,16 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
                 mesh_dropped = all.list;
             }
         }
-        if !(run.expired)() && !crossing_structures(run, &built, &slots, &effective).is_empty() && spend(&mut trials, budget) {
+        if !(run.expired)() && !crossing_structures(run, &mut memo, &built, &slots, &effective).is_empty() && spend(&mut trials, budget) {
             // Rebuilding after a pillar omission can rearrange a tree or brace. Do not keep any
             // automatic structure if the bounded fallback still intersects the model.
             let mut omitted = Ids::of(mesh_dropped.clone());
             omitted.extend(original_auto.iter().cloned());
+            let touched = slots.iter().filter(|s| is_auto(s)).count();
             slots.retain(|s| !is_auto(s));
             effective.scatter_auto_tree = false;
             effective.truss_enabled = false;
-            built = build(run, &slots, &effective)?;
+            built = rebuild(run, &slots, &effective, &mut memo, "structure-fallback", touched)?;
             let mut all = Ids::of(ids(&built, &slots));
             all.extend(omitted.list);
             mesh_dropped = all.list;
@@ -304,4 +352,78 @@ pub fn run(run: &Run, permitted: super::permit::Permitted) -> Result<Outcome, Bu
         trials,
         settings: effective,
     })
+}
+
+/// The trial log: which step spent each trial, how many contacts it touched and what the rebuild and
+/// the checks leading to it cost. Test-only; the production build records nothing.
+#[cfg(test)]
+pub(crate) mod trace {
+    use std::cell::RefCell;
+    use std::time::Instant;
+
+    #[derive(Clone, Debug)]
+    pub struct Trial {
+        pub step: &'static str,
+        pub touched: usize,
+        pub build_ms: f64,
+        /// Check time since the previous rebuild (cached queries cost nothing).
+        pub check_ms: f64,
+        /// The rebuild produced exactly the mesh it started from (a trial that changed nothing).
+        pub same: bool,
+    }
+
+    thread_local! {
+        static LOG: RefCell<(Vec<Trial>, f64)> = const { RefCell::new((Vec::new(), 0.0)) };
+        static LAST: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+        static EPOCH: Instant = Instant::now();
+    }
+
+    pub fn now() -> f64 {
+        EPOCH.with(|e| e.elapsed().as_secs_f64() * 1000.0)
+    }
+
+    pub fn check<T>(f: impl FnOnce() -> T) -> T {
+        let started = now();
+        let out = f();
+        let spent = now() - started;
+        LOG.with(|l| l.borrow_mut().1 += spent);
+        out
+    }
+
+    /// Whether `built` is the mesh seen last (then remembers it).
+    pub fn seen(built: &super::BuiltSupports) -> bool {
+        let hash = built.positions.iter().chain(&[built.positions.len() as f32]).fold(0xcbf29ce484222325u64, |h, p| (h ^ u64::from(p.to_bits())).wrapping_mul(0x100000001b3));
+        LAST.with(|l| l.replace(hash) == hash)
+    }
+
+    pub fn trial(step: &'static str, touched: usize, build_ms: f64, same: bool) {
+        LOG.with(|l| {
+            let mut l = l.borrow_mut();
+            let check_ms = std::mem::take(&mut l.1);
+            l.0.push(Trial { step, touched, build_ms, check_ms, same });
+        });
+    }
+
+    /// Takes the log of the trials since the last take and clears it.
+    pub fn take() -> Vec<Trial> {
+        LOG.with(|l| {
+            let mut l = l.borrow_mut();
+            l.1 = 0.0;
+            std::mem::take(&mut l.0)
+        })
+    }
+}
+
+#[cfg(not(test))]
+mod trace {
+    pub fn now() -> f64 {
+        0.0
+    }
+    pub fn check<T>(f: impl FnOnce() -> T) -> T {
+        f()
+    }
+    pub fn seen(_built: &super::BuiltSupports) -> bool {
+        false
+    }
+    pub fn trial(_step: &'static str, _touched: usize, _build_ms: f64, _same: bool) {}
 }

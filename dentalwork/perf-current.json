@@ -1,0 +1,17 @@
+{
+  "tiltScanMs": 4373,
+  "tiltScanMethod": "headless Chromium (swiftshader), vite dev server, reference aligner: the analysis worker's dental-tilt-scan job, post to reply (scripts/perf/live-bench.mjs)",
+  "date": "2026-10-28T12:10:06.897Z",
+  "machine": {
+    "cpu": "AMD Ryzen 9 9950X 16-Core Processor            ",
+    "cores": 32,
+    "node": "v22.15.1"
+  },
+  "method": "median of 3 in-process runs (vite-node, Node); Step 2 = Area width step: region proposal + placement filter; Step 3 = runSupportJob after one control change, one-shot session",
+  "dentalGenerateMs": 1433.5,
+  "step2SliderMs": 169.2,
+  "step3PillarDiameterMs": 1695,
+  "step3TipSizeMs": 1290.3,
+  "step3LiftHeightMs": 1306.8,
+  "step3RaftToggleMs": 1412.7
+}

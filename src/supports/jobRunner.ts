@@ -44,7 +44,7 @@ export function runSupportJob(job: SupportJob, onProgress?: ProgressCallback, re
   // Dental: the aligner's Step 3 switches decide Tree and Brace and Roof/Cage stay off, in Rust.
   const policy = dental ? dentalPolicy(dental, frame) : genericPolicy(job.contacts, job.settings);
   const out = generateSupports(contacts, job.settings, policy, {
-    mode: job.mode, model: job.mesh, frame, labelText: job.labelText, zones, timeoutMs: GENERATE_TIMEOUT_MS, revision, ...(site ? { site } : {}),
+    mode: job.mode, model: job.mesh, frame, plateY: job.plate ?? 0, labelText: job.labelText, zones, timeoutMs: GENERATE_TIMEOUT_MS, revision, ...(site ? { site } : {}),
     ...(onProgress ? { onProgress } : {}),
   });
   const mesh = out.mesh;

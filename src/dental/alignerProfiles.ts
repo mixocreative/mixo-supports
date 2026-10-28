@@ -35,6 +35,17 @@ export interface ProfilePose {
   tiltDeg: number;
   headingDeg: number;
   rollDeg: number;
+  /** Print-angle search: tilts start ± range in steps; robust when ± margin pass too (Rust `tilt.rs`). */
+  tiltRangeDeg: number;
+  tiltStepDeg: number;
+  tiltMarginDeg: number;
+}
+
+/** The print-angle search's hard rules (Rust `profiles::Stability`; only the geometry uses them). */
+export interface ProfileStability {
+  maxSlendernessUnbraced: number;
+  maxSlendernessBraced: number;
+  cupProminenceMm: number;
 }
 
 /**
@@ -65,17 +76,19 @@ export interface AlignerProfileData {
   pose: Readonly<ProfilePose>;
   defaults: Readonly<ProfileDefaults>;
   supports: Readonly<ProfileSupports>;
+  stability: Readonly<ProfileStability>;
 }
 
 const LANGS: readonly Lang[] = ['en', 'ja', 'zh-Hant'];
-const TOP_KEYS = ['id', 'name', 'description', 'opening', 'card', 'fixture', 'thresholds', 'pose', 'defaults', 'supports'];
+const TOP_KEYS = ['id', 'name', 'description', 'opening', 'card', 'fixture', 'thresholds', 'pose', 'defaults', 'supports', 'stability'];
 const THRESHOLD_KEYS = ['axialVarianceMax', 'terminalAreaRatioMin', 'terminalBandFraction', 'confidenceMin', 'sharpAngleDeg',
   'loopMinPerimeterMm', 'loopBandFraction', 'loopBandMinMm', 'loopRadiusRatioMin', 'loopExtentMin', 'ridgeFirstMinMm',
   'ridgeSecondMinMm', 'ridgeExtentMin', 'connectorAngleDeg', 'openingResolutionLow', 'openingResolutionHigh',
   'openingHoleMinFraction', 'openingNearHoleMm', 'openingLoopMinMm', 'openingSideLoopMaxMm', 'regionAllowedMeanMin',
   'regionForbiddenMeanMax', 'regionAllowedFractionMin', 'regionAllowedFractionMax', 'archFrontMinAnisotropy',
   'archFrontGridCells', 'archFrontSideFraction', 'archFrontEndBandFraction', 'archFrontMinAreaFraction', 'archFrontEndRatioMin'];
-const POSE_KEYS: readonly (keyof ProfilePose)[] = ['tiltDeg', 'headingDeg', 'rollDeg'];
+const POSE_KEYS: readonly (keyof ProfilePose)[] = ['tiltDeg', 'headingDeg', 'rollDeg', 'tiltRangeDeg', 'tiltStepDeg', 'tiltMarginDeg'];
+const STABILITY_KEYS: readonly (keyof ProfileStability)[] = ['maxSlendernessUnbraced', 'maxSlendernessBraced', 'cupProminenceMm'];
 const DEFAULT_KEYS: readonly (keyof ProfileDefaults)[] = ['positionMm', 'stripWidthMm', 'density', 'positionMinMm', 'positionMaxMm', 'stripWidthMinMm',
   'stripWidthMaxMm', 'densityMin', 'densityMax', 'outerSpacingMm', 'innerSpacingMm', 'maxSearchMm', 'repairBudget',
   'matchToleranceMm', 'matchMinDot', 'minTipSeparationMm', 'tipMinFromUpDeg', 'tipMoveMaxMm'];
@@ -124,6 +137,7 @@ export function parseAlignerProfile(value: unknown, where = 'aligner profile'): 
     pose: numbers(record.pose, POSE_KEYS, `${where}.pose`),
     defaults: numbers(record.defaults, DEFAULT_KEYS, `${where}.defaults`),
     supports: supports(record.supports, `${where}.supports`),
+    stability: numbers(record.stability, STABILITY_KEYS, `${where}.stability`),
   };
 }
 

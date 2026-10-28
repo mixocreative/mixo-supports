@@ -79,6 +79,8 @@ export interface UiState {
   dentalPreviewReady?: boolean;
   /** Dental Step 1: an aligner is read and oriented (or orientation failed), so Next may go on. */
   dentalAlignerReady?: boolean;
+  /** Step 1: the print-angle search or its confirm is still running (Next waits for it). */
+  dentalTiltBusy?: boolean;
   /** Dental Step 1: the detector proposed an orientation (Auto orientation can re-apply it). */
   dentalProposed?: boolean;
   /** The dental step: Back is offered from Step 1 on. */
@@ -255,8 +257,8 @@ export const COMMANDS: Readonly<Record<CommandId, Command>> = {
   },
   'dental.next': {
     role: 'primary', label: () => 'Next', hint: () => 'Keep the current orientation and review the proposed support area',
-    visible: (s) => s.mode === 'dental', enabled: (s) => Boolean(s.dentalAlignerReady),
-    disabledReason: (s) => (s.dentalAlignerReady ? undefined : { key: 'Add an aligner first.' }),
+    visible: (s) => s.mode === 'dental', enabled: (s) => Boolean(s.dentalAlignerReady) && !s.dentalTiltBusy,
+    disabledReason: (s) => (!s.dentalAlignerReady ? { key: 'Add an aligner first.' } : s.dentalTiltBusy ? { key: 'Wait until the print angles are checked.' } : undefined),
   },
   'dental.generate': {
     role: 'primary', label: () => 'Next',

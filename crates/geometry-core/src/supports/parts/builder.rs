@@ -50,6 +50,22 @@ impl MeshBuilder {
         self.components.push(Component { tag, start, count });
     }
 
+    /// Vertices emitted so far: the start of what `raise_from` moves.
+    pub fn vertex_count(&self) -> usize {
+        self.positions.len() / 3
+    }
+
+    /// Moves every vertex from `start` on up by `dy` (the plate height of a plate-relative part built
+    /// at 0). Nothing changes at 0, so a build on the plate frame keeps its exact bits.
+    pub fn raise_from(&mut self, start: usize, dy: f64) {
+        if dy == 0.0 {
+            return;
+        }
+        for y in self.positions.iter_mut().skip(start * 3 + 1).step_by(3) {
+            *y += dy;
+        }
+    }
+
     pub fn finish(self) -> BuiltMesh {
         BuiltMesh {
             positions: self.positions.iter().map(|&v| v as f32).collect(),

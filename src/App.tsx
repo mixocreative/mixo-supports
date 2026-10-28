@@ -1010,11 +1010,13 @@ export default function App() {
   // What the registry's rules read (editing/commands); Undo stops at the mode's floor.
   const ui: UiState = {
     mode: editMode, activeName: activeUnit?.name, supported: scene.units.some((unit) => unit.supports), zones: activeUnit?.zones.length ?? 0, exporting, active: Boolean(activeUnit), heavy: activeHeavy, units: scene.units.length, selectedObjects: selectedCount, tool: session.tool, addAction: session.addAction, method: session.selectStyle, dragAction: effectiveBrushMode(session.brushMode, session.shiftHeld),
-    selection: selection.size, customisedActive, customisedSelected, customisedTargeted: bandCounts.customised, customisedOthers: Math.max(0, bandCounts.customised - customisedActive), activeSupported: Boolean(activeUnit?.supports), generating, dentalPreviewReady: Boolean(dentalPreview?.result.points.length), dentalReviewReady: Boolean(activeUnit?.supports && built.get(activeUnit.id)?.unit === activeUnit), dentalStage: session.dentalStage, dentalAlignerReady: session.dentalAligner === 'ready', dentalProposed: Boolean(session.dentalProposal), canUndo, canRedo: history.future.length > 0, undoStep, redoStep, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
+    selection: selection.size, customisedActive, customisedSelected, customisedTargeted: bandCounts.customised, customisedOthers: Math.max(0, bandCounts.customised - customisedActive), activeSupported: Boolean(activeUnit?.supports), generating, dentalPreviewReady: Boolean(dentalPreview?.result.points.length), dentalReviewReady: Boolean(activeUnit?.supports && built.get(activeUnit.id)?.unit === activeUnit), dentalStage: session.dentalStage, dentalAlignerReady: session.dentalAligner === 'ready', dentalTiltBusy: dentalFlow.tilt?.unitId === activeUnit?.id && (dentalFlow.tilt?.status === 'scanning' || (dentalFlow.tilt?.status === 'ready' && dentalFlow.tilt.confirming)), dentalProposed: Boolean(session.dentalProposal), canUndo, canRedo: history.future.length > 0, undoStep, redoStep, modelsVisible: modelVisible, wireframe, generated: scopeGenerated,
   };
   const command = (id: CommandId) => resolve(id, ui);
   // Dental Step 3's settings, findings and the answer to Back (see components/DentalSupports).
   const reviewTuning = dentalTuning.tuning;
+  const verdictEntry = activeUnit ? problems.get(activeUnit.id) : undefined;
+  const verdictBehind = Boolean(activeUnit && verdictEntry && (verdictEntry.unit !== activeUnit || verdictEntry.mesh !== currentBuild(activeUnit, built.get(activeUnit.id))));
   const dentalReview: DentalReview | undefined = activeUnit?.dental?.kind === 'two-contour' && reviewTuning ? {
     settings: activeSettings,
     onSetting: onSettingChange,
@@ -1024,6 +1026,7 @@ export default function App() {
     structure: activeUnit.dental.structure ?? defaultDentalStructure,
     onStructure: onDentalStructureChange,
     clickReach: { value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) },
+    verdictPending: generating || regenQueued || dentalTuning.busy || verdictBehind || building(activeUnit),
     rimGap: dentalRimGap,
     structureFallback: activeMesh?.dentalStructureFallback,
     problems: listedProblems,
@@ -1186,7 +1189,7 @@ export default function App() {
           <div className="viewport-note">{t('Millimetres. Build plate at zero.')}</div>
         </> : press.kind === 'zones'
           ? <ZonesBar brush={press.brush} unitName={activeUnit?.name} belowPlate={tips.below} hidden={zonesHidden} ui={ui} send={send} run={runCommand} />
-          : press.kind === 'dental-type' || press.kind === 'dental-aligner' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} lang={lang} selectedName={activeUnit && !session.dentalFinished.includes(activeUnit.id) ? activeUnit.name : undefined} onFiles={(files) => void importFiles(files)} onUseSelected={useSelectedAligner} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview?.localPoints.length ?? 0} previewStatus={dentalPreviewState.kind} reviewReady={ui.dentalReviewReady ?? false} review={dentalReview} tuning={dentalTuning.tuning} tuningLimits={dentalTuning.limits} tuningBusy={dentalTuning.busy} tuningError={dentalTuning.error} onTuningChange={dentalTuning.change} send={send} run={runCommand} />
+          : press.kind === 'dental-type' || press.kind === 'dental-aligner' || press.kind === 'dental-area' || press.kind === 'dental-review' ? <DentalBar gesture={press} lang={lang} selectedName={activeUnit && !session.dentalFinished.includes(activeUnit.id) ? activeUnit.name : undefined} onFiles={(files) => void importFiles(files)} onUseSelected={useSelectedAligner} unitName={activeUnit?.name} ui={ui} tipCount={dentalPreview?.localPoints.length ?? 0} previewStatus={dentalPreviewState.kind} reviewReady={ui.dentalReviewReady ?? false} review={dentalReview} tuning={dentalTuning.tuning} tuningLimits={dentalTuning.limits} tuningBusy={dentalTuning.busy} tuningError={dentalTuning.error} onTuningChange={dentalTuning.change} tilt={dentalFlow.tilt?.unitId === activeUnit?.id ? dentalFlow.tilt : undefined} onTilt={dentalFlow.chooseTilt} send={send} run={runCommand} />
           : <EditBar gesture={press} unitName={activeUnit?.name} ui={ui} clickReach={{ value: activeSettings.eraseRadius, onChange: (value, edit) => onSettingChange('eraseRadius', value, edit) }} send={send} run={runCommand} />}
       </section>
       <aside className="panel right" onClick={blockedClick('right')}>

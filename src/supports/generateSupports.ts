@@ -79,6 +79,8 @@ export interface GenerateOptions {
   /** The unit-local model; `frame` places it on the plate (absent: it is already in plate space). */
   model: TriangleMesh;
   frame?: JobTransform;
+  /** The plate's height in `frame` (default 0); a lift change moves it instead of the model (see `SupportJob.plate`). */
+  plateY?: number;
   labelText?: string;
   zones?: readonly ZoneStamp[];
   /** The unit's persistent build site (the mesh worker's); absent: a one-shot session for this build. */
@@ -111,7 +113,7 @@ export interface GenerateSession extends PolicySession {
   release_mesh(handle: number): void;
   load_placed(model: number, frame: Float64Array): number;
   generate(model: number, ids: string[], contacts: Float64Array, shapes: Float64Array, settings: Float64Array, mode: number,
-    labelText: string, zones: Float64Array, policy: PolicyHandle, timeoutMs: number, revision: number): Generation;
+    labelText: string, zones: Float64Array, policy: PolicyHandle, timeoutMs: number, revision: number, plateY: number): Generation;
 }
 
 const PARTS: readonly SupportPart[] = [
@@ -126,7 +128,7 @@ const ISLAND_STATUS = ['resolved', 'unresolved', 'manual-only', 'outside-policy'
 /** A placement as the session calls take it: position xyz then rotation xyz. */
 export const frameArray = (frame: JobTransform): Float64Array => Float64Array.of(...frame.position, ...frame.rotation);
 
-/** Contacts are in plate space (`options.frame` applied); the policy is made from the unit-local model. */
+/** Contacts are in the build frame (`options.frame` applied); the policy is made from the unit-local model. */
 export function generateSupports(contacts: readonly SupportContact[], settings: Readonly<LiveSupportSettings>, policy: MakePolicy, options: GenerateOptions): GenerateOutput {
   const empty = (): GenerateOutput => ({
     mesh: { positions: new Float32Array(), indices: new Uint32Array(), parts: [], components: [], dropped: [], droppedByZones: [],
@@ -152,7 +154,7 @@ export function generateSupports(contacts: readonly SupportContact[], settings: 
     let result: Generation;
     try {
       result = wasm.generate(handle, inputs.map((c) => c.id), packed.contacts, packed.shapes, packSettings(settings), options.mode === 'export' ? 1 : 0,
-        options.labelText ?? '', packZones(options.zones ?? []), data.handle, options.timeoutMs ?? 0, options.revision ?? 0);
+        options.labelText ?? '', packZones(options.zones ?? []), data.handle, options.timeoutMs ?? 0, options.revision ?? 0, options.plateY ?? 0);
     } finally {
       data.release();
     }

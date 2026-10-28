@@ -3,6 +3,8 @@ import { filterDentalPlacement } from '../dental/placement';
 import { orientDentalAligner } from '../core/analysis/dentalOrient';
 import { proposeDentalSupportRegion, retuneDentalSupportRegion } from '../core/analysis/dentalRegion';
 import { defaultDentalTuning } from '../dental/tuning';
+import { scanDentalTilts } from '../core/analysis/dentalTilt';
+import { confirmPick } from '../dental/confirmTilt';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
 import { geometryReady } from './geometryClient';
 import { serveTask, transferable } from './serveTask';
@@ -25,6 +27,19 @@ serveTask<AnalysisTask, AnalysisResult>((task, { progress: post }) => runAfterGe
     const orientation = orientDentalAligner(task.job.mesh, task.job.profile);
     progress(1, 'Aligner oriented');
     return { kind: 'dental-orient-result', orientation };
+  }
+  if (task.kind === 'dental-tilt-scan') {
+    progress(0, 'Scanning print angles');
+    const { mesh, profile, settings } = task.job;
+    const scan = scanDentalTilts(mesh, profile, settings, (done, total) => progress(done / total, 'Scanning print angles'));
+    return { kind: 'dental-tilt-scanned', scan };
+  }
+  if (task.kind === 'dental-confirm-tilt') {
+    progress(0, 'Checking the print angle');
+    const { rotations, ...input } = task.job;
+    const result = confirmPick(input, rotations);
+    progress(1, 'Print angle checked');
+    return { kind: 'dental-tilt-confirmed', ...result };
   }
   if (task.kind === 'dental-retune-place') {
     progress(0, 'Detecting dental contours');

@@ -143,6 +143,15 @@ export function generationTransform(unit: PrintUnit): ModelTransform {
   return stored && Array.isArray(stored.position) && Array.isArray(stored.rotation) ? stored : unit.transform;
 }
 
+/**
+ * The plate's height in the generation frame: 0 after a generate; a lift change keeps that frame
+ * (and the model placed by it, with every cache keyed on it) and moves the plate instead.
+ */
+export function generationPlate(unit: PrintUnit): number {
+  const plate = unit.supports?.data.plate;
+  return typeof plate === 'number' && Number.isFinite(plate) ? plate : 0;
+}
+
 /** Rotation without translation: the frame placement and checks analyse a unit in (map their results back with it). */
 export function orientationOf(unit: PrintUnit): JobTransform {
   return { position: [0, 0, 0], rotation: [...unit.transform.rotation] };
@@ -155,6 +164,7 @@ export function supportJobOf(unit: PrintUnit, unitIndex: number, mode: 'preview'
     mesh: unit.source,
     ...(unit.dental ? { dental: unit.dental } : {}),
     frame: unit.supports === undefined ? null : generationTransform(unit),
+    ...(generationPlate(unit) !== 0 ? { plate: generationPlate(unit) } : {}),
     settings,
     contacts: contactInputs(unit),
     // A dental aligner's label is its own field (default X); other objects are lettered A, B, …
@@ -202,9 +212,11 @@ export function unitLowestY(unit: PrintUnit): number {
 /**
  * A lift height change of a placed unit, as commands: placement analyses the turned, unmoved model,
  * so the lift moves no contact. Only the height changes (the lowest point `settings.liftHeight`
- * above the plate, like `placementCommands`) and the supports' frame with it, in the batch that sets
- * the settings, so the supports are rebuilt once and no placement job runs. Undefined when the unit
- * has no placed supports, or another placement setting is pending (it is placed again instead).
+ * above the plate, like `placementCommands`), in the batch that sets the settings, so the supports
+ * are rebuilt once and no placement job runs. The supports keep their generation frame and the plate
+ * moves in it instead (`generationPlate`: the frame's height above the unit's new one), so the
+ * rebuild reuses the placed model and its caches; a unit turned since takes the new frame. Undefined
+ * when the unit has no placed supports, or another placement setting is pending (it is placed again).
  */
 export function liftCommands(unit: PrintUnit, settings: LiveSupportSettings): SceneCommand[] | undefined {
   if (!unit.supports || !unit.placement) return undefined;
@@ -212,10 +224,18 @@ export function liftCommands(unit: PrintUnit, settings: LiveSupportSettings): Sc
   if (placed && PLACEMENT_KEYS.some((key) => key !== 'liftHeight' && placed[key] !== settings[key])) return undefined;
   const [x, y, z] = unit.transform.position;
   const transform: ModelTransform = { position: [x, y + settings.liftHeight - unitLowestY(unit), z], rotation: [...unit.transform.rotation] };
+  const frame = generationTransform(unit);
+  const turned = frame.rotation.some((angle, axis) => angle !== transform.rotation[axis]);
+  const kept = turned ? transform : frame;
+  const { plate: _plate, ...data } = unit.supports.data;
+  const plate = turned ? 0 : frame.position[1] - transform.position[1];
   return [
     { type: 'transform/set', unitId: unit.id, transform },
     { type: 'supports/set', unitId: unit.id, placement: unit.placement, supports: { ...unit.supports, data: {
-      ...unit.supports.data, transform: { position: [...transform.position], rotation: [...transform.rotation] }, ...(placed ? { placed: { ...placed, liftHeight: settings.liftHeight } } : {}),
+      ...data,
+      transform: { position: [...kept.position], rotation: [...kept.rotation] },
+      ...(plate !== 0 ? { plate } : {}),
+      ...(placed ? { placed: { ...placed, liftHeight: settings.liftHeight } } : {}),
     } } },
   ];
 }

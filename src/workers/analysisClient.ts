@@ -2,6 +2,9 @@ import type { SupportProblem } from '../core/analysis/supportCheck';
 import type { DentalRegionProposal } from '../core/analysis/dentalRegion';
 import type { DentalTuning } from '../core/analysis/dentalTuning';
 import type { DentalOrientation } from '../core/analysis/dentalOrient';
+import type { TiltScan, TiltScanSettings } from '../core/analysis/dentalTilt';
+import type { DentalBuildInput } from '../dental/confirmTilt';
+import type { Vector } from '../core/vec3';
 import type { PlacementResult, TriangleMesh } from '../core/analysis/types';
 import type { CheckJob, DentalPlacementJob, PlacementJob } from '../core/jobs';
 import type { AnalysisResult, AnalysisTask } from './analysisProtocol';
@@ -16,6 +19,8 @@ interface Job {
   /** Aborted (reason REPLACED) when a newer job with the key replaces this one. */
   controller: AbortController;
   settle: (result: AnalysisResult | undefined, error?: unknown) => void;
+  /** This job's own progress (fraction 0..1), besides the client-wide `onProgress`. */
+  progress?: (fraction: number) => void;
 }
 
 interface Slot {
@@ -85,6 +90,19 @@ export class AnalysisClient {
       result?.kind === 'dental-retuned' ? { region: result.region, ...(result.placement ? { placement: result.placement } : {}) } : undefined);
   }
 
+  /** Step 1: the print-angle search with the aligner's support settings; `progress(fraction)` as tilts finish. */
+  dentalTiltScan(key: string, mesh: TriangleMesh, profile: string, settings: TiltScanSettings, label: JobLabel,
+    progress?: (fraction: number) => void): Promise<TiltScan | undefined> {
+    return this.submit(key, { kind: 'dental-tilt-scan', job: { mesh, profile, settings } }, label, progress).then((result) =>
+      result?.kind === 'dental-tilt-scanned' ? result.scan : undefined);
+  }
+
+  /** Step 1 Next: which of `rotations` (the pick, then the next tilts in pick order) holds a real build. */
+  dentalConfirmTilt(key: string, input: DentalBuildInput, rotations: Vector[], label: JobLabel): Promise<{ confirmed: number | undefined; tried: number } | undefined> {
+    return this.submit(key, { kind: 'dental-confirm-tilt', job: { ...input, rotations } }, label).then((result) =>
+      result?.kind === 'dental-tilt-confirmed' ? { confirmed: result.confirmed, tried: result.tried } : undefined);
+  }
+
   check(key: string, job: CheckJob, label: JobLabel): Promise<SupportProblem[] | undefined> {
     return this.submit(key, { kind: 'check', job }, label).then((result) => (result?.kind === 'checked' ? result.problems : undefined));
   }
@@ -106,10 +124,10 @@ export class AnalysisClient {
     this.slots.length = 0;
   }
 
-  private submit(key: string, task: AnalysisTask, label: JobLabel): Promise<AnalysisResult | undefined> {
+  private submit(key: string, task: AnalysisTask, label: JobLabel, progress?: (fraction: number) => void): Promise<AnalysisResult | undefined> {
     this.cancel(key);
     return new Promise((resolve, reject) => {
-      this.queue.push({ key, task, label, controller: new AbortController(), settle: (result, error) => (error ? reject(error) : resolve(result)) });
+      this.queue.push({ key, task, label, controller: new AbortController(), settle: (result, error) => (error ? reject(error) : resolve(result)), ...(progress ? { progress } : {}) });
       this.pump();
     });
   }
@@ -137,9 +155,10 @@ export class AnalysisClient {
       signal: job.controller.signal,
       label: job.label,
       context: job.task.kind,
-      ...(this.gate && (job.task.kind === 'place' || job.task.kind === 'dental-place' || job.task.kind === 'dental-region' || job.task.kind === 'dental-retune-place') ? { admit: (signal: AbortSignal) => this.gate!.acquire(mesh.indices.length / 3, signal) } : {}),
+      ...(this.gate && (job.task.kind === 'place' || job.task.kind === 'dental-place' || job.task.kind === 'dental-region' || job.task.kind === 'dental-retune-place' || job.task.kind === 'dental-tilt-scan' || job.task.kind === 'dental-confirm-tilt') ? { admit: (signal: AbortSignal) => this.gate!.acquire(mesh.indices.length / 3, signal) } : {}),
       onProgress: (fields) => {
         if (typeof fields.fraction === 'number' && typeof fields.stage === 'string') this.onProgress(job.key, fields.fraction, fields.stage);
+        if (typeof fields.fraction === 'number') job.progress?.(fields.fraction);
       },
     }).then(
       (result) => job.settle(result),

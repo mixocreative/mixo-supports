@@ -128,6 +128,12 @@ pub struct SupportSettings {
     pub reinforce_overhang_edges: bool,
     pub lift_height: f64,
     pub erase_radius: f64,
+    /// Height of the build plate in the build frame (not in `SETTINGS_LAYOUT`; `generate` sets it).
+    /// 0 for a fresh generate: the model is placed on the plate frame. A lift change keeps the frame
+    /// the supports were generated in (and every cache keyed on that placed model) and moves the
+    /// plate instead: plate-relative parts (raft, label, feet, trunks, braces, Roof / Cage) are built
+    /// as at 0 and raised by it, heights above the plate are measured from it.
+    pub plate_y: f64,
 }
 
 impl SupportSettings {
@@ -145,6 +151,10 @@ impl SupportSettings {
             Some(shape) => SupportSettings { shape: *shape, ..self.clone() },
             None => self.clone(),
         }
+    }
+    /// The top of the raft (the plate itself without one): a tip at or under it builds nothing.
+    pub fn raft_top(&self) -> f64 {
+        self.plate_y + if self.raft_enabled { self.raft_floor_thickness } else { 0.0 }
     }
 }
 

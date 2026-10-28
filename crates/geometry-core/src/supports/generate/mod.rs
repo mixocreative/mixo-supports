@@ -134,6 +134,7 @@ pub fn generate(input: GenerateInput) -> Result<Generated, BuildError> {
                 cover_mm: outcome.settings.scatter_spacing,
                 expired,
                 permitted_face: permitted_area.as_ref().map(|f| f as &dyn Fn(u32) -> bool),
+                plate_y: outcome.settings.plate_y,
             })
         }
         None => IslandVerdict::Ok(Vec::new()),

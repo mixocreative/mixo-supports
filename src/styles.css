@@ -472,6 +472,12 @@ footer strong { margin-left: auto; color: var(--ink); font-weight: 400; }
 /* Viewport tool hit areas stay at least 24 px tall (NN/g, WCAG 2.5.8): the slider gets a full row. */
 .edit-size input { width: 96px; height: 24px; margin: 0; accent-color: var(--ink); }
 .edit-size output { min-width: 3.5em; font-variant-numeric: tabular-nums; }
+/* A slider with a highlighted run of its track (the print angle's stable band). */
+.range-track { position: relative; display: inline-flex; align-items: center; }
+.range-band { position: absolute; top: 50%; height: 6px; transform: translateY(-50%); background: var(--kraft); border-radius: var(--radius); pointer-events: none; }
+.range-track input { position: relative; background: transparent; }
+.print-angle .problems { margin-top: 4px; }
+.problem-kind.angle { background: var(--danger); }
 .edit-count { color: var(--muted); font-variant-numeric: tabular-nums; }
 /* The wide edit bar takes the top right; the view buttons move to the bottom right meanwhile. */
 .viewport--editing .viewport-view { top: auto; bottom: 14px; }
@@ -684,6 +690,7 @@ dialog.terms .terms-item > span { flex: none; }
 .dental-footer .dental-block { padding-bottom: 0; border-bottom: 0; }
 .dental-block { display: grid; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .dental-block:last-child { border-bottom: 0; padding-bottom: 0; }
+.dental-block.is-stale { opacity: .55; }
 .dental-block h3 { margin: 0; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; }
 .dental-block .check { display: flex; gap: 8px; align-items: center; margin: 0; }
 .dental-block { gap: 6px; }

@@ -119,6 +119,9 @@ camera.add(light);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 let model = null;
+// Below the floor (the bottom of the supports and raft) only the aligner and its tips show.
+let floorY = null;
+let underside = false;
 
 function resize() {
   const { clientWidth: w, clientHeight: h } = stage;
@@ -127,7 +130,12 @@ function resize() {
   camera.updateProjectionMatrix();
 }
 new ResizeObserver(resize).observe(stage);
-renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+renderer.setAnimationLoop(() => {
+  controls.update();
+  const below = floorY !== null && camera.position.y < floorY;
+  if (below !== underside) { underside = below; applyVisibility(); }
+  renderer.render(scene, camera);
+});
 
 function look(direction) {
   if (!model) return;
@@ -146,7 +154,7 @@ document.querySelectorAll('[data-view]').forEach((button) => button.addEventList
 function applyVisibility() {
   model?.traverse((object) => {
     const layer = object.name && layerOf(object.name);
-    if (layer) object.visible = visible.get(layer[0]);
+    if (layer) object.visible = visible.get(layer[0]) && !(underside && layer[0] === 'GOLD');
   });
 }
 
@@ -173,7 +181,7 @@ function drawLayers() {
 
 const loader = new GLTFLoader();
 async function show(row) {
-  if (model) { scene.remove(model); model.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); }); model = null; }
+  if (model) { scene.remove(model); model.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); }); model = null; floorY = null; }
   document.getElementById('note').textContent = row.glb ? 'Loading...' : `No 3D result: ${row.result}${row.reason ? ` (${row.reason})` : ''}`;
   if (row.glb) {
     const gltf = await loader.loadAsync(`/out/${row.glb}`);
@@ -191,6 +199,10 @@ async function show(row) {
       }
     });
     scene.add(model);
+    const supports = new THREE.Box3();
+    model.traverse((object) => { if (object.isMesh && layerOf(object.name)?.[0] === 'GOLD') supports.expandByObject(object); });
+    floorY = supports.isEmpty() ? null : supports.min.y;
+    underside = false;
     applyVisibility();
     look(VIEWS.fit());
     document.getElementById('note').textContent = '';

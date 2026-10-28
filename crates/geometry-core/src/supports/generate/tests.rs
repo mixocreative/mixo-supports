@@ -358,3 +358,9 @@ fn a_ring_that_cannot_be_measured_is_inconclusive_not_a_full_perimeter_gap() {
 
 /// The neck re-aim repair (`reaim.rs`).
 mod neck;
+
+/// The repair loop: trials by step and the repaired result.
+mod repair_loop;
+
+/// Lift as a plate offset (`SupportSettings::plate_y`).
+mod plate;

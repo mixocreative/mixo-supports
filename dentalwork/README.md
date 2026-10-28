@@ -26,7 +26,7 @@ Mixo Supports builds supports for dental aligners. This folder explains how that
 
 ## Checking many aligners yourself: the folder review
 
-`batch-review/run-batch-review.bat` (Windows): drop one or more folders of STL files onto it, or run it and paste a folder path. Every STL in the folder and its subfolders goes through the same steps as the app (orientation, support area, supports, safety and island checks). The results are written to `dentalwork/output/batch-<date-time>/` and a viewer opens in your browser. It lists the cases that need a look first, shows each one in 3D with the detected edges, the support area, the supports and markers where a support crosses the aligner, and gives the counts beside it. `batch-review/view-batch-review.bat` reopens the newest result, or the one you drop onto it. No AI is involved; it runs on this computer only. See [batch-review/README.md](batch-review/README.md).
+`batch-review/run-batch-review.bat` (Windows): double-click it and choose a folder, or drag one or more folders of STL files onto it. Every STL in the folder and its subfolders goes through the same steps as the app (orientation, support area, supports, safety and island checks). The results are written to `dentalwork/output/batch-<date-time>/` and a viewer opens in your browser. It lists the cases that need a look first, shows each one in 3D with the detected edges, the support area, the supports and markers where a support crosses the aligner, and gives the counts beside it. `batch-review/view-batch-review.bat` reopens the newest result, or the one you drop onto it. No AI is involved; it runs on this computer only. See [batch-review/README.md](batch-review/README.md).
 
 ## Running the review script for one file
 

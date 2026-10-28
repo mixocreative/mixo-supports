@@ -14,6 +14,7 @@ use mixo_geometry_core::dental::orientation::{OpeningState, Orientation, matches
 use mixo_geometry_core::dental::profiles::{self, AlignerProfile};
 use mixo_geometry_core::dental::region::{Region, RegionContours, propose_region, retune_region};
 use mixo_geometry_core::dental::rim::{BoundaryKind, Rim};
+use mixo_geometry_core::dental::tilt::{Failing, PickReason, RULES, ScanArgs, TiltScan, tilt_scan_with};
 use mixo_geometry_core::supports::policy::AreaStamp;
 use super::{GeometrySession, mesh_error};
 use wasm_bindgen::prelude::{JsValue, wasm_bindgen};
@@ -337,4 +338,106 @@ pub(crate) fn area_stamps(stamps: &[f64]) -> Result<Vec<AreaStamp>, JsValue> {
         .chunks_exact(STAMP_STRIDE)
         .map(|s| AreaStamp { center: [s[0], s[1], s[2]], radius: s[3], normal: [s[4], s[5], s[6]], allow: s[7] == 1.0 })
         .collect())
+}
+
+/// The print-angle search (`dental_tilt_scan`): one row per scanned tilt in step order, the pick
+/// order (the pick first), the pick's reason and the stable band. Failed: `ok() == false` with `reason()`.
+#[wasm_bindgen]
+pub struct DentalTiltScanResult {
+    ok: bool,
+    reason: String,
+    scan: Option<TiltScan>,
+}
+
+#[wasm_bindgen]
+impl DentalTiltScanResult {
+    pub fn ok(&self) -> bool {
+        self.ok
+    }
+    pub fn reason(&self) -> String {
+        self.reason.clone()
+    }
+    /// The start tilt (degrees).
+    pub fn start_deg(&self) -> f64 {
+        self.scan.as_ref().map_or(f64::NAN, |s| s.start_deg)
+    }
+    /// Per row, 12 numbers: tilt (degrees), steps from the start, rule flags (bit 0 resin trap, 1 rim
+    /// gap, 2 crossing, 3 too thin), fitting-side tips, largest gap mm, largest slenderness, largest
+    /// layer mm², height mm, robust (0/1), rotation Euler XYZ radians (3, as the orient result).
+    pub fn rows(&self) -> Vec<f64> {
+        let Some(scan) = &self.scan else { return Vec::new() };
+        scan.rows
+            .iter()
+            .zip(&scan.robust)
+            .flat_map(|(r, &robust)| {
+                let flags = RULES.iter().filter(|&&rule| r.failed(rule)).fold(0u32, |bits, &rule| bits | (1 << rule as u32));
+                [r.tilt_deg, f64::from(r.step), f64::from(flags), r.fitting_side_tips as f64, r.largest_gap_mm, r.largest_slenderness, r.largest_layer_mm2, r.height_mm, f64::from(u8::from(robust)), r.rotation[0], r.rotation[1], r.rotation[2]]
+            })
+            .collect()
+    }
+    /// Per row and rule (4 per row): the first failing vertex id (resin trap) or tip id, or "".
+    pub fn failing(&self) -> Vec<String> {
+        let Some(scan) = &self.scan else { return Vec::new() };
+        scan.rows
+            .iter()
+            .flat_map(|r| {
+                r.failing.iter().map(|f| match f {
+                    None => String::new(),
+                    Some(Failing::Vertex(v)) => v.to_string(),
+                    Some(Failing::Tip(id)) => id.clone(),
+                })
+            })
+            .collect()
+    }
+    /// Row indices in pick order: the pick, then the tilts the confirm tries next.
+    pub fn order(&self) -> Vec<u32> {
+        self.scan.as_ref().map_or_else(Vec::new, |s| s.order.iter().map(|&i| i as u32).collect())
+    }
+    /// 0 robust, 1 passing (no tilt is robust), 2 failing (no tilt passes).
+    pub fn pick_reason(&self) -> u32 {
+        match self.scan.as_ref().map(|s| s.reason) {
+            Some(PickReason::Robust) => 0,
+            Some(PickReason::Passing) => 1,
+            _ => 2,
+        }
+    }
+    /// First and last row index of the stable band, or empty.
+    pub fn band(&self) -> Vec<u32> {
+        self.scan.as_ref().and_then(|s| s.band).map_or_else(Vec::new, |(a, b)| vec![a as u32, b as u32])
+    }
+}
+
+#[wasm_bindgen]
+impl GeometrySession {
+    /// Print-angle search over the profile's tilt range (docs/ROADMAP.md F) with the host's current
+    /// support settings. `on_tilt(done, total)`, when given, is called after each scanned tilt.
+    pub fn dental_tilt_scan(
+        &self,
+        model: u32,
+        profile: &str,
+        neck_length_mm: f64,
+        pillar_diameter_mm: f64,
+        lift_mm: f64,
+        braced: bool,
+        on_tilt: Option<js_sys::Function>,
+    ) -> Result<DentalTiltScanResult, JsValue> {
+        let profile = profile_of(profile)?;
+        let mesh = self.mesh(model)?;
+        let args = ScanArgs { neck_length_mm, pillar_diameter_mm, lift_mm, braced };
+        if [neck_length_mm, pillar_diameter_mm, lift_mm].iter().any(|v| !v.is_finite()) {
+            return Err(error("NON_FINITE"));
+        }
+        if !(pillar_diameter_mm > 0.0) || neck_length_mm < 0.0 || lift_mm < 0.0 {
+            return Err(error("BAD_INPUT"));
+        }
+        let progress = |done: usize, total: usize| {
+            if let Some(callback) = &on_tilt {
+                let _ = callback.call2(&JsValue::NULL, &JsValue::from(done as u32), &JsValue::from(total as u32));
+            }
+        };
+        Ok(match tilt_scan_with(&mesh, profile, &args, progress) {
+            Ok(scan) => DentalTiltScanResult { ok: true, reason: String::new(), scan: Some(scan) },
+            Err(reason) => DentalTiltScanResult { ok: false, reason, scan: None },
+        })
+    }
 }

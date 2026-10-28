@@ -80,6 +80,7 @@ export const STAGE_KEYS = [
   'Building columns', 'Building raft and bracing', 'Finding unsupported islands', 'Checking overhang coverage',
   'Grouping problems', 'Writing STL', 'Parsing STL', 'Welding vertices', 'Reading file', 'Parsing glTF',
   'Simplifying display copy', 'Detecting dental contours', 'Dental region ready', 'Checking and orienting the aligner', 'Aligner oriented',
+  'Scanning print angles', 'Checking the print angle', 'Print angle checked',
 ] as const;
 
 export type Dictionary = Record<string, string>;

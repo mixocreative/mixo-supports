@@ -10,7 +10,9 @@ export type DentalAligner = 'prompt' | 'loading' | 'ready';
 /** A message the dental bar shows in a step; `bad-file` carries the import error line. */
 export type DentalNotice =
   | { kind: 'bad-file'; message: StatusMessage }
-  | { kind: 'failed' } | { kind: 'uncertain' } | { kind: 'holes' } | { kind: 'mismatch' } | { kind: 'no-area' };
+  | { kind: 'failed' } | { kind: 'uncertain' } | { kind: 'holes' } | { kind: 'mismatch' } | { kind: 'no-area' }
+  /** Step 2: the print-angle confirm moved the automatic pick to this tilt (degrees, shown to 0.1). */
+  | { kind: 'angle-moved'; deg: number };
 
 /**
  * The editing session of the active object: which mode is on, its tools and the selected
@@ -102,7 +104,7 @@ export type SessionEvent =
   | { type: 'dentalOrientFailed'; notices: readonly DentalNotice[] }
   | { type: 'dentalBadFile'; message: StatusMessage }
   | { type: 'dismissDentalNotice'; kind: DentalNotice['kind'] }
-  | { type: 'acceptDentalOrientation'; noArea?: boolean }
+  | { type: 'acceptDentalOrientation'; noArea?: boolean; angleMovedDeg?: number }
   | { type: 'acceptDentalArea' }
   /** OK in Step 3: this aligner is finished and the flow ends; it stays on the plate. */
   | { type: 'finishDental'; unitId: string }
@@ -186,7 +188,7 @@ export function reduceSession(state: EditSession, event: SessionEvent): EditSess
         : state;
     case 'acceptDentalOrientation':
       return state.mode === 'dental' && state.dentalStage === 'aligner' && state.dentalAligner === 'ready'
-        ? { ...state, dentalStage: 'area', dentalNotices: event.noArea ? [{ kind: 'no-area' }] : [] }
+        ? { ...state, dentalStage: 'area', dentalNotices: [...(event.noArea ? [{ kind: 'no-area' as const }] : []), ...(event.angleMovedDeg === undefined ? [] : [{ kind: 'angle-moved' as const, deg: event.angleMovedDeg }])] }
         : state;
     case 'acceptDentalArea':
       return state.mode === 'dental' && state.dentalStage === 'area'
