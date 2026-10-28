@@ -203,7 +203,7 @@ fn invalid_geometry_is_inconclusive_never_a_false_clear() {
 }
 
 #[test]
-fn a_timeout_is_inconclusive_never_clear_and_a_found_crossing_still_blocks() {
+fn a_timeout_is_inconclusive_even_after_a_found_crossing() {
     let index = CollisionIndex::new(&MODEL, &[0, 1, 2]);
     let always = || true;
     let clear_but_late = plain(Part::Brace, &CLEAR);
