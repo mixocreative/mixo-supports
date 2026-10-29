@@ -13,6 +13,7 @@
   header h1 { margin: 0; font-size: var(--fs-lg); font-weight: 500; }
   header .muted, .muted { color: var(--muted); }
   header a { margin-left: auto; color: var(--ink); }
+  header a[hidden] + .open { margin-left: auto; }
   main { display: grid; grid-template-columns: 260px 1fr 260px; min-height: 0; }
   .panel { border-right: 1px solid var(--line); }
   .panel.right { border-right: 0; border-left: 1px solid var(--line); }
@@ -32,6 +33,9 @@
   .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
   .check span { flex: 1; }
   .segmented { margin-bottom: 6px; }
+  .open { display: flex; gap: 4px; }
+  .open input { display: none; }
+  body.dragging .stage { outline: 2px dashed var(--accent, var(--ink)); outline-offset: -6px; }
 </style>
 <script type="importmap">{ "imports": { "three": "/three/build/three.module.js", "three/addons/": "/three/examples/jsm/" } }</script>
 </head>
@@ -39,7 +43,11 @@
 <header>
   <h1>Folder review</h1>
   <span class="muted" id="totals"></span>
-  <a href="/out/summary.csv" download>summary.csv</a>
+  <a href="/out/summary.csv" download id="csv">summary.csv</a>
+  <span class="open">
+    <input type="file" id="pick-folder" webkitdirectory><button data-pick="pick-folder">Open folder</button>
+    <input type="file" id="pick-files" multiple accept=".json,.glb,.csv"><button data-pick="pick-files">Open files</button>
+  </span>
 </header>
 <main>
   <div class="panel">
@@ -182,9 +190,12 @@ function drawLayers() {
 const loader = new GLTFLoader();
 async function show(row) {
   if (model) { scene.remove(model); model.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); }); model = null; floorY = null; }
-  document.getElementById('note').textContent = row.glb ? 'Loading...' : `No 3D result: ${row.result}${row.reason ? ` (${row.reason})` : ''}`;
-  if (row.glb) {
-    const gltf = await loader.loadAsync(`/out/${row.glb}`);
+  const url = row.glb ? urlOf(row.glb) : '';
+  document.getElementById('note').textContent = url ? 'Loading...'
+    : row.glb ? `${row.glb} was not in what was dropped. Drop the whole batch-... folder.`
+    : `No 3D result: ${row.result}${row.reason ? ` (${row.reason})` : ''}`;
+  if (url) {
+    const gltf = await loader.loadAsync(url);
     model = gltf.scene;
     model.traverse((object) => {
       // Markers draw over everything, so a crossing inside a support body still shows.
@@ -210,12 +221,83 @@ async function show(row) {
   drawLayers();
 }
 
-const summary = await (await fetch('/out/summary.json')).json();
-const cases = summary.cases;
-const needing = cases.filter((c) => c.needsLook);
-document.getElementById('totals').textContent = `${cases.length} file(s), ${needing.length} need a look, made ${new Date(summary.created).toLocaleString()}`;
-let onlyLook = needing.length > 0;
+// A run comes from the server (/out/) or from files dropped on the page; urlOf maps a GLB name to where it loads from.
+let cases = [];
+let urlOf = (name) => `/out/${name}`;
+let blobs = [];
+let onlyLook = false;
 let current = 0;
+
+function openRun(summary, glbUrl, csvUrl) {
+  cases = summary.cases;
+  urlOf = glbUrl;
+  const needing = cases.filter((c) => c.needsLook);
+  const made = summary.created ? `, made ${new Date(summary.created).toLocaleString()}` : '';
+  document.getElementById('totals').textContent = `${cases.length} file(s), ${needing.length} need a look${made}`;
+  const csv = document.getElementById('csv');
+  csv.hidden = !csvUrl;
+  if (csvUrl) csv.href = csvUrl;
+  onlyLook = needing.length > 0;
+  select(0);
+}
+
+function empty(message) {
+  document.getElementById('totals').textContent = '';
+  document.getElementById('csv').hidden = true;
+  document.getElementById('note').textContent = message;
+}
+
+// Dropped or chosen files: a batch-... folder (summary.json + case GLBs), or GLB files alone.
+// When several runs are in the drop, the newest summary.json wins and only GLBs beside it are used.
+async function openFiles(entries) {
+  blobs.forEach((url) => URL.revokeObjectURL(url));
+  blobs = [];
+  const dirOf = (path) => path.slice(0, path.lastIndexOf('/') + 1);
+  const nameOf = (path) => path.slice(path.lastIndexOf('/') + 1);
+  const blob = (file) => { const url = URL.createObjectURL(file); blobs.push(url); return url; };
+  let run = null;
+  for (const { path, file } of entries.filter(({ path }) => nameOf(path) === 'summary.json')) {
+    try {
+      const summary = JSON.parse(await file.text());
+      if (Array.isArray(summary.cases) && (!run || (summary.created ?? '') > (run.summary.created ?? ''))) run = { summary, dir: dirOf(path) };
+    } catch { /* not a review summary */ }
+  }
+  const glbs = entries.filter(({ path }) => /\.glb$/i.test(path) && (!run || dirOf(path) === run.dir));
+  if (!run && glbs.length === 0) { empty('No summary.json or .glb file in what was dropped. Drop a batch-... folder from dentalwork/output.'); return; }
+  const byName = new Map(glbs.map(({ path, file }) => [nameOf(path), file]));
+  const summary = run?.summary ?? {
+    cases: glbs.map(({ path }) => ({ case: nameOf(path).replace(/\.glb$/i, ''), source: path, result: 'built', glb: nameOf(path), needsLook: false })),
+  };
+  const missing = summary.cases.filter((c) => c.glb && !byName.has(c.glb));
+  const csv = run && entries.find(({ path }) => path === `${run.dir}summary.csv`);
+  openRun(summary, (name) => (byName.has(name) ? blob(byName.get(name)) : ''), csv ? blob(csv.file) : '');
+  if (missing.length) document.getElementById('totals').textContent += `, ${missing.length} GLB(s) not in the drop`;
+}
+
+async function readEntry(entry) {
+  if (entry.isFile) return [{ path: entry.fullPath, file: await new Promise((ok, fail) => entry.file(ok, fail)) }];
+  const reader = entry.createReader();
+  const children = [];
+  for (let batch; (batch = await new Promise((ok, fail) => reader.readEntries(ok, fail))).length;) children.push(...batch);
+  return (await Promise.all(children.map(readEntry))).flat();
+}
+
+addEventListener('dragover', (event) => { event.preventDefault(); document.body.classList.add('dragging'); });
+addEventListener('dragleave', (event) => { if (!event.relatedTarget) document.body.classList.remove('dragging'); });
+addEventListener('drop', async (event) => {
+  event.preventDefault();
+  document.body.classList.remove('dragging');
+  const roots = [...event.dataTransfer.items].map((item) => item.webkitGetAsEntry?.()).filter(Boolean);
+  openFiles((await Promise.all(roots.map(readEntry))).flat());
+});
+document.querySelectorAll('[data-pick]').forEach((button) => button.addEventListener('click', () => document.getElementById(button.dataset.pick).click()));
+for (const id of ['pick-folder', 'pick-files']) {
+  const input = document.getElementById(id);
+  input.addEventListener('change', () => {
+    openFiles([...input.files].map((file) => ({ path: `/${file.webkitRelativePath || file.name}`, file })));
+    input.value = '';
+  });
+}
 const shown = () => (onlyLook ? cases.filter((c) => c.needsLook) : cases);
 
 const status = (c) => (c.result !== 'built' ? c.result : c.verdict);
@@ -239,10 +321,10 @@ function facts(c) {
   if (c.reason) rows.push(['Reason', c.reason, true]);
   document.getElementById('facts').replaceChildren(...rows.flatMap(([k, v, bad]) => {
     const dt = document.createElement('dt'); dt.textContent = k;
-    const dd = document.createElement('dd'); dd.textContent = String(v); if (bad) dd.className = 'bad';
+    const dd = document.createElement('dd'); dd.textContent = String(v ?? '-'); if (bad) dd.className = 'bad';
     return [dt, dd];
   }));
-  document.getElementById('source').textContent = c.source;
+  document.getElementById('source').textContent = c.source ?? '';
 }
 
 function drawList() {
@@ -263,7 +345,7 @@ function drawList() {
 
 function select(k) {
   const list = shown();
-  if (list.length === 0) { drawList(); return; }
+  if (list.length === 0) { drawList(); document.getElementById('position').textContent = ''; return; }
   current = Math.max(0, Math.min(list.length - 1, k));
   drawList();
   document.getElementById('position').textContent = `${current + 1} / ${list.length}`;
@@ -278,7 +360,9 @@ addEventListener('keydown', (event) => {
   if (event.key === 'ArrowDown' || event.key === 'PageDown') select(current + 1);
   if (event.key === 'ArrowUp' || event.key === 'PageUp') select(current - 1);
 });
-select(0);
+const served = await fetch('/out/summary.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+if (served) openRun(served, (name) => `/out/${name}`, '/out/summary.csv');
+else empty('Drop a batch-... folder from dentalwork/output here, or its summary.json with the case GLBs. Open folder and Open files do the same.');
 </script>
 </body>
 </html>
