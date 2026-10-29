@@ -10,7 +10,9 @@ Check a whole folder of aligner STLs on your own computer, without the app and w
 2. Double-click `run-batch-review.bat` and choose the folder in the window that opens, or drag one or more folders onto it in File Explorer. Subfolders are included. If you close the window without choosing, it asks for a folder path to paste instead.
 3. The window prints one line per file. When it ends, the viewer opens in your browser. Keep the window open while you look; close it when you are done.
 
-To look at an earlier run again, double-click `view-batch-review.bat` (it opens the newest run) or drop a `batch-...` folder from `dentalwork/output` onto it.
+To look at an earlier run again, double-click `view-batch-review.bat` (it opens the newest run) or drop a `batch-...` folder from `dentalwork/output`, or any file in it, onto it. If there is no run yet, it opens an empty viewer.
+
+Once the viewer is open you can switch runs without restarting it: drop a `batch-...` folder onto the page, or use **Open folder** / **Open files** in the header. Dropping the whole folder is best; `summary.json` with its `case-*.glb` files works too, and `.glb` files alone open without the numbers. When a drop holds several runs, the newest one opens. The files stay in your browser; nothing is uploaded. The viewer still needs the window `view-batch-review.bat` opened: double-clicking `viewer.html` by itself does not work.
 
 Command line, from the project folder:
 
@@ -69,8 +71,8 @@ For each file, write down whether the edges and the support area are right, wron
 | File | Role |
 |---|---|
 | `run-batch-review.bat` | Runs a folder, then opens the viewer |
-| `view-batch-review.bat` | Reopens a finished run |
+| `view-batch-review.bat` | Reopens a finished run, or opens an empty viewer to drop one into |
 | `batch.ts` | Runs each STL through `scripts/dental-region-review/build.ts` (the app's detector, placement and Rust `generate`) and writes the GLBs and the summary |
-| `serve.mjs` | Serves the viewer, three.js and the run's files on 127.0.0.1 only |
+| `serve.mjs` | Serves the viewer, three.js and the run's files (if a run folder is given) on 127.0.0.1 only |
 | `viewer.html` | The viewer |
 | `tokens.css`, `base.css` | Mixo app style, copied unchanged from the `mixo-app-style` skill |

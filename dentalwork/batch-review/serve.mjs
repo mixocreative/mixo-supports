@@ -1,6 +1,7 @@
 // Local viewer for one folder-review output: serves the viewer page, three.js from node_modules
 // and the review files on 127.0.0.1 only, then opens the browser. Ctrl+C (or closing the window)
-// stops it.  Usage: node dentalwork/batch-review/serve.mjs <output folder> [--no-open]
+// stops it. Without a folder the viewer opens empty and takes a run dropped onto the page.
+// Usage: node dentalwork/batch-review/serve.mjs [output folder] [--no-open]
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
@@ -9,14 +10,13 @@ import { exec } from 'node:child_process';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const [folder] = process.argv.slice(2).filter((arg) => arg !== '--no-open');
-const output = resolve(folder ?? '');
-if (!folder || !existsSync(join(output, 'summary.json'))) {
-  console.error('Give an output folder that holds summary.json (made by run-batch-review.bat).');
+if (folder && !existsSync(join(resolve(folder), 'summary.json'))) {
+  console.error('Give an output folder that holds summary.json (made by run-batch-review.bat), or none to drop one in the viewer.');
   process.exit(1);
 }
 const roots = {
   '/three/': join(here, '..', '..', 'node_modules', 'three'),
-  '/out/': output,
+  ...(folder ? { '/out/': resolve(folder) } : {}),
   '/': here,
 };
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
